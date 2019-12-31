@@ -50,6 +50,27 @@ void QCoreApplication_removeEventFilter(QObject *filterObj) {
 }
 
 //=============================================================================
+QEventLoop* QEventLoop_new() {
+	return new QEventLoop();
+}
+
+void QEventLoop_destructor(QEventLoop* eventLoop) {
+	eventLoop->~QEventLoop();
+}
+
+void QEventLoop_delete(QEventLoop* eventLoop) {
+	delete eventLoop;
+}
+
+void QEventLoop_processEvents(QEventLoop* eventLoop, QEventLoop::ProcessEventsFlags flags) {
+	eventLoop->processEvents(flags);
+}
+
+bool QEventLoop_isRunning(const QEventLoop* eventLoop) {
+	return eventLoop->isRunning();
+}
+
+//=============================================================================
 QByteArray *QByteArray_new() { return new QByteArray(); }
 void QByteArray_destructor(QByteArray *byteArray) { byteArray->~QByteArray(); }
 void QByteArray_delete(QByteArray *byteArray) { delete byteArray; }
@@ -914,6 +935,9 @@ void QFormLayout_setLayout(QFormLayout *formLayout, int row,
 //=============================================================================
 void QLayout_destructor(QLayout *layout) { layout->~QLayout(); }
 void QLayout_delete(QLayout *layout) { delete layout; }
+void QLayout_setContentsMargins(QLayout *layout, int left, int top, int right, int bottom) {
+    layout->setContentsMargins(left, top, right, bottom);
+}
 
 //=============================================================================
 QWidget *QWidget_new() { return new QWidget(); }
@@ -1060,6 +1084,9 @@ void QWidget_setShortcutAutoRepeat(QWidget *widget, int id, bool enable) {
 }
 void QWidget_update(QWidget *widget) { widget->update(); }
 void QWidget_repaint(QWidget *widget) { widget->repaint(); }
+bool QWidget_isVisible(const QWidget* widget) {
+	return widget->isVisible();
+}
 void QWidget_setVisible(QWidget *widget, bool visible) {
   widget->setVisible(visible);
 }
@@ -1190,7 +1217,11 @@ void QButtonGroup_destructor(QButtonGroup *buttonGroup) {
   buttonGroup->~QButtonGroup();
 }
 void QButtonGroup_delete(QButtonGroup *buttonGroup) { delete buttonGroup; }
+
+//=============================================================================
 QCheckBox *QCheckBox_new() { return new QCheckBox(); }
+Qt::CheckState QCheckBox_checkState(const QCheckBox* checkBox) { return checkBox->checkState(); }
+void QCheckBox_setCheckState(QCheckBox* checkBox, Qt::CheckState checkState) { checkBox->setCheckState(checkState); }
 void QCheckBox_destructor(QCheckBox *checkBox) { checkBox->~QCheckBox(); }
 void QCheckBox_delete(QCheckBox *checkBox) { delete checkBox; }
 

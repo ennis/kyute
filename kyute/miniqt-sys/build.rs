@@ -769,32 +769,29 @@ const MINIQT_TYPES: &[&str] = &[
     "MQCallback",
     "MQCallback_QString",
     "MQCallback_int",
-    "MQPaintEventFilter"
+    "MQPaintEventFilter",
 ];
 
-const BLACKLISTED_TYPES: &[&str] = &[
-    "QMessageBox_Button"
-];
+const BLACKLISTED_TYPES: &[&str] = &["QMessageBox_Button"];
 
-const BLACKLISTED_FUNCTIONS: &[&str] = &[
+/*const BLACKLISTED_FUNCTIONS: &[&str] = &[
     // Not ABI safe
     "QObject::.*",
-];
+];*/
 
 fn main() {
-
     let qt5_path = env::var("QT_INSTALL_DIR").expect("QT_INSTALL_DIR not set");
-    let qt5_lib_path : PathBuf = [qt5_path.as_str(), "lib"].iter().collect();
+    let qt5_lib_path: PathBuf = [qt5_path.as_str(), "lib"].iter().collect();
     let qt5_include: PathBuf = [qt5_path.as_str(), "include"].iter().collect();
-    let qt5_include_qtcore : PathBuf = [qt5_path.as_str(), "include", "QtCore"].iter().collect();
-    let qt5_include_qtgui : PathBuf = [qt5_path.as_str(), "include", "QtGui"].iter().collect();
-    let qt5_include_qtwidgets : PathBuf = [qt5_path.as_str(), "include", "QtWidgets"].iter().collect();
+    let qt5_include_qtcore: PathBuf = [qt5_path.as_str(), "include", "QtCore"].iter().collect();
+    let qt5_include_qtgui: PathBuf = [qt5_path.as_str(), "include", "QtGui"].iter().collect();
+    let qt5_include_qtwidgets: PathBuf =
+        [qt5_path.as_str(), "include", "QtWidgets"].iter().collect();
 
     const OPAQUE_TYPES: &[&str] = &[
         // basically everything
-        "std::.*",
-        "Q[^t].*",   // keep the stuff in the Qt namespace
-        //"MQ.*",
+        "std::.*", "Q[^t].*", // keep the stuff in the Qt namespace
+                  //"MQ.*",
     ];
 
     // bindgen our functions
@@ -818,7 +815,12 @@ fn main() {
                     | bindgen::CodegenConfig::VARS,
             );
 
-        for ty in QT_WIDGETS_TYPES.iter().chain(QT_CORE_TYPES).chain(QT_GUI_TYPES).chain(MINIQT_TYPES) {
+        for ty in QT_WIDGETS_TYPES
+            .iter()
+            .chain(QT_CORE_TYPES)
+            .chain(QT_GUI_TYPES)
+            .chain(MINIQT_TYPES)
+        {
             builder = builder.whitelist_type(ty);
             builder = builder.opaque_type(ty);
             builder = builder.whitelist_function(format!("{}_.*", ty)); // additional functions
@@ -854,7 +856,10 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=Qt5Widgets");
 
     // compile miniqt
-    let miniqt = Config::new("miniqt").profile("Debug").very_verbose(true).build();
+    let miniqt = Config::new("miniqt")
+        .profile("Debug")
+        .very_verbose(true)
+        .build();
     println!("cargo:rustc-link-search=native={}", miniqt.display());
     println!("cargo:rustc-link-lib=static=miniqt");
 }

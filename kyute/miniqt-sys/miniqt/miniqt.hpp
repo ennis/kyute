@@ -62,6 +62,12 @@ void QCoreApplication_removeEventFilter(QObject *filterObj);
 // QEnableSharedFromThis
 // QEvent
 // QEventLoop
+QEventLoop* QEventLoop_new();
+void QEventLoop_destructor(QEventLoop* eventLoop);
+void QEventLoop_delete(QEventLoop* eventLoop);
+void QEventLoop_processEvents(QEventLoop* eventLoop, QEventLoop::ProcessEventsFlags flags);
+bool QEventLoop_isRunning(const QEventLoop* eventLoop);
+
 // QEventLoopLocker
 // QEventTransition
 // QException
@@ -875,6 +881,7 @@ void QFormLayout_setLayout(QFormLayout* formLayout, int row, QFormLayout::ItemRo
 // QLayout
 void QLayout_destructor(QLayout *layout);
 void QLayout_delete(QLayout *layout);
+void QLayout_setContentsMargins(QLayout *layout, int left, int top, int right, int bottom);
 // QLayoutItem
 // QSpacerItem
 // QWidgetItem
@@ -941,6 +948,7 @@ void QWidget_setShortcutEnabled(QWidget* widget, int id, bool enable);
 void QWidget_setShortcutAutoRepeat(QWidget* widget, int id, bool enable);
 void QWidget_update(QWidget* widget);
 void QWidget_repaint(QWidget* widget);
+bool QWidget_isVisible(const QWidget* widget);
 void QWidget_setVisible(QWidget* widget, bool visible);
 void QWidget_setHidden(QWidget* widget, bool hidden);
 void QWidget_show(QWidget* widget);
@@ -1045,6 +1053,8 @@ void QButtonGroup_delete(QButtonGroup *buttonGroup);
 // QCalendarWidget
 // QCheckBox
 QCheckBox *QCheckBox_new();
+Qt::CheckState QCheckBox_checkState(const QCheckBox* checkBox);
+void QCheckBox_setCheckState(QCheckBox* checkBox, Qt::CheckState checkState);
 void QCheckBox_destructor(QCheckBox *checkBox);
 void QCheckBox_delete(QCheckBox *checkBox);
 // QComboBox

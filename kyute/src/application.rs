@@ -1,10 +1,11 @@
+use bitflags::bitflags;
 use miniqt_sys::*;
 use std::ffi::CString;
 use std::os::raw::c_char;
-use std::{env, mem};
 use std::sync::Once;
+use std::{env, mem};
 
-/*bitflags! {
+bitflags! {
     #[derive(Default)]
     pub struct ProcessEventFlags: u32 {
          const ALL_EVENTS = QEventLoop_ProcessEventsFlag_AllEvents as u32;
@@ -12,14 +13,7 @@ use std::sync::Once;
          const EXCLUDE_SOCKET_NOTIFIERS = QEventLoop_ProcessEventsFlag_ExcludeSocketNotifiers as u32;
          const WAIT_FOR_MORE_EVENTS = QEventLoop_ProcessEventsFlag_WaitForMoreEvents as u32;
     }
-}*/
-
-impl_inherits!(QCoreApplication: QObject);
-impl_inherits!(QGuiApplication: QObject);
-impl_inherits!(QGuiApplication: QCoreApplication);
-impl_inherits!(QApplication: QObject);
-impl_inherits!(QApplication: QCoreApplication);
-impl_inherits!(QApplication: QGuiApplication);
+}
 
 pub struct Application {
     _raw: *mut QApplication,
@@ -41,7 +35,7 @@ impl Application {
             let argv_capacity = argv_vec.capacity();
             let argv = argv_vec.as_mut_ptr();
             mem::forget(argv_vec); // we will rebuild it from raw parts in the destructor
-            // box argc so that it has a stable address and stash it along the application wrapper
+                                   // box argc so that it has a stable address and stash it along the application wrapper
             let argc = Box::into_raw(Box::new(argv_len as i32));
 
             Application {
@@ -54,11 +48,11 @@ impl Application {
         }
     }
 
-    /*pub fn process_events(flags: ProcessEventFlags) {
+    pub fn process_events(flags: ProcessEventFlags) {
         unsafe {
             QCoreApplication_processEvents(flags.bits() as u32);
         }
-    }*/
+    }
 }
 
 impl Drop for Application {
@@ -80,13 +74,13 @@ impl Drop for Application {
     }
 }
 
-// Qt Application initialization
-static QT_APPLICATION: Once = Once::new();
+// Qt Application initialization flag
+static QT_APPLICATION_INIT_ONCE: Once = Once::new();
 
 /// Call this function before calling a Qt function or constructor to ensure that the main
 /// application object is created.
 pub fn ensure_qt_initialized() {
-    QT_APPLICATION.call_once(|| {
+    QT_APPLICATION_INIT_ONCE.call_once(|| {
         let app = Application::new();
         mem::forget(app);
     });

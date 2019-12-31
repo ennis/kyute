@@ -1,91 +1,108 @@
 #![feature(raw)]
+#![feature(stmt_expr_attributes)]
+#![feature(const_cstr_unchecked)]
+#![feature(const_fn)]
 
 #[macro_use]
-pub mod util;
+mod util;
 #[macro_use]
-pub mod signal;
-pub mod flex;
-pub mod application;
+mod signal;
+mod application;
+pub mod view;
 
+pub use application::Application;
 pub use miniqt_sys;
-pub use self::application::ensure_qt_initialized;
 
-use veda::db::{Database, Data};
-use veda::lens::Lens;
-use std::collections::HashMap;
-use crate::util::Inherits;
-use mopa::mopafy;
-use miniqt_sys::*;
+/*pub trait Widget: mopa::Any {
+    //unsafe fn qwidget(&self) -> *mut QWidget;
+}
+mopafy!(Widget);*/
 
-pub trait View<M: Data> {
-    fn sync(&mut self, db: &Database<M>);
+/*pub trait Container {
+    fn get(&self, index: usize) -> Option<&dyn Any>;
+    fn get_mut(&mut self, index: usize) -> Option<&mut dyn Any>;
 }
 
-pub trait Widget: mopa::Any {
-    unsafe fn qwidget(&self) -> *mut QWidget;
+pub trait Accepts<W>: Container {
+    fn insert(&mut self, index: usize, new: W);
 }
 
-mopafy!(Widget);
-
-
-struct Flex {
-    widget: *mut QWidget,
-    layout: *mut QVBoxLayout,
-    children: HashMap<veda::lens::ComponentIndex, Box<dyn Widget>>,
+pub struct Context<'a, C: Container> {
+    container: &'a mut C,
+    index: usize,
 }
 
-impl Widget for Flex {
-    unsafe fn qwidget(&self) -> *mut QWidget {
-        self.widget
-    }
-}
-
-impl Flex {
-    pub fn add<T: Widget>(&mut self, index: veda::lens::ComponentIndex, widget: impl Widget) {
-        unsafe {
-            QBoxLayout_addWidget(
-                Inherits::upcast(self.layout),
-                widget.qwidget(),
-                0, Default::default());
+impl<'a, C: Container> Context<'a, C>
+{
+    pub fn get<W>(&mut self) -> &mut W
+        where
+            W: Default + 'static,
+            C: Accepts<W>
+    {
+        let i = self.index;
+        let present = self.container.get(i).map(|x| x.downcast_ref::<W>()).is_some();
+        if !present {
+            // create it and insert it into the container at the current index
+            self.container.insert(i, W::default());
         }
-        self.children.insert(index, Box::new(widget));
+        self.index += 1;
+        self.container.get_mut(i).map(|x| x.downcast_mut::<W>().unwrap()).unwrap()
+    }
+}*/
+
+/*impl Container for VBox {
+    fn get(&self, index: usize) -> Option<&dyn Any> {
+        self.nodes.get(index).map(|x| x.deref())
     }
 
-    pub fn remove(&mut self, index: veda::lens::ComponentIndex) {
-        unimplemented!()
-    }
-
-    pub fn child(&self, index: veda::lens::ComponentIndex) -> Option<&dyn Widget> {
-        unimplemented!()
-    }
-
-    pub fn child_mut(&mut self, index: veda::lens::ComponentIndex) -> Option<&mut dyn Widget> {
-        unimplemented!()
+    fn get_mut(&mut self, index: usize) -> Option<&mut dyn Any> {
+        self.nodes.get_mut(index).map(|x| x.deref_mut())
     }
 }
+
+impl<T: Any> Accepts<T> for VBox {
+    fn insert(&mut self, index: usize, new: T) {
+        self.nodes.insert(index, Box::new(new))
+    }
+}*/
+
+/*impl Container for Root {
+    fn get(&self, index: usize) -> Option<&dyn Any> {
+        if index != 0 { None } else {
+            self.node.as_ref().map(|x| x.deref())
+        }
+    }
+
+    fn get_mut(&mut self, index: usize) -> Option<&mut dyn Any> {
+        if index != 0 { None } else {
+            self.node.as_mut().map(|x| x.deref_mut())
+        }
+    }
+}
+
+impl<T: Any> Accepts<T> for Root {
+    fn insert(&mut self, index: usize, new: T) {
+        assert_eq!(index, 0);
+        self.node.replace(Box::new(new));
+    }
+}*/
 
 /*
-fn handler(db: &Data, change: &Change) {
-    // knows the structure
+fn label<S, K>(cx: &Context<S>, lens: K) where
+    K: Lens<C::State, String>
+{
+    // get label in context,
+    // context has access to parent (VBox), will create the
+    cx.get::<Label>(|cx, label| {
+        cx.focus(lens, |text| {
+            label.set_text(text);
+        });
+    });
 
-    // enter vbox
 
-    {
-        let vbox = root;
-        if let Some(rest) = change.path.starts_with(Data::field) {
-            // enter [0]
-            let child_0 =
-
-        }
+    if cx.create() {
+        eprintln!("label create");
+    } else if cx.update() {
+        eprintln!("label update");
     }
-
-
-}
-*/
-
-// + lens to access child by index
-/*struct QtView<M: Model, V: Model> {
-    // issue: need to remove handler when the object pointed by the partial path is removed
-
-    handlers: HashMap<PartialPath<M>, Box<dyn Fn(&M, &mut V)>>
 }*/

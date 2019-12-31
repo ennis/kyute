@@ -8,3 +8,4 @@ edition = "2018"
 veda = { path = "../veda" }
 miniqt-sys = { path = "miniqt-sys" }
 mopa = "0.2.2"
+bitflags = "1.2.1"
