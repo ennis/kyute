@@ -12,9 +12,9 @@ pub struct Map<S: Data, A: Action, V: View<S>, F: Fn(V::Action) -> A + 'static> 
 impl<S: Data, A: Action, V: View<S>, F: Fn(V::Action) -> A + 'static> View<S> for Map<S, A, V, F> {
     type Action = A;
 
-    fn update(&mut self, rev: Revision<S>) {
+    /*fn update(&mut self, rev: Revision<S>) {
         self.inner.update(rev)
-    }
+    }*/
 
     fn mount(&mut self, actx: ActionCtx<A>) {
         self.actx.set_parent(actx.clone())

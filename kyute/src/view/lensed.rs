@@ -4,7 +4,7 @@ use miniqt_sys::*;
 use veda::lens::Lens;
 use veda::Revision;
 
-pub struct Lensed<L: Lens, V: View<L::Leaf>> {
+pub struct Lensed<L: Lens, V: View> {
     lens: L,
     inner: V,
 }
@@ -12,10 +12,10 @@ pub struct Lensed<L: Lens, V: View<L::Leaf>> {
 impl<L: Lens, V: View<L::Leaf>> View<L::Root> for Lensed<L, V> {
     type Action = V::Action;
 
-    fn update(&mut self, rev: Revision<L::Root>) {
+    /*fn update(&mut self, rev: Revision<L::Root>) {
         rev.focus(self.lens.clone())
             .map(|rev| self.inner.update(rev));
-    }
+    }*/
 
     fn mount(&mut self, actx: ActionCtx<V::Action>) {
         self.inner.mount(actx)

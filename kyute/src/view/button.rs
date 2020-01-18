@@ -9,8 +9,6 @@ pub struct Button {
     qbutton: Option<Ptr<QPushButton>>,
     actx: Option<ActionCtx<ButtonAction>>,
     clicked: Option<Slot<'static>>,
-
-    //label: Box<dyn Binding<S, String>>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -44,13 +42,13 @@ impl Button {
     }
 }
 
-impl<S: Data> View<S> for Button {
+impl View for Button {
     type Action = ButtonAction;
 
-    fn update(&mut self, rev: Revision<S>) {
+    /*fn update(&mut self, rev: Revision<S>) {
         eprintln!("Button update {:?}", rev.address());
         assert!(self.qbutton.is_some(), "not mounted");
-    }
+    }*/
 
     fn mount(&mut self, actx: ActionCtx<ButtonAction>) {
         self.actx = Some(actx.clone());

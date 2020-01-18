@@ -6,15 +6,16 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use veda::{Data, Revision, Watcher};
 
-pub struct Root<S: Data, A: Action> {
-    view: RefCell<Box<dyn View<S, Action = A>>>,
+pub struct Root<V: View> {
+    view: RefCell<V>,
     root_widget: CBox<QWidget>,
-    actx: Rc<ActionRoot<A>>,
+    actx: Rc<ActionRoot<V::Action>>,
     exited: Cell<bool>,
 }
 
-impl<S: Data, A: Action> Root<S, A> {
-    pub fn new(mut view: impl View<S, Action = A> + 'static) -> Rc<Root<S, A>> {
+impl<V: View> Root<V>
+{
+    pub fn new(mut view: V) -> Rc<Root<V>> {
         ensure_qt_initialized();
 
         let actx = ActionRoot::new();
@@ -23,7 +24,7 @@ impl<S: Data, A: Action> Root<S, A> {
         let root_widget = unsafe { CBox::from_ptr(view.widget_ptr().expect("no widget")) };
 
         let r = Root {
-            view: RefCell::new(Box::new(view)),
+            view: RefCell::new(view),
             root_widget,
             actx,
             exited: Cell::new(false),
@@ -36,7 +37,7 @@ impl<S: Data, A: Action> Root<S, A> {
         self.exited.get()
     }
 
-    pub fn run(&self) -> Vec<A> {
+    pub fn run(&self) -> Vec<V::Action> {
         unsafe {
             QWidget_show(self.root_widget.as_raw_ptr());
             let event_loop = QEventLoop_new();
@@ -72,8 +73,9 @@ impl<S: Data, A: Action> Root<S, A> {
     }
 }*/
 
-impl<S: Data, A: Action> Watcher<S> for Root<S, A> {
+/*
+impl<V: View> Watcher<> for Root<S, A> {
     fn on_change(&self, revision: Revision<S>) {
         self.view.borrow_mut().update(revision);
     }
-}
+}*/

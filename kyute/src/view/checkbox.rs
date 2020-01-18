@@ -38,10 +38,10 @@ impl Checkbox {
     }
 }
 
-impl View<bool> for Checkbox {
+impl View for Checkbox {
     type Action = CheckboxState;
 
-    fn update(&mut self, rev: Revision<bool>) {
+    /*fn update(&mut self, rev: Revision<bool>) {
         assert!(self.checkbox.is_some(), "not mounted");
 
         let check_state = match *rev.data() {
@@ -50,7 +50,7 @@ impl View<bool> for Checkbox {
         };
 
         unsafe { QCheckBox_setCheckState(self.checkbox.unwrap().as_ptr(), check_state) }
-    }
+    }*/
 
     fn mount(&mut self, actx: ActionCtx<CheckboxState>) {
         let checkbox = Ptr::new(unsafe { QCheckBox_new() });

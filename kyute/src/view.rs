@@ -1,12 +1,16 @@
+#[macro_use]
+mod property;
+
 mod binding;
 mod button;
 mod checkbox;
 mod label;
-mod lensed;
-mod list;
-mod map;
+//mod lensed;
+//mod list;
+//mod map;
 mod root;
 mod vbox;
+mod tuple;
 
 use crate::util::Ptr;
 use miniqt_sys::QWidget;
@@ -21,21 +25,31 @@ pub use button::ButtonAction;
 pub use checkbox::Checkbox;
 pub use checkbox::CheckboxState;
 pub use label::Label;
-pub use lensed::Lensed;
-pub use list::List;
-pub use map::Map;
+//pub use lensed::Lensed;
+//pub use list::List;
+//pub use map::Map;
 pub use root::Root;
 pub use vbox::VBox;
+pub use property::Property;
+pub use property::SimpleProperty;
 //pub use binding::Binding;
+
 
 pub trait Action: Clone + Debug + 'static {}
 impl<T: Clone + Debug + 'static> Action for T {}
 
-pub trait View<S: Data> {
+pub trait View
+{
     type Action: Action;
-    fn update(&mut self, rev: Revision<S>);
     fn mount(&mut self, actx: ActionCtx<Self::Action>);
     fn widget_ptr(&self) -> Option<Ptr<QWidget>>;
+}
+
+pub trait ViewCollection {
+    type Action: Action;
+
+    fn mount(&mut self, actx: ActionCtx<Self::Action>);
+    fn widgets(&self) -> Vec<Ptr<QWidget>>;
 }
 
 /// Receives an action
@@ -96,7 +110,7 @@ impl<A: Action, B: Action, F: Fn(A) -> B> ActionSink<A> for ActionTransformer<A,
     }
 }
 
-pub trait ViewExt<S: Data>: View<S> {
+/*pub trait ViewExt<S: Data>: View<S> {
     fn map<A, F>(self, closure: F) -> Map<S, A, Self, F>
     where
         Self: Sized,
@@ -114,3 +128,4 @@ impl<S: Data, V: View<S>> ViewExt<S> for V {
         Map::new(self, closure)
     }
 }
+*/

@@ -53,7 +53,7 @@ where
 {
     type Action = A;
 
-    fn update(&mut self, rev: Revision<C>) {
+    /*fn update(&mut self, rev: Revision<C>) {
         assert!(
             self.widget.is_some() && self.layout.is_some() && self.actx.is_some(),
             "not mounted"
@@ -124,7 +124,7 @@ where
         } else {
             // hmmm?
         }
-    }
+    }*/
 
     fn mount(&mut self, actx: ActionCtx<A>) {
         assert!(self.nodes.is_empty());
