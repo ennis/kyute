@@ -1,17 +1,23 @@
-
+use crate::model::Data;
+use crate::model::Revision;
+use crate::util::Ptr;
+use crate::view::ActionCtx;
 use crate::view::View;
 use crate::view::ViewCollection;
-use crate::view::ActionCtx;
 use miniqt_sys::QWidget;
-use crate::util::Ptr;
 
 macro_rules! impl_tuple_view_collection {
     ((0) -> T $(($idx:tt) -> $T:ident)*) => {
-        impl<T, $($T),*> ViewCollection for (T,$($T),*)
-            where T: View,
-                $($T: View<Action=T::Action>),*
+        impl<S: Data, T, $($T),*> ViewCollection<S> for (T,$($T),*)
+            where T: View<S>,
+                $($T: View<S, Action=T::Action>),*
         {
             type Action = T::Action;
+
+            fn update(&mut self, rev: &Revision<S>) {
+                self.0.update(rev);
+                $(self.$idx.update(rev);)*
+            }
 
             fn mount(&mut self, actx: ActionCtx<Self::Action>) {
                 self.0.mount(actx.clone());
@@ -48,7 +54,6 @@ impl_tuple_view_collection!(
 impl_tuple_view_collection!(
     (0) -> T (1) -> A (2) -> B (3) -> C
     (4) -> D (5) -> E (6) -> F (7) -> G);
-
 
 impl_tuple_view_collection!(
     (0) -> T (1) -> A (2) -> B (3) -> C

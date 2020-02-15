@@ -1,21 +1,20 @@
 use crate::application::{ensure_qt_initialized, ProcessEventFlags};
+use crate::model::{Data, Revision, Watcher};
 use crate::util::CBox;
-use crate::view::{Action, ActionRoot, View};
+use crate::view::{ActionRoot, View};
 use miniqt_sys::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use veda::{Data, Revision, Watcher};
 
-pub struct Root<V: View> {
+pub struct Root<S: Data, V: View<S>> {
     view: RefCell<V>,
     root_widget: CBox<QWidget>,
     actx: Rc<ActionRoot<V::Action>>,
     exited: Cell<bool>,
 }
 
-impl<V: View> Root<V>
-{
-    pub fn new(mut view: V) -> Rc<Root<V>> {
+impl<S: Data, V: View<S>> Root<S, V> {
+    pub fn new(mut view: V) -> Rc<Root<S, V>> {
         ensure_qt_initialized();
 
         let actx = ActionRoot::new();
@@ -73,9 +72,8 @@ impl<V: View> Root<V>
     }
 }*/
 
-/*
-impl<V: View> Watcher<> for Root<S, A> {
-    fn on_change(&self, revision: Revision<S>) {
+impl<S: Data, V: View<S>> Watcher<S> for Root<S, V> {
+    fn on_change(&self, revision: &Revision<S>) {
         self.view.borrow_mut().update(revision);
     }
-}*/
+}

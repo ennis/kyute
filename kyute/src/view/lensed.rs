@@ -1,21 +1,28 @@
+use crate::model::{Data, Lens, Revision};
 use crate::util::Ptr;
 use crate::view::{ActionCtx, View};
+use bitflags::_core::marker::PhantomData;
 use miniqt_sys::*;
-use veda::lens::Lens;
-use veda::Revision;
 
-pub struct Lensed<L: Lens, V: View> {
+pub struct Lensed<B, L, V> {
     lens: L,
     inner: V,
+    _phantom: PhantomData<B>,
 }
 
-impl<L: Lens, V: View<L::Leaf>> View<L::Root> for Lensed<L, V> {
+impl<A, B, L, V> View<A> for Lensed<B, L, V>
+where
+    A: Data,
+    B: Data,
+    L: Lens<A, B>,
+    V: View<B>,
+{
     type Action = V::Action;
 
-    /*fn update(&mut self, rev: Revision<L::Root>) {
-        rev.focus(self.lens.clone())
-            .map(|rev| self.inner.update(rev));
-    }*/
+    fn update(&mut self, s: &Revision<A>) {
+        let inner = &mut self.inner;
+        self.lens.focus(s, |s| inner.update(s));
+    }
 
     fn mount(&mut self, actx: ActionCtx<V::Action>) {
         self.inner.mount(actx)
@@ -26,8 +33,12 @@ impl<L: Lens, V: View<L::Leaf>> View<L::Root> for Lensed<L, V> {
     }
 }
 
-impl<L: Lens, V: View<L::Leaf>> Lensed<L, V> {
-    pub fn new(lens: L, inner: V) -> Lensed<L, V> {
-        Lensed { lens, inner }
+impl<B, L, V> Lensed<B, L, V> {
+    pub fn new(lens: L, inner: V) -> Lensed<B, L, V> {
+        Lensed {
+            lens,
+            inner,
+            _phantom: PhantomData,
+        }
     }
 }

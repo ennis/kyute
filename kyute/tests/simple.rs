@@ -1,11 +1,11 @@
 #![feature(specialization)]
 use kyute::miniqt_sys::*;
+use kyute::model::LensIndexExt;
+use kyute::model::{Data, Identifiable, Lens, State};
 use kyute::view::{ButtonAction, View, ViewExt};
 use kyute::Application;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use veda::lens::LensIndexExt;
-use veda::{Data, Database, Identifiable, Lens};
 
 #[derive(Data, Clone, Debug)]
 pub struct Node {
@@ -30,7 +30,7 @@ pub struct Document {
 fn simple() {
     let m = Document { nodes: Vec::new() };
 
-    let mut db = Database::new(m);
+    let mut db = State::new(m);
 
     use kyute::view as kyv;
 

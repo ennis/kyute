@@ -1,4 +1,4 @@
-use veda::{Data, Revision};
+use crate::model::{Data, Revision};
 
 pub trait Property {
     type Value: Data;
@@ -29,11 +29,12 @@ impl<'a, T, V: Data, Get: Fn(&T) -> V, Update: Fn(&mut T, Revision<V>)> Property
         (self.get)(self.this)
     }
 
-    fn update(&mut self, rev: Revision<Self::Value>) {
+    fn update(&mut self, rev: Revision<V>) {
         (self.update)(self.this, rev)
     }
 }
 
+#[macro_export]
 macro_rules! simple_property {
     (
         self: $this:expr,

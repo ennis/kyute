@@ -1,24 +1,23 @@
+use crate::model::{Data, Revision};
 use crate::util::Ptr;
-use crate::view::{Action, ActionCtx, View, ViewCollection};
+use crate::view::{ActionCtx, View, ViewCollection};
 use miniqt_sys::*;
-use veda::{Data, Collection, Identifiable};
-use veda::Revision;
-use std::ops::RangeBounds;
+use std::marker::PhantomData;
 
-pub struct VBox<V: ViewCollection>
-{
+pub struct VBox<S: Data, V: ViewCollection<S>> {
     widget: Option<Ptr<QWidget>>,
     layout: Option<Ptr<QVBoxLayout>>,
     contents: V,
+    _phantom: PhantomData<S>,
 }
 
-impl<V: ViewCollection> VBox<V>
-{
-    pub fn new(contents: V) -> VBox<V> {
+impl<S: Data, V: ViewCollection<S>> VBox<S, V> {
+    pub fn new(contents: V) -> VBox<S, V> {
         VBox {
             widget: None,
             layout: None,
             contents,
+            _phantom: PhantomData,
         }
     }
 
@@ -32,9 +31,12 @@ impl<V: ViewCollection> VBox<V>
     }
 }
 
-impl<V: ViewCollection> View for VBox<V>
-{
+impl<S: Data, V: ViewCollection<S>> View<S> for VBox<S, V> {
     type Action = V::Action;
+
+    fn update(&mut self, s: &Revision<S>) {
+        self.contents.update(s)
+    }
 
     fn mount(&mut self, actx: ActionCtx<Self::Action>) {
         unsafe {

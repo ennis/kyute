@@ -1,9 +1,11 @@
+use crate::model::{Data, Lens, Revision};
 use crate::signal::Slot1;
 use crate::util::Ptr;
+use crate::view::binding::Binding;
 use crate::view::{ActionCtx, View};
 use miniqt_sys::*;
+use std::marker::PhantomData;
 use std::os::raw::c_int;
-use veda::Revision;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum CheckboxState {
@@ -12,45 +14,50 @@ pub enum CheckboxState {
     Checked,
 }
 
-pub struct Checkbox {
-    label: String,
+pub struct Checkbox<S: Data, Label: Lens<S, String>, State: Lens<S, CheckboxState>> {
+    label: Label,
+    state: State,
     checkbox: Option<Ptr<QCheckBox>>,
     state_changed: Option<Slot1<'static, c_int>>,
+    _phantom: PhantomData<S>,
 }
 
-impl Checkbox {
-    pub fn new(label: impl Into<String>) -> Self {
+impl<S: Data, Label: Lens<S, String>, State: Lens<S, CheckboxState>> Checkbox<S, Label, State> {
+    pub fn new(label: Label, state: State) -> Self {
         Checkbox {
-            label: label.into(),
+            label,
+            state,
             checkbox: None,
             state_changed: None,
-        }
-    }
-
-    pub fn set_label(&mut self, label: impl Into<String>) {
-        self.label = label.into();
-        if let Some(checkbox) = self.checkbox {
-            unsafe {
-                let label = self.label.clone().into();
-                QAbstractButton_setText(checkbox.upcast().as_ptr(), &label);
-            }
+            _phantom: PhantomData,
         }
     }
 }
 
-impl View for Checkbox {
+impl<S: Data, Label: Lens<S, String>, State: Lens<S, CheckboxState>> View<S>
+    for Checkbox<S, Label, State>
+{
     type Action = CheckboxState;
 
-    /*fn update(&mut self, rev: Revision<bool>) {
-        assert!(self.checkbox.is_some(), "not mounted");
+    fn update(&mut self, s: &Revision<S>) {
+        let checkbox = self.checkbox.expect("not mounted");
 
-        let check_state = match *rev.data() {
-            true => Qt_CheckState_Checked,
-            false => Qt_CheckState_Unchecked,
-        };
+        if let Some(label) = self.label.compute_if_changed(s) {
+            unsafe {
+                QAbstractButton_setText(checkbox.upcast().as_ptr(), &label.into());
+            }
+        }
 
-        unsafe { QCheckBox_setCheckState(self.checkbox.unwrap().as_ptr(), check_state) }
-    }*/
+        if let Some(s) = self.state.compute_if_changed(&s) {
+            let check_state = match s {
+                CheckboxState::Checked => Qt_CheckState_Checked,
+                CheckboxState::Unchecked => Qt_CheckState_Checked,
+                CheckboxState::PartiallyChecked => Qt_CheckState_PartiallyChecked,
+            };
+
+            unsafe { QCheckBox_setCheckState(checkbox.as_ptr(), check_state) }
+        }
+    }
 
     fn mount(&mut self, actx: ActionCtx<CheckboxState>) {
         let checkbox = Ptr::new(unsafe { QCheckBox_new() });
@@ -66,8 +73,8 @@ impl View for Checkbox {
         });
 
         unsafe {
-            let label = self.label.clone().into();
-            QAbstractButton_setText(checkbox.upcast().as_ptr(), &label);
+            //let label = self.label.clone().into();
+            //QAbstractButton_setText(checkbox.upcast().as_ptr(), &label);
             state_changed.connect(checkbox, qt_signal!("stateChanged(int)"));
         }
 

@@ -1,8 +1,8 @@
+use crate::model::{Data, Revision};
 use crate::signal::Slot;
 use crate::util::Ptr;
 use crate::view::{ActionCtx, View};
 use miniqt_sys::*;
-use veda::{Data, Revision};
 
 pub struct Button {
     label: String,
@@ -42,13 +42,13 @@ impl Button {
     }
 }
 
-impl View for Button {
+impl<S: Data> View<S> for Button {
     type Action = ButtonAction;
 
-    /*fn update(&mut self, rev: Revision<S>) {
-        eprintln!("Button update {:?}", rev.address());
+    fn update(&mut self, s: &Revision<S>) {
+        eprintln!("Button update {:?}", s.addr);
         assert!(self.qbutton.is_some(), "not mounted");
-    }*/
+    }
 
     fn mount(&mut self, actx: ActionCtx<ButtonAction>) {
         self.actx = Some(actx.clone());
