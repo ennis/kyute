@@ -1,65 +1,58 @@
+use crate::event::Event;
 use crate::model::{Data, Revision};
-use crate::util::Ptr;
-use crate::view::{Action, ActionCtx, ActionSink, View};
-use miniqt_sys::QWidget;
-use std::cell::RefCell;
+use crate::paint::RenderContext;
+use crate::view::{ActionSink, EventCtx, View};
 use std::marker::PhantomData;
-use std::rc::Rc;
 
-pub struct ActionTransformer<A: Action, B: Action, F: Fn(A) -> B> {
-    parent: RefCell<Option<ActionCtx<B>>>,
-    transform: F,
+pub struct ActionTransformer<'a, A, B, F> {
+    parent: &'a mut dyn ActionSink<B>,
+    transform: &'a F,
     _phantom: PhantomData<*const A>,
 }
 
-impl<A: Action, B: Action, F: Fn(A) -> B> ActionTransformer<A, B, F> {
-    pub fn new(transform: F) -> Rc<ActionTransformer<A, B, F>> {
-        Rc::new(ActionTransformer {
-            parent: RefCell::new(None),
+impl<'a, A, B, F: Fn(A) -> B> ActionTransformer<'a, A, B, F> {
+    pub fn new(
+        parent: &'a mut dyn ActionSink<B>,
+        transform: &'a F,
+    ) -> ActionTransformer<'a, A, B, F> {
+        ActionTransformer {
+            parent,
             transform,
             _phantom: PhantomData,
-        })
-    }
-
-    pub fn set_parent(&self, parent: ActionCtx<B>) {
-        self.parent.replace(Some(parent));
+        }
     }
 }
 
-impl<A: Action, B: Action, F: Fn(A) -> B> ActionSink<A> for ActionTransformer<A, B, F> {
-    fn emit(&self, action: A) {
-        self.parent
-            .borrow()
-            .as_ref()
-            .map(|x| x.emit((&self.transform)(action)));
+impl<'a, A, B, F: Fn(A) -> B> ActionSink<A> for ActionTransformer<'a, A, B, F> {
+    fn emit(&mut self, action: A) {
+        self.parent.emit((&self.transform)(action));
     }
 }
 
-pub struct Map<S: Data, A: Action, V: View<S>, F: Fn(V::Action) -> A + 'static> {
+pub struct Map<V, F> {
     inner: V,
-    actx: Rc<ActionTransformer<V::Action, A, F>>,
+    f: F,
 }
 
-impl<S: Data, A: Action, V: View<S>, F: Fn(V::Action) -> A + 'static> View<S> for Map<S, A, V, F> {
+impl<S: Data, V: View<S>, A, F: Fn(V::Action) -> A + 'static> View<S> for Map<V, F> {
     type Action = A;
 
-    fn update(&mut self, rev: &Revision<S>) {
-        self.inner.update(rev)
+    fn event(&mut self, e: &Event, ctx: &mut EventCtx<A>) {
+        let mut sink = ActionTransformer::new(ctx.action_sink(), &self.f);
+        self.inner.event(e, &mut EventCtx::new(&mut sink))
     }
 
-    fn mount(&mut self, actx: ActionCtx<A>) {
-        self.actx.set_parent(actx.clone());
-        self.inner.mount(self.actx.clone());
+    fn update(&mut self, state: &Revision<S>) {
+        self.inner.update(state)
     }
 
-    fn widget_ptr(&self) -> Option<Ptr<QWidget>> {
-        self.inner.widget_ptr()
+    fn paint(&mut self, state: &S, ctx: &mut RenderContext) -> bool {
+        self.inner.paint(state, ctx)
     }
 }
 
-impl<S: Data, A: Action, V: View<S>, F: Fn(V::Action) -> A + 'static> Map<S, A, V, F> {
-    pub fn new(mut inner: V, transform: F) -> Map<S, A, V, F> {
-        let actx = ActionTransformer::new(transform);
-        Map { inner, actx }
+impl<V, F> Map<V, F> {
+    pub fn new(inner: V, f: F) -> Map<V, F> {
+        Map { inner, f }
     }
 }

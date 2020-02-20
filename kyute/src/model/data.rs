@@ -2,19 +2,27 @@ use crate::model::Lens;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-/// Issue: there is no blanket impl for Data, so every type that is used in the model
-/// must implement Data. This is a problem, because due to orphan rules it's impossible for a user
-/// of the veda crate to implement the Data trait for foreign data structure types.
-/// (the user could only use the data structures/data types provided by veda)
+/// A trait for addressable data.
 ///
-/// Even so, a blanket impl forall T would not be very useful by itself, and would require specialization
-/// to provide fine-grained addressability to vecs and other structures.
-pub trait Data: Clone {
+/// Instances of `Data` have an associated type `Address` whose values identify a path from a parent
+/// object to some part of it.
+/// Addresses are rarely used directly. They are used internally by lenses for composition and
+/// decomposition, and in the `Revision` type, where the address is used to identify a part of
+/// the object that has been modified.
+
+// Issue: there is no blanket impl for Data, so every type that is used in the model
+// must implement Data. This is a problem, because due to orphan rules it's impossible for a user
+// of the veda crate to implement the Data trait for foreign data structure types.
+// (the user could only use the data structures/data types provided by veda)
+//
+// Even so, a blanket impl forall T would not be very useful by itself, and would require specialization
+// to provide fine-grained addressability to vecs and other structures.
+pub trait Data {
     /// the type of a value that can uniquely identify a component part of the data.
     type Address: Clone + Debug + Eq + PartialEq;
 }
 
-impl<T: Clone + 'static> Data for T {
+impl<T: ?Sized + 'static> Data for T {
     default type Address = ();
 }
 

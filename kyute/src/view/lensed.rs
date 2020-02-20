@@ -1,8 +1,8 @@
+use crate::event::Event;
 use crate::model::{Data, Lens, Revision};
-use crate::util::Ptr;
-use crate::view::{ActionCtx, View};
-use bitflags::_core::marker::PhantomData;
-use miniqt_sys::*;
+use crate::paint::RenderContext;
+use crate::view::{EventCtx, View};
+use std::marker::PhantomData;
 
 pub struct Lensed<B, L, V> {
     lens: L,
@@ -19,17 +19,18 @@ where
 {
     type Action = V::Action;
 
-    fn update(&mut self, s: &Revision<A>) {
+    fn event(&mut self, e: &Event, a: &mut EventCtx<Self::Action>) {
+        self.inner.event(e, a)
+    }
+
+    fn update(&mut self, state: &Revision<A>) {
         let inner = &mut self.inner;
-        self.lens.focus(s, |s| inner.update(s));
+        self.lens.focus(state, |state| inner.update(state));
     }
 
-    fn mount(&mut self, actx: ActionCtx<V::Action>) {
-        self.inner.mount(actx)
-    }
-
-    fn widget_ptr(&self) -> Option<Ptr<QWidget>> {
-        self.inner.widget_ptr()
+    fn paint(&mut self, state: &A, ctx: &mut RenderContext) -> bool {
+        let inner = &mut self.inner;
+        self.lens.with(state, |state| inner.paint(state, ctx))
     }
 }
 

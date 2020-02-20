@@ -1,53 +1,62 @@
 #![feature(specialization)]
-use kyute::miniqt_sys::*;
-use kyute::model::LensIndexExt;
-use kyute::model::{Data, IdentityLens, Lens, State};
-use std::marker::PhantomData;
-use std::rc::Rc;
-
+use druid_shell::WindowBuilder;
+use kyute::dispatch::Dispatcher;
+use kyute::model::State;
 use kyute::view as v;
 use kyute::view::{CheckboxState, ViewExt};
+use kyute::window::ViewWindowHandler;
+
+use std::rc::Rc;
 
 #[test]
 fn test_checkbox() {
+    druid_shell::Application::init();
     let b = false;
-    let mut db = State::new(b);
+    let state = Rc::new(State::new(b));
 
     // type inference does not work...
     // #41078
 
-    #[derive(Copy,Clone,Debug)]
+    #[derive(Copy, Clone, Debug)]
     enum Action {
         A(CheckboxState),
         B(CheckboxState),
     }
 
-    let root = v::Root::new(v::VBox::new((
-        v::Checkbox::new(
-            |state: &_| "Checkbox A".to_string(),
-            |state: &_| CheckboxState::Checked,
-        )
-        .map(Action::A),
-        v::Checkbox::new(
-            |state: &_| "Checkbox B".to_string(),
-            |state: &_| CheckboxState::Checked,
-        )
-        .map(Action::B),
+    let dsp = Dispatcher::new(move |action: Action| {
+        eprintln!("action {:?}", action);
+    });
+
+    let mut w = WindowBuilder::new();
+    w.set_title("test");
+    w.set_handler(Box::new(ViewWindowHandler::new(
+        state.clone(),
+        dsp.clone(),
+        v::VBox::new((
+            v::Checkbox::new(
+                |state: &_| "Checkbox A".to_string(),
+                |state: &_| CheckboxState::Checked,
+            )
+            .map(Action::A),
+            v::Checkbox::new(
+                |state: &_| "Checkbox B".to_string(),
+                |state: &_| CheckboxState::Checked,
+            )
+            .map(Action::B),
+        )),
     )));
 
-    db.add_watcher(root.clone());
+    let win = w.build().expect("could not open main window");
+    win.show();
 
-    while !root.exited() {
-        for a in root.run() {
-            eprintln!("action {:?}", a);
-        }
-    }
+    let mut run_loop = druid_shell::RunLoop::new();
+    run_loop.run();
 }
 
 #[test]
 fn test_checkbox_with_binding() {
     let b = false;
-    let mut db = State::new(b);
+    let db = State::new(b);
 
     /*let root = kyv::Root::new(kyv::Binding::new(
         kyv::Checkbox::new("test"),

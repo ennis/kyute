@@ -1,10 +1,10 @@
+use crate::event::Event;
 use crate::model::Data;
 use crate::model::Revision;
-use crate::util::Ptr;
-use crate::view::ActionCtx;
+use crate::paint::RenderContext;
+use crate::view::EventCtx;
 use crate::view::View;
 use crate::view::ViewCollection;
-use miniqt_sys::QWidget;
 
 macro_rules! impl_tuple_view_collection {
     ((0) -> T $(($idx:tt) -> $T:ident)*) => {
@@ -19,16 +19,14 @@ macro_rules! impl_tuple_view_collection {
                 $(self.$idx.update(rev);)*
             }
 
-            fn mount(&mut self, actx: ActionCtx<Self::Action>) {
-                self.0.mount(actx.clone());
-                $(self.$idx.mount(actx.clone());)*
+            fn event(&mut self, ev: &Event, ctx: &mut EventCtx<Self::Action>) {
+                self.0.event(ev, ctx);
+                $(self.$idx.event(ev, ctx);)*
             }
 
-            fn widgets(&self) -> Vec<Ptr<QWidget>> {
-                vec![
-                    self.0.widget_ptr().unwrap(),
-                    $(self.$idx.widget_ptr().unwrap()),*
-                ]
+            fn paint(&mut self, state: &S, ctx: &mut RenderContext) -> bool {
+                self.0.paint(state, ctx)
+                $(|| self.$idx.paint(state, ctx))*
             }
         }
     };

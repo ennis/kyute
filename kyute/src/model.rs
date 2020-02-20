@@ -50,6 +50,7 @@ pub use data::IndexAddress;
 pub use lens::IdentityLens;
 pub use lens::Lens;
 pub use lens::LensCompose;
+pub use lens::LensExt;
 pub use lens::LensIndexExt;
 pub use lens::LensLookupExt;
 pub use lens::UnitLens;

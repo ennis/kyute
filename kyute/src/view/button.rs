@@ -1,14 +1,12 @@
-use crate::model::{Data, Revision};
-use crate::signal::Slot;
-use crate::util::Ptr;
-use crate::view::{ActionCtx, View};
-use miniqt_sys::*;
+use crate::event::Event;
+use crate::model::{Data, Lens, Revision};
+use crate::paint::RenderContext;
+use crate::view::{EventCtx, View};
+use std::marker::PhantomData;
 
-pub struct Button {
-    label: String,
-    qbutton: Option<Ptr<QPushButton>>,
-    actx: Option<ActionCtx<ButtonAction>>,
-    clicked: Option<Slot<'static>>,
+pub struct Button<S: Data, Label: Lens<S, String>> {
+    label: Label,
+    _phantom: PhantomData<S>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -17,58 +15,27 @@ pub enum ButtonAction {
     Released,
 }
 
-impl Button {
-    pub fn new(label: impl Into<String>) -> Button {
+impl<S: Data, Label: Lens<S, String>> Button<S, Label> {
+    pub fn new(label: Label) -> Button<S, Label> {
         Button {
-            label: label.into(),
-            actx: None,
-            qbutton: None,
-            clicked: None,
-        }
-    }
-
-    fn emit_clicked(&self) {
-        self.actx.as_ref().map(|x| x.emit(ButtonAction::Clicked));
-    }
-
-    pub fn set_label(&mut self, label: impl Into<String>) {
-        self.label = label.into();
-        if let Some(button) = self.qbutton {
-            unsafe {
-                let label = self.label.clone().into();
-                QAbstractButton_setText(button.upcast().as_ptr(), &label);
-            }
+            label,
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<S: Data> View<S> for Button {
+impl<S: Data, Label: Lens<S, String>> View<S> for Button<S, Label> {
     type Action = ButtonAction;
 
-    fn update(&mut self, s: &Revision<S>) {
-        eprintln!("Button update {:?}", s.addr);
-        assert!(self.qbutton.is_some(), "not mounted");
+    fn event(&mut self, _e: &Event, _a: &mut EventCtx<Self::Action>) {
+        unimplemented!()
     }
 
-    fn mount(&mut self, actx: ActionCtx<ButtonAction>) {
-        self.actx = Some(actx.clone());
-
-        let mut clicked = Slot::new(move || actx.emit(ButtonAction::Clicked));
-
-        let button;
-        let label = self.label.clone().into();
-
-        unsafe {
-            button = Ptr::new(QPushButton_new());
-            QAbstractButton_setText(button.upcast().as_ptr(), &label);
-            clicked.connect(button, qt_signal!("clicked()"));
-        }
-
-        self.qbutton.replace(button);
-        self.clicked.replace(clicked);
+    fn update(&mut self, _state: &Revision<S>) {
+        unimplemented!()
     }
 
-    fn widget_ptr(&self) -> Option<Ptr<QWidget>> {
-        self.qbutton.map(Ptr::upcast)
+    fn paint(&mut self, _state: &S, _ctx: &mut RenderContext) -> bool {
+        false
     }
 }

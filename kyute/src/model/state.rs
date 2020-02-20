@@ -13,7 +13,7 @@
 use crate::model::update::{Append, Replace, Update};
 use crate::model::Data;
 use crate::model::Lens;
-use crate::model::{Change, Collection, CollectionChanges, IndexAddress, Revision};
+use crate::model::Revision;
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
@@ -67,15 +67,21 @@ impl<M: Data> State<M> {
         self.log.borrow_mut().push(Box::new(u));
     }
 
+    /// Adds a watcher that will be called back immediately and whenever the state changes.
     pub fn add_watcher(&mut self, w: Rc<dyn Watcher<M>>) {
         let data = self.data.borrow();
         w.on_change(&((&*data).into()));
         self.watchers.borrow_mut().push(Rc::downgrade(&w))
     }
+
+    pub fn with<R, F: FnOnce(&M) -> R>(&self, f: F) -> R {
+        let data = self.data.borrow();
+        f(&*data)
+    }
 }
 
 impl<S: Data> State<S> {
-    pub fn append<T: Data, A, K>(&mut self, lens: K, element: A)
+    pub fn append<T: Data + Clone, A, K>(&mut self, lens: K, element: A)
     where
         K: Lens<S, T>,
         Append<A, K>: Update<S> + 'static,
@@ -83,7 +89,7 @@ impl<S: Data> State<S> {
         self.update(Append::new(lens, element))
     }
 
-    pub fn replace<T: Data, K: Lens<S, T>>(&mut self, lens: K, element: T)
+    pub fn replace<T: Data + Clone, K: Lens<S, T>>(&mut self, lens: K, element: T)
     where
         Replace<K, T>: 'static,
     {

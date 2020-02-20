@@ -9,10 +9,47 @@ pub use vec::VecAddress;
 pub use vec::VecLens;
 
 /// Trait implemented by "lens" types, which act like a reified accessor for
-/// some part of type U of an object of type T.
-pub trait Lens<A: Data, B: Data> {
-    /// Returns a value that represents the path from the object to the part
-    /// that the lens is watching (i.e. the path from &T to &U)
+/// some "child" part of type U of a "parent" object of type T.
+
+// TODO We use closures to access the target value (B) because it might live only for the duration
+// of the call to `with`. This is the case when the target value is not 'borrowable' within the
+// source but is rather synthesized on-the-fly within the method.
+//
+// This works, but this "closure-passing" style has syntactical implications in methods:
+// a lot of view classes store those lenses in a struct, and end up doing something like this:
+// ```
+// self.some_lens.with(s, |s| { self.other.do_thing() })
+// ```
+// With `do_thing()` needing a mut ref to `self.other`. This fails at borrowck since the whole
+// self is borrowed within the closure. There is an RFC that would enable precise captures in
+// closures, but has not seen progress for a while.
+//
+// In the meantime, this means that those methods must be rewritten as such:
+// ```
+// let mut other = &mut self.other;
+// self.some_lens.with(s, |s| other.do_thing());
+// ```
+// Which is needlessly noisy.
+// A better option would be to return a reference directly but that would not work with synthesized
+// data.
+//
+// The debate here is whether we should make a difference between lenses that just borrow a part of
+// the parent data structure and lenses that compute new values.
+
+pub trait Lens<A: Data + ?Sized, B: Data + ?Sized> {
+    // --- Accessors ---
+    fn with<R, F: FnOnce(&B) -> R>(&self, data: &A, f: F) -> R;
+    fn with_mut<R, F: FnOnce(&mut B) -> R>(&self, data: &mut A, f: F) -> R;
+    fn try_with<R, F: FnOnce(&B) -> R>(&self, data: &A, f: F) -> Option<R>;
+    fn try_with_mut<R, F: FnOnce(&mut B) -> R>(&self, data: &mut A, f: F) -> Option<R>;
+
+    // --- Composition ---
+
+    /// Returns the address of this lens within A:
+    /// it's a value of the associated type `A::Address` that represents the path, within the parent
+    /// object, to the part that the lens is watching (i.e. the path from &A to &B).
+    /// Typically, this represents a sequence of field accesses and indexing operations on the
+    /// parent to get to the part.
     fn address(&self) -> Option<A::Address>;
 
     /// Concatenate addresses.
@@ -20,11 +57,7 @@ pub trait Lens<A: Data, B: Data> {
     where
         K: Lens<B, C>;
 
-    fn with<R, F: FnOnce(&B) -> R>(&self, data: &A, f: F) -> R;
-    fn with_mut<R, F: FnOnce(&mut B) -> R>(&self, data: &mut A, f: F) -> R;
-    fn try_with<R, F: FnOnce(&B) -> R>(&self, data: &A, f: F) -> Option<R>;
-    fn try_with_mut<R, F: FnOnce(&mut B) -> R>(&self, data: &mut A, f: F) -> Option<R>;
-
+    /// Lens composition.
     fn compose<K, C: Data>(self, rhs: K) -> LensCompose<Self, K, B>
     where
         Self: Sized,
@@ -64,11 +97,25 @@ pub trait Lens<A: Data, B: Data> {
             })
         }
     }
+}
 
-    fn compute_if_changed(&self, src: &Revision<A>) -> Option<B> {
+pub trait LensExt<A: Data, B: Data>: Lens<A, B> {
+    fn get_if_changed(&self, src: &Revision<A>) -> Option<B>
+    where
+        B: Clone,
+    {
         self.focus(src, |s| s.data.clone())
     }
+
+    fn get(&self, src: &A) -> B
+    where
+        B: Clone,
+    {
+        self.with(src, |x| x.clone())
+    }
 }
+
+impl<A: Data, B: Data, L: Lens<A, B>> LensExt<A, B> for L {}
 
 /// Indexing operations
 pub trait LensIndexExt<A: Data, B: Data>: Lens<A, B> {
@@ -190,10 +237,10 @@ where
 ///
 /// Equivalent to applying two lenses in succession.
 #[derive(Debug)]
-pub struct LensCompose<K, L, B>(pub K, pub L, pub PhantomData<B>);
+pub struct LensCompose<K, L, B: ?Sized>(pub K, pub L, pub PhantomData<B>);
 
 // #26925
-impl<K: Clone, L: Clone, B> Clone for LensCompose<K, L, B> {
+impl<K: Clone, L: Clone, B: ?Sized> Clone for LensCompose<K, L, B> {
     fn clone(&self) -> Self {
         LensCompose(self.0.clone(), self.1.clone(), PhantomData)
     }
@@ -264,7 +311,7 @@ impl<T: Data> Lens<T, ()> for UnitLens {
         None
     }
 
-    fn concat<K, C>(&self, rhs: &K) -> Option<T::Address>
+    fn concat<K, C>(&self, _rhs: &K) -> Option<T::Address>
     where
         K: Lens<(), C>,
         C: Data,
@@ -272,23 +319,23 @@ impl<T: Data> Lens<T, ()> for UnitLens {
         None
     }
 
-    fn with<R, F: FnOnce(&()) -> R>(&self, data: &T, f: F) -> R {
+    fn with<R, F: FnOnce(&()) -> R>(&self, _data: &T, f: F) -> R {
         f(&())
     }
 
-    fn with_mut<R, F: FnOnce(&mut ()) -> R>(&self, data: &mut T, f: F) -> R {
+    fn with_mut<R, F: FnOnce(&mut ()) -> R>(&self, _data: &mut T, f: F) -> R {
         f(&mut ())
     }
 
-    fn try_with<R, F: FnOnce(&()) -> R>(&self, data: &T, f: F) -> Option<R> {
+    fn try_with<R, F: FnOnce(&()) -> R>(&self, _data: &T, f: F) -> Option<R> {
         Some(f(&()))
     }
 
-    fn try_with_mut<R, F: FnOnce(&mut ()) -> R>(&self, data: &mut T, f: F) -> Option<R> {
+    fn try_with_mut<R, F: FnOnce(&mut ()) -> R>(&self, _data: &mut T, f: F) -> Option<R> {
         Some(f(&mut ()))
     }
 
-    fn unprefix(&self, addr: T::Address) -> Option<Option<<() as Data>::Address>> {
+    fn unprefix(&self, _addr: T::Address) -> Option<Option<<() as Data>::Address>> {
         // never unprefixed by anything
         None
     }
@@ -343,7 +390,7 @@ where
         None
     }
 
-    fn concat<K, C>(&self, rhs: &K) -> Option<A::Address>
+    fn concat<K, C>(&self, _rhs: &K) -> Option<A::Address>
     where
         K: Lens<B, C>,
         C: Data,
@@ -367,11 +414,7 @@ where
         Some(f(&mut (self)(data)))
     }
 
-    fn unprefix(&self, addr: A::Address) -> Option<Option<B::Address>> {
+    fn unprefix(&self, _addr: A::Address) -> Option<Option<B::Address>> {
         Some(None)
-    }
-
-    fn compute_if_changed(&self, src: &Revision<A>) -> Option<B> {
-        Some((self)(src.data))
     }
 }

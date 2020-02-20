@@ -33,10 +33,15 @@ impl<T> VecLens<T> {
     }
 }
 
-#[derive(Clone)]
 pub struct VecAddress<T: Data>(usize, Option<T::Address>);
 
 // #26925 impl (when is this going to be fixed?)
+impl<T: Data> Clone for VecAddress<T> {
+    fn clone(&self) -> Self {
+        VecAddress(self.0, self.1.clone())
+    }
+}
+
 impl<T: Data> fmt::Debug for VecAddress<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{}]", self.0)?;

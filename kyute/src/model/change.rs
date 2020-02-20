@@ -1,4 +1,4 @@
-use crate::model::{Collection, Data, IndexAddress};
+use crate::model::Data;
 use std::ops::Range;
 
 /// Summary of changes to a collection.
@@ -77,14 +77,14 @@ impl Change {
 }
 
 #[derive(Debug)]
-pub struct Revision<'a, Root: Data> {
+pub struct Revision<'a, Root: Data + ?Sized> {
     pub data: &'a Root,
     pub addr: Option<Root::Address>,
     pub change: Change,
 }
 
 // #26925 impl
-impl<'a, Root: Data> Clone for Revision<'a, Root> {
+impl<'a, Root: Data + ?Sized> Clone for Revision<'a, Root> {
     fn clone(&self) -> Self {
         Revision {
             addr: self.addr.clone(),
@@ -95,7 +95,7 @@ impl<'a, Root: Data> Clone for Revision<'a, Root> {
 }
 
 //
-impl<'a, Root: Data> Revision<'a, Root> {
+impl<'a, Root: Data + ?Sized> Revision<'a, Root> {
     /*pub fn focus<K, R, F>(&self, lens: K, f: F) -> R where
         K: Lens<Source = Root>,
         F: FnOnce(&Revision<K::Target>) -> R
@@ -132,7 +132,7 @@ impl<'a, Root: Data> Revision<'a, Root> {
     }
 }
 
-impl<'a, Root: Data> From<&'a Root> for Revision<'a, Root> {
+impl<'a, Root: Data + ?Sized> From<&'a Root> for Revision<'a, Root> {
     fn from(data: &'a Root) -> Self {
         Revision {
             data,

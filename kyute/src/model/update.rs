@@ -22,7 +22,7 @@ impl<K, T> Replace<K, T> {
 impl<S, T, K> Update<S> for Replace<K, T>
 where
     S: Data,
-    T: Data,
+    T: Data + Clone,
     K: Lens<S, T>,
 {
     fn apply(&mut self, data: &mut S) -> Change {
@@ -52,7 +52,7 @@ impl<A, K> Append<A, K> {
 }
 
 // Append to Vec<A>
-impl<S: Data, A: Data, K: Lens<S, Vec<A>>> Update<S> for Append<A, K> {
+impl<S: Data, A: Data + Clone, K: Lens<S, Vec<A>>> Update<S> for Append<A, K> {
     fn apply(&mut self, data: &mut S) -> Change {
         let elem = self.element.clone();
         self.lens.with_mut(data, |v| v.push(elem));
@@ -83,7 +83,7 @@ impl<A: Data, K, I: Clone> Insert<A, K, I> {
 }
 
 // Insert into Vec<A>
-impl<S: Data, A: Data, K: Lens<S, Vec<A>>> Update<S> for Insert<A, K, usize> {
+impl<S: Data, A: Data + Clone, K: Lens<S, Vec<A>>> Update<S> for Insert<A, K, usize> {
     fn apply(&mut self, data: &mut S) -> Change {
         let index = self.index;
         let elem = self.element.clone();
