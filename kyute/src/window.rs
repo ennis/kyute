@@ -57,13 +57,13 @@ impl<S: Data + 'static, V: View<S> + 'static, A: 'static> druid_shell::WinHandle
         self.handle.replace(handle.clone());
     }
 
-    fn paint(&mut self, piet: &mut RenderContext, ctx: &mut dyn WinCtx) -> bool {
+    fn paint(&mut self, piet: &mut RenderContext, _ctx: &mut dyn WinCtx) -> bool {
         let s = &self.state;
         let view = &mut *self.wrapper.view.borrow_mut();
         s.with(|s| view.paint(s, piet))
     }
 
-    fn destroy(&mut self, ctx: &mut dyn WinCtx) {
+    fn destroy(&mut self, _ctx: &mut dyn WinCtx) {
         Application::quit()
     }
 

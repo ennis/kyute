@@ -1,6 +1,4 @@
-use crate::model::{Data, State};
 use std::cell::RefCell;
-use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub struct Dispatcher<A> {

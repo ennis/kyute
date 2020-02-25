@@ -8,6 +8,7 @@ edition = "2018"
 #miniqt-sys = { path = "miniqt-sys" }
 mopa = "0.2.2"
 bitflags = "1.2.1"
-druid-shell = { path = "../ext/druid/druid-shell" }
+#druid-shell = { path = "../ext/druid/druid-shell" }
 piet = "0.0.7"              # make sure that it matches with druid-shell
 piet-direct2d = "0.0.7"     # make sure that it matches with druid-shell
+winit = "0.21.0"

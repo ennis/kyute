@@ -49,7 +49,7 @@ where
     /// Iterates over the collection.
     fn box_iter<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Self::Element> + 'a>;
 
-    fn get_at(&self, index: Self::Index) -> Option<&Self::Element> {
+    fn get_at(&self, _index: Self::Index) -> Option<&Self::Element> {
         unimplemented!()
         //Self::at_index(index).try_get(self)
     }

@@ -11,4 +11,4 @@ pub mod paint;
 pub mod dispatch;
 pub mod model;
 pub mod view;
-pub mod window;
+//pub mod window;

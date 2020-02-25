@@ -58,7 +58,7 @@ const NODE_BORDER_COLOR_B: Color = Color::rgb8(51, 51, 51);
 const NODE_BG_COLOR: Color = Color::rgb8(78, 78, 78);
 const NODE_SELECTED_BG_COLOR: Color = Color::rgb8(89, 124, 148);
 
-fn draw_checkbox(state: CheckboxState, label: &str, ctx: &mut RenderContext) {
+fn draw_checkbox(_state: CheckboxState, _label: &str, ctx: &mut RenderContext) {
     let (width, height) = (640.0, 480.0);
 
     let rect = Rect::new(0.0, 0.0, width, height);

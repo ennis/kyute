@@ -12,8 +12,6 @@ mod root;
 mod tuple;
 mod vbox;
 
-use std::fmt::Debug;
-
 use crate::model::{Data, Revision};
 
 pub use button::Button;

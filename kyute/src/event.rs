@@ -1,8 +1,6 @@
-use druid_shell::KeyModifiers;
-pub use druid_shell::{KeyEvent, MouseEvent, WinHandler};
-use piet::kurbo;
+pub use winit::event::WindowEvent as Event;
 
-/// Widget event
+/*/// Widget event
 pub enum Event {
     KeyUpEvent(KeyEvent),
     KeyDownEvent(KeyEvent),
@@ -12,8 +10,4 @@ pub enum Event {
     Zoom {
         delta: f64,
     },
-    WheelEvent {
-        delta: kurbo::Vec2,
-        mods: KeyModifiers,
-    },
-}
+}*/
