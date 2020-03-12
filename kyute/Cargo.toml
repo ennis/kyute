@@ -5,10 +5,6 @@ authors = ["Alexandre Bléron <alex.bleron@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-#miniqt-sys = { path = "miniqt-sys" }
-mopa = "0.2.2"
 bitflags = "1.2.1"
-#druid-shell = { path = "../ext/druid/druid-shell" }
-piet = "0.0.7"              # make sure that it matches with druid-shell
-piet-direct2d = "0.0.7"     # make sure that it matches with druid-shell
-winit = "0.21.0"
+direct2d = { path="../ext/directx-rs/direct2d" }
+directwrite = { path="../ext/directx-rs/directwrite" }

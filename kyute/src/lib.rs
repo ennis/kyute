@@ -7,7 +7,7 @@
 pub mod application;
 pub mod event;
 pub mod paint;
-
+pub mod layout;
 pub mod dispatch;
 pub mod model;
 pub mod view;

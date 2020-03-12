@@ -11,6 +11,7 @@ mod map;
 mod root;
 mod tuple;
 mod vbox;
+mod visual;
 
 use crate::model::{Data, Revision};
 
@@ -23,10 +24,10 @@ pub use lensed::Lensed;
 pub use map::Map;
 pub use property::Property;
 pub use property::SimpleProperty;
-//pub use root::Root;
 use crate::event::Event;
-use crate::paint::RenderContext;
+use crate::paint::PaintCtx;
 pub use vbox::VBox;
+use crate::layout::{BoxConstraints, Size};
 
 pub trait ActionSink<A> {
     fn emit(&mut self, a: A);
@@ -60,20 +61,25 @@ impl<'a, A> EventCtx<'a, A> {
     }
 }
 
+pub struct LayoutCtx {}
+
 pub trait View<S: Data> {
     type Action;
 
     fn event(&mut self, e: &Event, a: &mut EventCtx<Self::Action>);
     fn update(&mut self, s: &Revision<S>);
     fn paint(&mut self, state: &S, ctx: &mut RenderContext) -> bool;
+    fn layout(&mut self, state: &S, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Size;
 }
 
+/// TODO remove this, it's useless
 pub trait ViewCollection<S: Data> {
     type Action;
 
     fn event(&mut self, e: &Event, a: &mut EventCtx<Self::Action>);
     fn update(&mut self, s: &Revision<S>);
     fn paint(&mut self, state: &S, ctx: &mut RenderContext) -> bool;
+    fn layout(&mut self, state: &S, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Size;
 }
 
 pub trait ViewExt<S: Data>: View<S> {

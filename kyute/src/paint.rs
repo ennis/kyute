@@ -1,13 +1,33 @@
-use piet_direct2d::{
-    D2DFont, D2DFontBuilder, D2DRenderContext, D2DText, D2DTextLayout, D2DTextLayoutBuilder,
-    GenericBrush,
-};
 
-pub type RenderContext<'a> = D2DRenderContext<'a>;
-pub type Brush = GenericBrush;
-pub type Text<'a> = D2DText<'a>;
-pub type Font = D2DFont;
-pub type FontBuilder<'a> = D2DFontBuilder<'a>;
-pub type TextLayout = D2DTextLayout;
-pub type TextLayoutBuilder<'a> = D2DTextLayoutBuilder<'a>;
-pub type Image<'a> = <D2DRenderContext<'a> as piet::RenderContext>::Image;
+pub struct PaintCtx<'a> {
+    d2d_factory: &'a direct2d::factory::Factory1,
+    dwrite_factory: &'a directwrite::Factory,
+    d2d_target: &'a direct2d::render_target::RenderTarget,
+}
+
+impl<'a> PaintCtx<'a> {
+    pub fn new(
+        d2d_factory: &'a direct2d::factory::Factory1,
+        dwrite_factory: &'a directwrite::Factory,
+        d2d_target: &'a direct2d::render_target::RenderTarget) -> PaintCtx<'a>
+    {
+        PaintCtx {
+            d2d_factory,
+            dwrite_factory,
+            d2d_target
+        }
+    }
+
+    pub fn direct2d(&self) -> &'a direct2d::factory::Factory1 {
+        self.d2d_factory
+    }
+
+    pub fn directwrite(&self) -> &'a directwrite::Factory {
+        self.dwrite_factory
+    }
+
+    pub fn direct2d_target(&self) -> &'a direct2d::render_target::RenderTarget {
+        self.d2d_target
+    }
+}
+
