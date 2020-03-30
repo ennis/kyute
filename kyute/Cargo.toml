@@ -8,3 +8,14 @@ edition = "2018"
 bitflags = "1.2.1"
 direct2d = { path="../ext/directx-rs/direct2d" }
 directwrite = { path="../ext/directx-rs/directwrite" }
+math2d = { path="../ext/directx-rs/math2d" }
+kyute-shell = { path = "../kyute-shell" }
+winit = "0.22.0"
+anyhow = "1.0.27"
+euclid = "0.20.8"
+palette = "0.5.0"
+lazy_static = "1.4.0"
+log = "0.4.8"
+
+[dev-dependencies]
+pretty_env_logger = "0.4.0"
