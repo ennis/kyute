@@ -1,20 +1,19 @@
-use crate::layout::{PaintLayout, Offset};
+use crate::event::{Event, EventCtx};
 use crate::layout::Alignment;
 use crate::layout::BoxConstraints;
 use crate::layout::EdgeInsets;
 use crate::layout::Layout;
 use crate::layout::Point;
 use crate::layout::Size;
-use crate::renderer::ButtonState;
-use crate::renderer::Painter;
-use crate::renderer::Renderer;
-use crate::visual::{Node, Cursor, PaintCtx};
-use crate::visual::Visual;
-use crate::widget::{BoxedWidget, LayoutCtx};
+use crate::layout::{Offset, PaintLayout};
+use crate::renderer::{ButtonState, Theme};
+use crate::visual::{Cursor, Node, PaintCtx};
+use crate::visual::{RcNode, Visual};
 use crate::widget::Text;
 use crate::widget::Widget;
 use crate::widget::WidgetExt;
-use crate::event::{Event, EventCtx};
+use crate::widget::{BoxedWidget, LayoutCtx};
+use crate::Bounds;
 use std::any::Any;
 
 /// Button element.
@@ -35,21 +34,26 @@ impl<A: 'static> Button<A> {
 }
 
 impl<A: 'static> Widget<A> for Button<A> {
-    fn layout(self, ctx: &mut LayoutCtx<A>, tree_cursor: &mut Cursor, constraints: &BoxConstraints)
-    {
+    fn layout(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        tree_cursor: &mut Cursor,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) {
         let on_click = self.on_click;
         let mut node = tree_cursor.open(None, move || ButtonVisual { on_click });
-        let node = &mut *node;  // reborrow RefMut as &mut, prevents RefMut-related lifetime confusion
+        let node = &mut *node; // reborrow RefMut as &mut, prevents RefMut-related lifetime confusion
 
-        let button_metrics = &ctx.renderer.widget_metrics().button_metrics;
+        let button_metrics = &theme.button_metrics();
 
         // measure label
         self.label.layout(
             ctx,
             &mut node.cursor(),
             &constraints.deflate(&EdgeInsets::all(button_metrics.label_padding.into())),
+            theme,
         );
-
 
         let mut label_node = node.children.first().unwrap().borrow_mut();
         // base button size
@@ -76,9 +80,11 @@ pub struct ButtonVisual<A> {
 }
 
 impl<A: 'static> Visual for ButtonVisual<A> {
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        ctx.painter.draw_button(
-            ctx.bounds,
+    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
+        let bounds = ctx.bounds();
+        theme.draw_button_frame(
+            ctx,
+            bounds,
             &ButtonState {
                 disabled: false,
                 clicked: false,
@@ -87,12 +93,11 @@ impl<A: 'static> Visual for ButtonVisual<A> {
         );
     }
 
-    fn hit_test(&mut self, point: Point, layout: &PaintLayout) -> bool {
+    fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
         false
     }
 
-    fn event(&mut self, event_ctx: &EventCtx, event: &Event) {
-    }
+    fn event(&mut self, event_ctx: &EventCtx, event: &Event) {}
 
     fn as_any(&self) -> &dyn Any {
         self

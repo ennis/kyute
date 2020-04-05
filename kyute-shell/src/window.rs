@@ -1,132 +1,51 @@
 //! Platform-specific window creation
-use super::PlatformState;
-use super::gl_api::gl::types::*;
-use super::gl_api::gl;
-use super::gl_api::wgl;
-use super::gl_api::Gl;
-use super::gl_api::Wgl;
+use crate::drawing::target::RenderTarget;
+use crate::error::{self, Error, Result};
+use crate::opengl;
+use crate::opengl::api::gl;
+use crate::opengl::api::gl::types::*;
+use crate::opengl::api::wgl;
+use crate::opengl::api::Gl;
+use crate::opengl::api::Wgl;
+use crate::platform::Platform;
+use crate::platform::PlatformState;
 
-use anyhow::Result;
-use anyhow::{Context, Error};
 use glutin::platform::windows::RawContextExt;
 use glutin::{ContextBuilder, PossiblyCurrent, RawContext};
 use log::{error, info, trace};
 
-use std::marker::PhantomData;
 use std::os::raw::c_void;
+use std::ptr;
 use std::rc::Rc;
-use std::{error, fmt, ptr};
 
-use winit::event_loop::{EventLoop, EventLoopWindowTarget};
+use winit::event_loop::EventLoopWindowTarget;
 use winit::platform::windows::WindowExtWindows;
 use winit::window::{Window, WindowBuilder, WindowId};
 
-use com_wrapper::ComWrapper;
-use direct3d11::device_context::IDeviceContext;
-use direct3d11::enums::BindFlags;
-use direct3d11::enums::Usage;
-use dxgi::enums::*;
-use dxgi::enums::{PresentFlags, SwapChainFlags};
-use dxgi::swap_chain::swap_chain::ISwapChain;
-
+use winapi::shared::dxgi::*;
+use winapi::shared::dxgi1_2::*;
 use winapi::shared::dxgiformat::*;
+use winapi::shared::dxgitype::*;
 use winapi::shared::minwindef::HINSTANCE;
-use winapi::shared::ntdef::HRESULT;
 use winapi::shared::windef::HWND;
 use winapi::shared::winerror::SUCCEEDED;
 use winapi::um::d2d1::*;
+use winapi::um::d3d11::*;
 use winapi::um::dcommon::*;
 use winapi::um::errhandlingapi::GetLastError;
-use crate::platform::Platform;
+use winapi::Interface;
 
-#[derive(Copy, Clone)]
-pub struct HResultError(pub HRESULT);
+use std::ops::{Deref, DerefMut};
+use wio::com::ComPtr;
 
-impl fmt::Debug for HResultError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
-impl fmt::Display for HResultError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[HRESULT {:08X}]", self.0)
-    }
-}
-
-impl error::Error for HResultError {}
-
-fn check_hr(hr: HRESULT) -> Result<HRESULT, HResultError> {
-    if !SUCCEEDED(hr) {
-        Err(HResultError(hr))
-    } else {
-        Ok(hr)
-    }
-}
-
-/// Sets up the OpenGL debug output so that we have more information in case the interop fails.
-unsafe fn init_debug_callback(gl: &Gl) {
-    gl.Enable(gl::DEBUG_OUTPUT);
-    gl.Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
-
-    if gl.DebugMessageCallback.is_loaded() {
-        extern "system" fn debug_callback(
-            source: GLenum,
-            gltype: GLenum,
-            _id: GLuint,
-            severity: GLenum,
-            length: GLsizei,
-            message: *const GLchar,
-            _userParam: *mut c_void,
-        ) {
-            unsafe {
-                use std::ffi::CStr;
-                let message = CStr::from_ptr(message);
-                eprintln!("{:?}", message);
-                match source {
-                    gl::DEBUG_SOURCE_API => eprintln!("Source: API"),
-                    gl::DEBUG_SOURCE_WINDOW_SYSTEM => eprintln!("Source: Window System"),
-                    gl::DEBUG_SOURCE_SHADER_COMPILER => eprintln!("Source: Shader Compiler"),
-                    gl::DEBUG_SOURCE_THIRD_PARTY => eprintln!("Source: Third Party"),
-                    gl::DEBUG_SOURCE_APPLICATION => eprintln!("Source: Application"),
-                    gl::DEBUG_SOURCE_OTHER => eprintln!("Source: Other"),
-                    _ => (),
-                }
-
-                match gltype {
-                    gl::DEBUG_TYPE_ERROR => eprintln!("Type: Error"),
-                    gl::DEBUG_TYPE_DEPRECATED_BEHAVIOR => eprintln!("Type: Deprecated Behaviour"),
-                    gl::DEBUG_TYPE_UNDEFINED_BEHAVIOR => eprintln!("Type: Undefined Behaviour"),
-                    gl::DEBUG_TYPE_PORTABILITY => eprintln!("Type: Portability"),
-                    gl::DEBUG_TYPE_PERFORMANCE => eprintln!("Type: Performance"),
-                    gl::DEBUG_TYPE_MARKER => eprintln!("Type: Marker"),
-                    gl::DEBUG_TYPE_PUSH_GROUP => eprintln!("Type: Push Group"),
-                    gl::DEBUG_TYPE_POP_GROUP => eprintln!("Type: Pop Group"),
-                    gl::DEBUG_TYPE_OTHER => eprintln!("Type: Other"),
-                    _ => (),
-                }
-
-                match severity {
-                    gl::DEBUG_SEVERITY_HIGH => eprintln!("Severity: high"),
-                    gl::DEBUG_SEVERITY_MEDIUM => eprintln!("Severity: medium"),
-                    gl::DEBUG_SEVERITY_LOW => eprintln!("Severity: low"),
-                    gl::DEBUG_SEVERITY_NOTIFICATION => eprintln!("Severity: notification"),
-                    _ => (),
-                }
-                panic!();
-            }
-        }
-        gl.DebugMessageCallback(Some(debug_callback), ptr::null());
-    }
-}
-
+/// DirectX-OpenGL interop state.
 struct DxGlInterop {
     gl: Gl,
     wgl: Wgl,
     /// Interop device handle
     device: wgl::types::HANDLE,
     /// Staging texture
-    staging: Option<direct3d11::Texture2D>,
+    staging: Option<ComPtr<ID3D11Texture2D>>,
     /// Interop handle for the OpenGL drawing target.
     /// If `staging_d3d11` is not None, then this is a handle to the staging texture, otherwise
     /// it's a handle to the true backbuffer.
@@ -147,29 +66,32 @@ impl Drop for DxGlInterop {
 /// Contains resources that should be re-created when the swap chain of a window changes
 /// (e.g. on resize).
 struct SwapChainResources {
-    backbuffer: direct3d11::Texture2D,
+    backbuffer: ComPtr<ID3D11Texture2D>,
     interop: Option<DxGlInterop>,
 }
 
 impl SwapChainResources {
     unsafe fn new(
-        swap_chain: &dxgi::swap_chain::SwapChain1,
-        _device: &direct3d11::Device,
-        width: u32,
-        height: u32,
+        swap_chain: &ComPtr<IDXGISwapChain1>,
+        _device: &ComPtr<ID3D11Device>,
+        _width: u32,
+        _height: u32,
     ) -> Result<SwapChainResources> {
-        let buffer = swap_chain
-            .buffer(0)
-            .context("failed in IDXGISwapChain1::GetBuffer")?;
-        Ok(SwapChainResources {
-            backbuffer: buffer,
+        let mut buffer: *mut ID3D11Texture2D = ptr::null_mut();
+        let hr = swap_chain.GetBuffer(
+            0,
+            &ID3D11Texture2D::uuidof(),
+            &mut buffer as *mut _ as *mut *mut c_void,
+        );
+        error::wrap_hr(hr, || SwapChainResources {
+            backbuffer: ComPtr::from_raw(buffer),
             interop: None,
         })
     }
 
     unsafe fn with_gl_interop(
-        swap_chain: &dxgi::swap_chain::SwapChain1,
-        device: &direct3d11::Device,
+        swap_chain: &ComPtr<IDXGISwapChain1>,
+        device: &ComPtr<ID3D11Device>,
         gl: Gl,
         wgl: Wgl,
         width: u32,
@@ -178,9 +100,10 @@ impl SwapChainResources {
     ) -> Result<SwapChainResources> {
         let mut res = Self::new(swap_chain, device, width, height)?;
 
-        let interop_device = wgl.DXOpenDeviceNV(device.get_raw() as *mut _);
+        let interop_device = wgl.DXOpenDeviceNV(device.as_raw() as *mut _);
         if interop_device.is_null() {
-            return Err(anyhow::Error::msg("could not create OpenGL-DX interop"));
+            error!("Could not create OpenGL-DirectX interop.");
+            return Err(Error::OpenGlInteropError);
         }
 
         let mut renderbuffer = 0;
@@ -189,17 +112,32 @@ impl SwapChainResources {
         let (staging, interop_target) = if use_staging_texture {
             // use staging texture because directly sharing the swap chain buffer when using FLIP_*
             // swap effects seems to cause problems.
-            let staging = direct3d11::Texture2D::create(device)
-                .with_format(Format::R8G8B8A8Unorm)
-                .with_size(width, height)
-                .with_bind_flags(BindFlags::RENDER_TARGET)
-                .with_mip_levels(1)
-                .with_usage(Usage::Default)
-                .build()?;
+            let mut staging = ptr::null_mut();
+            let staging_desc = D3D11_TEXTURE2D_DESC {
+                Width: width,
+                Height: height,
+                MipLevels: 1,
+                ArraySize: 1,
+                Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                Usage: D3D11_USAGE_DEFAULT,
+                BindFlags: D3D11_BIND_RENDER_TARGET,
+                CPUAccessFlags: 0,
+                MiscFlags: 0,
+            };
+            let hr = device.CreateTexture2D(&staging_desc, ptr::null(), &mut staging);
+            if !SUCCEEDED(hr) {
+                error!("Could not create staging texture.");
+                return Err(hr.into());
+            }
+            let staging = ComPtr::from_raw(staging);
 
             let interop_staging = wgl.DXRegisterObjectNV(
                 interop_device,
-                staging.get_raw() as *mut _,
+                staging.as_raw() as *mut _,
                 renderbuffer,
                 gl::RENDERBUFFER,
                 wgl::ACCESS_READ_WRITE_NV,
@@ -209,7 +147,7 @@ impl SwapChainResources {
             // directly share the swap chain buffer (this may cause problems with FLIP_* swap effects)
             let interop_backbuffer = wgl.DXRegisterObjectNV(
                 interop_device,
-                res.backbuffer.get_raw() as *mut _,
+                res.backbuffer.as_raw() as *mut _,
                 renderbuffer,
                 gl::RENDERBUFFER,
                 wgl::ACCESS_READ_WRITE_NV,
@@ -219,7 +157,7 @@ impl SwapChainResources {
 
         if interop_target.is_null() {
             gl.DeleteRenderbuffers(1, &renderbuffer);
-            return Err(Error::msg("wglDXRegisterObjectNV error"));
+            return Err(Error::OpenGlInteropError);
         }
 
         // create a framebuffer that points to the swap chain buffer
@@ -238,10 +176,8 @@ impl SwapChainResources {
             wgl.DXUnregisterObjectNV(interop_device, interop_target);
             gl.DeleteRenderbuffers(1, &renderbuffer);
             gl.DeleteFramebuffers(1, &framebuffer);
-            return Err(Error::msg(format!(
-                "could not create window framebuffer: CheckNamedFramebufferStatus returned {}",
-                fb_status
-            )));
+            error!("OpenGL framebuffer not complete");
+            return Err(Error::OpenGlInteropError);
         }
 
         res.interop = Some(DxGlInterop {
@@ -293,15 +229,15 @@ pub struct GlState {
 }
 
 const SWAP_CHAIN_BUFFERS: u32 = 2;
-const USE_INTEROP_STAGING_TEXTURE: bool = false;
+//const USE_INTEROP_STAGING_TEXTURE: bool = false;
 
 /// Guard object that holds a lock on an interop OpenGL context.
 pub struct OpenGlDrawContext<'a> {
     gl: &'a Gl,
     wgl: &'a Wgl,
     interop: &'a mut DxGlInterop,
-    backbuffer: &'a direct3d11::Texture2D,
-    d3d11_ctx: &'a direct3d11::DeviceContext,
+    backbuffer: &'a ComPtr<ID3D11Texture2D>,
+    d3d11_ctx: &'a ComPtr<ID3D11DeviceContext>,
 }
 
 impl<'a> OpenGlDrawContext<'a> {
@@ -356,29 +292,33 @@ impl<'a> Drop for OpenGlDrawContext<'a> {
 
         if let Some(ref staging_d3d11) = self.interop.staging {
             // copy staging tex to actual backbuffer
-            let backbuffer = self.backbuffer.as_resource();
-            let staging = staging_d3d11.as_resource();
+            let backbuffer = self.backbuffer.cast::<ID3D11Resource>().unwrap();
+            let staging = staging_d3d11.cast::<ID3D11Resource>().unwrap();
             unsafe {
-                self.d3d11_ctx.copy_resource(&staging, &backbuffer);
+                self.d3d11_ctx
+                    .CopyResource(staging.as_raw(), backbuffer.as_raw());
             }
         }
     }
 }
 
-pub struct Direct2dDrawContext<'a> {
+/// Context object to draw on a window.
+///
+/// It implicitly derefs to [`RenderTarget`], which has methods to draw primitives on the
+/// window surface.
+///
+/// [`RenderTarget`]: crate::drawing::target::RenderTarget
+pub struct DrawContext<'a> {
     window: &'a mut PlatformWindow,
-    target: direct2d::render_target::RenderTarget,
-    _phantom: PhantomData<&'a ()>,
+    target: RenderTarget,
 }
 
-impl<'a> Direct2dDrawContext<'a> {
-    pub fn new(window: &'a mut PlatformWindow) -> Direct2dDrawContext<'a> {
+impl<'a> DrawContext<'a> {
+    /// Creates a new [`DrawContext`] for the specified window, allowing to draw on the window.
+    pub fn new(window: &'a mut PlatformWindow) -> DrawContext<'a> {
         let d2d = &window.shared.d2d_factory;
-        let dwrite = &window.shared.dwrite_factory;
-        //let mut context = self.shared.d2d_context.borrow_mut();
         let swap_res = window.swap_res.as_ref().unwrap();
-        let dxgi_buffer = swap_res.backbuffer.as_dxgi();
-
+        let dxgi_buffer = swap_res.backbuffer.cast::<IDXGISurface>().unwrap();
 
         let dpi = 96.0 * window.window.scale_factor() as f32;
         let props = D2D1_RENDER_TARGET_PROPERTIES {
@@ -393,32 +333,43 @@ impl<'a> Direct2dDrawContext<'a> {
             minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
         };
 
-        let target = unsafe {
+        let mut target = unsafe {
             let mut render_target: *mut ID2D1RenderTarget = ptr::null_mut();
-            let res = (*d2d.get_raw()).CreateDxgiSurfaceRenderTarget(
-                dxgi_buffer.get_raw(),
-                &props,
-                &mut render_target,
-            );
-            direct2d::render_target::RenderTarget::from_raw(render_target)
+            let hr =
+                d2d.CreateDxgiSurfaceRenderTarget(dxgi_buffer.as_raw(), &props, &mut render_target);
+            if !SUCCEEDED(hr) {
+                panic!("CreateDxgiSurfaceRenderTarget failed: {}", Error::HResultError(hr));
+            }
+            // start drawing immediately
+            RenderTarget::from_raw(d2d.clone().up(), render_target)
         };
 
-        Direct2dDrawContext {
-            window,
-            target,
-            _phantom: PhantomData,
-        }
+        target.begin_draw();
+        DrawContext { window, target }
     }
 
+    /// Returns the [`PlatformWindow`] that is being drawn to.
     pub fn window(&self) -> &PlatformWindow {
         self.window
     }
+}
 
-    pub fn render_target(&self) -> &direct2d::render_target::RenderTarget {
+impl<'a> Drop for DrawContext<'a> {
+    fn drop(&mut self) {
+        self.target.end_draw()
+    }
+}
+
+impl<'a> Deref for DrawContext<'a> {
+    type Target = RenderTarget;
+
+    fn deref(&self) -> &RenderTarget {
         &self.target
     }
+}
 
-    pub fn render_target_mut(&mut self) -> &mut direct2d::render_target::RenderTarget {
+impl<'a> DerefMut for DrawContext<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.target
     }
 }
@@ -431,7 +382,7 @@ pub struct PlatformWindow {
     window: Window,
     hwnd: HWND,
     hinstance: HINSTANCE,
-    swap_chain: dxgi::swap_chain::SwapChain1,
+    swap_chain: ComPtr<IDXGISwapChain1>,
     swap_res: Option<SwapChainResources>,
     gl: Option<GlState>,
     interop_needs_staging: bool,
@@ -456,7 +407,7 @@ impl PlatformWindow {
     /// Resizes the swap chain and associated resources of the window.
     ///
     /// Must be called whenever winit sends a resize message.
-    pub fn resize(&mut self, (width, height): (u32, u32)) -> Result<()> {
+    pub fn resize(&mut self, (width, height): (u32, u32)) {
         trace!("resizing swap chain: {}x{}", width, height);
 
         // signal the GL context as well if we have one
@@ -469,20 +420,20 @@ impl PlatformWindow {
             self.swap_res = None;
 
             // resize the swap chain
-            let err = self
+            let hr = self
                 .swap_chain
-                .resize_buffers()
-                .dimensions(width, height)
-                .finish();
-
-            if let Err(err) = err {
+                .ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+            if !SUCCEEDED(hr) {
                 // it fails sometimes...
-                error!("IDXGISwapChain1::ResizeBuffers failed: {}", err);
-                return Ok(());
+                error!(
+                    "IDXGISwapChain1::ResizeBuffers failed: {}",
+                    Error::HResultError(hr)
+                );
+                return;
             }
 
             // re-create all resources that depend on the swap chain
-            self.swap_res = Some(if let Some(ref mut gl) = self.gl {
+            let new_swap_res = if let Some(ref mut gl) = self.gl {
                 SwapChainResources::with_gl_interop(
                     &self.swap_chain,
                     &self.shared.d3d11_device,
@@ -491,13 +442,16 @@ impl PlatformWindow {
                     width,
                     height,
                     self.interop_needs_staging,
-                )?
+                )
             } else {
-                SwapChainResources::new(&self.swap_chain, &self.shared.d3d11_device, width, height)?
-            });
-        }
+                SwapChainResources::new(&self.swap_chain, &self.shared.d3d11_device, width, height)
+            };
 
-        Ok(())
+            match new_swap_res {
+                Ok(r) => self.swap_res = Some(r),
+                Err(e) => error!("Failed to allocate swap chain resources: {}", e),
+            }
+        }
     }
 
     /// Creates a new window from the options given in the provided [`WindowBuilder`].
@@ -509,7 +463,8 @@ impl PlatformWindow {
         event_loop: &EventLoopWindowTarget<()>,
         builder: WindowBuilder,
         platform: &Platform,
-        with_gl: bool) -> Result<PlatformWindow> {
+        with_gl: bool,
+    ) -> Result<PlatformWindow> {
         // We want to be able to render 3D stuff with OpenGL, and still be able to use
         // D3D11/Direct2D/DirectWrite.
         // To do so, we use a DXGI swap chain to manage presenting. Then, using WGL_NV_DX_interop2,
@@ -517,10 +472,11 @@ impl PlatformWindow {
         // on the same render target.
         unsafe {
             // first, build the window using the provided builder
-            let window = builder.build(event_loop)?;
+            let window = builder.build(event_loop).map_err(Error::Winit)?;
 
             let dxgi_factory = &platform.0.dxgi_factory;
             let d3d11_device = &platform.0.d3d11_device;
+            //let dxgi_device = &d3d11_device.cast::<IDXGIDevice>().unwrap(); // shouldn't fail?
 
             // create a DXGI swap chain for the window
             let hinstance: HINSTANCE = window.hinstance() as HINSTANCE;
@@ -533,13 +489,13 @@ impl PlatformWindow {
             //} else {
             //    SwapEffect::FlipDiscard
             //};
-            let swap_effect = SwapEffect::Discard;
+            let swap_effect = DXGI_SWAP_EFFECT_SEQUENTIAL;
 
             // OpenGL interop does not work well with FLIP_* swap effects
             // (generates a "D3D11 Device Lost" error during resizing after a while).
             // In those cases, draw on a staging texture, and then copy to the backbuffer.
             let interop_needs_staging = match swap_effect {
-                SwapEffect::FlipSequential | SwapEffect::FlipDiscard => true,
+                DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL | DXGI_SWAP_EFFECT_FLIP_DISCARD => true,
                 _ => false,
             };
 
@@ -549,17 +505,38 @@ impl PlatformWindow {
             }
 
             // create the swap chain
-            let swap_chain =
-                dxgi::swap_chain::SwapChain1::create_hwnd(dxgi_factory, &d3d11_device.as_dxgi())
-                    .with_flags(SwapChainFlags::NONE)
-                    .with_swap_effect(swap_effect)
-                    .with_format(Format::R8G8B8A8Unorm)
-                    .with_buffer_count(SWAP_CHAIN_BUFFERS)
-                    .with_scaling(Scaling::Stretch)
-                    .with_alpha_mode(AlphaMode::Unspecified)
-                    .with_buffer_usage(UsageFlags::RENDER_TARGET_OUTPUT)
-                    .with_hwnd(hwnd)
-                    .build()?;
+            let mut swap_chain = ptr::null_mut();
+            let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
+                Width: 0,
+                Height: 0,
+                Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                Stereo: 0,
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
+                BufferCount: SWAP_CHAIN_BUFFERS,
+                Scaling: DXGI_SCALING_STRETCH,
+                SwapEffect: swap_effect,
+                AlphaMode: DXGI_ALPHA_MODE_UNSPECIFIED,
+                Flags: 0,
+            };
+
+            let hr = dxgi_factory.CreateSwapChainForHwnd(
+                d3d11_device.clone().up().as_raw(),
+                hwnd,
+                &swap_chain_desc,
+                ptr::null(),
+                ptr::null_mut(),
+                &mut swap_chain,
+            );
+
+            if !SUCCEEDED(hr) {
+                return Err(hr.into());
+            }
+
+            let swap_chain = ComPtr::from_raw(swap_chain);
 
             // Create the OpenGL context
             let (swap_res, gl) = if with_gl {
@@ -582,7 +559,7 @@ impl PlatformWindow {
                 let gl = Gl::load_with(loader);
                 let wgl = Wgl::load_with(loader);
                 // set up a debug callback so we have a clue of what's going wrong
-                init_debug_callback(&gl);
+                opengl::init_debug_callback(&gl);
                 // first-time initialization of the swap chain resources, with GL interop enabled
                 let swap_res = SwapChainResources::with_gl_interop(
                     &swap_chain,
@@ -619,8 +596,14 @@ impl PlatformWindow {
     }
 
     pub fn present(&mut self) {
-        self.swap_chain
-            .present(1, PresentFlags::NONE)
-            .expect("present failed");
+        unsafe {
+            let hr = self.swap_chain.Present(1, 0);
+            if !SUCCEEDED(hr) {
+                error!(
+                    "IDXGISwapChain::Present failed: {}",
+                    Error::HResultError(hr)
+                )
+            }
+        }
     }
 }

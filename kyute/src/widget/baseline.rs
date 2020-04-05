@@ -1,7 +1,7 @@
 use crate::layout::{BoxConstraints, Layout, Offset, Size};
-use crate::renderer::{Renderer};
-use crate::visual::{Node, Cursor, LayoutBox};
-use crate::widget::{Widget, LayoutCtx};
+use crate::renderer::Theme;
+use crate::visual::{Cursor, LayoutBox, Node};
+use crate::widget::{LayoutCtx, Widget};
 
 /// .
 pub struct Baseline<W> {
@@ -15,13 +15,18 @@ impl<W> Baseline<W> {
     }
 }
 
-impl<A: 'static, W: Widget<A>> Widget<A> for Baseline<W>
-{
-    fn layout(self, ctx: &mut LayoutCtx<A>, tree_cursor: &mut Cursor, constraints: &BoxConstraints)
-    {
+impl<A: 'static, W: Widget<A>> Widget<A> for Baseline<W> {
+    fn layout(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        tree_cursor: &mut Cursor,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) {
         let mut node = &mut *tree_cursor.open(None, || LayoutBox);
 
-        self.inner.layout(ctx, &mut node.cursor(), constraints);
+        self.inner
+            .layout(ctx, &mut node.cursor(), constraints, theme);
 
         let mut child = node.children.first_mut().unwrap().borrow_mut();
         let off = self.baseline - child.layout.baseline.unwrap_or(child.layout.size.height);
@@ -29,7 +34,7 @@ impl<A: 'static, W: Widget<A>> Widget<A> for Baseline<W>
         child.layout.offset.y = off;
 
         let width = child.layout.size.width;
-        node.layout.offset = Offset::new(0.0,0.0);
+        node.layout.offset = Offset::new(0.0, 0.0);
         node.layout.size = constraints.constrain(Size::new(width, height));
         node.layout.baseline = Some(self.baseline)
     }

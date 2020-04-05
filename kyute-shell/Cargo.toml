@@ -1,0 +1,34 @@
+[package]
+name = "kyute-shell"
+version = "0.1.0"
+authors = ["Alexandre Bléron <alex.bleron@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# windowing
+winit = "0.22.0"
+glutin = "0.22"
+wio = "0.2.2"
+euclid = "0.20.8"   # basic 2D geometric types
+palette = "0.5.0"   # colors
+bitflags = "1.2.1"
+lazy_static = "1.4.0"
+log = "0.4.8"
+thiserror = "1.0.13"
+
+[dependencies.winapi]
+version = "0.3.8"
+features = [
+    "d2d1",
+    "d2d1_1",
+    "d2d1_2",
+    "d2d1_3",
+    "d3d11",
+    "dxgi",
+    "dxgi1_2",
+    "dxgi1_3",
+    "dxgiformat",
+    "dxgitype" ]
+

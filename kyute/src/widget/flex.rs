@@ -1,14 +1,14 @@
 use crate::event::{Event, EventCtx};
+use crate::renderer::Theme;
+use crate::visual::{Cursor, PaintCtx};
+use crate::widget::LayoutCtx;
 use crate::{
     layout::BoxConstraints, layout::Layout, layout::Offset, layout::PaintLayout, layout::Size,
-    renderer::Painter, renderer::Renderer, visual::Node, visual::Visual, BoxedWidget, Point,
-    widget::Widget, widget::WidgetExt,
+    visual::Node, visual::Visual, widget::Widget, widget::WidgetExt, Bounds, BoxedWidget, Point,
 };
 use euclid::{Point2D, UnknownUnit};
-use crate::widget::LayoutCtx;
-use crate::visual::{Cursor, PaintCtx};
-use std::any::Any;
 use log::trace;
+use std::any::Any;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Axis {
@@ -69,8 +69,7 @@ pub struct Flex<A> {
     children: Vec<BoxedWidget<A>>,
 }
 
-impl<A: 'static> Flex<A>
-{
+impl<A: 'static> Flex<A> {
     pub fn new(main_axis: Axis) -> Self {
         Flex {
             axis: main_axis,
@@ -85,9 +84,13 @@ impl<A: 'static> Flex<A>
 }
 
 impl<A: 'static> Widget<A> for Flex<A> {
-
-    fn layout(mut self, ctx: &mut LayoutCtx<A>, tree_cursor: &mut Cursor, constraints: &BoxConstraints)
-    {
+    fn layout(
+        mut self,
+        ctx: &mut LayoutCtx<A>,
+        tree_cursor: &mut Cursor,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) {
         let axis = self.axis;
 
         let mut node = tree_cursor.open(None, || FlexVisual);
@@ -96,7 +99,7 @@ impl<A: 'static> Widget<A> for Flex<A> {
             let mut child_cursor = node.cursor();
             // layout child nodes
             for c in self.children.drain(..) {
-                c.layout(ctx, &mut child_cursor, constraints)
+                c.layout(ctx, &mut child_cursor, constraints, theme)
             }
         }
 
@@ -122,7 +125,7 @@ impl<A: 'static> Widget<A> for Flex<A> {
                 Axis::Vertical => child.layout.offset += Offset::new(0.0, x),
                 Axis::Horizontal => child.layout.offset += Offset::new(x, 0.0),
             };
-            x += len;
+            x += dbg!(len);
         }
 
         let size = match self.axis {
@@ -137,16 +140,17 @@ impl<A: 'static> Widget<A> for Flex<A> {
 pub struct FlexVisual;
 
 impl Visual for FlexVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        ctx.painter.draw_panel_background(ctx.bounds);
+    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
+        let bounds = ctx.bounds();
+        theme.draw_panel_background(ctx, bounds);
     }
 
-    fn hit_test(&mut self, _point: Point, _layout: &PaintLayout) -> bool {
+    fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
         unimplemented!()
     }
 
     fn event(&mut self, event_ctx: &EventCtx, event: &Event) {
-        unimplemented!()
+        //unimplemented!()
     }
 
     fn as_any(&self) -> &dyn Any {

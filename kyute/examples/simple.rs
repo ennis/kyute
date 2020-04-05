@@ -1,39 +1,33 @@
-use kyute_shell::MainEventLoop;
-use kyute_shell::WindowEventTarget;
-use kyute_shell::WindowCtx;
-use kyute_shell::EventResult;
-use kyute_shell::platform::PlatformWindow;
-use kyute_shell::platform::OpenGlDrawContext;
-use kyute::{Widget, Visual, BoxedWidget, WidgetExt};
-use kyute::Painter;
-use kyute::application::{Application, run_application};
-
+use kyute::application::{run_application, Application};
+use kyute::{BoxedWidget, WidgetExt};
 
 struct SimpleApplication;
 
 impl Application for SimpleApplication {
     type Action = ();
 
-    fn update(&mut self, actions: &[()]) {
+    fn update(&mut self, _actions: &[()]) {
         unimplemented!()
     }
 
-    fn view(&mut self) -> BoxedWidget<()>
-    {
+    fn view(&mut self) -> BoxedWidget<()> {
         use kyute::widget::*;
         Flex::new(Axis::Vertical)
             .push(
                 Flex::new(Axis::Horizontal)
-                    .push(Baseline::new(20.0, Button::new("Click me please")))
-                    .push(Baseline::new(20.0, Button::new("Refrain")))
-                    .push(Baseline::new(20.0, Text::new("Hello worlp"))),
+                    .push(Baseline::new(20.0, Text::new("Horizontal Flex: ")))
+                    .push(Baseline::new(20.0, Button::new("Button A")))
+                    .push(Baseline::new(20.0, Button::new("Button B")))
+                    .push(Baseline::new(20.0, Text::new("Baseline alignment test"))),
             )
             .push(
-                Flex::new(Axis::Horizontal)
-                    .push(Baseline::new(25.0, Button::new("Line 2")))
-                    .push(Baseline::new(25.0, Button::new("AAAA")))
-                    .push(Baseline::new(25.0, Text::new("Hello agaim"))),
-            ).boxed()
+                Flex::new(Axis::Vertical)
+                    .push(Button::new("Vertical Flex:"))
+                    .push(Button::new("Button A"))
+                    .push(Button::new("Button B"))
+                    .push(Text::new("Hello world")),
+            )
+            .boxed()
     }
 }
 

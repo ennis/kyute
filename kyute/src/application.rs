@@ -1,19 +1,23 @@
-use kyute_shell::platform::{Platform, PlatformWindow};
-use crate::{BoxedWidget, Visual, Cache, Node, BoxConstraints, Renderer, Painter, PaintLayout, Layout, Widget, Point, Bounds};
-use winit::event_loop::{EventLoop, ControlFlow, EventLoopWindowTarget};
-use winit::window::{WindowBuilder, WindowId};
-use crate::event::EventCtx;
+use crate::event::{Event, EventCtx, KeyboardEvent, PointerEvent, PointerButton, PointerButtons};
 use crate::layout::Size;
-use winit::event::WindowEvent;
-use anyhow::Result;
-use crate::widget::dummy::DummyVisual;
-use std::rc::{Rc, Weak};
-use std::cell::RefCell;
-use crate::widget::{LayoutCtx, ActionCollector};
+use crate::renderer::Theme;
 use crate::visual::{Cursor, LayoutBox, PaintCtx};
+use crate::widget::dummy::DummyVisual;
+use crate::widget::{ActionCollector, LayoutCtx};
+use crate::{
+    Bounds, BoxConstraints, BoxedWidget, Layout, Node, PaintLayout, Point, Visual, Widget,
+};
+use anyhow::Result;
+use kyute_shell::drawing::Color;
+use kyute_shell::platform::Platform;
+use kyute_shell::window::{DrawContext, PlatformWindow};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
-use direct2d::render_target::IRenderTarget;
+use std::rc::{Rc, Weak};
+use winit::event::{ElementState, KeyboardInput, WindowEvent, DeviceId};
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
+use winit::window::{WindowBuilder, WindowId};
 
 /// Encapsulates the behavior of an application.
 pub trait Application {
@@ -33,19 +37,10 @@ pub trait Application {
 
 /// Context needed to open a window.
 pub struct WindowCtx<'a> {
-    platform: &'a Platform,
-    renderer: &'a Renderer,
+    pub(crate) platform: &'a Platform,
     event_loop: &'a EventLoopWindowTarget<()>,
     new_windows: Vec<Rc<RefCell<Window>>>,
 }
-
-// separate platformwindow + windoweventtarget
-// -> windoweventtarget event() can be called for different windows (more than one)
-// -> can close the window and keep the event target object alive (is that useful?)
-//
-// windoweventtarget owns window:
-// ->
-//
 
 // the event loop should have a ref to the windows, so that it knows where to deliver
 // the event based on the window ID.
@@ -101,31 +96,84 @@ pub struct WindowCtx<'a> {
 // - OrbTk: IDs in an ECS
 //
 
+/// Converts a [`winit::WindowEvent`] into an [`Event`](crate::event::Event)
+/// that can be delivered to a [`Node`] hierarchy.
+fn convert_window_event(event: &WindowEvent) -> Option<Event> {
+    /*match event {
+        WindowEvent::KeyboardInput { device_id, input, is_synthetic } => {
+            let kbd_ev = KeyboardEvent {
+                scan_code: input.scancode,
+                key: input.virtual_keycode,
+                text: 'r',
+                repeat: false,
+                modifiers: ModifierState {}
+            };
+
+            match input.state {
+                ElementState::Pressed => {
+
+                },
+                ElementState::Released => {
+
+                }
+            }
+        }
+    }*/
+    unimplemented!()
+}
+
+struct PointerState {
+    buttons: PointerButtons,
+    position: Point,
+}
+
+impl Default for PointerState {
+    fn default() -> Self {
+        PointerState {
+            buttons: PointerButtons(0),
+            position: Point::origin()
+        }
+    }
+}
+
+struct InputState {
+    /// Current state of keyboard modifiers.
+    mods: winit::event::ModifiersState,
+    /// Current state of pointers.
+    pointers: HashMap<DeviceId, PointerState>,
+}
 
 /// A window managed by kyute with a cached visual node.
 struct Window {
     window: PlatformWindow,
     node: Node<LayoutBox>,
+    inputs: InputState,
 }
 
 impl Window {
-
     /// Opens a window and registers the window into the event loop.
-    pub fn open(
-        ctx: &mut WindowCtx,
-        builder: WindowBuilder) -> Result<Rc<RefCell<Window>>>
-    {
+    pub fn open(ctx: &mut WindowCtx, builder: WindowBuilder) -> Result<Rc<RefCell<Window>>> {
         // create the platform window
         let window = PlatformWindow::new(ctx.event_loop, builder, ctx.platform, true)?;
+        let size: (f64, f64) = window
+            .window()
+            .inner_size()
+            .to_logical::<f64>(1.0)
+            .into();
 
         // create the default visual
-        let mut node = Node::new(Layout::new(Size::new(0.0,0.0)), None, LayoutBox);
+        let mut node = Node::new(Layout::new(size.into()), None, LayoutBox);
         node.propagate_bounds(Point::origin());
 
-        let window = Rc::new(RefCell::new(Window {
-            window,
-            node
-        }));
+        let window = Window {
+            window, node,
+            inputs: InputState {
+                mods: winit::event::ModifiersState::default(),
+                pointers: HashMap::new(),
+            }
+        };
+        let window = Rc::new(RefCell::new(window));
+
         ctx.new_windows.push(window.clone());
         Ok(window)
     }
@@ -136,75 +184,142 @@ impl Window {
     }
 
     /// deliver window event, get actions
-    fn window_event(&mut self, ctx: &mut WindowCtx, window_event: &WindowEvent)
-    {
-        // handle window resize
-        if let WindowEvent::Resized(size) = window_event {
-            self.window.resize((*size).into());
-            return;
-        }
+    fn window_event(&mut self, ctx: &mut WindowCtx, window_event: &WindowEvent) {
 
-        /*let mut ctx = EventCtx {
+        let mut event_ctx = EventCtx {
             bounds: self.node.bounds.expect("layout not done")
         };
-        // TODO convert event
-        let event = unimplemented!();
-        // deliver the event to the node
-        self.node.event(&mut ctx, event)*/
+
+        match window_event {
+            WindowEvent::Resized(size) => {
+                self.window.resize((*size).into());
+                return;
+            }
+            WindowEvent::ModifiersChanged(m) => {
+                self.inputs.mods = *m;
+            }
+            WindowEvent::MouseInput { device_id, state, button, .. } => {
+                let pointer_state = self.inputs.pointers.entry(*device_id).or_insert(PointerState::default());
+                let button = match button {
+                    winit::event::MouseButton::Left => PointerButton::LEFT,
+                    winit::event::MouseButton::Right => PointerButton::RIGHT,
+                    winit::event::MouseButton::Middle => PointerButton::MIDDLE,
+                    winit::event::MouseButton::Other(3) => PointerButton::X1,
+                    winit::event::MouseButton::Other(4) => PointerButton::X2,
+                    winit::event::MouseButton::Other(b) => PointerButton(*b as u16)
+                };
+                match state {
+                    winit::event::ElementState::Pressed => pointer_state.buttons.set(button),
+                    winit::event::ElementState::Released => pointer_state.buttons.reset(button),
+                };
+
+                let p = PointerEvent {
+                    position: pointer_state.position,
+                    window_position: pointer_state.position,
+                    modifiers: self.inputs.mods,
+                    button: Some(button),
+                    buttons: pointer_state.buttons,
+                    pointer_id: *device_id
+                };
+
+                let e = match state {
+                    winit::event::ElementState::Pressed => {
+                        Event::PointerDown(p)
+                    }
+                    winit::event::ElementState::Released => {
+                        Event::PointerUp(p)
+                    }
+                };
+
+                self.node.event(&mut event_ctx, &e);
+            }
+            WindowEvent::CursorMoved {
+                device_id,
+                position,
+                ..
+            } => {
+                let logical = position.to_logical::<f64>(self.window.window().scale_factor());
+                let logical = Point::new(logical.x, logical.y);
+
+                let pointer_state = self.inputs.pointers.entry(*device_id).or_insert(PointerState::default());
+                pointer_state.position = logical;
+
+                let p = PointerEvent {
+                    position: logical,
+                    window_position: logical,
+                    modifiers: self.inputs.mods,
+                    button: None,
+                    buttons: pointer_state.buttons,
+                    pointer_id: *device_id
+                };
+                self.node.event(&mut event_ctx, &Event::PointerMove(p));
+            }
+
+            _ => {}
+        }
+
+        //dbg!(window_event);
     }
 
     /// Updates the current visual tree for this stage.
-    fn relayout<A, W: Widget<A>>(&mut self, ctx: &mut LayoutCtx<A>, widget: W)
-    {
+    fn relayout<A, W: Widget<A>>(&mut self, ctx: &mut LayoutCtx<A>, theme: &Theme, widget: W) {
         // get window logical size
-        let size : (f64,f64) = self.window.window().inner_size().to_logical::<f64>(1.0).into();
+        let size: (f64, f64) = self
+            .window
+            .window()
+            .inner_size()
+            .to_logical::<f64>(1.0)
+            .into();
+        dbg!(size);
         // perform layout, update the visual node
-        widget.layout(ctx, &mut self.node.cursor(), &BoxConstraints::loose(size.into()));
+        widget.layout(
+            ctx,
+            &mut self.node.cursor(),
+            &BoxConstraints::loose(size.into()),
+            theme,
+        );
         // calculate the absolute bounds of the nodes within the window
         self.node.propagate_bounds(Point::origin());
+        self.node.layout.size = size.into();
         // request a redraw of this window
         self.window.window().request_redraw()
     }
 
     /// Called when the window needs to be repainted.
-    fn paint(&mut self, renderer: &Renderer) {
+    fn paint(&mut self, theme: &Theme) {
         {
-            let mut painter = Painter::new(renderer, &mut self.window);
+            let mut draw_context = DrawContext::new(&mut self.window);
 
-            // clear the window first
-            // TODO: move this into a proper visual
-            painter.ctx.render_target_mut().clear(math2d::Color::from_u32(0x0047AB,1.0));
+            draw_context.clear(Color::new(0.0, 0.5, 0.8, 1.0));
 
             let mut ctx = PaintCtx {
-                bounds: self.node.bounds.expect("layout not done"),
-                painter: &mut painter,
+                draw_ctx: &mut draw_context,
+                size: Default::default(),
             };
-            self.node.paint(&mut ctx);
-            // drop painter
+            self.node.paint(&mut ctx, theme);
+            // drop draw_context
         }
         self.window.present();
     }
 }
 
 /// Runs the specified application.
-pub fn run_application<A: Application + 'static>(mut app: A) -> !
-{
+pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
     // winit event loop
     let event_loop = winit::event_loop::EventLoop::new();
     // platform-specific, window-independent states
-    let platform = unsafe { Platform::init().expect("failed to initialize platform") };
-    // target-independent renderer resources
-    let renderer = Renderer::new(&platform);
+    let platform = unsafe { Platform::init() };
+    // theme resources
+    let theme = Theme::new(&platform);
 
     // create a window to render the main view.
     let mut win_ctx = WindowCtx {
         platform: &platform,
-        renderer: &renderer,
         event_loop: &event_loop,
         new_windows: Vec::new(),
     };
-    let mut main_window = Window::open(&mut win_ctx,
-                                    WindowBuilder::new().with_title("Default")).expect("failed to create main window");
+    let mut main_window = Window::open(&mut win_ctx, WindowBuilder::new().with_title("Default"))
+        .expect("failed to create main window");
 
     // ID -> Weak<Window>
     let mut open_windows = HashMap::new();
@@ -212,12 +327,20 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> !
 
     let mut collector = Rc::new(ActionCollector::<A::Action>::new());
 
+    // perform the initial layout
+    let mut layout_ctx = LayoutCtx {
+        win_ctx: &mut win_ctx,
+        action_sink: collector.clone(),
+    };
+    main_window
+        .borrow_mut()
+        .relayout(&mut layout_ctx, &theme, app.view());
+
     event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
-        
+
         let mut win_ctx = WindowCtx {
             platform: &platform,
-            renderer: &renderer,
             event_loop: elwt,
             new_windows: Vec::new(),
         };
@@ -244,11 +367,10 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> !
                     // this will also send a redraw request for all affected windows.
                     let mut ctx = LayoutCtx {
                         win_ctx: &mut win_ctx,
-                        renderer: &renderer,
-                        action_sink: collector.clone()
+                        action_sink: collector.clone(),
                     };
 
-                    main_window.borrow_mut().relayout(&mut ctx, widget);
+                    main_window.borrow_mut().relayout(&mut ctx, &theme, widget);
                 }
             }
 
@@ -256,7 +378,7 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> !
                 // A window needs to be repainted
                 if let Some(window) = open_windows.get(&window_id) {
                     if let Some(window) = window.upgrade() {
-                        window.borrow_mut().paint(win_ctx.renderer);
+                        window.borrow_mut().paint(&theme);
                     }
                 }
             }
@@ -264,11 +386,13 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> !
         }
 
         // remove (and close) windows that were dropped
-        open_windows.retain(|_,window| window.strong_count() != 0);
+        open_windows.retain(|_, window| window.strong_count() != 0);
 
         // add the newly-created windows to the list of managed windows
         open_windows.extend(
-            mem::take(&mut win_ctx.new_windows).drain(..).map(|v| (v.borrow().id(), Rc::downgrade(&v)))
+            mem::take(&mut win_ctx.new_windows)
+                .drain(..)
+                .map(|v| (v.borrow().id(), Rc::downgrade(&v))),
         );
     })
 }

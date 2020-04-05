@@ -1,11 +1,15 @@
-use crate::layout::{PaintLayout, BoxConstraints, Layout, Size};
-use crate::renderer::{Painter, Renderer, TextLayout};
-use crate::visual::{Node, Visual, Cursor, PaintCtx};
-use crate::{Widget, Point};
 use crate::event::{Event, EventCtx};
+use crate::layout::{BoxConstraints, Layout, PaintLayout, Size};
+use crate::renderer::Theme;
+use crate::visual::{Cursor, Node, PaintCtx, Visual};
 use crate::widget::LayoutCtx;
-use std::any::Any;
+use crate::{Bounds, Point, Widget};
+use kyute_shell::drawing::{Color, DrawTextOptions};
+use kyute_shell::text::TextLayout;
 use log::trace;
+use std::any::Any;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct TextVisual {
     text: String,
@@ -13,18 +17,21 @@ pub struct TextVisual {
 }
 
 impl Visual for TextVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        trace!("Painting text into {}", ctx.bounds);
-        ctx.painter.draw_text(ctx.bounds.origin, &self.text_layout)
+    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
+        ctx.draw_text_layout(
+            Point::origin(),
+            &self.text_layout,
+            Color::new(1.0, 1.0, 1.0, 1.0),
+            DrawTextOptions::empty(),
+        )
     }
 
-    fn hit_test(&mut self, _point: Point, _layout: &PaintLayout) -> bool {
+    fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
         // TODO
         false
     }
 
-    fn event(&mut self, _event_ctx: &EventCtx, _event: &Event) {
-    }
+    fn event(&mut self, _event_ctx: &EventCtx, _event: &Event) {}
 
     fn as_any(&self) -> &dyn Any {
         self
@@ -40,18 +47,25 @@ pub struct Text {
     text: String,
 }
 
-impl<A> Widget<A> for Text
-{
-    fn layout(self, ctx: &mut LayoutCtx<A>, cursor: &mut Cursor, constraints: &BoxConstraints)
-    {
+impl<A: 'static> Widget<A> for Text {
+    fn layout(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        cursor: &mut Cursor,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) {
         let text = self.text;
 
-        let text_layout = ctx.renderer.layout_text(&text, constraints.biggest());
-        let text_size = Size::new(
-            text_layout.metrics().width as f64,
-            text_layout.metrics().height as f64,
+        let text_layout = TextLayout::new(
+            ctx.platform(),
+            &text,
+            &theme.label_text_format,
+            constraints.biggest(),
         )
-        .ceil();
+        .unwrap();
+
+        let text_size = text_layout.metrics().bounds.size.ceil();
 
         let baseline = text_layout
             .line_metrics()
@@ -60,9 +74,7 @@ impl<A> Widget<A> for Text
 
         let layout = Layout::new(text_size).with_baseline(baseline);
         trace!("Text layout {:?}", layout);
-        cursor.overwrite(None, layout, TextVisual {
-            text, text_layout
-        });
+        cursor.overwrite(None, layout, TextVisual { text, text_layout });
     }
 }
 

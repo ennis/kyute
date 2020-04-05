@@ -1,23 +1,50 @@
 //! Elements of the visual tree (after layout): `Visual`s and `Node`s.
-use crate::event::{Event, EventCtx};
-use crate::layout::{Layout, PaintLayout, Point, Offset};
-use crate::renderer::Painter;
-use crate::renderer::Renderer;
+use crate::event::{Event, EventCtx, PointerEvent};
+use crate::layout::{Layout, Offset, PaintLayout, Point};
+use crate::renderer::Theme;
+use crate::state::NodeKey;
 use crate::Bounds;
 use euclid::{Point2D, UnknownUnit};
+use log::trace;
 use std::any::{Any, TypeId};
 use std::cell::{RefCell, RefMut};
-use std::ops::Range;
+use std::ops::{Deref, Range};
 use std::rc::{Rc, Weak};
-use std::{mem, any};
-use crate::state::NodeKey;
-use log::trace;
+use std::any;
+
+use kyute_shell::drawing::{Size, Transform};
+use kyute_shell::window::DrawContext;
+use winapi::_core::ops::DerefMut;
 
 /// Context passed to [`Visual::paint`].
 pub struct PaintCtx<'a, 'b> {
-    /// Calculated bounds of the visual.
-    pub bounds: Bounds,
-    pub painter: &'a mut Painter<'b>,
+    pub(crate) draw_ctx: &'a mut DrawContext<'b>,
+    pub(crate) size: Size,
+}
+
+impl<'a, 'b> PaintCtx<'a, 'b> {
+    /// Returns the bounds of the visual.
+    pub fn bounds(&self) -> Bounds {
+        Bounds::new(Point::origin(), self.size)
+    }
+
+    pub fn size(&self) -> Size {
+        self.size
+    }
+}
+
+impl<'a, 'b> Deref for PaintCtx<'a, 'b> {
+    type Target = DrawContext<'b>;
+
+    fn deref(&self) -> &Self::Target {
+        self.draw_ctx
+    }
+}
+
+impl<'a, 'b> DerefMut for PaintCtx<'a, 'b> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.draw_ctx
+    }
 }
 
 /// The interface for painting a visual element on the screen, and handling events that target this
@@ -26,12 +53,15 @@ pub struct PaintCtx<'a, 'b> {
 /// [`Visual`]s are typically wrapped in a [`Node`], which bundles the visual and the layout
 /// information of the visual within a parent object.
 pub trait Visual: Any {
-    /// Draws the visual using the specified painter. `layout` specifies where on the screen the
-    /// visual should be drawn.
-    fn paint(&mut self, ctx: &mut PaintCtx);
+    /// Draws the visual using the specified painter.
+    ///
+    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme);
 
     /// Checks if the given point falls inside the widget.
-    fn hit_test(&mut self, point: Point, layout: &PaintLayout) -> bool;
+    ///
+    /// Usually it's a simple matter of checking whether the point falls in the provided bounds,
+    /// but some widgets may want a more complex hit test.
+    fn hit_test(&mut self, point: Point, bounds: Bounds) -> bool;
 
     /// Handles an event that targets this visual, and returns the _actions_ emitted in response
     /// to this event.
@@ -42,31 +72,13 @@ pub trait Visual: Any {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-/*
-/// Boxed visuals implementation.
-impl Visual for Box<dyn Visual> {
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.as_mut().paint(ctx)
-    }
-
-    fn hit_test(&mut self, point: Point, layout: &PaintLayout) -> bool {
-        self.as_mut().hit_test(point, layout)
-    }
-
-    fn event(&mut self, event_ctx: &EventCtx, event: &Event) {
-        self.as_mut().event(event_ctx, event)
-    }
-}*/
-
 /// A visual that has no particular behavior, used for layout wrappers.
 pub struct LayoutBox;
 
 impl Visual for LayoutBox {
-    fn paint(&mut self, _ctx: &mut PaintCtx) {
-        // nothing to paint
-    }
+    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {}
 
-    fn hit_test(&mut self, _point: Point, _layout: &PaintLayout) -> bool {
+    fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
         // TODO
         true
     }
@@ -84,25 +96,6 @@ impl Visual for LayoutBox {
     }
 }
 
-// needs of the visual tree
-// - ordered children
-// - can edit children (reconciliation?)
-//      - insert range, remove range
-//
-// - can keep a weak ref to an element in the visual tree
-// - some parts of a node should be mutable
-// - ref to nodes should not be invalidated on updates
-//
-// identification:
-// - layout_ctx: push_id, pop_id
-//
-// modifying the tree
-// - layout_ctx.cursor().create_node(/*new*/ || {}, /* recycle */ {});
-//      -> will create a new node at the position of the cursor if it's the correct type and has the expected key,
-//          otherwise, will scan the tree at the current level to find a matching node type and key,
-//          and remove all nodes in-between
-//      -> if not found, then will *insert* a node at the current position of the cursor
-
 /// A node within the visual tree.
 ///
 /// It contains the bounds of the visual, and an instance of [`Visual`] that defines its behavior:
@@ -114,13 +107,16 @@ impl Visual for LayoutBox {
 /// visual tree, or send events to the node that corresponds to a particular window.
 /// Because of those use cases, we need a way to reference and access (i.e. to "address") a node
 /// inside the tree.
-/// There seems to be two main classes of solutions to this problem:
+/// There seems to be three main classes of solutions to this problem:
 /// - A: store nodes in a big vector or hash map, and use IDs or indices to identify them. The
 ///      parent-child relations are stored in another vector.
 ///     - to access the node, look up the index
 ///
 /// - B: wrap nodes in `Rc<RefCell<>>`. We can hold a reference to node with `Weak<>` or `Rc<>`,
 ///   depending on the desired behavior.
+///
+/// - C: actually traverse the whole visual tree to search for the target node.
+///  We want to avoid that.
 ///
 /// At first glance, option A seems less wasteful, because all nodes are allocated in a big array
 /// and people often suggest that this leads to more efficient memory access patterns.
@@ -160,7 +156,7 @@ pub struct Node<V: ?Sized> {
     pub visual: V,
 }
 
-//pub type VisualNode = Node<dyn Visual>;
+pub type RcNode = Rc<RefCell<Node<dyn Visual>>>;
 
 impl<V: Visual> Node<V> {
     /// Creates a new node from a layout and a visual.
@@ -202,25 +198,72 @@ impl<V: Visual + ?Sized> Node<V> {
         }
     }
 
-    pub(crate) fn paint(&mut self, ctx: &mut PaintCtx) {
-        let mut ctx = PaintCtx {
-            bounds: self.bounds.expect("layout not done"),
-            painter: ctx.painter,
+    pub fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
+        let mut ctx2 = PaintCtx {
+            size: self.layout.size,
+            draw_ctx: ctx.draw_ctx,
         };
-        self.visual.paint(&mut ctx);
+
+        let saved = ctx2.draw_ctx.save();
+        ctx2.draw_ctx.transform(&self.layout.offset.to_transform());
+        self.visual.paint(&mut ctx2, theme);
 
         for c in self.children.iter() {
-            c.borrow_mut().paint(&mut ctx);
+            c.borrow_mut().paint(&mut ctx2, theme);
+        }
+
+        ctx2.draw_ctx.restore();
+    }
+
+    fn translate_pointer_event(&self, pointer: &PointerEvent) -> Option<PointerEvent>
+    {
+        // don't use `PointerEvent::position` because we may receive the event directly from the
+        // event loop and not from the direct parent. (so position can be relative to the window in
+        // the former case, or to the parent node in the latter).
+        let bounds = self.bounds.expect("layout");
+        let hit = bounds.contains(pointer.window_position);
+
+        trace!("hit test point={} bounds={}", pointer.window_position, bounds);
+
+        if hit {
+            trace!("hit test node {}", bounds);
+            Some(PointerEvent {
+                position: pointer.window_position - bounds.origin.to_vector(),
+                ..*pointer
+            })
+        } else {
+            None
         }
     }
 
-    pub(crate) fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
-        // TODO
-        unimplemented!()
+    pub fn event(&mut self, ctx: &mut EventCtx, event: &Event)
+    {
+        let child_event = match event {
+            Event::PointerUp(p) => {
+                self.translate_pointer_event(p).map(Event::PointerUp)
+            },
+            Event::PointerDown(p) => {
+                self.translate_pointer_event(p).map(Event::PointerDown)
+            },
+            Event::PointerMove(p) => {
+                // TODO pointer grab
+                self.translate_pointer_event(p).map(Event::PointerMove)
+            },
+            e => Some(*e),
+        };
+
+        if let Some(child_event) = child_event {
+            self.visual.event(ctx, &child_event);
+            // distribute event to children
+            // FIXME children don't receive events if hit test on the parent fails:
+            // this might not always be the behavior that we want
+            for c in self.children.iter() {
+                c.borrow_mut().event(ctx, &child_event);
+            }
+        }
+
     }
 }
-
-
 
 impl Node<dyn Visual> {
     /// Downcasts this node to a concrete type.
@@ -235,24 +278,6 @@ impl Node<dyn Visual> {
     }
 }
 
-/*/// Nodes can also be directly used as Visuals: they apply their layout's offset
-/// to the `PaintLayout` before calling the wrapped visual.
-impl<A, V: Visual<A>> Visual<A> for Node<V> {
-    fn paint(&mut self, painter: &mut Painter, layout: &PaintLayout) {
-        let layout = PaintLayout::new(layout.bounds.origin, &self.layout);
-        self.visual.paint(painter, &layout)
-    }
-
-    fn hit_test(&mut self, point: Point, layout: &PaintLayout) -> bool {
-        let layout = PaintLayout::new(layout.bounds.origin, &self.layout);
-        self.visual.hit_test(point, &layout)
-    }
-
-    fn event(&mut self, ctx: &EventCtx, event: &Event) -> Vec<A> {
-        let ctx = ctx.with_layout(&self.layout);
-        self.visual.event(&ctx, event)
-    }
-}*/
 
 /// A cursor that points to a child node inside a parent.
 pub struct Cursor<'a> {
@@ -262,11 +287,6 @@ pub struct Cursor<'a> {
     skip_list: Vec<Range<usize>>,
 }
 
-// control flow for containers:
-// - open container node, using key and type
-// - move the cursor to the beginning of the children of the opened node
-// - request all children, passing the cursor
-// - the list of children is now updated
 
 impl<'a> Cursor<'a> {
     ///
@@ -309,7 +329,10 @@ impl<'a> Cursor<'a> {
                 self.list[cur_pos..=pos].rotate_right(1);
                 trace!("[visual tree: {}] rotate in place", any::type_name::<V>());
             } else {
-                trace!("[visual tree: {}] found where expected", any::type_name::<V>());
+                trace!(
+                    "[visual tree: {}] found where expected",
+                    any::type_name::<V>()
+                );
             }
             if overwrite {
                 // match found, but replace anyway
@@ -319,14 +342,13 @@ impl<'a> Cursor<'a> {
             // no match, insert new
             self.list.insert(
                 cur_pos,
-                Rc::new(RefCell::new(Node::new(Layout::default(), key, create_fn()))),
+                Rc::new(RefCell::new(Node::new(layout, key, create_fn()))),
             );
             trace!("[visual tree: {}] create new", any::type_name::<V>());
         }
 
         RefMut::map(self.next().unwrap(), |node| node.downcast_mut().unwrap())
     }
-
 
     /// Inserts a node into the tree or retrieves the node at the current position.
     ///
@@ -338,10 +360,11 @@ impl<'a> Cursor<'a> {
     /// If no matching node is found, a new one is created by invoking the provided closure, and
     /// inserted at the current cursor position. The current cursor position is then advanced to
     /// the next node.
-    pub fn open<V: Visual, F: FnOnce() -> V>( &mut self,
-                            key: Option<NodeKey>,
-                            create_fn: F) -> RefMut<Node<V>>
-    {
+    pub fn open<V: Visual, F: FnOnce() -> V>(
+        &mut self,
+        key: Option<NodeKey>,
+        create_fn: F,
+    ) -> RefMut<Node<V>> {
         self.open_internal(key, Layout::default(), false, create_fn)
     }
 
@@ -352,8 +375,7 @@ impl<'a> Cursor<'a> {
         key: Option<NodeKey>,
         layout: Layout,
         visual: V,
-    ) -> RefMut<Node<V>>
-    {
+    ) -> RefMut<Node<V>> {
         self.open_internal(key, layout, true, move || visual)
     }
 
@@ -372,7 +394,6 @@ impl<'a> Cursor<'a> {
         self.list.drain(self.index..);
     }
 }
-
 
 impl<'a> Drop for Cursor<'a> {
     fn drop(&mut self) {

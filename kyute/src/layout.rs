@@ -232,7 +232,6 @@ impl PaintLayout {
     }
 }
 
-
 // Bikeshedding
 // - Layout
 // - Geometry

@@ -1,9 +1,9 @@
 use crate::layout::BoxConstraints;
-use crate::renderer::Renderer;
-use crate::visual::{Node, Cursor};
+use crate::renderer::Theme;
+use crate::visual::{Cursor, Node};
+use crate::widget::LayoutCtx;
 use crate::Widget;
 use std::hash::Hash;
-use crate::widget::LayoutCtx;
 
 /// Identifies a widget.
 pub struct Id<W> {
@@ -17,8 +17,14 @@ impl<W> Id<W> {
 }
 
 impl<A: 'static, W: Widget<A>> Widget<A> for Id<W> {
-    fn layout(self, ctx: &mut LayoutCtx<A>, tree_cursor: &mut Cursor, constraints: &BoxConstraints) {
+    fn layout(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        tree_cursor: &mut Cursor,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) {
         // TODO ID?
-        self.inner.layout(ctx, tree_cursor, constraints)
+        self.inner.layout(ctx, tree_cursor, constraints, theme)
     }
 }
