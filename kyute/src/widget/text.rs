@@ -1,7 +1,7 @@
 use crate::event::{Event, EventCtx};
 use crate::layout::{BoxConstraints, Layout, PaintLayout, Size};
 use crate::renderer::Theme;
-use crate::visual::{Cursor, Node, PaintCtx, Visual};
+use crate::visual::{Node, PaintCtx, Visual};
 use crate::widget::LayoutCtx;
 use crate::{Bounds, Point, Widget};
 use kyute_shell::drawing::{Color, DrawTextOptions};
@@ -31,7 +31,7 @@ impl Visual for TextVisual {
         false
     }
 
-    fn event(&mut self, _event_ctx: &EventCtx, _event: &Event) {}
+    fn event(&mut self, _event_ctx: &mut EventCtx, _event: &Event) {}
 
     fn as_any(&self) -> &dyn Any {
         self
@@ -48,18 +48,19 @@ pub struct Text {
 }
 
 impl<A: 'static> Widget<A> for Text {
+    type Visual = TextVisual;
+
     fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        cursor: &mut Cursor,
+        node: Option<Node<TextVisual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) {
-        let text = self.text;
-
+        theme: &Theme
+    ) -> Node<TextVisual>
+    {
         let text_layout = TextLayout::new(
             ctx.platform(),
-            &text,
+            &self.text,
             &theme.label_text_format,
             constraints.biggest(),
         )
@@ -73,8 +74,8 @@ impl<A: 'static> Widget<A> for Text {
             .map(|m| m.baseline.ceil() as f64);
 
         let layout = Layout::new(text_size).with_baseline(baseline);
-        trace!("Text layout {:?}", layout);
-        cursor.overwrite(None, layout, TextVisual { text, text_layout });
+
+        Node::new(layout, None, TextVisual { text: self.text, text_layout })
     }
 }
 

@@ -4,11 +4,12 @@ use crate::platform::Platform;
 use std::mem::MaybeUninit;
 use std::ops::{Bound, Range, RangeBounds};
 use std::ptr;
-use winapi::shared::minwindef::TRUE;
+use winapi::shared::minwindef::{TRUE, FALSE};
 use winapi::shared::winerror::{ERROR_INSUFFICIENT_BUFFER, HRESULT_FROM_WIN32, SUCCEEDED};
 use winapi::um::dwrite::*;
 use wio::com::ComPtr;
 use wio::wide::ToWide;
+
 
 ///
 #[derive(Clone)]
@@ -165,7 +166,7 @@ impl<'a> TextFormatBuilder<'a> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct TextMetrics {
     pub bounds: Rect,
     pub width_including_trailing_whitespace: f32,
@@ -187,7 +188,7 @@ impl From<DWRITE_TEXT_METRICS> for TextMetrics {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct LineMetrics {
     pub length: u32,
     pub trailing_whitespace_length: u32,
@@ -210,40 +211,10 @@ impl From<DWRITE_LINE_METRICS> for LineMetrics {
     }
 }
 
-/// Text hit-test metrics.
-pub struct HitTestMetrics {
-    /// Text position in UTF-8 code units (bytes).
-    pub text_position: usize,
-    pub length: u32,
-    pub bounds: Rect,
-}
-
-impl HitTestMetrics {
-    pub(crate) fn from_dwrite(metrics: &DWRITE_HIT_TEST_METRICS, text: &str) -> HitTestMetrics {
-        // convert utf16 code unit offset to utf8
-        let text_position =
-            count_until_utf16(text, metrics.textPosition as usize).expect("invalid UTF-16 offset");
-        HitTestMetrics {
-            text_position,
-            length: metrics.length,
-            bounds: Rect::new(
-                Point::new(metrics.left as f64, metrics.top as f64),
-                Size::new(metrics.width as f64, metrics.height as f64),
-            ),
-        }
-    }
-}
-
-/// Return value of [TextLayout::hit_test_text_position].
-pub struct HitTestTextPosition {
-    pub point: Point,
-    pub metrics: HitTestMetrics,
-}
-
 /// From [piet-direct2d](https://github.com/linebender/piet/blob/master/piet-direct2d/src/text.rs):
 /// Counts the number of utf-16 code units in the given string.
 /// from xi-editor
-pub(crate) fn count_utf16(s: &str) -> usize {
+fn count_utf16(s: &str) -> usize {
     let mut utf16_count = 0;
     for &b in s.as_bytes() {
         if (b as i8) >= -0x40 {
@@ -259,25 +230,57 @@ pub(crate) fn count_utf16(s: &str) -> usize {
 /// From [piet-direct2d](https://github.com/linebender/piet/blob/master/piet-direct2d/src/text.rs):
 /// returns utf8 text position (code unit offset)
 /// at the given utf-16 text position
-pub(crate) fn count_until_utf16(s: &str, utf16_text_position: usize) -> Option<usize> {
-    let mut utf8_count = 0;
+fn count_until_utf16(s: &str, utf16_text_position: usize) -> usize {
     let mut utf16_count = 0;
-    for &b in s.as_bytes() {
-        if (b as i8) >= -0x40 {
-            utf16_count += 1;
-        }
-        if b >= 0xf0 {
-            utf16_count += 1;
-        }
 
+    for (i,c) in s.char_indices() {
+        utf16_count += c.len_utf16();
         if utf16_count > utf16_text_position {
-            return Some(utf8_count);
+            return i
         }
-
-        utf8_count += 1;
     }
 
-    None
+    s.len()
+}
+
+/// Text hit-test metrics.
+#[derive(Copy,Clone,Debug,PartialEq)]
+pub struct HitTestMetrics {
+    /// Text position in UTF-8 code units (bytes).
+    pub text_position: usize,
+    pub length: usize,
+    pub bounds: Rect,
+}
+
+impl HitTestMetrics {
+    pub(crate) fn from_dwrite(metrics: &DWRITE_HIT_TEST_METRICS, text: &str) -> HitTestMetrics {
+        // convert utf16 code unit offset to utf8
+        dbg!(metrics.textPosition);
+        let text_position =
+            count_until_utf16(text, metrics.textPosition as usize);
+        HitTestMetrics {
+            text_position,
+            length: metrics.length as usize,
+            bounds: Rect::new(
+                Point::new(metrics.left as f64, metrics.top as f64),
+                Size::new(metrics.width as f64, metrics.height as f64),
+            ),
+        }
+    }
+}
+
+/// Return value of [TextLayout::hit_test_point].
+#[derive(Copy,Clone,Debug,PartialEq)]
+pub struct HitTestPoint {
+    pub is_trailing_hit: bool,
+    pub metrics: HitTestMetrics,
+}
+
+/// Return value of [TextLayout::hit_test_text_position].
+#[derive(Copy,Clone,Debug,PartialEq)]
+pub struct HitTestTextPosition {
+    pub point: Point,
+    pub metrics: HitTestMetrics,
 }
 
 /// Text layout.
@@ -314,7 +317,7 @@ impl TextLayout {
         }
     }
 
-    pub fn hit_test_point(&self, point: Point) -> Result<HitTestMetrics> {
+    pub fn hit_test_point(&self, point: Point) -> Result<HitTestPoint> {
         unsafe {
             let mut is_trailing_hit = 0;
             let mut is_inside = 0;
@@ -328,7 +331,10 @@ impl TextLayout {
             );
 
             error::wrap_hr(hr, || {
-                HitTestMetrics::from_dwrite(&metrics.assume_init(), &self.text)
+                HitTestPoint {
+                    is_trailing_hit: is_trailing_hit != 0,
+                    metrics:  HitTestMetrics::from_dwrite(&metrics.assume_init(), &self.text)
+                }
             })
         }
     }
@@ -346,13 +352,15 @@ impl TextLayout {
         // convert the text position to an utf-16 offset (inspired by piet-direct2d).
         let pos_utf16 = count_utf16(&self.text[0..text_position]);
 
+        dbg!(pos_utf16);
+
         unsafe {
             let mut point_x = 0.0f32;
             let mut point_y = 0.0f32;
             let mut metrics = MaybeUninit::<DWRITE_HIT_TEST_METRICS>::uninit();
             let hr = self.ptr.HitTestTextPosition(
                 pos_utf16 as u32,
-                TRUE,
+                FALSE,
                 &mut point_x,
                 &mut point_y,
                 metrics.as_mut_ptr(),

@@ -19,6 +19,16 @@ pub type Point = euclid::default::Point2D<f64>;
 pub type Transform = euclid::default::Transform2D<f64>;
 pub type Color = palette::Srgba;
 
+pub trait RectExt {
+    fn stroke_inset(self, width: f64) -> Self;
+}
+
+impl RectExt for Rect {
+    fn stroke_inset(self, width: f64) -> Self {
+        self.inflate(-width * 0.5, -width*0.5)
+    }
+}
+
 pub(crate) fn mk_color_f(color: Color) -> D2D1_COLOR_F {
     let (r, g, b, a) = color.into_components();
     D2D1_COLOR_F { r, g, b, a }

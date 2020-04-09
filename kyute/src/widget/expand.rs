@@ -1,6 +1,6 @@
 use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
-use crate::visual::{Cursor, Node};
+use crate::visual::Node;
 use crate::widget::{LayoutCtx, Widget};
 
 /// Expands the child widget to fill all its available space.
@@ -10,16 +10,19 @@ impl<A: 'static, W> Widget<A> for Expand<W>
 where
     W: Widget<A>,
 {
+    type Visual = W::Visual;
+
     fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        tree_cursor: &mut Cursor,
+        node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) {
+        theme: &Theme
+    ) -> Node<Self::Visual>
+    {
         self.0.layout(
             ctx,
-            tree_cursor,
+            node,
             &BoxConstraints::tight(constraints.biggest()),
             theme,
         )

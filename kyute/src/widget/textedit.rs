@@ -2,11 +2,13 @@
 use crate::event::{Event, EventCtx};
 use crate::layout::{BoxConstraints, Layout, PaintLayout, Size};
 use crate::renderer::Theme;
-use crate::visual::{Cursor, Node, PaintCtx, Visual};
+use crate::visual::{Node, PaintCtx, Visual, EventCtx};
 use crate::widget::LayoutCtx;
 use crate::{Bounds, Point, Widget};
+use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt};
 use kyute_shell::text::TextLayout;
 use log::trace;
+use palette::{Srgb, Srgba};
 use std::any::Any;
 use std::ops::Range;
 use unicode_segmentation::GraphemeCursor;
@@ -18,9 +20,8 @@ use unicode_segmentation::GraphemeCursor;
 /// user started the selection gesture from a later point in the text and then went back
 /// (right-to-left in LTR languages). In this case, the cursor will appear at the "beginning"
 /// (i.e. left, for LTR) of the selection.
-#[derive(Copy,Clone,Debug,Eq,PartialEq)]
-pub struct Selection
-{
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct Selection {
     pub start: usize,
     pub end: usize,
 }
@@ -38,8 +39,8 @@ impl Selection {
         self.start == self.end
     }
 
-    pub fn empty(at: usize) ->  Selection {
-        Selection {start: at, end: at}
+    pub fn empty(at: usize) -> Selection {
+        Selection { start: at, end: at }
     }
 }
 
@@ -56,17 +57,11 @@ pub struct TextEditVisual {
     /// The currently selected range. If no text is selected, this is a zero-length range
     /// at the cursor position.
     selection: Selection,
-}
 
-// PointerDown (mouse grab on)
-//  - hit test
-//  - set cursor
-// PointerMove
-//  - hit test
-//  - set selection end
-// PointerUp
-//  - hit test
-//  - set selection end
+    /// Flag that indicates that the visual needs to be repainted.
+    /// Q: Could also be a return value of the methods of visual.
+    needs_repaint: bool,
+}
 
 pub enum Movement {
     Left,
@@ -82,26 +77,23 @@ fn prev_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
 
 fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
     let mut c = GraphemeCursor::new(offset, text.len(), true);
-    c.prev_boundary(&text, 0).unwrap()
+    c.next_boundary(&text, 0).unwrap()
 }
 
 impl TextEditVisual {
-
     /// Moves the cursor forward or backward.
-    pub fn move_cursor(&mut self, movement: Movement, modify_selection: bool)
-    {
-        let offset = match movement {
-            Movement::Left => {
-                prev_grapheme_cluster(&self.text, self.selection.end).unwrap_or(self.selection.end)
-            },
-            Movement::Right => {
-                next_grapheme_cluster(&self.text, self.selection.end).unwrap_or(self.selection.end)
-            },
-            Movement::LeftWord | Movement::RightWord =>  {
-                // TODO word navigation (unicode word segmentation)
-                unimplemented!()
-            }
-        };
+    pub fn move_cursor(&mut self, movement: Movement, modify_selection: bool) {
+        let offset =
+            match movement {
+                Movement::Left => prev_grapheme_cluster(&self.text, self.selection.end)
+                    .unwrap_or(self.selection.end),
+                Movement::Right => next_grapheme_cluster(&self.text, self.selection.end)
+                    .unwrap_or(self.selection.end),
+                Movement::LeftWord | Movement::RightWord => {
+                    // TODO word navigation (unicode word segmentation)
+                    unimplemented!()
+                }
+            };
 
         if modify_selection {
             self.selection.end = offset;
@@ -109,6 +101,7 @@ impl TextEditVisual {
             self.selection = Selection::empty(offset);
         }
 
+        self.needs_repaint = true;
         // reset blink
         // need repaint
         // no need layout
@@ -118,9 +111,9 @@ impl TextEditVisual {
     pub fn insert(&mut self, text: &str) {
         let min = self.selection.min();
         let max = self.selection.max();
-
         self.text.replace_range(min..max, text);
         self.selection = Selection::empty(min + text.len());
+        self.needs_repaint = true;
     }
 
     /// Removes text.
@@ -133,66 +126,94 @@ impl TextEditVisual {
             return;
         }
         self.insert("");
-
+        self.needs_repaint = true;
         // reset blink
         // need layout
-        // need repaint
     }
 
     /// Sets cursor position.
     pub fn set_cursor(&mut self, pos: usize) {
+        if self.selection.is_empty() && self.selection.end == pos {
+            return;
+        }
         self.selection = Selection::empty(pos);
-
+        self.needs_repaint = true;
         // reset blink
-        // need repaint
     }
 
     pub fn set_selection_end(&mut self, pos: usize) {
         if self.selection.end == pos {
             return;
         }
-
         self.selection.end = pos;
-
+        self.needs_repaint = true;
         // reset blink
-        // need repaint
     }
 }
 
-// focus:
-// - on pointer down, gain focus, send Event::FocusOn
-//
-// tab navigation:
-// - move focus to sibling
-//      - node.parent, go to next node that has tab navigation
-//      - if no next, then go up, recurse
-//
-// Node:
-// - tab_navigation: bool
-// -
-
 impl Visual for TextEditVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
-        //ctx.painter.draw_text_with_selection_range(ctx.bounds.origin, &self.text_layout, self.selection.clone());
+        let size = ctx.size;
+
+        let bg_color: Color = Srgb::from_format(palette::named::WHITE).into();
+        let border_color: Color = Srgb::from_format(palette::named::BLACK).into();
+
+        let rect = ctx.bounds();
+        // box background
+        ctx.fill_rectangle(rect.stroke_inset(1.0), bg_color);
+        // border
+        ctx.draw_rectangle(rect.stroke_inset(1.0), border_color, 1.0);
+
+        // text
+        ctx.draw_text_layout(
+            Point::origin(),
+            &self.text_layout,
+            border_color,
+            DrawTextOptions::empty(),
+        );
+
+        // caret
+        eprintln!("selection={:?}", self.selection);
+        let caret_hit_test = self
+            .text_layout
+            .hit_test_text_position(self.selection.end)
+            .unwrap();
+        ctx.fill_rectangle(
+            Rect::new(caret_hit_test.point, Size::new(1.0, 14.0)),
+            Color::new(0.0, 0.0, 0.0, 1.0),
+        );
+
+        self.needs_repaint = false;
     }
 
     fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
         false
     }
 
-    fn event(&mut self, ctx: &EventCtx, event: &Event) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event)
+    {
         match event {
             Event::PointerDown(p) => {
+                let hit = self.text_layout.hit_test_point(p.position).unwrap();
+                eprintln!("{:?}", hit);
 
-                //ctx.grab_pointer(); // redirect all pointer events to this widget until pointerUp
-            },
-            Event::PointerMove(p) => {
+                let pos = if hit.is_trailing_hit {
+                    hit.metrics.text_position + hit.metrics.length
+                } else {
+                    hit.metrics.text_position
+                };
 
-            },
-            Event::PointerUp(p) => {
+                self.set_cursor(pos);
 
+                ctx.set_pointer_grab();
             }
+            Event::PointerMove(p) => {}
+            Event::PointerUp(p) => {}
             _ => {}
+        }
+
+        if self.needs_repaint {
+            ctx.request_redraw();
         }
     }
 
@@ -209,30 +230,32 @@ pub struct TextEdit {
     text: String,
 }
 
-impl<A: 'static> Widget<A> for TextEdit {
+impl<A: 'static> Widget<A> for TextEdit
+{
+    type Visual = TextEditVisual;
+
     fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        cursor: &mut Cursor,
+        node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) {
-        // TODO
+        theme: &Theme
+    ) -> Node<Self::Visual>
+    {
         let text = &self.text;
         let platform = ctx.platform();
 
-        let mut node = cursor.open(None, move || TextEditVisual {
+        let mut node = node.unwrap_or_else(|| Node::new(Layout::default(), None, TextEditVisual {
             text: text.to_owned(),
             text_layout: TextLayout::new(
                 platform,
                 &text,
                 &theme.label_text_format,
                 constraints.biggest(),
-            )
-            .unwrap(),
+            ).unwrap(),
             selection: Selection::empty(0),
-        });
-        let node = &mut node;
+            needs_repaint: false,
+        }));
 
         if &node.visual.text != text {
             // text changed, relayout
@@ -255,6 +278,8 @@ impl<A: 'static> Widget<A> for TextEdit {
             .map(|m| m.baseline.ceil() as f64);
 
         node.layout = Layout::new(text_size).with_baseline(baseline);
+
+        node
     }
 }
 

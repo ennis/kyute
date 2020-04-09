@@ -3,7 +3,7 @@ use crate::event::{Event, EventCtx, PointerEvent};
 use crate::layout::{Layout, Offset, PaintLayout, Point};
 use crate::renderer::Theme;
 use crate::state::NodeKey;
-use crate::Bounds;
+use crate::{Bounds, BoxConstraints, Widget};
 use euclid::{Point2D, UnknownUnit};
 use log::trace;
 use std::any::{Any, TypeId};
@@ -14,7 +14,9 @@ use std::any;
 
 use kyute_shell::drawing::{Size, Transform};
 use kyute_shell::window::DrawContext;
-use winapi::_core::ops::DerefMut;
+use std::ops::DerefMut;
+use crate::application::WindowCtx;
+use crate::widget::ActionSink;
 
 /// Context passed to [`Visual::paint`].
 pub struct PaintCtx<'a, 'b> {
@@ -47,6 +49,86 @@ impl<'a, 'b> DerefMut for PaintCtx<'a, 'b> {
     }
 }
 
+
+/// Last known state of various input devices.
+pub(crate) struct InputState {
+    /// Current state of keyboard modifiers.
+    mods: winit::event::ModifiersState,
+    /// Current state of pointers.
+    pointers: HashMap<DeviceId, PointerState>,
+}
+
+pub(crate) struct FocusState {
+    /// the node that has the pointer grab.
+    pointer_grab: Weak<RefCell<Node<dyn Visual>>>,
+    /// the node that has the keyboard focus.
+    focus: Weak<RefCell<Node<dyn Visual>>>
+}
+
+/// Context passed to [`Visual::event`] during event propagation.
+/// Also serves as a return value for this function.
+pub struct EventCtx<'a> {
+    input_state: &'a InputState,
+    focus_state: &'a mut FocusState,
+    /// The bounds of the current visual.
+    bounds: Bounds,
+    /// A redraw has been requested.
+    redraw_requested: bool,
+    /// The passed event was handled.
+    handled: bool,
+    /// The current node has asked to get the pointer grab
+    pointer_grab: bool,
+}
+
+impl<'a> EventCtx<'a> {
+    pub(crate) fn new(input_state: &'a InputState, focus_state: &'a mut FocusState) -> EventCtx<'a> {
+        EventCtx {
+            input_state,
+            focus_state,
+            bounds: Bounds::default(),
+            redraw_requested: false,
+            handled: false,
+            pointer_grab: false,
+        }
+    }
+
+    fn make_child_ctx(&mut self, bounds: Bounds) -> EventCtx<'a> {
+        EventCtx {
+            input_state: self.input_state,
+            focus_state: self.focus_state,
+            bounds,
+            handled: false,
+            pointer_grab: false,
+            redraw_requested: false,
+        }
+    }
+
+    /// Returns the bounds of the current widget.
+    pub fn bounds(&self) -> Bounds {
+        bounds
+    }
+
+    /// Requests a redraw of the current visual.
+    pub fn request_redraw(&mut self) {
+        self.redraw_requested = true;
+    }
+
+    /// Requests that the current node grabs all pointer events.
+    pub fn set_pointer_grab(&mut self) {
+        self.pointer_grab = true;
+    }
+
+    /// Releases the pointer grab, if the current node is holding it.
+    pub fn reset_pointer_grab(&mut self) {
+    }
+
+    /// Signals that the passed event was handled and should not bubble up further.
+    pub fn set_handled(&mut self) {
+        self.handled = true;
+    }
+}
+
+
 /// The interface for painting a visual element on the screen, and handling events that target this
 /// visual.
 ///
@@ -65,7 +147,7 @@ pub trait Visual: Any {
 
     /// Handles an event that targets this visual, and returns the _actions_ emitted in response
     /// to this event.
-    fn event(&mut self, event_ctx: &EventCtx, event: &Event);
+    fn event(&mut self, event_ctx: &mut EventCtx, event: &Event);
 
     /// as_any for downcasting
     fn as_any(&self) -> &dyn Any;
@@ -83,7 +165,7 @@ impl Visual for LayoutBox {
         true
     }
 
-    fn event(&mut self, event_ctx: &EventCtx, event: &Event) {
+    fn event(&mut self, event_ctx: &mut EventCtx, event: &Event) {
         // nothing to handle
     }
 
@@ -93,6 +175,26 @@ impl Visual for LayoutBox {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+}
+
+/// A list of Rc-RefCell wrapped nodes with utilities for reconciliation.
+pub struct NodeList {
+    pub list: Vec<Rc<RefCell<Node<dyn Visual>>>>,
+}
+
+impl NodeList {
+    pub fn new() -> NodeList {
+        NodeList {
+            list: Vec::new()
+        }
+    }
+
+    pub fn replacer(&mut self) -> NodeReplacer {
+        NodeReplacer {
+            list: &mut self.list,
+            index: 0,
+        }
     }
 }
 
@@ -141,11 +243,28 @@ impl Visual for LayoutBox {
 /// This solution also need one dynamic allocation per node, since it's possible to have a
 /// `Rc<RefCell<Node<dyn Visual>>>` through the magic of `Rc` and unsized types. So there is no
 /// disadvantage in this regard.
+///
+/// ## Re-examination:
+/// - Option D: Store references to a widget as a "dispatch chain" (like xxgui).
+/// Sometimes, we want to be able to deliver an event to a particular node in the tree, but do we
+/// want to bypass the parent nodes?
+///
+/// ## Visuals own child nodes?
+/// - Advantages:
+///     - less overhead
+/// - Drawbacks:
+///    - visuals must cooperate with everything that needs a traversal:
+///        - event delivery
+///        - painting
+///    - can't send an event directly to the focused node
+///
+///
+///
 pub struct Node<V: ?Sized> {
     /// Parent node.
     pub parent: Weak<RefCell<Node<dyn Visual>>>,
     /// Child nodes.
-    pub children: Vec<Rc<RefCell<Node<dyn Visual>>>>,
+    pub children: NodeList,
     /// Layout of the node relative to the containing window.
     pub layout: Layout,
     /// Calculated bounds in the containing window.
@@ -153,6 +272,7 @@ pub struct Node<V: ?Sized> {
     /// Key associated to the node.
     pub key: Option<u64>,
     /// The visual. Defines the painting, hit-testing, and event behaviors.
+    /// The visual instance is set up by the [widget] during [layout](Widget::layout).
     pub visual: V,
 }
 
@@ -167,7 +287,7 @@ impl<V: Visual> Node<V> {
             // also see issue https://github.com/rust-lang/rust/issues/50513
             // and https://github.com/rust-lang/rust/issues/60728
             parent: Weak::<RefCell<Node<LayoutBox>>>::new(),
-            children: Vec::new(),
+            children: NodeList::new(),
             key,
             bounds: None,
             layout,
@@ -177,27 +297,19 @@ impl<V: Visual> Node<V> {
 }
 
 impl<V: Visual + ?Sized> Node<V> {
-    /// Returns the first child node, if it exists.
-    pub fn first_child(&mut self) -> Option<RefMut<Node<dyn Visual>>> {
-        self.children.first()?.borrow_mut().into()
-    }
-
-    /// Returns an editing cursor at the first child node.
-    pub fn cursor(&mut self) -> Cursor {
-        // problem: we can have V: !Sized (e.g. dyn Visual), but need to be able to cast to (dyn Visual)
-        Cursor::new(self)
-    }
-
     /// Calculate the window bounds of the node recursively.
     pub(crate) fn propagate_bounds(&mut self, origin: Point) {
         let origin = origin + self.layout.offset;
         self.bounds = Some(Bounds::new(origin, self.layout.size));
-        trace!("node bounds: {}", self.bounds.unwrap());
-        for child in self.children.iter_mut() {
+        for child in self.children.list.iter_mut() {
             child.borrow_mut().propagate_bounds(origin);
         }
     }
 
+    /// Draws the node and its descendants using the specified theme, in the specified context.
+    ///
+    /// Effectively, it applies the transform of the node (which, right now, is only an offset relative to the parent),
+    /// calls [`Visual::paint`] on `self.visual`, then recursively calls [`Node::paint`] on descendants.
     pub fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
         let mut ctx2 = PaintCtx {
             size: self.layout.size,
@@ -208,25 +320,26 @@ impl<V: Visual + ?Sized> Node<V> {
         ctx2.draw_ctx.transform(&self.layout.offset.to_transform());
         self.visual.paint(&mut ctx2, theme);
 
-        for c in self.children.iter() {
+        for c in self.children.list.iter() {
             c.borrow_mut().paint(&mut ctx2, theme);
         }
 
         ctx2.draw_ctx.restore();
     }
 
+    /// Performs hit-test of the specified [`PointerEvent`] on the node, then, if hit-test
+    /// is successful, returns the [`PointerEvent`] mapped to local coordinates.
+    ///
+    /// [`PointerEvent`]: crate::event::PointerEvent
     fn translate_pointer_event(&self, pointer: &PointerEvent) -> Option<PointerEvent>
     {
         // don't use `PointerEvent::position` because we may receive the event directly from the
-        // event loop and not from the direct parent. (so position can be relative to the window in
+        // event loop and not from the direct parent (position can be relative to the window in
         // the former case, or to the parent node in the latter).
         let bounds = self.bounds.expect("layout");
         let hit = bounds.contains(pointer.window_position);
 
-        trace!("hit test point={} bounds={}", pointer.window_position, bounds);
-
         if hit {
-            trace!("hit test node {}", bounds);
             Some(PointerEvent {
                 position: pointer.window_position - bounds.origin.to_vector(),
                 ..*pointer
@@ -236,6 +349,13 @@ impl<V: Visual + ?Sized> Node<V> {
         }
     }
 
+    /// Processes an event.
+    ///
+    /// This function will determine if the event is of interest for the node, then propagate it
+    /// to child nodes. If the event was not handled by any child node,
+    /// forward it to the [`Visual`] of the node.
+    ///
+    /// See also: [`Visual::event`].
     pub fn event(&mut self, ctx: &mut EventCtx, event: &Event)
     {
         let child_event = match event {
@@ -246,22 +366,32 @@ impl<V: Visual + ?Sized> Node<V> {
                 self.translate_pointer_event(p).map(Event::PointerDown)
             },
             Event::PointerMove(p) => {
-                // TODO pointer grab
                 self.translate_pointer_event(p).map(Event::PointerMove)
             },
             e => Some(*e),
         };
 
         if let Some(child_event) = child_event {
-            self.visual.event(ctx, &child_event);
-            // distribute event to children
+            // distribute event to children first, so that they may capture it
             // FIXME children don't receive events if hit test on the parent fails:
             // this might not always be the behavior that we want
-            for c in self.children.iter() {
-                c.borrow_mut().event(ctx, &child_event);
+
+            for c in self.children.list.iter() {
+                let mut ctx = ctx.make_child_ctx(self.bounds.unwrap());
+                // FIXME this will send the event to all children, regardless of whether
+                // they are visible or not: ask the visual to propagate the event?
+                c.borrow_mut().event(&mut ctx, &child_event);
+
+                if ctx.handled {
+
+                }
+            }
+
+            if !ctx.handled {
+                // event was not handled, bubble up
+                self.visual.event(ctx, &child_event);
             }
         }
-
     }
 }
 
@@ -279,47 +409,35 @@ impl Node<dyn Visual> {
 }
 
 
-/// A cursor that points to a child node inside a parent.
-pub struct Cursor<'a> {
-    // TODO: ref to key stack
+/// Handles reconciliation.
+pub struct NodeReplacer<'a>
+{
     list: &'a mut Vec<Rc<RefCell<Node<dyn Visual>>>>,
     index: usize,
-    skip_list: Vec<Range<usize>>,
 }
 
-
-impl<'a> Cursor<'a> {
+impl<'a> NodeReplacer<'a> {
     ///
-    pub fn new<V: Visual + ?Sized>(node: &'a mut Node<V>) -> Cursor<'a> {
-        Cursor {
-            list: &mut node.children,
+    pub fn new(list: &'a mut Vec<Rc<RefCell<Node<dyn Visual>>>>) -> NodeReplacer<'a> {
+        NodeReplacer {
+            list,
             index: 0,
-            skip_list: Vec::new(),
         }
-    }
-
-    pub fn get(&self) -> Option<&Rc<RefCell<Node<dyn Visual>>>> {
-        self.list.get(self.index)
     }
 
     /// Finds a node that matches the given visual type and key, starting from the cursor to the end
     /// of the list.
-    fn find_matching_node_position<V: Visual>(&self, key: Option<NodeKey>) -> Option<usize> {
-        self.list[self.index..].iter().position(move |node| {
-            let node = node.borrow_mut();
-            node.visual.type_id() == TypeId::of::<V>() && node.key == key
-        })
-    }
-
-    fn open_internal<V: Visual, F: FnOnce() -> V>(
+    fn find_and_move_in_place(
         &mut self,
+        ty: TypeId,
         key: Option<NodeKey>,
-        layout: Layout,
-        overwrite: bool,
-        create_fn: F,
-    ) -> RefMut<Node<V>> {
+    ) -> bool
+    {
         // look for matching node
-        let pos = self.find_matching_node_position::<V>(key);
+        let pos = self.list[self.index..].iter().position(move |node| {
+            let node = node.borrow_mut();
+            node.visual.type_id() == ty && node.key == key
+        });
         let cur_pos = self.index;
 
         // match found
@@ -327,31 +445,15 @@ impl<'a> Cursor<'a> {
             if pos > cur_pos {
                 // match found, but further in the list: rotate in place
                 self.list[cur_pos..=pos].rotate_right(1);
-                trace!("[visual tree: {}] rotate in place", any::type_name::<V>());
-            } else {
-                trace!(
-                    "[visual tree: {}] found where expected",
-                    any::type_name::<V>()
-                );
+                //trace!("[visual tree] rotate in place");
             }
-            if overwrite {
-                // match found, but replace anyway
-                self.list[cur_pos] = Rc::new(RefCell::new(Node::new(layout, key, create_fn())));
-            }
+            true
         } else {
-            // no match, insert new
-            self.list.insert(
-                cur_pos,
-                Rc::new(RefCell::new(Node::new(layout, key, create_fn()))),
-            );
-            trace!("[visual tree: {}] create new", any::type_name::<V>());
+            false
         }
-
-        RefMut::map(self.next().unwrap(), |node| node.downcast_mut().unwrap())
     }
 
-    /// Inserts a node into the tree or retrieves the node at the current position.
-    ///
+
     /// This function searches for a node that matches the provided type T and key in the list of
     /// nodes, starting from the cursor location.
     /// If a matching node is found, returns a ref-counted reference to the node, and mark as "dead"
@@ -360,42 +462,37 @@ impl<'a> Cursor<'a> {
     /// If no matching node is found, a new one is created by invoking the provided closure, and
     /// inserted at the current cursor position. The current cursor position is then advanced to
     /// the next node.
-    pub fn open<V: Visual, F: FnOnce() -> V>(
+    pub fn replace_or_create_with<V: Visual, F: FnOnce(Option<Node<V>>) -> Node<V>>(
         &mut self,
         key: Option<NodeKey>,
-        create_fn: F,
-    ) -> RefMut<Node<V>> {
-        self.open_internal(key, Layout::default(), false, create_fn)
-    }
+        f: F)
+    {
+        let found = self.find_and_move_in_place(TypeId::of::<V>(), key);
+        let index = self.index;
 
-    /// Overwrite the visual at the cursor location if it has matching types. Otherwise, inserts it
-    /// and returns a mutable reference to it.
-    pub fn overwrite<V: Visual>(
-        &mut self,
-        key: Option<NodeKey>,
-        layout: Layout,
-        visual: V,
-    ) -> RefMut<Node<V>> {
-        self.open_internal(key, layout, true, move || visual)
-    }
+        if found {
+            // we know downcast won't fail because of the invariants of find_and_move_in_place if found == true
+            let mut node = RefMut::map(self.list[index].borrow_mut(), |node| node.downcast_mut().unwrap());
 
-    /// Returns the next node and advances the cursor, or returns None if it has reached the end of
-    /// the list.
-    pub fn next(&mut self) -> Option<RefMut<Node<dyn Visual>>> {
-        let node = self.list.get(self.index);
-        if node.is_some() {
-            self.index += 1;
+            // sleight-of-hand to extract the node, pass it to layout(), and replace it with the node returned by
+            // layout()
+            replace_with::replace_with_or_abort(
+                &mut *node,
+                move |prev_node| {
+                    f(Some(prev_node))
+                }
+            );
+        } else {
+            // not found, insert new node
+            let new_node = f(None);
+            self.list.insert(index, Rc::new(RefCell::new(new_node)));
         }
-        node.map(|node| node.borrow_mut())
-    }
 
-    /// Removes all the nodes marked as dead, as well as all nodes that come after the cursor.
-    fn sweep_dead(mut self) {
-        self.list.drain(self.index..);
+        self.index += 1;
     }
 }
 
-impl<'a> Drop for Cursor<'a> {
+impl<'a> Drop for NodeReplacer<'a> {
     fn drop(&mut self) {
         self.list.drain(self.index..);
     }

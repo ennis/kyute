@@ -26,3 +26,15 @@ pub use self::layout::Layout;
 pub use self::layout::PaintLayout;
 pub use self::layout::Point;
 pub use self::layout::Size;
+
+// Node: a node in the visual tree of the user interface
+//      - contains useful retained state, children, layout information, and the visual
+// Visual: widget-specific drawing and event behavior
+// Widget: produces visuals
+// Layout: Size+Baseline
+// EventCtx: context passed on event propagation
+// LayoutCtx: context passed on layout
+// PaintCtx: context passed during painting
+//
+// - visual: Event, Paint, Visual, Node
+//

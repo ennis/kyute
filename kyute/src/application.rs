@@ -1,7 +1,7 @@
 use crate::event::{Event, EventCtx, KeyboardEvent, PointerEvent, PointerButton, PointerButtons};
 use crate::layout::Size;
 use crate::renderer::Theme;
-use crate::visual::{Cursor, LayoutBox, PaintCtx};
+use crate::visual::{LayoutBox, PaintCtx, EventCtx};
 use crate::widget::dummy::DummyVisual;
 use crate::widget::{ActionCollector, LayoutCtx};
 use crate::{
@@ -136,18 +136,17 @@ impl Default for PointerState {
     }
 }
 
-struct InputState {
-    /// Current state of keyboard modifiers.
-    mods: winit::event::ModifiersState,
-    /// Current state of pointers.
-    pointers: HashMap<DeviceId, PointerState>,
-}
 
 /// A window managed by kyute with a cached visual node.
 struct Window {
     window: PlatformWindow,
     node: Node<LayoutBox>,
     inputs: InputState,
+    focus_state: FocusState,
+}
+
+fn dummy_weak_node() -> Weak<RefCell<Node<dyn Visual>>> {
+    Weak::<RefCell<Node<DummyVisual>>>::new()
 }
 
 impl Window {
@@ -170,6 +169,10 @@ impl Window {
             inputs: InputState {
                 mods: winit::event::ModifiersState::default(),
                 pointers: HashMap::new(),
+            },
+            focus_state: FocusState {
+                pointer_grab: dummy_weak_node(),
+                focus: dummy_weak_node(),
             }
         };
         let window = Rc::new(RefCell::new(window));
@@ -183,11 +186,28 @@ impl Window {
         self.window.id()
     }
 
+    /// Delivers a pointer event, taking into account the visual that is grabbing the mouse, if there's one.
+    fn deliver_pointer_event(&mut self, event: Event) {
+        if let Some(node) = self.pointer_grab.upgrade() {
+            // there is a pointer grab, so deliver the event directly to the node that holds
+            // the grab.
+            node.borrow_mut().event(&mut event_ctx, &e);
+        } else {
+            // follow the normal delivery path
+            self.node.event(&mut event_ctx, &e);
+        }
+    }
+
+    /// Delivers a keyboard event, taking into account the visual that has focus, if there's one.
+    fn deliver_keyboard_event(&mut self, event: Event) {
+
+    }
+
     /// deliver window event, get actions
     fn window_event(&mut self, ctx: &mut WindowCtx, window_event: &WindowEvent) {
-
         let mut event_ctx = EventCtx {
-            bounds: self.node.bounds.expect("layout not done")
+            bounds: self.node.bounds.expect("layout not done"),
+            redraw_requested: false,
         };
 
         match window_event {
@@ -224,14 +244,20 @@ impl Window {
 
                 let e = match state {
                     winit::event::ElementState::Pressed => {
+                        // TODO auto-grab pointer?
                         Event::PointerDown(p)
                     }
                     winit::event::ElementState::Released => {
+                        // POINTER UNGRAB: If all pointer buttons are released, force ungrab
+                        if p.buttons.is_empty() {
+                            trace!("force ungrab");
+                            self.focus_state.pointer_grab = dummy_weak_node();
+                        }
                         Event::PointerUp(p)
                     }
                 };
 
-                self.node.event(&mut event_ctx, &e);
+                self.deliver_pointer_event(e);
             }
             WindowEvent::CursorMoved {
                 device_id,
@@ -258,11 +284,15 @@ impl Window {
             _ => {}
         }
 
+        if event_ctx.redraw_requested {
+            self.window.window().request_redraw()
+        }
+
         //dbg!(window_event);
     }
 
     /// Updates the current visual tree for this stage.
-    fn relayout<A, W: Widget<A>>(&mut self, ctx: &mut LayoutCtx<A>, theme: &Theme, widget: W) {
+    fn relayout<A>(&mut self, ctx: &mut LayoutCtx<A>, theme: &Theme, widget: BoxedWidget<A>) {
         // get window logical size
         let size: (f64, f64) = self
             .window
@@ -272,9 +302,9 @@ impl Window {
             .into();
         dbg!(size);
         // perform layout, update the visual node
-        widget.layout(
+        widget.layout_single_child(
             ctx,
-            &mut self.node.cursor(),
+            &mut self.node.children,
             &BoxConstraints::loose(size.into()),
             theme,
         );

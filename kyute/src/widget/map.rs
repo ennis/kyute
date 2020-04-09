@@ -1,7 +1,7 @@
 use crate::event::{Event, EventCtx};
 use crate::layout::{BoxConstraints, PaintLayout};
 use crate::renderer::Theme;
-use crate::visual::{Cursor, Node, Visual};
+use crate::visual::{Node, Visual};
 use crate::widget::{ActionSink, LayoutCtx};
 use crate::{Point, Widget};
 use std::marker::PhantomData;
@@ -25,14 +25,18 @@ impl<A, W, F> Map<A, W, F> {
 }
 
 impl<A: 'static, B: 'static, W: Widget<A>, F: Fn(A) -> B + 'static> Widget<B> for Map<A, W, F> {
+
+    type Visual = W::Visual;
+
     fn layout(
         self,
         ctx: &mut LayoutCtx<B>,
-        cursor: &mut Cursor,
+        node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) {
+        theme: &Theme
+    ) -> Node<Self::Visual>
+    {
         let mut ctx = ctx.map(self.map);
-        self.inner.layout(&mut ctx, cursor, constraints, theme);
+        self.inner.layout(&mut ctx, node, constraints, theme)
     }
 }

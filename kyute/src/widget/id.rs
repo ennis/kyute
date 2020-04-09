@@ -1,6 +1,6 @@
 use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
-use crate::visual::{Cursor, Node};
+use crate::visual::Node;
 use crate::widget::LayoutCtx;
 use crate::Widget;
 use std::hash::Hash;
@@ -17,14 +17,18 @@ impl<W> Id<W> {
 }
 
 impl<A: 'static, W: Widget<A>> Widget<A> for Id<W> {
+
+    type Visual = W::Visual;
+
     fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        tree_cursor: &mut Cursor,
+        node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) {
+        theme: &Theme
+    ) -> Node<Self::Visual>
+    {
         // TODO ID?
-        self.inner.layout(ctx, tree_cursor, constraints, theme)
+        self.inner.layout(ctx, node, constraints, theme)
     }
 }

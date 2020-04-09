@@ -8,6 +8,7 @@ pub mod id;
 pub mod map;
 pub mod text;
 pub mod textedit;
+pub mod padding;
 
 // re-export common widgets
 pub use baseline::Baseline;
@@ -22,11 +23,12 @@ pub use text::Text;
 use crate::application::WindowCtx;
 use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
-use crate::visual::Visual;
-use crate::visual::{Cursor, Node};
+use crate::visual::{Visual, NodeReplacer, NodeList};
+use crate::visual::Node;
 use kyute_shell::platform::Platform;
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
+use crate::Layout;
 
 /// Objects that receive actions.
 pub trait ActionSink<A> {
@@ -68,6 +70,10 @@ pub struct LayoutCtx<'a, 'ctx, A> {
     pub(crate) action_sink: Rc<dyn ActionSink<A>>,
 }
 
+impl<'a, 'ctx, A> LayoutCtx<'a,'ctx,A>
+{
+}
+
 impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
     pub fn platform(&self) -> &'ctx Platform {
         self.win_ctx.platform
@@ -83,6 +89,7 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
         }
     }
 }
+
 
 // ctx.register_window(window)
 
@@ -112,59 +119,78 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
 ///
 /// See also [Inside Flutter - Building widgets on demand](https://flutter.dev/docs/resources/inside-flutter#building-widgets-on-demand).
 pub trait Widget<A> {
+    type Visual: Visual;
+
     /// Performs layout, consuming the widget.
     fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        tree_cursor: &mut Cursor,
+        node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    );
+        theme: &Theme
+    ) -> Node<Self::Visual>;
 
-    // Q: we need to pass a reference to the "Theme" that describes the rendering of some common
-    // interface elements.
-    // how to pass it?
-    // - an additional argument
-    // - a field in the contexts
-    //      - potential borrowing troubles
-    // Q: we also need to pass some information to child widgets
-    //  such as whether the subtree is disabled, etc.
-    // See druid::env, and do the same
-    // also enable trait objects (for e.g. theme)
-    //
-    // Type-map based?
-    // Problem: need a different type for everything
-    //
-    // - get: `let theme : &Theme = env.get::<Theme>()`
-    // - override: `let env = env.override(Theme::new())`
-    //
-    // Q: does it make sense to pass the env to the visual tree as well?
-    // -> The visual tree should be "ready-to-render": no need to access the environment
-    //      (because reconstructing the environment would need a widget tree re-evaluation)
-    // -> theme drawing functions should be free functions in a theme module
-    // -> no dyn Theme?
-    //
-    // The visual should be self-contained in terms of rendering data (colors, sizes, etc.)
-    // - it can, however, delegate the rendering to a "Theme" instance
-    //      - this theme can contain the colors
+    ///
+    fn layout_single_child<'a>(self,
+                           ctx: &mut LayoutCtx<A>,
+                           node_list: &'a mut NodeList,
+                           constraints: &BoxConstraints,
+                           theme: &Theme
+    ) -> RefMut<'a, Node<Self::Visual>>
+    {
+        node_list.replacer().replace_or_create_with(None, move |node| self.layout(ctx, node, constraints, theme));
+        RefMut::map(node_list.list.first_mut().unwrap().borrow_mut(), |node| node.downcast_mut().unwrap())
+    }
+
+}
+
+/// Widget with a type-erased visual.
+pub trait AnyWidget<A>
+{
+    fn layout(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        placer: &mut NodeReplacer,
+        constraints: &BoxConstraints,
+        theme: &Theme);
+
+    fn layout_single_child<'a>(self,
+                               ctx: &mut LayoutCtx<A>,
+                               node_list: &'a mut NodeList,
+                               constraints: &BoxConstraints,
+                               theme: &Theme
+    ) -> RefMut<'a, Node<dyn Visual>>
+    {
+        self.layout(ctx, &mut node_list.replacer(), constraints, theme);
+        node_list.list.first_mut().unwrap().borrow_mut()
+    }
+}
+
+struct AnyWidgetWrapper<W> {
+    inner: W,
+}
+
+impl<A, W> AnyWidget<A> for AnyWidgetWrapper<W>
+    where W: Widget<A>
+{
+    fn layout(self,
+              ctx: &mut LayoutCtx<A>,
+              placer: &mut NodeReplacer,
+              constraints: &BoxConstraints,
+              theme: &Theme)
+    {
+        // TODO key?
+        placer.replace_or_create_with(None, move |node| {
+            self.inner.layout(ctx, node, constraints, theme)
+        });
+    }
+
+
 }
 
 /// A widget wrapped in a box, that produce a visual wrapped in a box as well.
-pub type BoxedWidget<A> = Box<dyn Widget<A>>;
+pub type BoxedWidget<A> = Box<dyn AnyWidget<A>>;
 
-/// Boxed widget impl
-impl<A: 'static> Widget<A> for BoxedWidget<A> {
-    fn layout(
-        mut self,
-        ctx: &mut LayoutCtx<A>,
-        tree_cursor: &mut Cursor,
-        constraints: &BoxConstraints,
-        theme: &Theme,
-    ) {
-        // how does that work?
-        (*self).layout(ctx, tree_cursor, constraints, theme)
-    }
-}
 
 /// Extension methods for [`Widget`].
 pub trait WidgetExt<A: 'static>: Widget<A> {
@@ -178,11 +204,11 @@ pub trait WidgetExt<A: 'static>: Widget<A> {
     }
 
     /// Turns this widget into a type-erased boxed representation.
-    fn boxed<'a>(self) -> Box<dyn Widget<A> + 'a>
+    fn boxed<'a>(self) -> Box<dyn AnyWidget<A> + 'a>
     where
         Self: Sized + 'a,
     {
-        Box::new(self)
+        Box::new(AnyWidgetWrapper { inner: self })
     }
 }
 

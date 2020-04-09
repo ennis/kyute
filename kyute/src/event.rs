@@ -1,5 +1,4 @@
-//! `Event`s sent to widgets, and related types.
-//use enumflags2::BitFlags;
+//! [`Events`](Event) sent to widgets, and related types.
 use crate::layout::{Bounds, Layout};
 use crate::Point;
 use winit::event::WindowEvent;
@@ -42,6 +41,8 @@ impl PointerButtons {
     pub fn reset(&mut self, button: PointerButton) {
         self.0 &= !(1u32 << button.0 as u32);
     }
+
+    pub fn is_empty(&self) -> bool { self.0 == 0 }
 }
 
 impl Default for PointerButtons {
@@ -109,10 +110,4 @@ pub enum Event {
     KeyDown(KeyboardEvent),
     KeyUp(KeyboardEvent),
     Input(InputEvent),
-}
-
-/// Context for event propagation.
-pub struct EventCtx {
-    /// The bounds of the current visual.
-    pub bounds: Bounds,
 }

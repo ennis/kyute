@@ -12,6 +12,5 @@ impl<A,W: Widget<A>> Widget<A> for Window<W>
 
         let window_node = cursor.open(None, || WindowVisual::new(win_ctx, WindowBuilder::new()));
         // the node needs to be registered in the event loop
-
     }
 }

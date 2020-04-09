@@ -7,7 +7,7 @@ use crate::layout::Point;
 use crate::layout::Size;
 use crate::layout::{Offset, PaintLayout};
 use crate::renderer::{ButtonState, Theme};
-use crate::visual::{Cursor, Node, PaintCtx};
+use crate::visual::{Node, PaintCtx};
 use crate::visual::{RcNode, Visual};
 use crate::widget::Text;
 use crate::widget::Widget;
@@ -34,28 +34,33 @@ impl<A: 'static> Button<A> {
 }
 
 impl<A: 'static> Widget<A> for Button<A> {
+
+    type Visual = ButtonVisual<A>;
+
     fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        tree_cursor: &mut Cursor,
+        node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) {
-        let on_click = self.on_click;
-        let mut node = tree_cursor.open(None, move || ButtonVisual { on_click });
-        let node = &mut *node; // reborrow RefMut as &mut, prevents RefMut-related lifetime confusion
+        theme: &Theme
+    ) -> Node<Self::Visual>
+    {
+
+        let mut node = node.unwrap_or(Node::new(Layout::default(), None, ButtonVisual {
+            on_click: self.on_click
+        }));
+
 
         let button_metrics = &theme.button_metrics();
 
         // measure label
-        self.label.layout(
+        let mut label_node = self.label.layout_single_child(
             ctx,
-            &mut node.cursor(),
+            &mut node.children,
             &constraints.deflate(&EdgeInsets::all(button_metrics.label_padding.into())),
             theme,
         );
 
-        let mut label_node = node.children.first().unwrap().borrow_mut();
         // base button size
         let mut button_size = Size::new(
             label_node.layout.size.width + 2.0 * button_metrics.label_padding,
@@ -71,6 +76,9 @@ impl<A: 'static> Widget<A> for Button<A> {
 
         node.layout = Layout::new(button_size);
         Layout::align(&mut node.layout, &mut label_node.layout, Alignment::CENTER);
+
+        drop(label_node);
+        node
     }
 }
 
@@ -91,13 +99,22 @@ impl<A: 'static> Visual for ButtonVisual<A> {
                 hot: true,
             },
         );
+
+        label.draw();
     }
 
     fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
         false
     }
 
-    fn event(&mut self, event_ctx: &EventCtx, event: &Event) {}
+    fn event(&mut self, event_ctx: &mut EventCtx, event: &Event) {
+        match event {
+            Event::PointerDown(p) => {
+                eprintln!("BUTTON CLICKED");
+            }
+            _ => {}
+        }
+    }
 
     fn as_any(&self) -> &dyn Any {
         self

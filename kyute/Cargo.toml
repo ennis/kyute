@@ -10,11 +10,12 @@ kyute-shell = { path = "../kyute-shell" }
 winit = "0.22.0"
 anyhow = "1.0.27"
 euclid = "0.20.8"
-palette = "0.5.0"
+palette = { version="0.5.0", features=["named"] }
 lazy_static = "1.4.0"
 log = "0.4.8"
 winapi = "0.3.8"
 unicode-segmentation = "1.6.0"
+replace_with = "0.1.5"
 
 [dev-dependencies]
 pretty_env_logger = "0.4.0"

@@ -1,5 +1,6 @@
 use kyute::application::{run_application, Application};
 use kyute::{BoxedWidget, WidgetExt};
+use kyute::widget::textedit::TextEdit;
 
 struct SimpleApplication;
 
@@ -25,7 +26,8 @@ impl Application for SimpleApplication {
                     .push(Button::new("Vertical Flex:"))
                     .push(Button::new("Button A"))
                     .push(Button::new("Button B"))
-                    .push(Text::new("Hello world")),
+                    .push(Text::new("Hello world"))
+                    .push(TextEdit::new("WWWWWWWWWWWWWWWWWWW"))
             )
             .boxed()
     }
