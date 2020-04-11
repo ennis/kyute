@@ -17,7 +17,6 @@ impl<W> Id<W> {
 }
 
 impl<A: 'static, W: Widget<A>> Widget<A> for Id<W> {
-
     type Visual = W::Visual;
 
     fn layout(
@@ -25,9 +24,8 @@ impl<A: 'static, W: Widget<A>> Widget<A> for Id<W> {
         ctx: &mut LayoutCtx<A>,
         node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme
-    ) -> Node<Self::Visual>
-    {
+        theme: &Theme,
+    ) -> Node<Self::Visual> {
         // TODO ID?
         self.inner.layout(ctx, node, constraints, theme)
     }

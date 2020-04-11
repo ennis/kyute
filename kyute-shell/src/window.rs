@@ -338,7 +338,10 @@ impl<'a> DrawContext<'a> {
             let hr =
                 d2d.CreateDxgiSurfaceRenderTarget(dxgi_buffer.as_raw(), &props, &mut render_target);
             if !SUCCEEDED(hr) {
-                panic!("CreateDxgiSurfaceRenderTarget failed: {}", Error::HResultError(hr));
+                panic!(
+                    "CreateDxgiSurfaceRenderTarget failed: {}",
+                    Error::HResultError(hr)
+                );
             }
             // start drawing immediately
             RenderTarget::from_raw(d2d.clone().up(), render_target)

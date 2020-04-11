@@ -1,4 +1,4 @@
-use crate::event::{Event, EventCtx};
+use crate::event::Event;
 use crate::layout::{BoxConstraints, PaintLayout};
 use crate::renderer::Theme;
 use crate::visual::{Node, Visual};
@@ -25,7 +25,6 @@ impl<A, W, F> Map<A, W, F> {
 }
 
 impl<A: 'static, B: 'static, W: Widget<A>, F: Fn(A) -> B + 'static> Widget<B> for Map<A, W, F> {
-
     type Visual = W::Visual;
 
     fn layout(
@@ -33,9 +32,8 @@ impl<A: 'static, B: 'static, W: Widget<A>, F: Fn(A) -> B + 'static> Widget<B> fo
         ctx: &mut LayoutCtx<B>,
         node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme
-    ) -> Node<Self::Visual>
-    {
+        theme: &Theme,
+    ) -> Node<Self::Visual> {
         let mut ctx = ctx.map(self.map);
         self.inner.layout(&mut ctx, node, constraints, theme)
     }

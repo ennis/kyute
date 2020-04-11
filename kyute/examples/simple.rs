@@ -1,6 +1,6 @@
 use kyute::application::{run_application, Application};
-use kyute::{BoxedWidget, WidgetExt};
 use kyute::widget::textedit::TextEdit;
+use kyute::{BoxedWidget, WidgetExt};
 
 struct SimpleApplication;
 
@@ -27,7 +27,7 @@ impl Application for SimpleApplication {
                     .push(Button::new("Button A"))
                     .push(Button::new("Button B"))
                     .push(Text::new("Hello world"))
-                    .push(TextEdit::new("WWWWWWWWWWWWWWWWWWW"))
+                    .push(TextEdit::new("WWWWWWWWWWWWWWWWWWW")),
             )
             .boxed()
     }

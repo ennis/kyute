@@ -1,8 +1,8 @@
 //! Text editor widget.
-use crate::event::{Event, EventCtx};
+use crate::event::Event;
 use crate::layout::{BoxConstraints, Layout, PaintLayout, Size};
 use crate::renderer::Theme;
-use crate::visual::{Node, PaintCtx, Visual, EventCtx};
+use crate::visual::{EventCtx, Node, PaintCtx, Visual};
 use crate::widget::LayoutCtx;
 use crate::{Bounds, Point, Widget};
 use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt};
@@ -190,8 +190,7 @@ impl Visual for TextEditVisual {
         false
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event)
-    {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
         match event {
             Event::PointerDown(p) => {
                 let hit = self.text_layout.hit_test_point(p.position).unwrap();
@@ -205,7 +204,7 @@ impl Visual for TextEditVisual {
 
                 self.set_cursor(pos);
 
-                ctx.set_pointer_grab();
+                ctx.capture_pointer();
             }
             Event::PointerMove(p) => {}
             Event::PointerUp(p) => {}
@@ -230,8 +229,7 @@ pub struct TextEdit {
     text: String,
 }
 
-impl<A: 'static> Widget<A> for TextEdit
-{
+impl<A: 'static> Widget<A> for TextEdit {
     type Visual = TextEditVisual;
 
     fn layout(
@@ -239,23 +237,29 @@ impl<A: 'static> Widget<A> for TextEdit
         ctx: &mut LayoutCtx<A>,
         node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme
-    ) -> Node<Self::Visual>
-    {
+        theme: &Theme,
+    ) -> Node<Self::Visual> {
         let text = &self.text;
         let platform = ctx.platform();
 
-        let mut node = node.unwrap_or_else(|| Node::new(Layout::default(), None, TextEditVisual {
-            text: text.to_owned(),
-            text_layout: TextLayout::new(
-                platform,
-                &text,
-                &theme.label_text_format,
-                constraints.biggest(),
-            ).unwrap(),
-            selection: Selection::empty(0),
-            needs_repaint: false,
-        }));
+        let mut node = node.unwrap_or_else(|| {
+            Node::new(
+                Layout::default(),
+                None,
+                TextEditVisual {
+                    text: text.to_owned(),
+                    text_layout: TextLayout::new(
+                        platform,
+                        &text,
+                        &theme.label_text_format,
+                        constraints.biggest(),
+                    )
+                    .unwrap(),
+                    selection: Selection::empty(0),
+                    needs_repaint: false,
+                },
+            )
+        });
 
         if &node.visual.text != text {
             // text changed, relayout

@@ -17,9 +17,9 @@ pub enum PointerType {
 pub struct PointerButton(pub u16);
 
 impl PointerButton {
-    pub const LEFT: PointerButton = PointerButton(0);       // Or touch/pen contact
+    pub const LEFT: PointerButton = PointerButton(0); // Or touch/pen contact
     pub const MIDDLE: PointerButton = PointerButton(1);
-    pub const RIGHT: PointerButton = PointerButton(2);      // Or pen barrel
+    pub const RIGHT: PointerButton = PointerButton(2); // Or pen barrel
     pub const X1: PointerButton = PointerButton(3);
     pub const X2: PointerButton = PointerButton(4);
 }
@@ -42,7 +42,9 @@ impl PointerButtons {
         self.0 &= !(1u32 << button.0 as u32);
     }
 
-    pub fn is_empty(&self) -> bool { self.0 == 0 }
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
 }
 
 impl Default for PointerButtons {

@@ -1,8 +1,10 @@
-use crate::event::{Event, EventCtx, KeyboardEvent, PointerEvent, PointerButton, PointerButtons};
+use crate::event::{Event, KeyboardEvent, PointerButton, PointerButtons, PointerEvent};
 use crate::layout::Size;
 use crate::renderer::Theme;
-use crate::visual::{LayoutBox, PaintCtx, EventCtx};
-use crate::widget::dummy::DummyVisual;
+use crate::visual::{
+    reconciliation, DummyVisual, EventCtx, EventResult, FocusState, InputState, LayoutBox,
+    PaintCtx, PointerState, RepaintRequest,
+};
 use crate::widget::{ActionCollector, LayoutCtx};
 use crate::{
     Bounds, BoxConstraints, BoxedWidget, Layout, Node, PaintLayout, Point, Visual, Widget,
@@ -11,11 +13,12 @@ use anyhow::Result;
 use kyute_shell::drawing::Color;
 use kyute_shell::platform::Platform;
 use kyute_shell::window::{DrawContext, PlatformWindow};
+use log::trace;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
 use std::rc::{Rc, Weak};
-use winit::event::{ElementState, KeyboardInput, WindowEvent, DeviceId};
+use winit::event::{DeviceId, ElementState, KeyboardInput, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
 use winit::window::{WindowBuilder, WindowId};
 
@@ -122,31 +125,12 @@ fn convert_window_event(event: &WindowEvent) -> Option<Event> {
     unimplemented!()
 }
 
-struct PointerState {
-    buttons: PointerButtons,
-    position: Point,
-}
-
-impl Default for PointerState {
-    fn default() -> Self {
-        PointerState {
-            buttons: PointerButtons(0),
-            position: Point::origin()
-        }
-    }
-}
-
-
 /// A window managed by kyute with a cached visual node.
 struct Window {
     window: PlatformWindow,
-    node: Node<LayoutBox>,
+    node: Box<Node<dyn Visual>>,
     inputs: InputState,
     focus_state: FocusState,
-}
-
-fn dummy_weak_node() -> Weak<RefCell<Node<dyn Visual>>> {
-    Weak::<RefCell<Node<DummyVisual>>>::new()
 }
 
 impl Window {
@@ -154,26 +138,19 @@ impl Window {
     pub fn open(ctx: &mut WindowCtx, builder: WindowBuilder) -> Result<Rc<RefCell<Window>>> {
         // create the platform window
         let window = PlatformWindow::new(ctx.event_loop, builder, ctx.platform, true)?;
-        let size: (f64, f64) = window
-            .window()
-            .inner_size()
-            .to_logical::<f64>(1.0)
-            .into();
+        let size: (f64, f64) = window.window().inner_size().to_logical::<f64>(1.0).into();
 
         // create the default visual
-        let mut node = Node::new(Layout::new(size.into()), None, LayoutBox);
-        node.propagate_bounds(Point::origin());
+        let mut node = Node::dummy();
 
         let window = Window {
-            window, node,
+            window,
+            node,
             inputs: InputState {
                 mods: winit::event::ModifiersState::default(),
                 pointers: HashMap::new(),
             },
-            focus_state: FocusState {
-                pointer_grab: dummy_weak_node(),
-                focus: dummy_weak_node(),
-            }
+            focus_state: FocusState {},
         };
         let window = Rc::new(RefCell::new(window));
 
@@ -187,46 +164,44 @@ impl Window {
     }
 
     /// Delivers a pointer event, taking into account the visual that is grabbing the mouse, if there's one.
-    fn deliver_pointer_event(&mut self, event: Event) {
-        if let Some(node) = self.pointer_grab.upgrade() {
-            // there is a pointer grab, so deliver the event directly to the node that holds
-            // the grab.
-            node.borrow_mut().event(&mut event_ctx, &e);
-        } else {
-            // follow the normal delivery path
-            self.node.event(&mut event_ctx, &e);
-        }
+    fn deliver_pointer_event(&mut self, event: Event) -> EventResult {
+        self.node
+            .propagate_event(&event, Point::origin(), &self.inputs, &mut self.focus_state)
     }
 
     /// Delivers a keyboard event, taking into account the visual that has focus, if there's one.
-    fn deliver_keyboard_event(&mut self, event: Event) {
+    fn deliver_keyboard_event(&mut self, event: Event) {}
 
-    }
-
-    /// deliver window event, get actions
+    /// deliver window event
     fn window_event(&mut self, ctx: &mut WindowCtx, window_event: &WindowEvent) {
-        let mut event_ctx = EventCtx {
-            bounds: self.node.bounds.expect("layout not done"),
-            redraw_requested: false,
-        };
-
-        match window_event {
+        let event_result = match window_event {
             WindowEvent::Resized(size) => {
                 self.window.resize((*size).into());
                 return;
             }
             WindowEvent::ModifiersChanged(m) => {
                 self.inputs.mods = *m;
+                return;
             }
-            WindowEvent::MouseInput { device_id, state, button, .. } => {
-                let pointer_state = self.inputs.pointers.entry(*device_id).or_insert(PointerState::default());
+            WindowEvent::MouseInput {
+                device_id,
+                state,
+                button,
+                ..
+            } => {
+                // update pointer state
+                let pointer_state = self
+                    .inputs
+                    .pointers
+                    .entry(*device_id)
+                    .or_insert(PointerState::default());
                 let button = match button {
                     winit::event::MouseButton::Left => PointerButton::LEFT,
                     winit::event::MouseButton::Right => PointerButton::RIGHT,
                     winit::event::MouseButton::Middle => PointerButton::MIDDLE,
                     winit::event::MouseButton::Other(3) => PointerButton::X1,
                     winit::event::MouseButton::Other(4) => PointerButton::X2,
-                    winit::event::MouseButton::Other(b) => PointerButton(*b as u16)
+                    winit::event::MouseButton::Other(b) => PointerButton(*b as u16),
                 };
                 match state {
                     winit::event::ElementState::Pressed => pointer_state.buttons.set(button),
@@ -239,7 +214,7 @@ impl Window {
                     modifiers: self.inputs.mods,
                     button: Some(button),
                     buttons: pointer_state.buttons,
-                    pointer_id: *device_id
+                    pointer_id: *device_id,
                 };
 
                 let e = match state {
@@ -251,13 +226,14 @@ impl Window {
                         // POINTER UNGRAB: If all pointer buttons are released, force ungrab
                         if p.buttons.is_empty() {
                             trace!("force ungrab");
-                            self.focus_state.pointer_grab = dummy_weak_node();
+                            // TODO
+                            //self.focus_state.pointer_grab = dummy_weak_node();
                         }
                         Event::PointerUp(p)
                     }
                 };
 
-                self.deliver_pointer_event(e);
+                self.deliver_pointer_event(e)
             }
             WindowEvent::CursorMoved {
                 device_id,
@@ -267,7 +243,11 @@ impl Window {
                 let logical = position.to_logical::<f64>(self.window.window().scale_factor());
                 let logical = Point::new(logical.x, logical.y);
 
-                let pointer_state = self.inputs.pointers.entry(*device_id).or_insert(PointerState::default());
+                let pointer_state = self
+                    .inputs
+                    .pointers
+                    .entry(*device_id)
+                    .or_insert(PointerState::default());
                 pointer_state.position = logical;
 
                 let p = PointerEvent {
@@ -276,19 +256,24 @@ impl Window {
                     modifiers: self.inputs.mods,
                     button: None,
                     buttons: pointer_state.buttons,
-                    pointer_id: *device_id
+                    pointer_id: *device_id,
                 };
-                self.node.event(&mut event_ctx, &Event::PointerMove(p));
+                self.deliver_pointer_event(Event::PointerMove(p))
             }
 
+            _ => {
+                return;
+            }
+        };
+
+        // handle follow-up actions
+        match event_result.repaint {
+            RepaintRequest::Repaint | RepaintRequest::Relayout => {
+                // TODO ask for relayout
+                self.window.window().request_redraw();
+            }
             _ => {}
         }
-
-        if event_ctx.redraw_requested {
-            self.window.window().request_redraw()
-        }
-
-        //dbg!(window_event);
     }
 
     /// Updates the current visual tree for this stage.
@@ -302,14 +287,13 @@ impl Window {
             .into();
         dbg!(size);
         // perform layout, update the visual node
-        widget.layout_single_child(
+        widget.layout_single(
             ctx,
-            &mut self.node.children,
+            &mut self.node,
             &BoxConstraints::loose(size.into()),
             theme,
         );
         // calculate the absolute bounds of the nodes within the window
-        self.node.propagate_bounds(Point::origin());
         self.node.layout.size = size.into();
         // request a redraw of this window
         self.window.window().request_redraw()

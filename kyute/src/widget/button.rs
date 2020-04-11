@@ -1,4 +1,4 @@
-use crate::event::{Event, EventCtx};
+use crate::event::Event;
 use crate::layout::Alignment;
 use crate::layout::BoxConstraints;
 use crate::layout::EdgeInsets;
@@ -7,8 +7,8 @@ use crate::layout::Point;
 use crate::layout::Size;
 use crate::layout::{Offset, PaintLayout};
 use crate::renderer::{ButtonState, Theme};
-use crate::visual::{Node, PaintCtx};
-use crate::visual::{RcNode, Visual};
+use crate::visual::Visual;
+use crate::visual::{reconciliation, EventCtx, Node, PaintCtx};
 use crate::widget::Text;
 use crate::widget::Widget;
 use crate::widget::WidgetExt;
@@ -34,7 +34,6 @@ impl<A: 'static> Button<A> {
 }
 
 impl<A: 'static> Widget<A> for Button<A> {
-
     type Visual = ButtonVisual<A>;
 
     fn layout(
@@ -42,30 +41,27 @@ impl<A: 'static> Widget<A> for Button<A> {
         ctx: &mut LayoutCtx<A>,
         node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme
-    ) -> Node<Self::Visual>
-    {
-
-        let mut node = node.unwrap_or(Node::new(Layout::default(), None, ButtonVisual {
-            on_click: self.on_click
-        }));
-
+        theme: &Theme,
+    ) -> Node<Self::Visual> {
+        let mut node = node.unwrap_or_default();
 
         let button_metrics = &theme.button_metrics();
 
-        // measure label
-        let mut label_node = self.label.layout_single_child(
+        // update label visual
+        self.label.layout_single(
             ctx,
-            &mut node.children,
+            &mut node.visual.label,
             &constraints.deflate(&EdgeInsets::all(button_metrics.label_padding.into())),
             theme,
         );
 
         // base button size
+        let mut label_layout = &mut node.visual.label.layout;
         let mut button_size = Size::new(
-            label_node.layout.size.width + 2.0 * button_metrics.label_padding,
-            label_node.layout.size.height + 2.0 * button_metrics.label_padding,
+            label_layout.size.width + 2.0 * button_metrics.label_padding,
+            label_layout.size.height + 2.0 * button_metrics.label_padding,
         );
+
         // apply minimum dimensions
         button_size = button_size.max(Size::new(
             button_metrics.min_width,
@@ -75,9 +71,8 @@ impl<A: 'static> Widget<A> for Button<A> {
         button_size = constraints.constrain(button_size);
 
         node.layout = Layout::new(button_size);
-        Layout::align(&mut node.layout, &mut label_node.layout, Alignment::CENTER);
+        Layout::align(&mut node.layout, &mut label_layout, Alignment::CENTER);
 
-        drop(label_node);
         node
     }
 }
@@ -85,6 +80,16 @@ impl<A: 'static> Widget<A> for Button<A> {
 /// Node visual for a button.
 pub struct ButtonVisual<A> {
     on_click: Option<A>,
+    label: Box<Node<dyn Visual>>,
+}
+
+impl<A> Default for ButtonVisual<A> {
+    fn default() -> Self {
+        ButtonVisual {
+            on_click: None,
+            label: Node::dummy(),
+        }
+    }
 }
 
 impl<A: 'static> Visual for ButtonVisual<A> {
@@ -100,7 +105,7 @@ impl<A: 'static> Visual for ButtonVisual<A> {
             },
         );
 
-        label.draw();
+        self.label.paint(ctx, theme);
     }
 
     fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
@@ -111,6 +116,7 @@ impl<A: 'static> Visual for ButtonVisual<A> {
         match event {
             Event::PointerDown(p) => {
                 eprintln!("BUTTON CLICKED");
+                event_ctx.capture_pointer();
             }
             _ => {}
         }

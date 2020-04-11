@@ -1,7 +1,7 @@
-use crate::event::{Event, EventCtx};
+use crate::event::Event;
 use crate::layout::{BoxConstraints, Layout, PaintLayout, Size};
 use crate::renderer::Theme;
-use crate::visual::{Node, PaintCtx, Visual};
+use crate::visual::{EventCtx, Node, PaintCtx, Visual};
 use crate::widget::LayoutCtx;
 use crate::{Bounds, Point, Widget};
 use kyute_shell::drawing::{Color, DrawTextOptions};
@@ -27,16 +27,12 @@ impl Visual for TextVisual {
     }
 
     fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
-        // TODO
         false
     }
-
-    fn event(&mut self, _event_ctx: &mut EventCtx, _event: &Event) {}
-
+    fn event(&mut self, _ctx: &mut EventCtx, _event: &Event) {}
     fn as_any(&self) -> &dyn Any {
         self
     }
-
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -53,11 +49,10 @@ impl<A: 'static> Widget<A> for Text {
     fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        node: Option<Node<TextVisual>>,
+        _node: Option<Node<TextVisual>>,
         constraints: &BoxConstraints,
-        theme: &Theme
-    ) -> Node<TextVisual>
-    {
+        theme: &Theme,
+    ) -> Node<TextVisual> {
         let text_layout = TextLayout::new(
             ctx.platform(),
             &self.text,
@@ -75,7 +70,14 @@ impl<A: 'static> Widget<A> for Text {
 
         let layout = Layout::new(text_size).with_baseline(baseline);
 
-        Node::new(layout, None, TextVisual { text: self.text, text_layout })
+        Node::new(
+            layout,
+            None,
+            TextVisual {
+                text: self.text,
+                text_layout,
+            },
+        )
     }
 }
 

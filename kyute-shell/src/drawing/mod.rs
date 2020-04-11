@@ -25,7 +25,7 @@ pub trait RectExt {
 
 impl RectExt for Rect {
     fn stroke_inset(self, width: f64) -> Self {
-        self.inflate(-width * 0.5, -width*0.5)
+        self.inflate(-width * 0.5, -width * 0.5)
     }
 }
 

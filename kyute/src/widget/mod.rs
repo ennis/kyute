@@ -6,9 +6,9 @@ pub mod expand;
 pub mod flex;
 pub mod id;
 pub mod map;
+pub mod padding;
 pub mod text;
 pub mod textedit;
-pub mod padding;
 
 // re-export common widgets
 pub use baseline::Baseline;
@@ -23,12 +23,13 @@ pub use text::Text;
 use crate::application::WindowCtx;
 use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
-use crate::visual::{Visual, NodeReplacer, NodeList};
-use crate::visual::Node;
+use crate::visual::reconciliation::NodeReplacer;
+use crate::visual::Visual;
+use crate::visual::{reconciliation, Node};
+use crate::{visual, Layout};
 use kyute_shell::platform::Platform;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
-use crate::Layout;
 
 /// Objects that receive actions.
 pub trait ActionSink<A> {
@@ -70,9 +71,7 @@ pub struct LayoutCtx<'a, 'ctx, A> {
     pub(crate) action_sink: Rc<dyn ActionSink<A>>,
 }
 
-impl<'a, 'ctx, A> LayoutCtx<'a,'ctx,A>
-{
-}
+impl<'a, 'ctx, A> LayoutCtx<'a, 'ctx, A> {}
 
 impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
     pub fn platform(&self) -> &'ctx Platform {
@@ -89,9 +88,6 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
         }
     }
 }
-
-
-// ctx.register_window(window)
 
 /// Trait representing a widget before layout.
 ///
@@ -127,43 +123,27 @@ pub trait Widget<A> {
         ctx: &mut LayoutCtx<A>,
         node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme
+        theme: &Theme,
     ) -> Node<Self::Visual>;
-
-    ///
-    fn layout_single_child<'a>(self,
-                           ctx: &mut LayoutCtx<A>,
-                           node_list: &'a mut NodeList,
-                           constraints: &BoxConstraints,
-                           theme: &Theme
-    ) -> RefMut<'a, Node<Self::Visual>>
-    {
-        node_list.replacer().replace_or_create_with(None, move |node| self.layout(ctx, node, constraints, theme));
-        RefMut::map(node_list.list.first_mut().unwrap().borrow_mut(), |node| node.downcast_mut().unwrap())
-    }
-
 }
 
 /// Widget with a type-erased visual.
-pub trait AnyWidget<A>
-{
+pub trait AnyWidget<A> {
     fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
         placer: &mut NodeReplacer,
         constraints: &BoxConstraints,
-        theme: &Theme);
+        theme: &Theme,
+    );
 
-    fn layout_single_child<'a>(self,
-                               ctx: &mut LayoutCtx<A>,
-                               node_list: &'a mut NodeList,
-                               constraints: &BoxConstraints,
-                               theme: &Theme
-    ) -> RefMut<'a, Node<dyn Visual>>
-    {
-        self.layout(ctx, &mut node_list.replacer(), constraints, theme);
-        node_list.list.first_mut().unwrap().borrow_mut()
-    }
+    fn layout_single(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        node_wrapper: &mut Box<Node<dyn Visual>>,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    );
 }
 
 struct AnyWidgetWrapper<W> {
@@ -171,26 +151,38 @@ struct AnyWidgetWrapper<W> {
 }
 
 impl<A, W> AnyWidget<A> for AnyWidgetWrapper<W>
-    where W: Widget<A>
+where
+    W: Widget<A>,
 {
-    fn layout(self,
-              ctx: &mut LayoutCtx<A>,
-              placer: &mut NodeReplacer,
-              constraints: &BoxConstraints,
-              theme: &Theme)
-    {
-        // TODO key?
-        placer.replace_or_create_with(None, move |node| {
+    fn layout(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        replacer: &mut NodeReplacer,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) {
+        // FIXME key
+        replacer.replace_or_create_with(None, move |node| {
             self.inner.layout(ctx, node, constraints, theme)
         });
     }
 
-
+    fn layout_single(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        node: &mut Box<Node<dyn Visual>>,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) {
+        // FIXME key
+        reconciliation::replace_or_create_with(node, None, move |node| {
+            self.inner.layout(ctx, node, constraints, theme)
+        });
+    }
 }
 
 /// A widget wrapped in a box, that produce a visual wrapped in a box as well.
 pub type BoxedWidget<A> = Box<dyn AnyWidget<A>>;
-
 
 /// Extension methods for [`Widget`].
 pub trait WidgetExt<A: 'static>: Widget<A> {

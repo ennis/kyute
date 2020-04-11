@@ -4,12 +4,11 @@ use crate::platform::Platform;
 use std::mem::MaybeUninit;
 use std::ops::{Bound, Range, RangeBounds};
 use std::ptr;
-use winapi::shared::minwindef::{TRUE, FALSE};
+use winapi::shared::minwindef::{FALSE, TRUE};
 use winapi::shared::winerror::{ERROR_INSUFFICIENT_BUFFER, HRESULT_FROM_WIN32, SUCCEEDED};
 use winapi::um::dwrite::*;
 use wio::com::ComPtr;
 use wio::wide::ToWide;
-
 
 ///
 #[derive(Clone)]
@@ -233,10 +232,10 @@ fn count_utf16(s: &str) -> usize {
 fn count_until_utf16(s: &str, utf16_text_position: usize) -> usize {
     let mut utf16_count = 0;
 
-    for (i,c) in s.char_indices() {
+    for (i, c) in s.char_indices() {
         utf16_count += c.len_utf16();
         if utf16_count > utf16_text_position {
-            return i
+            return i;
         }
     }
 
@@ -244,7 +243,7 @@ fn count_until_utf16(s: &str, utf16_text_position: usize) -> usize {
 }
 
 /// Text hit-test metrics.
-#[derive(Copy,Clone,Debug,PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct HitTestMetrics {
     /// Text position in UTF-8 code units (bytes).
     pub text_position: usize,
@@ -256,8 +255,7 @@ impl HitTestMetrics {
     pub(crate) fn from_dwrite(metrics: &DWRITE_HIT_TEST_METRICS, text: &str) -> HitTestMetrics {
         // convert utf16 code unit offset to utf8
         dbg!(metrics.textPosition);
-        let text_position =
-            count_until_utf16(text, metrics.textPosition as usize);
+        let text_position = count_until_utf16(text, metrics.textPosition as usize);
         HitTestMetrics {
             text_position,
             length: metrics.length as usize,
@@ -270,14 +268,14 @@ impl HitTestMetrics {
 }
 
 /// Return value of [TextLayout::hit_test_point].
-#[derive(Copy,Clone,Debug,PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct HitTestPoint {
     pub is_trailing_hit: bool,
     pub metrics: HitTestMetrics,
 }
 
 /// Return value of [TextLayout::hit_test_text_position].
-#[derive(Copy,Clone,Debug,PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct HitTestTextPosition {
     pub point: Point,
     pub metrics: HitTestMetrics,
@@ -330,11 +328,9 @@ impl TextLayout {
                 metrics.as_mut_ptr(),
             );
 
-            error::wrap_hr(hr, || {
-                HitTestPoint {
-                    is_trailing_hit: is_trailing_hit != 0,
-                    metrics:  HitTestMetrics::from_dwrite(&metrics.assume_init(), &self.text)
-                }
+            error::wrap_hr(hr, || HitTestPoint {
+                is_trailing_hit: is_trailing_hit != 0,
+                metrics: HitTestMetrics::from_dwrite(&metrics.assume_init(), &self.text),
             })
         }
     }

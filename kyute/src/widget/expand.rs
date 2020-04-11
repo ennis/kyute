@@ -17,9 +17,8 @@ where
         ctx: &mut LayoutCtx<A>,
         node: Option<Node<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme
-    ) -> Node<Self::Visual>
-    {
+        theme: &Theme,
+    ) -> Node<Self::Visual> {
         self.0.layout(
             ctx,
             node,
