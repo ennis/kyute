@@ -8,7 +8,7 @@ use crate::widget::frame::Frame;
 use crate::widget::padding::Padding;
 use crate::widget::LayoutCtx;
 use crate::{Bounds, BoxedWidget, Point, Widget, WidgetExt};
-use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt};
+use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt, SolidColorBrush};
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
 use log::trace;
 use palette::{Srgb, Srgba};
@@ -33,15 +33,12 @@ impl Selection {
     pub fn min(&self) -> usize {
         self.start.min(self.end)
     }
-
     pub fn max(&self) -> usize {
         self.start.max(self.end)
     }
-
     pub fn is_empty(&self) -> bool {
         self.start == self.end
     }
-
     pub fn empty(at: usize) -> Selection {
         Selection { start: at, end: at }
     }
@@ -169,12 +166,35 @@ impl Visual for TextEditVisual {
         let size = ctx.size;
 
         let text_color = Color::new(0.0, 0.0, 0.0, 1.0);
+        let selected_bg_color = Color::new(0.0, 0.0, 0.0, 1.0);
+        let text_brush = SolidColorBrush::new(ctx, text_color);
+        let caret_brush = SolidColorBrush::new(ctx, text_color);
+        let selected_bg_brush = SolidColorBrush::new(ctx, selected_bg_color);
+        let selected_text_brush = SolidColorBrush::new(ctx, Color::new(1.0, 1.0, 1.0, 1.0));
+
+        // selected text color
+        self.text_layout.set_drawing_effect(&text_brush, ..);
+        if !self.selection.is_empty() {
+            self.text_layout.set_drawing_effect(
+                &selected_text_brush,
+                self.selection.min()..self.selection.max(),
+            );
+        }
+
+        // selection highlight
+        let selected_areas = self
+            .text_layout
+            .hit_test_text_range(self.selection.min()..self.selection.max(), &Point::origin())
+            .unwrap();
+        for sa in selected_areas {
+            ctx.fill_rectangle(sa.bounds.round_out(), &selected_bg_brush);
+        }
 
         // text
         ctx.draw_text_layout(
             Point::origin(),
             &self.text_layout,
-            text_color,
+            &text_brush,
             DrawTextOptions::empty(),
         );
 
@@ -190,7 +210,7 @@ impl Visual for TextEditVisual {
                 caret_hit_test.point.floor(),
                 Size::new(1.0, caret_hit_test.metrics.bounds.size.height),
             ),
-            Color::new(0.0, 0.0, 0.0, 1.0),
+            &caret_brush,
         );
 
         self.needs_repaint = false;

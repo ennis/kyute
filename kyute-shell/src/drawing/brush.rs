@@ -10,6 +10,7 @@ pub trait Brush {
     fn as_raw_brush(&self) -> *mut ID2D1Brush;
 }
 
+#[derive(Clone, Debug)]
 pub struct SolidColorBrush(pub(crate) ComPtr<ID2D1SolidColorBrush>);
 
 impl SolidColorBrush {
@@ -36,6 +37,7 @@ impl Brush for SolidColorBrush {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct LinearGradientBrush(pub(crate) ComPtr<ID2D1LinearGradientBrush>);
 
 impl LinearGradientBrush {}
@@ -46,6 +48,7 @@ impl Brush for LinearGradientBrush {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct RadialGradientBrush(pub(crate) ComPtr<ID2D1RadialGradientBrush>);
 
 impl RadialGradientBrush {}
@@ -66,5 +69,12 @@ impl IntoBrush for Color {
 
     fn into_brush(self, target: &RenderTarget) -> Self::Brush {
         SolidColorBrush::new(target, self)
+    }
+}
+
+impl<T: Brush> IntoBrush for T {
+    type Brush = T;
+    fn into_brush(self, _target: &RenderTarget) -> T {
+        self
     }
 }

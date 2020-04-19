@@ -5,7 +5,7 @@ use crate::visual::reconciliation::NodePlace;
 use crate::visual::{EventCtx, Node, PaintCtx, Visual};
 use crate::widget::LayoutCtx;
 use crate::{Bounds, Point, Widget};
-use kyute_shell::drawing::{Color, DrawTextOptions};
+use kyute_shell::drawing::{Color, DrawTextOptions, IntoBrush};
 use kyute_shell::text::TextLayout;
 use log::trace;
 use std::any::Any;
@@ -18,11 +18,13 @@ pub struct TextVisual {
 }
 
 impl Visual for TextVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
+    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme)
+    {
+        let text_brush = Color::new(1.0, 1.0, 1.0, 1.0).into_brush(ctx);
         ctx.draw_text_layout(
             Point::origin(),
             &self.text_layout,
-            Color::new(1.0, 1.0, 1.0, 1.0),
+            &text_brush,
             DrawTextOptions::empty(),
         )
     }

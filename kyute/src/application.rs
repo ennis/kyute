@@ -164,9 +164,9 @@ impl Window {
     }
 
     /// Delivers a pointer event, taking into account the visual that is grabbing the mouse, if there's one.
-    fn deliver_pointer_event(&mut self, event: Event) -> EventResult {
+    fn deliver_pointer_event(&mut self, ctx: &mut WindowCtx, event: Event) -> EventResult {
         self.node
-            .propagate_event(&event, Point::origin(), &self.inputs, &mut self.focus_state)
+            .propagate_event(&event, ctx, &self.window, Point::origin(), &self.inputs, &mut self.focus_state)
     }
 
     /// Delivers a keyboard event, taking into account the visual that has focus, if there's one.
@@ -231,7 +231,7 @@ impl Window {
                     }
                 };
 
-                self.deliver_pointer_event(e)
+                self.deliver_pointer_event(ctx, e)
             }
             WindowEvent::CursorMoved {
                 device_id,
@@ -256,7 +256,7 @@ impl Window {
                     buttons: pointer_state.buttons,
                     pointer_id: *device_id,
                 };
-                self.deliver_pointer_event(Event::PointerMove(p))
+                self.deliver_pointer_event(ctx, Event::PointerMove(p))
             }
 
             _ => {

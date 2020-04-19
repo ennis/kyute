@@ -2,6 +2,7 @@ use crate::layout::{Bounds, Point, Size};
 use crate::renderer::colors::DEFAULT_COLORS;
 use crate::renderer::ButtonState;
 use euclid::default::Rect;
+use kyute_shell::drawing::brush::IntoBrush;
 use kyute_shell::drawing::{Color, RenderTarget};
 use kyute_shell::platform::Platform;
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
@@ -84,11 +85,14 @@ impl Theme {
         bounds: Bounds,
         _state: &ButtonState,
     ) {
-        target.fill_rectangle(bounds, DEFAULT_COLORS.button);
+        let bg_brush = DEFAULT_COLORS.button.into_brush(target);
+        let border_brush = DEFAULT_COLORS.border.into_brush(target);
+
+        target.fill_rectangle(bounds, &bg_brush);
         let stroke_size = 1.0;
         target.draw_rectangle(
             bounds.inflate(-0.5 * stroke_size, -0.5 * stroke_size),
-            DEFAULT_COLORS.border,
+            &border_brush,
             1.0,
         );
     }

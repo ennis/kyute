@@ -1,4 +1,4 @@
-use crate::drawing::{Point, Rect, Size};
+use crate::drawing::{Brush, Point, Rect, Size};
 use crate::error::{self, Result};
 use crate::platform::Platform;
 use std::mem::MaybeUninit;
@@ -7,8 +7,20 @@ use std::ptr;
 use winapi::shared::minwindef::FALSE;
 use winapi::shared::winerror::{ERROR_INSUFFICIENT_BUFFER, HRESULT_FROM_WIN32, SUCCEEDED};
 use winapi::um::dwrite::*;
+use winapi::um::unknwnbase::IUnknown;
 use wio::com::ComPtr;
 use wio::wide::ToWide;
+
+/// Text drawing effects.
+pub trait DrawingEffect {
+    fn to_iunknown(&self) -> *mut IUnknown;
+}
+
+impl<T: Brush> DrawingEffect for T {
+    fn to_iunknown(&self) -> *mut IUnknown {
+        self.as_raw_brush() as *mut IUnknown
+    }
+}
 
 ///
 #[derive(Clone)]
@@ -493,6 +505,16 @@ impl TextLayout {
         let range = self.to_utf16_text_range(range);
         unsafe {
             self.ptr.SetFontWeight(weight.into(), range);
+        }
+    }
+
+    pub fn set_drawing_effect<R>(&mut self, effect: &impl DrawingEffect, range: R)
+    where
+        R: RangeBounds<usize>,
+    {
+        let range = self.to_utf16_text_range(range);
+        unsafe {
+            self.ptr.SetDrawingEffect(effect.to_iunknown(), range);
         }
     }
 

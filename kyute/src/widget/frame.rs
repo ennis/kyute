@@ -4,7 +4,7 @@ use crate::visual::reconciliation::NodePlace;
 use crate::visual::{EventCtx, PaintCtx};
 use crate::widget::LayoutCtx;
 use crate::{Bounds, BoxConstraints, BoxedWidget, Layout, Node, Point, Visual, Widget};
-use kyute_shell::drawing::{Color, RectExt};
+use kyute_shell::drawing::{Color, RectExt, IntoBrush};
 use std::any::Any;
 
 /// A widget that draws a frame.
@@ -56,12 +56,14 @@ impl Default for FrameVisual {
 impl Visual for FrameVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
         let rect = ctx.bounds();
+        let bg_brush = self.fill_color.into_brush(ctx);
+        let border_brush = self.border_color.into_brush(ctx);
         // box background
-        ctx.fill_rectangle(rect.stroke_inset(self.border_width), self.fill_color);
+        ctx.fill_rectangle(rect.stroke_inset(self.border_width), &bg_brush);
         // border
         ctx.draw_rectangle(
             rect.stroke_inset(self.border_width),
-            self.border_color,
+            &border_brush,
             self.border_width,
         );
         // child

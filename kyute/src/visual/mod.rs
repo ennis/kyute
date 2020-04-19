@@ -15,7 +15,7 @@ use std::rc::{Rc, Weak};
 use crate::application::WindowCtx;
 use crate::widget::ActionSink;
 use kyute_shell::drawing::{Size, Transform};
-use kyute_shell::window::DrawContext;
+use kyute_shell::window::{DrawContext, PlatformWindow};
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use winit::event::DeviceId;
@@ -351,11 +351,15 @@ pub enum FocusChange {
 }
 
 /// Event traversal state (shared)
-pub struct EventFlowCtx<'a> {
+pub struct EventFlowCtx<'fcx, 'wcx> {
+    /// Window context
+    window_ctx: &'fcx mut WindowCtx<'wcx>,
+    /// Window
+    window: &'fcx PlatformWindow,
     /// State of various input devices.
-    input_state: &'a InputState,
+    input_state: &'fcx InputState,
     /// Contains information about currently focused and pointer-grabbing nodes.
-    focus: &'a mut FocusState,
+    focus: &'fcx mut FocusState,
     /// The node is on the event delivery path towards the focused node,
     /// and should update its markers
     mark_focus_path: bool,
@@ -368,7 +372,7 @@ pub struct EventFlowCtx<'a> {
     redraw_requested: bool,
 }
 
-impl<'a> EventFlowCtx<'a> {
+impl<'fcx, 'wcx> EventFlowCtx<'fcx, 'wcx> {
     /// Returns whether we should follow a pointer-capture flow.
     fn is_capturing_pointer(&self) -> bool {
         self.focus.has_pointer_grab
@@ -381,10 +385,10 @@ impl<'a> EventFlowCtx<'a> {
 
 /// Context passed to [`Visual::event`] during event propagation.
 /// Also serves as a return value for this function.
-pub struct EventCtx<'a, 'b> {
-    flow: &'b mut EventFlowCtx<'a>,
+pub struct EventCtx<'a, 'fctx, 'wctx> {
+    flow: &'a mut EventFlowCtx<'fctx, 'wctx>,
     /// Event-related states of the node owning the visual.
-    node_state: &'b mut NodeState,
+    node_state: &'a mut NodeState,
     /// The bounds of the current visual.
     bounds: Bounds,
     /// The last node that got this context wants the pointer grab
@@ -393,14 +397,14 @@ pub struct EventCtx<'a, 'b> {
     focus_change_requested: FocusChange,
 }
 
-impl<'a, 'b> EventCtx<'a, 'b> {
-    fn new_child_ctx<'c>(
-        &'c mut self,
-        node_state: &'c mut NodeState,
+impl<'a, 'fctx, 'wctx> EventCtx<'a, 'fctx, 'wctx> {
+    fn new_child_ctx<'b>(
+        &'b mut self,
+        node_state: &'b mut NodeState,
         bounds: Bounds,
-    ) -> EventCtx<'a, 'c>
+    ) -> EventCtx<'b, 'fctx, 'wctx>
     where
-        'b: 'c,
+        'a: 'b,
     {
         EventCtx {
             flow: self.flow,
@@ -456,6 +460,11 @@ impl<'a, 'b> EventCtx<'a, 'b> {
     /// Signals that the passed event was handled and should not bubble up further.
     pub fn set_handled(&mut self) {
         self.flow.handled = true;
+    }
+
+    /// Returns the window that the event was originally sent to.
+    pub fn window(&self) -> &PlatformWindow {
+        self.flow.window
     }
 
     #[must_use]
@@ -583,11 +592,15 @@ impl<V: Visual + ?Sized> Node<V> {
     pub(crate) fn propagate_event(
         &mut self,
         event: &Event,
-        origin: Point,
+        window_ctx: &mut WindowCtx,
+        window: &PlatformWindow,
+        _origin: Point,
         input_state: &InputState,
         focus_state: &mut FocusState,
     ) -> EventResult {
         let mut flow = EventFlowCtx {
+            window,
+            window_ctx,
             input_state,
             focus: focus_state,
             mark_focus_path: false,

@@ -1,5 +1,5 @@
 //! Direct2D render target
-use crate::drawing::brush::{Brush, IntoBrush};
+use crate::drawing::brush::Brush;
 use crate::drawing::{
     mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Point, Rect, Transform,
 };
@@ -88,15 +88,14 @@ impl RenderTarget {
         &mut self,
         origin: Point,
         text_layout: &TextLayout,
-        default_fill_brush: impl IntoBrush,
+        default_fill_brush: &dyn Brush,
         text_options: DrawTextOptions,
     ) {
         unsafe {
-            let brush = default_fill_brush.into_brush(self);
             self.target.DrawTextLayout(
                 mk_point_f(origin),
                 text_layout.as_raw(),
-                brush.as_raw_brush(),
+                default_fill_brush.as_raw_brush(),
                 text_options.bits,
             );
         }
@@ -109,9 +108,8 @@ impl RenderTarget {
         }
     }
 
-    pub fn draw_rectangle(&mut self, rect: Rect, brush: impl IntoBrush, width: f64) {
+    pub fn draw_rectangle(&mut self, rect: Rect, brush: &dyn Brush, width: f64) {
         unsafe {
-            let brush = brush.into_brush(self);
             self.target.DrawRectangle(
                 &mk_rect_f(rect),
                 brush.as_raw_brush(),
@@ -121,16 +119,15 @@ impl RenderTarget {
         }
     }
 
-    pub fn fill_rectangle(&mut self, rect: Rect, brush: impl IntoBrush) {
+    pub fn fill_rectangle(&mut self, rect: Rect, brush: &dyn Brush) {
         unsafe {
-            let brush = brush.into_brush(self);
             self.target
                 .FillRectangle(&mk_rect_f(rect), brush.as_raw_brush());
         }
     }
 
     /// Safety: use a closure instead?
-    pub fn axis_aligned_clip(&mut self, rect: Rect) {
+    pub fn push_axis_aligned_clip(&mut self, rect: Rect) {
         unsafe {
             self.target
                 .PushAxisAlignedClip(&mk_rect_f(rect), D2D1_ANTIALIAS_MODE_ALIASED);
