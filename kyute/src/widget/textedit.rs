@@ -4,6 +4,7 @@ use crate::layout::{BoxConstraints, EdgeInsets, Layout, PaintLayout, Size};
 use crate::renderer::Theme;
 use crate::visual::reconciliation::NodePlace;
 use crate::visual::{EventCtx, Node, PaintCtx, Visual};
+use crate::widget::frame::Frame;
 use crate::widget::padding::Padding;
 use crate::widget::LayoutCtx;
 use crate::{Bounds, BoxedWidget, Point, Widget, WidgetExt};
@@ -14,7 +15,6 @@ use palette::{Srgb, Srgba};
 use std::any::Any;
 use std::ops::Range;
 use unicode_segmentation::GraphemeCursor;
-use crate::widget::frame::Frame;
 
 /// Text selection.
 ///
@@ -184,8 +184,12 @@ impl Visual for TextEditVisual {
             .text_layout
             .hit_test_text_position(self.selection.end)
             .unwrap();
+        dbg!(caret_hit_test);
         ctx.fill_rectangle(
-            Rect::new(caret_hit_test.point.floor(), Size::new(1.0, 14.0)),
+            Rect::new(
+                caret_hit_test.point.floor(),
+                Size::new(1.0, caret_hit_test.metrics.bounds.size.height),
+            ),
             Color::new(0.0, 0.0, 0.0, 1.0),
         );
 
@@ -304,9 +308,7 @@ pub struct TextEdit {
 
 impl TextEdit {
     pub fn new(text: impl Into<String>) -> TextEdit {
-        TextEdit {
-            text: text.into(),
-        }
+        TextEdit { text: text.into() }
     }
 }
 
@@ -319,13 +321,11 @@ impl<A: 'static> Widget<A> for TextEdit {
         theme: &Theme,
     ) -> &'a mut Node {
         Frame {
-            border_color: Color::new(0.0,0.0,0.0,1.0),
+            border_color: Color::new(0.0, 0.0, 0.0, 1.0),
             border_width: 1.0,
-            fill_color: Color::new(1.0,1.0,1.0,1.0),
-            inner: Padding::new(
-            EdgeInsets::all(2.0),
-            TextEditBase::new(self.text),
-            ).boxed()
-        }.layout(ctx, place, constraints, theme)
+            fill_color: Color::new(1.0, 1.0, 1.0, 1.0),
+            inner: Padding::new(EdgeInsets::all(2.0), TextEditBase::new(self.text)).boxed(),
+        }
+        .layout(ctx, place, constraints, theme)
     }
 }
