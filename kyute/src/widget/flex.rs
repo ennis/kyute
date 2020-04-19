@@ -4,7 +4,7 @@ use crate::visual::reconciliation::{NodeListReplacer, NodePlace};
 use crate::visual::{EventCtx, PaintCtx};
 use crate::widget::LayoutCtx;
 use crate::{
-    layout::BoxConstraints, layout::Layout, layout::Offset, layout::PaintLayout, layout::Size,
+    layout::BoxConstraints, layout::Layout, layout::Offset, layout::Size,
     visual::Node, visual::Visual, widget::Widget, widget::WidgetExt, Bounds, BoxedWidget, Point,
 };
 use euclid::{Point2D, UnknownUnit};

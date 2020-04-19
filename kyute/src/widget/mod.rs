@@ -4,13 +4,15 @@ pub mod button;
 pub mod dummy;
 pub mod expand;
 pub mod flex;
+pub mod form;
+pub mod frame;
 pub mod id;
 pub mod map;
 pub mod padding;
 pub mod text;
 pub mod textedit;
-pub mod frame;
-pub mod form;
+pub mod constrained;
+pub mod align;
 
 // re-export common widgets
 pub use baseline::Baseline;
@@ -142,9 +144,14 @@ pub trait Widget<A> {
 /// A widget wrapped in a box, that produce a visual wrapped in a box as well.
 pub type BoxedWidget<A> = Box<dyn Widget<A>>;
 
-impl<A> Widget<A> for Box<dyn Widget<A>>
-{
-    fn layout<'a>(self, ctx: &mut LayoutCtx<A>, place: &'a mut dyn NodePlace, constraints: &BoxConstraints, theme: &Theme) -> &'a mut Node {
+impl<A> Widget<A> for Box<dyn Widget<A>> {
+    fn layout<'a>(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        place: &'a mut dyn NodePlace,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) -> &'a mut Node {
         (*self).layout(ctx, place, constraints, theme)
     }
 }

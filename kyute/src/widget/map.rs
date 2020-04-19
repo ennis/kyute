@@ -1,12 +1,12 @@
 use crate::event::Event;
-use crate::layout::{BoxConstraints, PaintLayout};
+use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
+use crate::visual::reconciliation::NodePlace;
 use crate::visual::{Node, Visual};
 use crate::widget::{ActionSink, LayoutCtx};
 use crate::{Point, Widget};
 use std::marker::PhantomData;
 use std::rc::Rc;
-use crate::visual::reconciliation::NodePlace;
 
 /// Map one action to another.
 pub struct Map<A, W, F> {

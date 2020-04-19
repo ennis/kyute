@@ -1,11 +1,11 @@
-use kyute_shell::drawing::{Color, RectExt};
-use crate::{BoxedWidget, Widget, BoxConstraints, Node, Layout, Visual, Point, Bounds};
-use crate::widget::LayoutCtx;
-use crate::visual::reconciliation::NodePlace;
-use crate::renderer::Theme;
-use crate::visual::{PaintCtx, EventCtx};
-use std::any::Any;
 use crate::event::Event;
+use crate::renderer::Theme;
+use crate::visual::reconciliation::NodePlace;
+use crate::visual::{EventCtx, PaintCtx};
+use crate::widget::LayoutCtx;
+use crate::{Bounds, BoxConstraints, BoxedWidget, Layout, Node, Point, Visual, Widget};
+use kyute_shell::drawing::{Color, RectExt};
+use std::any::Any;
 
 /// A widget that draws a frame.
 pub struct Frame<A> {
@@ -28,9 +28,10 @@ impl<A: 'static> Widget<A> for Frame<A> {
                 border_color: self.border_color,
                 border_width: self.border_width,
                 fill_color: self.fill_color,
-                inner: Node::dummy(),   // FIXME unnecessary allocation
+                inner: Node::dummy(), // FIXME unnecessary allocation
             };
-            self.inner.layout(ctx, &mut visual.inner, constraints, theme);
+            self.inner
+                .layout(ctx, &mut visual.inner, constraints, theme);
             let mut size = visual.inner.layout.size;
             let layout = Layout::new(size).with_baseline(visual.inner.layout.baseline);
             Node::new(layout, None, visual)
@@ -49,10 +50,7 @@ impl Visual for FrameVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
         let rect = ctx.bounds();
         // box background
-        ctx.fill_rectangle(
-            rect.stroke_inset(self.border_width),
-            self.fill_color,
-        );
+        ctx.fill_rectangle(rect.stroke_inset(self.border_width), self.fill_color);
         // border
         ctx.draw_rectangle(
             rect.stroke_inset(self.border_width),

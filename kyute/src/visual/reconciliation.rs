@@ -2,8 +2,8 @@
 use crate::state::NodeKey;
 use crate::visual::{Node, Visual};
 use crate::Layout;
-use std::any::TypeId;
 use log::trace;
+use std::any::TypeId;
 
 /// Trait implemented by Node containers that support reconciliation.
 ///

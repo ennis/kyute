@@ -24,7 +24,6 @@ pub use self::layout::Alignment;
 pub use self::layout::Bounds;
 pub use self::layout::BoxConstraints;
 pub use self::layout::Layout;
-pub use self::layout::PaintLayout;
 pub use self::layout::Point;
 pub use self::layout::Size;
 

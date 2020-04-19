@@ -1,10 +1,10 @@
 use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
+use crate::visual::reconciliation::NodePlace;
 use crate::visual::Node;
 use crate::widget::LayoutCtx;
 use crate::Widget;
 use std::hash::Hash;
-use crate::visual::reconciliation::NodePlace;
 
 /// Identifies a widget.
 pub struct Id<W> {

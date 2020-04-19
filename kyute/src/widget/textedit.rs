@@ -1,6 +1,6 @@
 //! Text editor widget.
 use crate::event::Event;
-use crate::layout::{BoxConstraints, EdgeInsets, Layout, PaintLayout, Size};
+use crate::layout::{BoxConstraints, EdgeInsets, Layout, Size};
 use crate::renderer::Theme;
 use crate::visual::reconciliation::NodePlace;
 use crate::visual::{EventCtx, Node, PaintCtx, Visual};
@@ -184,7 +184,7 @@ impl Visual for TextEditVisual {
             .text_layout
             .hit_test_text_position(self.selection.end)
             .unwrap();
-        dbg!(caret_hit_test);
+        //dbg!(caret_hit_test);
         ctx.fill_rectangle(
             Rect::new(
                 caret_hit_test.point.floor(),

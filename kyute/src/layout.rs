@@ -1,5 +1,8 @@
 //! Types and functions used for layouting widgets.
 
+use bitflags::_core::ops::RangeBounds;
+use std::ops::Bound;
+
 pub type Size = euclid::default::Size2D<f64>;
 pub type Bounds = euclid::default::Rect<f64>;
 pub type Offset = euclid::default::Vector2D<f64>;
@@ -39,14 +42,50 @@ pub struct BoxConstraints {
 }
 
 impl BoxConstraints {
-    pub fn new(min: Size, max: Size) -> BoxConstraints {
-        BoxConstraints { min, max }
+
+    pub fn new(width: impl RangeBounds<f64>, height: impl RangeBounds<f64>) -> BoxConstraints
+    {
+        let min_width = match width.start_bound() {
+            Bound::Unbounded => 0.0,
+            Bound::Excluded(&x) => x,
+            Bound::Included(&x) => x,
+        };
+        let max_width = match width.end_bound() {
+            Bound::Unbounded => std::f64::INFINITY,
+            Bound::Excluded(&x) => x,
+            Bound::Included(&x) => x
+        };
+        let min_height = match height.start_bound() {
+            Bound::Unbounded => 0.0,
+            Bound::Excluded(&x) => x,
+            Bound::Included(&x) => x,
+        };
+        let max_height = match height.end_bound() {
+            Bound::Unbounded => std::f64::INFINITY,
+            Bound::Excluded(&x) => x,
+            Bound::Included(&x) => x
+        };
+        BoxConstraints {
+            min: Size::new(min_width, min_height),
+            max: Size::new(max_width, max_height)
+        }
     }
+
+    /*pub fn new(min: Size, max: Size) -> BoxConstraints {
+        BoxConstraints { min, max }
+    }*/
 
     pub fn loose(size: Size) -> BoxConstraints {
         BoxConstraints {
-            min: Size::new(0.0, 0.0),
+            min: Size::zero(),
             max: size,
+        }
+    }
+
+    pub fn loosen(&self) -> BoxConstraints {
+        BoxConstraints {
+            min: Size::zero(),
+            max: self.max
         }
     }
 
@@ -54,6 +93,13 @@ impl BoxConstraints {
         BoxConstraints {
             min: size,
             max: size,
+        }
+    }
+
+    pub fn enforce(&self, other: &BoxConstraints) -> BoxConstraints {
+        BoxConstraints {
+            min: self.min.max(other.min),
+            max: self.max.min(other.max)
         }
     }
 
@@ -80,6 +126,22 @@ impl BoxConstraints {
     pub fn biggest(&self) -> Size {
         self.max
     }
+
+    /*/// Returns the .
+    pub fn tight_or(&self, default: Size) -> Size {
+        Size::new(
+            if self.has_tight_width() { self.max.width } else { default.width },
+            if self.has_tight_height() { self.max.height } else { default.height },
+        )
+    }
+
+    pub fn has_bounded_width(&self) -> bool {
+        self.max.width.is_finite()
+    }
+
+    pub fn has_bounded_height(&self) -> bool {
+        self.max.height.is_finite()
+    }*/
 
     pub fn constrain(&self, size: Size) -> Size {
         Size::new(
@@ -209,30 +271,3 @@ impl From<Size> for Layout {
         Layout::new(s)
     }
 }
-
-/// Layout of a node in window coordinates.
-///
-/// TODO: this could be replaced with just the Bounds, since the baseline
-/// is not really needed during rendering, or even with a more generic `PaintCtx`.
-/// -> however the paint layout should be passed down in event, in paint, in hit-test...
-/// -> PaintCtx should also contain the current clip bounds
-/// -> PaintCtx should have a transform stack (and a clip stack)
-#[derive(Copy, Clone, Debug)]
-pub struct PaintLayout {
-    pub bounds: Bounds,
-    pub baseline: Option<f64>,
-}
-
-impl PaintLayout {
-    pub(super) fn new(origin: Point, layout: &Layout) -> Self {
-        PaintLayout {
-            bounds: Bounds::new(origin + layout.offset, layout.size),
-            baseline: layout.baseline,
-        }
-    }
-}
-
-// Bikeshedding
-// - Layout
-// - Geometry
-// - PaintBox

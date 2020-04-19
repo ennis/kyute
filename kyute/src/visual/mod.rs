@@ -1,6 +1,6 @@
 //! Elements of the visual tree (after layout): `Visual`s and `Node`s.
 use crate::event::{Event, MoveFocusDirection, PointerButtons, PointerEvent};
-use crate::layout::{Layout, Offset, PaintLayout, Point};
+use crate::layout::{Layout, Offset, Point};
 use crate::renderer::Theme;
 use crate::state::NodeKey;
 use crate::{Bounds, BoxConstraints, Widget};
@@ -165,7 +165,6 @@ impl<V> Node<V> {
     }
 }
 
-
 impl Node<dyn Visual> {
     /// Downcasts this node to a concrete type.
     pub fn downcast_mut<V: Visual>(&mut self) -> Option<&mut Node<V>> {
@@ -184,17 +183,16 @@ impl Node<dyn Visual> {
 }
 
 impl<V> Default for Node<V>
-    where
-        V: Visual + Default,
+where
+    V: Visual + Default,
 {
     fn default() -> Self {
         Node::new(Layout::default(), None, V::default())
     }
 }
 
-
 /// Painting methods.
-impl<V: Visual+?Sized> Node<V> {
+impl<V: Visual + ?Sized> Node<V> {
     /// Draws the node using the specified theme, in the specified context.
     ///
     /// Effectively, it applies the transform of the node (which, right now, is only an offset relative to the parent),

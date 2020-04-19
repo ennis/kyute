@@ -5,7 +5,7 @@ use crate::layout::EdgeInsets;
 use crate::layout::Layout;
 use crate::layout::Point;
 use crate::layout::Size;
-use crate::layout::{Offset, PaintLayout};
+use crate::layout::Offset;
 use crate::renderer::{ButtonState, Theme};
 use crate::visual::reconciliation::NodePlace;
 use crate::visual::Visual;

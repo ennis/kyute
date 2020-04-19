@@ -7,7 +7,7 @@ use crate::visual::{
 };
 use crate::widget::{ActionCollector, LayoutCtx};
 use crate::{
-    Bounds, BoxConstraints, BoxedWidget, Layout, Node, PaintLayout, Point, Visual, Widget,
+    Bounds, BoxConstraints, BoxedWidget, Layout, Node,  Point, Visual, Widget,
 };
 use anyhow::Result;
 use kyute_shell::drawing::Color;

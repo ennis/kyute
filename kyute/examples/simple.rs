@@ -1,7 +1,7 @@
 use kyute::application::{run_application, Application};
-use kyute::widget::textedit::{TextEditBase, TextEdit};
-use kyute::{BoxedWidget, WidgetExt};
 use kyute::widget::form::Form;
+use kyute::widget::textedit::{TextEdit, TextEditBase};
+use kyute::{BoxedWidget, WidgetExt};
 
 struct SimpleApplication;
 
@@ -22,11 +22,14 @@ impl Application for SimpleApplication {
                     .push(Baseline::new(20.0, Button::new("Button B")))
                     .push(Baseline::new(20.0, Text::new("Baseline alignment test"))),
             )
-            .push( Form::new()
-                .field("Field 1", TextEdit::new("Edit 1"))
-                .field("Field 2", TextEdit::new("Edit 2"))
-                .field("Field 3", TextEdit::new("Edit 3"))
-                .field("Field 4", TextEdit::new("Edit 4")))
+            .push(
+                Form::new()
+                    .field("Field 1", TextEdit::new("Edit 1"))
+                    .field("Field 2", TextEdit::new("Edit 2"))
+                    .field("Field 3", TextEdit::new("Edit 3"))
+                    .field("Field with a longer label 4", TextEdit::new("Edit 4"))
+                    .field("Field 5", TextEdit::new("Edit 4"))
+            )
             .push(
                 Flex::new(Axis::Vertical)
                     .push(Button::new("Vertical Flex:"))
@@ -36,6 +39,7 @@ impl Application for SimpleApplication {
                     .push(TextEdit::new("WWWWWWWWWWWWWWWWWWW")),
             )
             .push(Text::new("last"))
+
             .boxed()
     }
 }
