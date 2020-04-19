@@ -32,9 +32,7 @@ impl<A: 'static> Widget<A> for Frame<A> {
             };
             self.inner.layout(ctx, &mut visual.inner, constraints, theme);
             let mut size = visual.inner.layout.size;
-            //size.width += 2.0 * self.border_width;
-            //size.height += 2.0 * self.border_width;
-            let layout = Layout::new(size);
+            let layout = Layout::new(size).with_baseline(visual.inner.layout.baseline);
             Node::new(layout, None, visual)
         })
     }

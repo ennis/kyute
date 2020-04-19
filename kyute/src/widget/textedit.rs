@@ -185,7 +185,7 @@ impl Visual for TextEditVisual {
             .hit_test_text_position(self.selection.end)
             .unwrap();
         ctx.fill_rectangle(
-            Rect::new(caret_hit_test.point, Size::new(1.0, 14.0)),
+            Rect::new(caret_hit_test.point.floor(), Size::new(1.0, 14.0)),
             Color::new(0.0, 0.0, 0.0, 1.0),
         );
 

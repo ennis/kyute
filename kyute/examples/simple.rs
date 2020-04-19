@@ -22,6 +22,11 @@ impl Application for SimpleApplication {
                     .push(Baseline::new(20.0, Button::new("Button B")))
                     .push(Baseline::new(20.0, Text::new("Baseline alignment test"))),
             )
+            .push( Form::new()
+                .field("Field 1", TextEdit::new("Edit 1"))
+                .field("Field 2", TextEdit::new("Edit 2"))
+                .field("Field 3", TextEdit::new("Edit 3"))
+                .field("Field 4", TextEdit::new("Edit 4")))
             .push(
                 Flex::new(Axis::Vertical)
                     .push(Button::new("Vertical Flex:"))
@@ -30,11 +35,7 @@ impl Application for SimpleApplication {
                     .push(Text::new("Hello world"))
                     .push(TextEdit::new("WWWWWWWWWWWWWWWWWWW")),
             )
-            .push( Form::new()
-                .field("Field 1", TextEdit::new("Edit 1"))
-                .field("Field 2", TextEdit::new("Edit 2"))
-                .field("Field 3", TextEdit::new("Edit 3"))
-                .field("Field 4", TextEdit::new("Edit 4")))
+            .push(Text::new("last"))
             .boxed()
     }
 }

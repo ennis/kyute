@@ -1,6 +1,6 @@
 use kyute_shell::drawing::{Color, RectExt};
 use crate::{BoxedWidget, Widget, BoxConstraints, Node, Layout, Visual, Point, Bounds, WidgetExt};
-use crate::widget::{LayoutCtx, Flex, Axis, Text};
+use crate::widget::{LayoutCtx, Flex, Axis, Text, Baseline};
 use crate::visual::reconciliation::NodePlace;
 use crate::renderer::Theme;
 use crate::visual::{PaintCtx, EventCtx};
@@ -45,8 +45,8 @@ impl<A: 'static> Widget<A> for Form<A> {
         for f in self.fields.into_iter() {
             vbox = vbox.push(
                 Flex::new(Axis::Horizontal)
-                    .push(Text::new(f.label))
-                    .push_boxed(f.widget)
+                    .push(Baseline::new(20.0, Text::new(f.label)))
+                    .push(Baseline::new(20.0, f.widget))
             );
         }
         vbox.layout(ctx, place, constraints, theme)

@@ -3,6 +3,7 @@ use crate::state::NodeKey;
 use crate::visual::{Node, Visual};
 use crate::Layout;
 use std::any::TypeId;
+use log::trace;
 
 /// Trait implemented by Node containers that support reconciliation.
 ///
@@ -78,13 +79,14 @@ impl<'a> NodePlace for NodeListReplacer<'a> {
 
         // match found
         if let Some(pos) = pos {
+            trace!("[visual tree] found: ({:?},{:?})", ty, key);
             if pos > cur_pos {
                 // match found, but further in the list: rotate in place
                 self.list[cur_pos..=pos].rotate_right(1);
-                //trace!("[visual tree] rotate in place");
             }
             true
         } else {
+            trace!("[visual tree] NOT FOUND: ({:?},{:?})", ty, key);
             false
         }
     }

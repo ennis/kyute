@@ -135,8 +135,8 @@ impl<A: 'static> Widget<A> for Flex<A> {
         }
 
         let size = match axis {
-            Axis::Vertical => Size::new(cross_axis_len, constraints.max_height()),
-            Axis::Horizontal => Size::new(constraints.max_width(), cross_axis_len),
+            Axis::Vertical => Size::new(cross_axis_len, constraints.constrain_height(x)),
+            Axis::Horizontal => Size::new(constraints.constrain_width(x), cross_axis_len),
         };
 
         node.layout = Layout::new(size);

@@ -142,6 +142,13 @@ pub trait Widget<A> {
 /// A widget wrapped in a box, that produce a visual wrapped in a box as well.
 pub type BoxedWidget<A> = Box<dyn Widget<A>>;
 
+impl<A> Widget<A> for Box<dyn Widget<A>>
+{
+    fn layout<'a>(self, ctx: &mut LayoutCtx<A>, place: &'a mut dyn NodePlace, constraints: &BoxConstraints, theme: &Theme) -> &'a mut Node {
+        (*self).layout(ctx, place, constraints, theme)
+    }
+}
+
 /// Extension methods for [`Widget`].
 pub trait WidgetExt<A: 'static>: Widget<A> {
     /// TODO
