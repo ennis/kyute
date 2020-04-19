@@ -22,20 +22,16 @@ impl<A: 'static> Widget<A> for Frame<A> {
         place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node {
-        place.reconcile(|_| {
-            let mut visual = FrameVisual {
-                border_color: self.border_color,
-                border_width: self.border_width,
-                fill_color: self.fill_color,
-                inner: Node::dummy(), // FIXME unnecessary allocation
-            };
-            self.inner
-                .layout(ctx, &mut visual.inner, constraints, theme);
-            let mut size = visual.inner.layout.size;
-            let layout = Layout::new(size).with_baseline(visual.inner.layout.baseline);
-            Node::new(layout, None, visual)
-        })
+    ) -> &'a mut Node
+    {
+        let mut node = place.get_or_insert_default::<FrameVisual>();
+        node.visual.border_color = self.border_color;
+        node.visual.border_width = self.border_width;
+        node.visual.fill_color = self.fill_color;
+        self.inner
+            .layout(ctx, &mut node.visual.inner, constraints, theme);
+        node.layout = node.visual.inner.layout;
+        node
     }
 }
 
@@ -44,6 +40,17 @@ pub struct FrameVisual {
     border_width: f64,
     fill_color: Color,
     inner: Box<Node>,
+}
+
+impl Default for FrameVisual {
+    fn default() -> Self {
+        FrameVisual {
+            border_color: Color::new(0.0, 0.0, 0.0, 1.0),
+            border_width: 0.0,
+            fill_color: Color::new(1.0, 1.0, 1.0, 1.0),
+            inner: Node::dummy()
+        }
+    }
 }
 
 impl Visual for FrameVisual {

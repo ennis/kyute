@@ -4,6 +4,7 @@ use crate::visual::{Node, Visual};
 use crate::Layout;
 use log::trace;
 use std::any::TypeId;
+use std::any;
 
 /// Trait implemented by Node containers that support reconciliation.
 ///
@@ -27,6 +28,7 @@ impl<'a> dyn NodePlace + 'a {
         let found = self.gather(TypeId::of::<V>(), key);
 
         if found {
+            trace!("reconciled {}({:?})", any::type_name::<V>(), key);
             // we know downcast won't fail because of the invariants of find_and_move_in_place if found == true
             let node = self.get().unwrap().downcast_mut().unwrap();
             // sleight-of-hand to extract the node, pass it to layout(), and replace it with the
@@ -35,6 +37,7 @@ impl<'a> dyn NodePlace + 'a {
             node
         } else {
             // not found, insert new
+            trace!("not found {}({:?})", any::type_name::<V>(), key);
             let new_node = f(None);
             self.insert(Box::new(new_node)).downcast_mut().unwrap()
         }
@@ -52,7 +55,10 @@ impl<'a> dyn NodePlace + 'a {
     }
 
     pub fn get_or_insert_with<V: Visual, F: FnOnce() -> Node<V>>(&mut self, f: F) -> &mut Node<V> {
-        self.reconcile(|_| f())
+        self.reconcile(|node| {
+            dbg!(node.is_some());
+            node.unwrap_or_else(f)
+        })
     }
 }
 
@@ -79,14 +85,14 @@ impl<'a> NodePlace for NodeListReplacer<'a> {
 
         // match found
         if let Some(pos) = pos {
-            trace!("[visual tree] found: ({:?},{:?})", ty, key);
+            //trace!("[visual tree] found: ({:?},{:?})", ty, key);
             if pos > cur_pos {
                 // match found, but further in the list: rotate in place
                 self.list[cur_pos..=pos].rotate_right(1);
             }
             true
         } else {
-            trace!("[visual tree] NOT FOUND: ({:?},{:?})", ty, key);
+            //trace!("[visual tree] NOT FOUND: ({:?},{:?})", ty, key);
             false
         }
     }
@@ -113,7 +119,7 @@ impl<'a> Drop for NodeListReplacer<'a> {
 
 impl NodePlace for Box<Node> {
     fn gather(&mut self, ty: TypeId, key: Option<u64>) -> bool {
-        self.visual.type_id() == ty && self.key == key
+        dbg!(self.visual.type_id() == ty && self.key == key)
     }
 
     fn get(&mut self) -> Option<&mut Node> {

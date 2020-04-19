@@ -252,6 +252,7 @@ impl<A: 'static> Widget<A> for TextEditBase {
         let platform = ctx.platform();
 
         let mut node = place.get_or_insert_with(|| {
+            trace!("new TextEditVisual");
             Node::new(
                 Layout::default(),
                 None,
