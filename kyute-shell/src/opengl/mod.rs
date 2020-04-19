@@ -19,7 +19,7 @@ pub(crate) unsafe fn init_debug_callback(gl: &Gl) {
             severity: GLenum,
             _length: GLsizei,
             message: *const GLchar,
-            _userParam: *mut c_void,
+            _user_param: *mut c_void,
         ) {
             unsafe {
                 use std::ffi::CStr;

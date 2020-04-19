@@ -6,6 +6,7 @@ use crate::widget::{ActionSink, LayoutCtx};
 use crate::{Point, Widget};
 use std::marker::PhantomData;
 use std::rc::Rc;
+use crate::visual::reconciliation::NodePlace;
 
 /// Map one action to another.
 pub struct Map<A, W, F> {
@@ -25,16 +26,14 @@ impl<A, W, F> Map<A, W, F> {
 }
 
 impl<A: 'static, B: 'static, W: Widget<A>, F: Fn(A) -> B + 'static> Widget<B> for Map<A, W, F> {
-    type Visual = W::Visual;
-
-    fn layout(
+    fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<B>,
-        node: Option<Node<Self::Visual>>,
+        place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> Node<Self::Visual> {
+    ) -> &'a mut Node {
         let mut ctx = ctx.map(self.map);
-        self.inner.layout(&mut ctx, node, constraints, theme)
+        self.inner.layout(&mut ctx, place, constraints, theme)
     }
 }

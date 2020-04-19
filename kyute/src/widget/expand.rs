@@ -1,5 +1,6 @@
 use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
+use crate::visual::reconciliation::NodePlace;
 use crate::visual::Node;
 use crate::widget::{LayoutCtx, Widget};
 
@@ -10,18 +11,16 @@ impl<A: 'static, W> Widget<A> for Expand<W>
 where
     W: Widget<A>,
 {
-    type Visual = W::Visual;
-
-    fn layout(
+    fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        node: Option<Node<Self::Visual>>,
+        place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> Node<Self::Visual> {
+    ) -> &'a mut Node {
         self.0.layout(
             ctx,
-            node,
+            place,
             &BoxConstraints::tight(constraints.biggest()),
             theme,
         )

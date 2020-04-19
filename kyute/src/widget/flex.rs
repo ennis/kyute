@@ -1,6 +1,6 @@
-use crate::event::Event;
+use crate::event::{Event, MoveFocusDirection};
 use crate::renderer::Theme;
-use crate::visual::reconciliation::NodeReplacer;
+use crate::visual::reconciliation::{NodeListReplacer, NodePlace};
 use crate::visual::{EventCtx, PaintCtx};
 use crate::widget::LayoutCtx;
 use crate::{
@@ -82,27 +82,30 @@ impl<A: 'static> Flex<A> {
         self.children.push(child.boxed());
         self
     }
+
+    pub fn push_boxed(mut self, child: BoxedWidget<A>) -> Self {
+        self.children.push(child);
+        self
+    }
 }
 
 impl<A: 'static> Widget<A> for Flex<A> {
-    type Visual = FlexVisual;
-
-    fn layout(
+    fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        node: Option<Node<FlexVisual>>,
+        place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> Node<FlexVisual> {
-        let mut node = node.unwrap_or_default();
+    ) -> &'a mut Node {
+        let node: &mut Node<FlexVisual> = place.get_or_insert_default();
 
         let axis = self.axis;
 
         {
             // layout child nodes
-            let mut replacer = NodeReplacer::new(&mut node.visual.children);
+            let mut replacer = NodeListReplacer::new(&mut node.visual.children);
             for c in self.children.into_iter() {
-                c.layout(ctx, &mut replacer, constraints, theme)
+                c.layout(ctx, &mut replacer, constraints, theme);
             }
         }
 
@@ -142,7 +145,7 @@ impl<A: 'static> Widget<A> for Flex<A> {
 }
 
 pub struct FlexVisual {
-    children: Vec<Box<Node<dyn Visual>>>,
+    children: Vec<Box<Node>>,
 }
 
 impl Default for FlexVisual {
@@ -167,14 +170,48 @@ impl Visual for FlexVisual {
         unimplemented!()
     }
 
-    fn event(&mut self, event_ctx: &mut EventCtx, event: &Event) {
-        //unimplemented!()
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
+        match event {
+            Event::MoveFocus(direction) => {
+                // find the focus path
+                let mut i = if let Some(i) = self
+                    .children
+                    .iter()
+                    .position(|node| node.is_on_focus_path(ctx))
+                {
+                    i as isize
+                } else {
+                    // this container does not contain the focus path
+                    return;
+                };
+
+                self.children[i as usize].event(ctx, event);
+
+                let len = self.children.len() as isize;
+                while !ctx.handled() && (0..len).contains(&i) {
+                    i += match direction {
+                        MoveFocusDirection::Before => -1,
+                        MoveFocusDirection::After => 1,
+                    };
+
+                    self.children[i as usize].event(ctx, &Event::SetFocus(*direction));
+                }
+            }
+            // forward all other events
+            event => {
+                for c in self.children.iter_mut() {
+                    c.event(ctx, event);
+                    if ctx.handled() {
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
         self
     }
-
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

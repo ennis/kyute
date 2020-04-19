@@ -1,6 +1,7 @@
 use crate::event::Event;
-use crate::layout::{BoxConstraints, Layout, PaintLayout, Point, Size};
+use crate::layout::{BoxConstraints, Layout};
 use crate::renderer::Theme;
+use crate::visual::reconciliation::NodePlace;
 use crate::visual::{DummyVisual, Node, PaintCtx, Visual};
 use crate::widget::{LayoutCtx, Widget};
 use crate::Bounds;
@@ -10,15 +11,13 @@ use std::any::Any;
 pub struct DummyWidget;
 
 impl<A: 'static> Widget<A> for DummyWidget {
-    type Visual = DummyVisual;
-
-    fn layout(
+    fn layout<'a>(
         self,
-        ctx: &mut LayoutCtx<A>,
-        node: Option<Node<Self::Visual>>,
-        constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> Node<DummyVisual> {
-        Node::new(Layout::default(), None, DummyVisual)
+        _ctx: &mut LayoutCtx<A>,
+        place: &'a mut dyn NodePlace,
+        _constraints: &BoxConstraints,
+        _theme: &Theme,
+    ) -> &'a mut Node {
+        place.get_or_insert_default::<DummyVisual>()
     }
 }

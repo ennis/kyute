@@ -1,6 +1,7 @@
 use crate::event::Event;
 use crate::layout::{BoxConstraints, Layout, PaintLayout, Size};
 use crate::renderer::Theme;
+use crate::visual::reconciliation::NodePlace;
 use crate::visual::{EventCtx, Node, PaintCtx, Visual};
 use crate::widget::LayoutCtx;
 use crate::{Bounds, Point, Widget};
@@ -44,40 +45,41 @@ pub struct Text {
 }
 
 impl<A: 'static> Widget<A> for Text {
-    type Visual = TextVisual;
-
-    fn layout(
+    fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        _node: Option<Node<TextVisual>>,
+        place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> Node<TextVisual> {
-        let text_layout = TextLayout::new(
-            ctx.platform(),
-            &self.text,
-            &theme.label_text_format,
-            constraints.biggest(),
-        )
-        .unwrap();
+    ) -> &'a mut Node {
+        place.reconcile(|_prev: Option<Node<TextVisual>>| {
+            // TODO check for changes instead of re-creating from scratch every time
+            let text_layout = TextLayout::new(
+                ctx.platform(),
+                &self.text,
+                &theme.label_text_format,
+                constraints.biggest(),
+            )
+            .unwrap();
 
-        let text_size = text_layout.metrics().bounds.size.ceil();
+            let text_size = text_layout.metrics().bounds.size.ceil();
 
-        let baseline = text_layout
-            .line_metrics()
-            .first()
-            .map(|m| m.baseline.ceil() as f64);
+            let baseline = text_layout
+                .line_metrics()
+                .first()
+                .map(|m| m.baseline.ceil() as f64);
 
-        let layout = Layout::new(text_size).with_baseline(baseline);
+            let layout = Layout::new(text_size).with_baseline(baseline);
 
-        Node::new(
-            layout,
-            None,
-            TextVisual {
-                text: self.text,
-                text_layout,
-            },
-        )
+            Node::new(
+                layout,
+                None,
+                TextVisual {
+                    text: self.text,
+                    text_layout,
+                },
+            )
+        })
     }
 }
 

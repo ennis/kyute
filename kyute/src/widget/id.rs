@@ -4,6 +4,7 @@ use crate::visual::Node;
 use crate::widget::LayoutCtx;
 use crate::Widget;
 use std::hash::Hash;
+use crate::visual::reconciliation::NodePlace;
 
 /// Identifies a widget.
 pub struct Id<W> {
@@ -17,16 +18,14 @@ impl<W> Id<W> {
 }
 
 impl<A: 'static, W: Widget<A>> Widget<A> for Id<W> {
-    type Visual = W::Visual;
-
-    fn layout(
+    fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        node: Option<Node<Self::Visual>>,
+        place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> Node<Self::Visual> {
+    ) -> &'a mut Node {
         // TODO ID?
-        self.inner.layout(ctx, node, constraints, theme)
+        self.inner.layout(ctx, place, constraints, theme)
     }
 }

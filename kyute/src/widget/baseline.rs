@@ -1,5 +1,6 @@
 use crate::layout::{BoxConstraints, Layout, Offset, Size};
 use crate::renderer::Theme;
+use crate::visual::reconciliation::NodePlace;
 use crate::visual::{LayoutBox, Node};
 use crate::widget::{LayoutCtx, Widget};
 
@@ -16,30 +17,26 @@ impl<W> Baseline<W> {
 }
 
 impl<A: 'static, W: Widget<A>> Widget<A> for Baseline<W> {
-    type Visual = LayoutBox<W::Visual>;
-
-    fn layout(
+    fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        node: Option<Node<Self::Visual>>,
+        place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> Node<Self::Visual> {
-        let mut child =
-            self.inner
-                .layout(ctx, node.map(|node| node.visual.inner), constraints, theme);
+    ) -> &'a mut Node {
+        let node: &mut Node<LayoutBox> = place.get_or_insert_default();
+        let child = self
+            .inner
+            .layout(ctx, &mut node.visual.inner, constraints, theme);
 
         let off = self.baseline - child.layout.baseline.unwrap_or(child.layout.size.height);
         let height = child.layout.size.height + off;
         child.layout.offset.y = off;
 
         let width = child.layout.size.width;
-        let layout = Layout {
-            offset: Offset::new(0.0, 0.0),
-            size: constraints.constrain(Size::new(width, height)),
-            baseline: Some(self.baseline),
-        };
-
-        Node::new(layout, None, LayoutBox::new(child))
+        node.layout.offset = Offset::zero();
+        node.layout.size = constraints.constrain(Size::new(width, height));
+        node.layout.baseline = Some(self.baseline);
+        node
     }
 }

@@ -9,6 +9,8 @@ pub mod map;
 pub mod padding;
 pub mod text;
 pub mod textedit;
+pub mod frame;
+pub mod form;
 
 // re-export common widgets
 pub use baseline::Baseline;
@@ -23,7 +25,7 @@ pub use text::Text;
 use crate::application::WindowCtx;
 use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
-use crate::visual::reconciliation::NodeReplacer;
+use crate::visual::reconciliation::NodePlace;
 use crate::visual::Visual;
 use crate::visual::{reconciliation, Node};
 use crate::{visual, Layout};
@@ -115,74 +117,30 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
 ///
 /// See also [Inside Flutter - Building widgets on demand](https://flutter.dev/docs/resources/inside-flutter#building-widgets-on-demand).
 pub trait Widget<A> {
-    type Visual: Visual;
+    // Having to specify the visual type is annoying, especially for wrapper widgets.
+    // Remove this, and always pass Option<Box<Node<dyn Visual>>>?
+    // Then we have a problem with the list reconciliation that uses the statically-known visual type
+    // to find a matching node in a list.
+    //
+    // Simplest solution:
+    // - don't reconcile using the type: use the key instead, or just the position
+    // - remove V type param on Node
+    // - Store Box<dyn Visual> as the visual in Node.
+    // - Pass Option<Node>, return Node, visual type is erased
 
     /// Performs layout, consuming the widget.
-    fn layout(
+    /// Problem: there's no way to know the visual type that the widget expects
+    fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        node: Option<Node<Self::Visual>>,
+        place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> Node<Self::Visual>;
-}
-
-/// Widget with a type-erased visual.
-pub trait AnyWidget<A> {
-    fn layout(
-        self,
-        ctx: &mut LayoutCtx<A>,
-        placer: &mut NodeReplacer,
-        constraints: &BoxConstraints,
-        theme: &Theme,
-    );
-
-    fn layout_single(
-        self,
-        ctx: &mut LayoutCtx<A>,
-        node_wrapper: &mut Box<Node<dyn Visual>>,
-        constraints: &BoxConstraints,
-        theme: &Theme,
-    );
-}
-
-struct AnyWidgetWrapper<W> {
-    inner: W,
-}
-
-impl<A, W> AnyWidget<A> for AnyWidgetWrapper<W>
-where
-    W: Widget<A>,
-{
-    fn layout(
-        self,
-        ctx: &mut LayoutCtx<A>,
-        replacer: &mut NodeReplacer,
-        constraints: &BoxConstraints,
-        theme: &Theme,
-    ) {
-        // FIXME key
-        replacer.replace_or_create_with(None, move |node| {
-            self.inner.layout(ctx, node, constraints, theme)
-        });
-    }
-
-    fn layout_single(
-        self,
-        ctx: &mut LayoutCtx<A>,
-        node: &mut Box<Node<dyn Visual>>,
-        constraints: &BoxConstraints,
-        theme: &Theme,
-    ) {
-        // FIXME key
-        reconciliation::replace_or_create_with(node, None, move |node| {
-            self.inner.layout(ctx, node, constraints, theme)
-        });
-    }
+    ) -> &'a mut Node;
 }
 
 /// A widget wrapped in a box, that produce a visual wrapped in a box as well.
-pub type BoxedWidget<A> = Box<dyn AnyWidget<A>>;
+pub type BoxedWidget<A> = Box<dyn Widget<A>>;
 
 /// Extension methods for [`Widget`].
 pub trait WidgetExt<A: 'static>: Widget<A> {
@@ -196,11 +154,11 @@ pub trait WidgetExt<A: 'static>: Widget<A> {
     }
 
     /// Turns this widget into a type-erased boxed representation.
-    fn boxed<'a>(self) -> Box<dyn AnyWidget<A> + 'a>
+    fn boxed<'a>(self) -> Box<dyn Widget<A> + 'a>
     where
         Self: Sized + 'a,
     {
-        Box::new(AnyWidgetWrapper { inner: self })
+        Box::new(self)
     }
 }
 

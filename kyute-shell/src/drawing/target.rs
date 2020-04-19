@@ -109,13 +109,13 @@ impl RenderTarget {
         }
     }
 
-    pub fn draw_rectangle(&mut self, rect: Rect, brush: impl IntoBrush, width: f32) {
+    pub fn draw_rectangle(&mut self, rect: Rect, brush: impl IntoBrush, width: f64) {
         unsafe {
             let brush = brush.into_brush(self);
             self.target.DrawRectangle(
                 &mk_rect_f(rect),
                 brush.as_raw_brush(),
-                width,
+                width as f32,
                 ptr::null_mut(),
             );
         }

@@ -4,7 +4,7 @@ use crate::platform::Platform;
 use std::mem::MaybeUninit;
 use std::ops::{Bound, Range, RangeBounds};
 use std::ptr;
-use winapi::shared::minwindef::{FALSE, TRUE};
+use winapi::shared::minwindef::FALSE;
 use winapi::shared::winerror::{ERROR_INSUFFICIENT_BUFFER, HRESULT_FROM_WIN32, SUCCEEDED};
 use winapi::um::dwrite::*;
 use wio::com::ComPtr;
@@ -254,7 +254,7 @@ pub struct HitTestMetrics {
 impl HitTestMetrics {
     pub(crate) fn from_dwrite(metrics: &DWRITE_HIT_TEST_METRICS, text: &str) -> HitTestMetrics {
         // convert utf16 code unit offset to utf8
-        dbg!(metrics.textPosition);
+        //dbg!(metrics.textPosition);
         let text_position = count_until_utf16(text, metrics.textPosition as usize);
         HitTestMetrics {
             text_position,
@@ -348,7 +348,7 @@ impl TextLayout {
         // convert the text position to an utf-16 offset (inspired by piet-direct2d).
         let pos_utf16 = count_utf16(&self.text[0..text_position]);
 
-        dbg!(pos_utf16);
+        //dbg!(pos_utf16);
 
         unsafe {
             let mut point_x = 0.0f32;

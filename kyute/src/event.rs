@@ -1,7 +1,5 @@
 //! [`Events`](Event) sent to widgets, and related types.
-use crate::layout::{Bounds, Layout};
 use crate::Point;
-use winit::event::WindowEvent;
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -33,15 +31,12 @@ impl PointerButtons {
     pub fn test(self, button: PointerButton) -> bool {
         self.0 & (1u32 << button.0 as u32) != 0
     }
-
     pub fn set(&mut self, button: PointerButton) {
-        self.0 |= (1u32 << button.0 as u32);
+        self.0 |= 1u32 << button.0 as u32;
     }
-
     pub fn reset(&mut self, button: PointerButton) {
         self.0 &= !(1u32 << button.0 as u32);
     }
-
     pub fn is_empty(&self) -> bool {
         self.0 == 0
     }
@@ -100,6 +95,12 @@ pub struct InputEvent {
     character: char,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum MoveFocusDirection {
+    Before,
+    After,
+}
+
 /// Events.
 ///
 /// Events are sent to [Visuals](super::visual::Visual).
@@ -112,4 +113,10 @@ pub enum Event {
     KeyDown(KeyboardEvent),
     KeyUp(KeyboardEvent),
     Input(InputEvent),
+
+    // non-input events
+    /// Move the focus to the previous or next node in the focus chain.
+    MoveFocus(MoveFocusDirection),
+    /// Set focus to the right or left-most (depending on the direction) focusable leaf node.
+    SetFocus(MoveFocusDirection),
 }

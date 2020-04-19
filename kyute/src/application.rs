@@ -18,8 +18,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
 use std::rc::{Rc, Weak};
-use winit::event::{DeviceId, ElementState, KeyboardInput, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
+use winit::event::WindowEvent;
+use winit::event_loop::{ControlFlow, EventLoopWindowTarget};
 use winit::window::{WindowBuilder, WindowId};
 
 /// Encapsulates the behavior of an application.
@@ -128,7 +128,7 @@ fn convert_window_event(event: &WindowEvent) -> Option<Event> {
 /// A window managed by kyute with a cached visual node.
 struct Window {
     window: PlatformWindow,
-    node: Box<Node<dyn Visual>>,
+    node: Box<Node>,
     inputs: InputState,
     focus_state: FocusState,
 }
@@ -150,7 +150,7 @@ impl Window {
                 mods: winit::event::ModifiersState::default(),
                 pointers: HashMap::new(),
             },
-            focus_state: FocusState {},
+            focus_state: FocusState::new(),
         };
         let window = Rc::new(RefCell::new(window));
 
@@ -225,9 +225,7 @@ impl Window {
                     winit::event::ElementState::Released => {
                         // POINTER UNGRAB: If all pointer buttons are released, force ungrab
                         if p.buttons.is_empty() {
-                            trace!("force ungrab");
-                            // TODO
-                            //self.focus_state.pointer_grab = dummy_weak_node();
+                            self.focus_state.release_pointer_grab();
                         }
                         Event::PointerUp(p)
                     }
@@ -287,7 +285,7 @@ impl Window {
             .into();
         dbg!(size);
         // perform layout, update the visual node
-        widget.layout_single(
+        widget.layout(
             ctx,
             &mut self.node,
             &BoxConstraints::loose(size.into()),

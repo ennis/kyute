@@ -1,5 +1,6 @@
 use crate::layout::{BoxConstraints, EdgeInsets, Layout, Offset, Size};
 use crate::renderer::Theme;
+use crate::visual::reconciliation::NodePlace;
 use crate::visual::{LayoutBox, Node};
 use crate::widget::{LayoutCtx, Widget};
 
@@ -16,25 +17,26 @@ impl<W> Padding<W> {
 }
 
 impl<A: 'static, W: Widget<A>> Widget<A> for Padding<W> {
-    type Visual = LayoutBox<W::Visual>;
-
-    fn layout(
+    fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        node: Option<Node<Self::Visual>>,
+        place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> Node<Self::Visual> {
+    ) -> &'a mut Node {
         let Padding { inner, insets } = self;
-        let mut child = inner.layout(
+
+        let node: &mut Node<LayoutBox> = place.get_or_insert_default();
+        let child = inner.layout(
             ctx,
-            node.map(|node| node.visual.inner),
+            &mut node.visual.inner,
             &constraints.deflate(&insets),
             theme,
         );
+
         child.layout.offset = Offset::new(insets.left, insets.top);
 
-        let layout = Layout {
+        node.layout = Layout {
             offset: Offset::zero(),
             size: Size::new(
                 child.layout.size.width + insets.left + insets.right,
@@ -43,6 +45,6 @@ impl<A: 'static, W: Widget<A>> Widget<A> for Padding<W> {
             baseline: child.layout.baseline.map(|b| b + insets.top),
         };
 
-        Node::new(layout, None, LayoutBox::new(child))
+        node
     }
 }

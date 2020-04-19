@@ -1,17 +1,20 @@
 //! Text editor widget.
 use crate::event::Event;
-use crate::layout::{BoxConstraints, Layout, PaintLayout, Size};
+use crate::layout::{BoxConstraints, EdgeInsets, Layout, PaintLayout, Size};
 use crate::renderer::Theme;
+use crate::visual::reconciliation::NodePlace;
 use crate::visual::{EventCtx, Node, PaintCtx, Visual};
+use crate::widget::padding::Padding;
 use crate::widget::LayoutCtx;
-use crate::{Bounds, Point, Widget};
+use crate::{Bounds, BoxedWidget, Point, Widget, WidgetExt};
 use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt};
-use kyute_shell::text::TextLayout;
+use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
 use log::trace;
 use palette::{Srgb, Srgba};
 use std::any::Any;
 use std::ops::Range;
 use unicode_segmentation::GraphemeCursor;
+use crate::widget::frame::Frame;
 
 /// Text selection.
 ///
@@ -149,31 +152,34 @@ impl TextEditVisual {
         self.needs_repaint = true;
         // reset blink
     }
+
+    fn position_to_text(&mut self, pos: Point) -> usize {
+        let hit = self.text_layout.hit_test_point(pos).unwrap();
+        let pos = if hit.is_trailing_hit {
+            hit.metrics.text_position + hit.metrics.length
+        } else {
+            hit.metrics.text_position
+        };
+        pos
+    }
 }
 
 impl Visual for TextEditVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
         let size = ctx.size;
 
-        let bg_color: Color = Srgb::from_format(palette::named::WHITE).into();
-        let border_color: Color = Srgb::from_format(palette::named::BLACK).into();
-
-        let rect = ctx.bounds();
-        // box background
-        ctx.fill_rectangle(rect.stroke_inset(1.0), bg_color);
-        // border
-        ctx.draw_rectangle(rect.stroke_inset(1.0), border_color, 1.0);
+        let text_color = Color::new(0.0, 0.0, 0.0, 1.0);
 
         // text
         ctx.draw_text_layout(
             Point::origin(),
             &self.text_layout,
-            border_color,
+            text_color,
             DrawTextOptions::empty(),
         );
 
         // caret
-        eprintln!("selection={:?}", self.selection);
+        //eprintln!("selection={:?}", self.selection);
         let caret_hit_test = self
             .text_layout
             .hit_test_text_position(self.selection.end)
@@ -193,21 +199,21 @@ impl Visual for TextEditVisual {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
         match event {
             Event::PointerDown(p) => {
-                let hit = self.text_layout.hit_test_point(p.position).unwrap();
-                eprintln!("{:?}", hit);
-
-                let pos = if hit.is_trailing_hit {
-                    hit.metrics.text_position + hit.metrics.length
-                } else {
-                    hit.metrics.text_position
-                };
-
+                let pos = self.position_to_text(p.position);
                 self.set_cursor(pos);
-
                 ctx.capture_pointer();
             }
-            Event::PointerMove(p) => {}
-            Event::PointerUp(p) => {}
+            Event::PointerMove(p) => {
+                // update selection
+                if ctx.is_grabbing_pointer() {
+                    let pos = self.position_to_text(p.position);
+                    self.set_selection_end(pos);
+                    trace!("selection: {:?}", self.selection)
+                }
+            }
+            Event::PointerUp(p) => {
+                // nothing to do (pointer grab automatically ends)
+            }
             _ => {}
         }
 
@@ -225,24 +231,23 @@ impl Visual for TextEditVisual {
 }
 
 /// Text element.
-pub struct TextEdit {
+pub struct TextEditBase {
     text: String,
+    //text_format: TextFormat,
 }
 
-impl<A: 'static> Widget<A> for TextEdit {
-    type Visual = TextEditVisual;
-
-    fn layout(
+impl<A: 'static> Widget<A> for TextEditBase {
+    fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        node: Option<Node<Self::Visual>>,
+        place: &'a mut dyn NodePlace,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> Node<Self::Visual> {
+    ) -> &'a mut Node {
         let text = &self.text;
         let platform = ctx.platform();
 
-        let mut node = node.unwrap_or_else(|| {
+        let mut node = place.get_or_insert_with(|| {
             Node::new(
                 Layout::default(),
                 None,
@@ -282,13 +287,45 @@ impl<A: 'static> Widget<A> for TextEdit {
             .map(|m| m.baseline.ceil() as f64);
 
         node.layout = Layout::new(text_size).with_baseline(baseline);
-
         node
     }
 }
 
+impl TextEditBase {
+    pub fn new(text: impl Into<String>) -> TextEditBase {
+        TextEditBase { text: text.into() }
+    }
+}
+
+/// Text edit widget wrapper
+pub struct TextEdit {
+    text: String,
+}
+
 impl TextEdit {
     pub fn new(text: impl Into<String>) -> TextEdit {
-        TextEdit { text: text.into() }
+        TextEdit {
+            text: text.into(),
+        }
+    }
+}
+
+impl<A: 'static> Widget<A> for TextEdit {
+    fn layout<'a>(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        place: &'a mut dyn NodePlace,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) -> &'a mut Node {
+        Frame {
+            border_color: Color::new(0.0,0.0,0.0,1.0),
+            border_width: 1.0,
+            fill_color: Color::new(1.0,1.0,1.0,1.0),
+            inner: Padding::new(
+            EdgeInsets::all(2.0),
+            TextEditBase::new(self.text),
+            ).boxed()
+        }.layout(ctx, place, constraints, theme)
     }
 }
