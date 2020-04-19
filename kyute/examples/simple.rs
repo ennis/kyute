@@ -30,11 +30,11 @@ impl Application for SimpleApplication {
                     .push(Text::new("Hello world"))
                     .push(TextEdit::new("WWWWWWWWWWWWWWWWWWW")),
             )
-            /*.push( Form::new()
+            .push( Form::new()
                 .field("Field 1", TextEdit::new("Edit 1"))
                 .field("Field 2", TextEdit::new("Edit 2"))
                 .field("Field 3", TextEdit::new("Edit 3"))
-                .field("Field 4", TextEdit::new("Edit 4")))*/
+                .field("Field 4", TextEdit::new("Edit 4")))
             .boxed()
     }
 }

@@ -90,7 +90,9 @@ impl<'a> NodePlace for NodeListReplacer<'a> {
     }
 
     fn get(&mut self) -> Option<&mut Node> {
-        self.list.get_mut(self.index).map(|n| n.as_mut())
+        let i = self.index;
+        self.index += 1;
+        self.list.get_mut(i).map(|n| n.as_mut())
     }
 
     fn insert(&mut self, node: Box<Node>) -> &mut Node {
