@@ -2,12 +2,12 @@
 use crate::event::Event;
 use crate::layout::{BoxConstraints, EdgeInsets, Layout, Size};
 use crate::renderer::Theme;
-use crate::visual::reconciliation::NodePlace;
-use crate::visual::{EventCtx, Node, PaintCtx, Visual};
+use crate::visual::{EventCtx, NodeArena, NodeCursor, NodeData, PaintCtx, Visual};
 use crate::widget::frame::Frame;
 use crate::widget::padding::Padding;
 use crate::widget::LayoutCtx;
 use crate::{Bounds, BoxedWidget, Point, Widget, WidgetExt};
+use generational_indextree::NodeId;
 use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt, SolidColorBrush};
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
 use log::trace;
@@ -229,11 +229,11 @@ impl Visual for TextEditVisual {
             }
             Event::PointerMove(p) => {
                 // update selection
-                if ctx.is_grabbing_pointer() {
+                //if ctx.is_grabbing_pointer() {
                     let pos = self.position_to_text(p.position);
                     self.set_selection_end(pos);
                     trace!("selection: {:?}", self.selection)
-                }
+                //}
             }
             Event::PointerUp(p) => {
                 // nothing to do (pointer grab automatically ends)
@@ -261,58 +261,54 @@ pub struct TextEditBase {
 }
 
 impl<A: 'static> Widget<A> for TextEditBase {
-    fn layout<'a>(
+    fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node {
+    ) -> NodeId {
         let text = &self.text;
         let platform = ctx.platform();
 
-        let mut node = place.get_or_insert_with(|| {
+        let node_id = cursor.reconcile(nodes, |prev: Option<NodeData<TextEditVisual>>| {
             trace!("new TextEditVisual");
-            Node::new(
-                Layout::default(),
+
+            if let Some(prev) = prev {
+                if &prev.visual.text == text {
+                    // OK, nothing to update
+                    return prev;
+                }
+            }
+
+            let text_layout = TextLayout::new(
+                platform,
+                &text,
+                &theme.label_text_format,
+                constraints.biggest(),
+            )
+            .unwrap();
+
+            let text_size = text_layout.metrics().bounds.size.ceil();
+            let baseline = text_layout
+                .line_metrics()
+                .first()
+                .map(|m| m.baseline.ceil() as f64);
+
+            NodeData::new(
+                Layout::new(text_size).with_baseline(baseline),
                 None,
                 TextEditVisual {
                     text: text.to_owned(),
-                    text_layout: TextLayout::new(
-                        platform,
-                        &text,
-                        &theme.label_text_format,
-                        constraints.biggest(),
-                    )
-                    .unwrap(),
+                    text_layout,
                     selection: Selection::empty(0),
                     needs_repaint: false,
                 },
             )
         });
 
-        if &node.visual.text != text {
-            // text changed, relayout
-            node.visual.text_layout = TextLayout::new(
-                ctx.platform(),
-                &text,
-                &theme.label_text_format,
-                constraints.biggest(),
-            )
-            .unwrap();
-        }
-
-        let text_size = node.visual.text_layout.metrics().bounds.size.ceil();
-
-        let baseline = node
-            .visual
-            .text_layout
-            .line_metrics()
-            .first()
-            .map(|m| m.baseline.ceil() as f64);
-
-        node.layout = Layout::new(text_size).with_baseline(baseline);
-        node
+        node_id
     }
 }
 
@@ -334,19 +330,20 @@ impl TextEdit {
 }
 
 impl<A: 'static> Widget<A> for TextEdit {
-    fn layout<'a>(
+    fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node {
+    ) -> NodeId {
         Frame {
             border_color: Color::new(0.0, 0.0, 0.0, 1.0),
             border_width: 1.0,
             fill_color: Color::new(1.0, 1.0, 1.0, 1.0),
             inner: Padding::new(EdgeInsets::all(2.0), TextEditBase::new(self.text)).boxed(),
         }
-        .layout(ctx, place, constraints, theme)
+        .layout(ctx, nodes, cursor, constraints, theme)
     }
 }

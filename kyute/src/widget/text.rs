@@ -1,10 +1,10 @@
 use crate::event::Event;
 use crate::layout::{BoxConstraints, Layout, Size};
 use crate::renderer::Theme;
-use crate::visual::reconciliation::NodePlace;
-use crate::visual::{EventCtx, Node, PaintCtx, Visual};
+use crate::visual::{EventCtx, NodeArena, NodeCursor, NodeData, PaintCtx, Visual};
 use crate::widget::LayoutCtx;
 use crate::{Bounds, Point, Widget};
+use generational_indextree::NodeId;
 use kyute_shell::drawing::{Color, DrawTextOptions, IntoBrush};
 use kyute_shell::text::TextLayout;
 use log::trace;
@@ -18,8 +18,7 @@ pub struct TextVisual {
 }
 
 impl Visual for TextVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme)
-    {
+    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
         let text_brush = Color::new(1.0, 1.0, 1.0, 1.0).into_brush(ctx);
         ctx.draw_text_layout(
             Point::origin(),
@@ -47,14 +46,15 @@ pub struct Text {
 }
 
 impl<A: 'static> Widget<A> for Text {
-    fn layout<'a>(
+    fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node {
-        place.reconcile(|_prev: Option<Node<TextVisual>>| {
+    ) -> NodeId {
+        cursor.reconcile(nodes, |_prev: Option<NodeData<TextVisual>>| {
             // TODO check for changes instead of re-creating from scratch every time
             let text_layout = TextLayout::new(
                 ctx.platform(),
@@ -73,7 +73,7 @@ impl<A: 'static> Widget<A> for Text {
 
             let layout = Layout::new(text_size).with_baseline(baseline);
 
-            Node::new(
+            NodeData::new(
                 layout,
                 None,
                 TextVisual {

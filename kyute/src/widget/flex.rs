@@ -1,13 +1,14 @@
 use crate::event::{Event, MoveFocusDirection};
 use crate::renderer::Theme;
-use crate::visual::reconciliation::{NodeListReplacer, NodePlace};
-use crate::visual::{EventCtx, PaintCtx};
+use crate::visual::NodeCursor;
+use crate::visual::{EventCtx, NodeArena, PaintCtx};
 use crate::widget::LayoutCtx;
 use crate::{
-    layout::BoxConstraints, layout::Layout, layout::Offset, layout::Size,
-    visual::Node, visual::Visual, widget::Widget, widget::WidgetExt, Bounds, BoxedWidget, Point,
+    layout::BoxConstraints, layout::Layout, layout::Offset, layout::Size, visual::NodeData,
+    visual::Visual, widget::Widget, widget::WidgetExt, Bounds, BoxedWidget, Point,
 };
 use euclid::{Point2D, UnknownUnit};
+use generational_indextree::NodeId;
 use log::trace;
 use std::any::Any;
 
@@ -89,31 +90,32 @@ impl<A: 'static> Flex<A> {
     }
 }
 
+
 impl<A: 'static> Widget<A> for Flex<A> {
-    fn layout<'a>(
+    fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node {
-        let node: &mut Node<FlexVisual> = place.get_or_insert_default();
+    ) -> NodeId {
+        let node: NodeId = cursor.get_or_insert_default::<FlexVisual>(nodes);
 
         let axis = self.axis;
 
         {
             // layout child nodes
-            let mut replacer = NodeListReplacer::new(&mut node.visual.children);
+            let mut cursor = NodeCursor::Child(node);
             for c in self.children.into_iter() {
-                c.layout(ctx, &mut replacer, constraints, theme);
+                c.layout(ctx, nodes, &mut cursor, constraints, theme);
             }
+            cursor.remove_after(nodes);
         }
 
         let max_cross_axis_len = node
-            .visual
-            .children
-            .iter()
-            .map(|s| axis.cross_len(s.layout.size))
+            .children(nodes)
+            .map(|child_id| axis.cross_len(nodes[child_id].get().layout.size))
             .fold(0.0, f64::max);
 
         // preferred size of this flex: max size in axis direction, max elem width in cross-axis direction
@@ -123,47 +125,37 @@ impl<A: 'static> Widget<A> for Flex<A> {
         };
 
         // distribute children
-        let mut x = 0.0;
-        for child in node.visual.children.iter_mut() {
-            let len = axis.main_len(child.layout.size);
+        let mut d = 0.0;
+        let mut child_id = nodes[node].first_child();
+        while let Some(id) = child_id {
+            let node = nodes[id].get_mut();
+            let len = axis.main_len(node.layout.size);
             // offset children
             match axis {
-                Axis::Vertical => child.layout.offset += Offset::new(0.0, x),
-                Axis::Horizontal => child.layout.offset += Offset::new(x, 0.0),
+                Axis::Vertical => node.layout.offset += Offset::new(0.0, d),
+                Axis::Horizontal => node.layout.offset += Offset::new(d, 0.0),
             };
-            x += dbg!(len);
+            d += len;
+            child_id = nodes[id].next_sibling();
         }
 
         let size = match axis {
-            Axis::Vertical => Size::new(cross_axis_len, constraints.constrain_height(x)),
-            Axis::Horizontal => Size::new(constraints.constrain_width(x), cross_axis_len),
+            Axis::Vertical => Size::new(cross_axis_len, constraints.constrain_height(d)),
+            Axis::Horizontal => Size::new(constraints.constrain_width(d), cross_axis_len),
         };
 
-        node.layout = Layout::new(size);
+        nodes[node].get_mut().layout = Layout::new(size);
         node
     }
 }
 
-pub struct FlexVisual {
-    children: Vec<Box<Node>>,
-}
-
-impl Default for FlexVisual {
-    fn default() -> Self {
-        FlexVisual {
-            children: Vec::new(),
-        }
-    }
-}
+#[derive(Default)]
+pub struct FlexVisual;
 
 impl Visual for FlexVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
         let bounds = ctx.bounds();
         theme.draw_panel_background(ctx, bounds);
-
-        for c in self.children.iter_mut() {
-            c.paint(ctx, theme)
-        }
     }
 
     fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
@@ -171,7 +163,7 @@ impl Visual for FlexVisual {
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
-        match event {
+        /*match event {
             Event::MoveFocus(direction) => {
                 // find the focus path
                 let mut i = if let Some(i) = self
@@ -206,7 +198,7 @@ impl Visual for FlexVisual {
                     }
                 }
             }
-        }
+        }*/
     }
 
     fn as_any(&self) -> &dyn Any {

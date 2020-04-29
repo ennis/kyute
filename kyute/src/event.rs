@@ -83,11 +83,20 @@ pub struct KeyboardEvent {
     pub modifiers: winit::event::ModifiersState,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum WheelDeltaMode {
+    Pixel,
+    Line,
+    Page,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct WheelEvent {
+    pub pointer: PointerEvent,
     pub delta_x: f64,
     pub delta_y: f64,
     pub delta_z: f64,
+    pub delta_mode: WheelDeltaMode,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -109,6 +118,8 @@ pub enum Event {
     PointerDown(PointerEvent),
     PointerUp(PointerEvent),
     PointerMove(PointerEvent),
+    PointerEnter(PointerEvent),
+    PointerLeave(PointerEvent),
     Wheel(WheelEvent),
     KeyDown(KeyboardEvent),
     KeyUp(KeyboardEvent),
@@ -119,4 +130,30 @@ pub enum Event {
     MoveFocus(MoveFocusDirection),
     /// Set focus to the right or left-most (depending on the direction) focusable leaf node.
     SetFocus(MoveFocusDirection),
+}
+
+impl Event {
+    pub fn pointer_event(&self) -> Option<&PointerEvent> {
+        match self {
+            Event::PointerMove(p) => Some(p),
+            Event::PointerUp(p) => Some(p),
+            Event::PointerDown(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn keyboard_event(&self) -> Option<&KeyboardEvent> {
+        match self {
+            Event::KeyDown(p) => Some(p),
+            Event::KeyUp(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn input_event(&self) -> Option<&InputEvent> {
+        match self {
+            Event::Input(p) => Some(p),
+            _ => None,
+        }
+    }
 }

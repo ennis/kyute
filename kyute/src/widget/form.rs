@@ -1,14 +1,16 @@
 use crate::event::Event;
 use crate::renderer::Theme;
-use crate::visual::reconciliation::NodePlace;
-use crate::visual::{EventCtx, PaintCtx};
-use crate::widget::{Axis, Baseline, Flex, LayoutCtx, Text};
-use crate::{Bounds, BoxConstraints, BoxedWidget, Layout, Node, Point, Visual, Widget, WidgetExt, Alignment};
-use kyute_shell::drawing::{Color, RectExt};
-use std::any::Any;
+use crate::visual::{EventCtx, NodeArena, NodeCursor, PaintCtx};
 use crate::widget::align::Align;
 use crate::widget::constrained::ConstrainedBox;
-
+use crate::widget::{Axis, Baseline, Flex, LayoutCtx, Text};
+use crate::{
+    Alignment, Bounds, BoxConstraints, BoxedWidget, Layout, NodeData, Point, Visual, Widget,
+    WidgetExt,
+};
+use generational_indextree::NodeId;
+use kyute_shell::drawing::{Color, RectExt};
+use std::any::Any;
 
 pub struct Field<A> {
     label: String,
@@ -37,23 +39,28 @@ impl<A: 'static> Form<A> {
 // (100 x 100 => 200 x 200
 
 impl<A: 'static> Widget<A> for Form<A> {
-    fn layout<'a>(
+    fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node {
+    ) -> NodeId {
         let mut vbox = Flex::new(Axis::Vertical);
         for f in self.fields.into_iter() {
             vbox = vbox.push(
                 Flex::new(Axis::Horizontal)
-                    .push(Baseline::new(20.0,
-                                        ConstrainedBox::new(BoxConstraints::new(100.0..100.0 , ..),
-                                                            Align::new(Alignment::TOP_RIGHT, Text::new(f.label)))))
+                    .push(Baseline::new(
+                        20.0,
+                        ConstrainedBox::new(
+                            BoxConstraints::new(100.0..100.0, ..),
+                            Align::new(Alignment::TOP_RIGHT, Text::new(f.label)),
+                        ),
+                    ))
                     .push(Baseline::new(20.0, f.widget)),
             );
         }
-        vbox.layout(ctx, place, constraints, theme)
+        vbox.layout(ctx, nodes, cursor, constraints, theme)
     }
 }

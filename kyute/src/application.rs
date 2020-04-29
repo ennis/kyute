@@ -1,14 +1,14 @@
-use crate::event::{Event, KeyboardEvent, PointerButton, PointerButtons, PointerEvent};
+use crate::event::{
+    Event, KeyboardEvent, PointerButton, PointerButtons, PointerEvent, WheelDeltaMode, WheelEvent,
+};
 use crate::layout::Size;
 use crate::renderer::Theme;
 use crate::visual::{
-    reconciliation, DummyVisual, EventCtx, EventResult, FocusState, InputState, LayoutBox,
-    PaintCtx, PointerState, RepaintRequest,
+    DummyVisual, EventCtx, EventResult, FocusState, InputState, LayoutBox, NodeTree, PaintCtx,
+    PointerState, RepaintRequest,
 };
-use crate::widget::{ActionCollector, LayoutCtx};
-use crate::{
-    Bounds, BoxConstraints, BoxedWidget, Layout, Node,  Point, Visual, Widget,
-};
+use crate::widget::{ActionCollector, LayoutCtx, ActionSink};
+use crate::{Bounds, BoxConstraints, BoxedWidget, Layout, NodeData, Point, Visual, Widget};
 use anyhow::Result;
 use kyute_shell::drawing::Color;
 use kyute_shell::platform::Platform;
@@ -21,6 +21,7 @@ use std::rc::{Rc, Weak};
 use winit::event::WindowEvent;
 use winit::event_loop::{ControlFlow, EventLoopWindowTarget};
 use winit::window::{WindowBuilder, WindowId};
+use log::warn;
 
 /// Encapsulates the behavior of an application.
 pub trait Application {
@@ -128,7 +129,7 @@ fn convert_window_event(event: &WindowEvent) -> Option<Event> {
 /// A window managed by kyute with a cached visual node.
 struct Window {
     window: PlatformWindow,
-    node: Box<Node>,
+    tree: NodeTree,
     inputs: InputState,
     focus_state: FocusState,
 }
@@ -141,11 +142,11 @@ impl Window {
         let size: (f64, f64) = window.window().inner_size().to_logical::<f64>(1.0).into();
 
         // create the default visual
-        let mut node = Node::dummy();
+        let mut tree = NodeTree::new();
 
         let window = Window {
             window,
-            node,
+            tree,
             inputs: InputState {
                 mods: winit::event::ModifiersState::default(),
                 pointers: HashMap::new(),
@@ -162,15 +163,6 @@ impl Window {
     pub fn id(&self) -> WindowId {
         self.window.id()
     }
-
-    /// Delivers a pointer event, taking into account the visual that is grabbing the mouse, if there's one.
-    fn deliver_pointer_event(&mut self, ctx: &mut WindowCtx, event: Event) -> EventResult {
-        self.node
-            .propagate_event(&event, ctx, &self.window, Point::origin(), &self.inputs, &mut self.focus_state)
-    }
-
-    /// Delivers a keyboard event, taking into account the visual that has focus, if there's one.
-    fn deliver_keyboard_event(&mut self, event: Event) {}
 
     /// deliver window event
     fn window_event(&mut self, ctx: &mut WindowCtx, window_event: &WindowEvent) {
@@ -231,7 +223,14 @@ impl Window {
                     }
                 };
 
-                self.deliver_pointer_event(ctx, e)
+                self.tree.event(
+                    &e,
+                    ctx,
+                    &self.window,
+                    Point::origin(),
+                    &self.inputs,
+                    &mut self.focus_state,
+                )
             }
             WindowEvent::CursorMoved {
                 device_id,
@@ -256,7 +255,52 @@ impl Window {
                     buttons: pointer_state.buttons,
                     pointer_id: *device_id,
                 };
-                self.deliver_pointer_event(ctx, Event::PointerMove(p))
+
+                self.tree.event(
+                    &Event::PointerMove(p),
+                    ctx,
+                    &self.window,
+                    Point::origin(),
+                    &self.inputs,
+                    &mut self.focus_state,
+                )
+            }
+            WindowEvent::MouseWheel {
+                device_id,
+                delta,
+                phase,
+                ..
+            } => {
+                let pointer = self.inputs.synthetic_pointer_event(*device_id);
+                if let Some(pointer) = pointer {
+                    let wheel_event = match delta {
+                        winit::event::MouseScrollDelta::LineDelta(x, y) => WheelEvent {
+                            pointer,
+                            delta_x: *x as f64,
+                            delta_y: *y as f64,
+                            delta_z: 0.0,
+                            delta_mode: WheelDeltaMode::Line,
+                        },
+                        winit::event::MouseScrollDelta::PixelDelta(pos) => WheelEvent {
+                            pointer,
+                            delta_x: pos.x,
+                            delta_y: pos.y,
+                            delta_z: 0.0,
+                            delta_mode: WheelDeltaMode::Pixel,
+                        },
+                    };
+                    self.tree.event(
+                        &Event::Wheel(wheel_event),
+                        ctx,
+                        &self.window,
+                        Point::origin(),
+                        &self.inputs,
+                        &mut self.focus_state,
+                    )
+                } else {
+                    warn!("wheel event received but pointer position is not yet known");
+                    return;
+                }
             }
 
             _ => {
@@ -275,7 +319,7 @@ impl Window {
     }
 
     /// Updates the current visual tree for this stage.
-    fn relayout<A>(&mut self, ctx: &mut LayoutCtx<A>, theme: &Theme, widget: BoxedWidget<A>) {
+    fn relayout<A>(&mut self, window_ctx: &mut WindowCtx, action_sink: Rc<dyn ActionSink<A>>, theme: &Theme, widget: BoxedWidget<A>) {
         // get window logical size
         let size: (f64, f64) = self
             .window
@@ -283,16 +327,10 @@ impl Window {
             .inner_size()
             .to_logical::<f64>(1.0)
             .into();
+        let size : Size = size.into();
         dbg!(size);
         // perform layout, update the visual node
-        widget.layout(
-            ctx,
-            &mut self.node,
-            &BoxConstraints::loose(size.into()),
-            theme,
-        );
-        // calculate the absolute bounds of the nodes within the window
-        self.node.layout.size = size.into();
+        self.tree.layout(widget, size, &BoxConstraints::loose(size), theme, window_ctx, action_sink);
         // request a redraw of this window
         self.window.window().request_redraw()
     }
@@ -301,15 +339,8 @@ impl Window {
     fn paint(&mut self, theme: &Theme) {
         {
             let mut draw_context = DrawContext::new(&mut self.window);
-
             draw_context.clear(Color::new(0.0, 0.5, 0.8, 1.0));
-
-            let mut ctx = PaintCtx {
-                draw_ctx: &mut draw_context,
-                size: Default::default(),
-            };
-            self.node.paint(&mut ctx, theme);
-            // drop draw_context
+            self.tree.paint(&mut draw_context, &self.focus_state,&self.inputs, theme);
         }
         self.window.present();
     }
@@ -340,13 +371,9 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
     let mut collector = Rc::new(ActionCollector::<A::Action>::new());
 
     // perform the initial layout
-    let mut layout_ctx = LayoutCtx {
-        win_ctx: &mut win_ctx,
-        action_sink: collector.clone(),
-    };
     main_window
         .borrow_mut()
-        .relayout(&mut layout_ctx, &theme, app.view());
+        .relayout(&mut win_ctx, collector.clone(), &theme, app.view());
 
     event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -377,12 +404,7 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
 
                     // the root of the widget tree is the main window, update it:
                     // this will also send a redraw request for all affected windows.
-                    let mut ctx = LayoutCtx {
-                        win_ctx: &mut win_ctx,
-                        action_sink: collector.clone(),
-                    };
-
-                    main_window.borrow_mut().relayout(&mut ctx, &theme, widget);
+                    main_window.borrow_mut().relayout(&mut win_ctx, collector.clone(), &theme, widget);
                 }
             }
 

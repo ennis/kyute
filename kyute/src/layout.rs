@@ -42,9 +42,7 @@ pub struct BoxConstraints {
 }
 
 impl BoxConstraints {
-
-    pub fn new(width: impl RangeBounds<f64>, height: impl RangeBounds<f64>) -> BoxConstraints
-    {
+    pub fn new(width: impl RangeBounds<f64>, height: impl RangeBounds<f64>) -> BoxConstraints {
         let min_width = match width.start_bound() {
             Bound::Unbounded => 0.0,
             Bound::Excluded(&x) => x,
@@ -53,7 +51,7 @@ impl BoxConstraints {
         let max_width = match width.end_bound() {
             Bound::Unbounded => std::f64::INFINITY,
             Bound::Excluded(&x) => x,
-            Bound::Included(&x) => x
+            Bound::Included(&x) => x,
         };
         let min_height = match height.start_bound() {
             Bound::Unbounded => 0.0,
@@ -63,11 +61,11 @@ impl BoxConstraints {
         let max_height = match height.end_bound() {
             Bound::Unbounded => std::f64::INFINITY,
             Bound::Excluded(&x) => x,
-            Bound::Included(&x) => x
+            Bound::Included(&x) => x,
         };
         BoxConstraints {
             min: Size::new(min_width, min_height),
-            max: Size::new(max_width, max_height)
+            max: Size::new(max_width, max_height),
         }
     }
 
@@ -85,7 +83,7 @@ impl BoxConstraints {
     pub fn loosen(&self) -> BoxConstraints {
         BoxConstraints {
             min: Size::zero(),
-            max: self.max
+            max: self.max,
         }
     }
 
@@ -99,7 +97,7 @@ impl BoxConstraints {
     pub fn enforce(&self, other: &BoxConstraints) -> BoxConstraints {
         BoxConstraints {
             min: self.min.max(other.min),
-            max: self.max.min(other.max)
+            max: self.max.min(other.max),
         }
     }
 

@@ -1,9 +1,9 @@
 use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
-use crate::visual::reconciliation::NodePlace;
-use crate::visual::Node;
+use crate::visual::{NodeArena, NodeCursor, NodeData};
 use crate::widget::LayoutCtx;
 use crate::Widget;
+use generational_indextree::NodeId;
 use std::hash::Hash;
 
 /// Identifies a widget.
@@ -21,11 +21,12 @@ impl<A: 'static, W: Widget<A>> Widget<A> for Id<W> {
     fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node {
+    ) -> NodeId {
         // TODO ID?
-        self.inner.layout(ctx, place, constraints, theme)
+        self.inner.layout(ctx, nodes, cursor, constraints, theme)
     }
 }

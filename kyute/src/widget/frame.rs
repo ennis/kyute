@@ -1,10 +1,10 @@
 use crate::event::Event;
 use crate::renderer::Theme;
-use crate::visual::reconciliation::NodePlace;
-use crate::visual::{EventCtx, PaintCtx};
+use crate::visual::{EventCtx, NodeArena, NodeCursor, PaintCtx};
 use crate::widget::LayoutCtx;
-use crate::{Bounds, BoxConstraints, BoxedWidget, Layout, Node, Point, Visual, Widget};
-use kyute_shell::drawing::{Color, RectExt, IntoBrush};
+use crate::{Bounds, BoxConstraints, BoxedWidget, Layout, NodeData, Point, Visual, Widget};
+use generational_indextree::NodeId;
+use kyute_shell::drawing::{Color, IntoBrush, RectExt};
 use std::any::Any;
 
 /// A widget that draws a frame.
@@ -16,22 +16,38 @@ pub struct Frame<A> {
 }
 
 impl<A: 'static> Widget<A> for Frame<A> {
-    fn layout<'a>(
+    fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node
-    {
-        let mut node = place.get_or_insert_default::<FrameVisual>();
-        node.visual.border_color = self.border_color;
-        node.visual.border_width = self.border_width;
-        node.visual.fill_color = self.fill_color;
-        self.inner
-            .layout(ctx, &mut node.visual.inner, constraints, theme);
-        node.layout = node.visual.inner.layout;
-        node
+    ) -> NodeId {
+        let Frame {
+            border_color,
+            border_width,
+            fill_color,
+            inner,
+        } = self;
+
+        let node_id = cursor.get_or_insert_with(nodes, || {
+            NodeData::new(
+                Layout::default(),
+                None,
+                FrameVisual {
+                    border_color,
+                    border_width,
+                    fill_color,
+                },
+            )
+        });
+
+        let child_id = inner.layout_child(ctx, nodes, node_id, constraints, theme);
+
+        let child_layout = nodes[child_id].get().layout;
+        nodes[node_id].get_mut().layout = child_layout;
+        node_id
     }
 }
 
@@ -39,7 +55,6 @@ pub struct FrameVisual {
     border_color: Color,
     border_width: f64,
     fill_color: Color,
-    inner: Box<Node>,
 }
 
 impl Default for FrameVisual {
@@ -48,7 +63,6 @@ impl Default for FrameVisual {
             border_color: Color::new(0.0, 0.0, 0.0, 1.0),
             border_width: 0.0,
             fill_color: Color::new(1.0, 1.0, 1.0, 1.0),
-            inner: Node::dummy()
         }
     }
 }
@@ -67,15 +81,13 @@ impl Visual for FrameVisual {
             self.border_width,
         );
         // child
-        self.inner.paint(ctx, theme);
+        //self.inner.paint(ctx, theme);
     }
 
     fn hit_test(&mut self, point: Point, bounds: Bounds) -> bool {
         unimplemented!()
     }
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
-        self.inner.event(ctx, event);
-    }
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {}
     fn as_any(&self) -> &dyn Any {
         self
     }

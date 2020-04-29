@@ -1,8 +1,8 @@
 use crate::layout::{BoxConstraints, EdgeInsets, Layout, Offset, Size};
 use crate::renderer::Theme;
-use crate::visual::reconciliation::NodePlace;
-use crate::visual::{LayoutBox, Node};
+use crate::visual::{LayoutBox, NodeArena, NodeCursor, NodeData};
 use crate::widget::{LayoutCtx, Widget};
+use generational_indextree::NodeId;
 
 /// Padding.
 pub struct Padding<W> {
@@ -20,31 +20,31 @@ impl<A: 'static, W: Widget<A>> Widget<A> for Padding<W> {
     fn layout<'a>(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node {
+    ) -> NodeId {
         let Padding { inner, insets } = self;
 
-        let node: &mut Node<LayoutBox> = place.get_or_insert_default();
-        let child = inner.layout(
-            ctx,
-            &mut node.visual.inner,
-            &constraints.deflate(&insets),
-            theme,
-        );
+        let node_id = cursor.get_or_insert_default::<LayoutBox>(nodes);
+        let child_id =
+            inner.layout_child(ctx, nodes, node_id, &constraints.deflate(&insets), theme);
 
-        child.layout.offset = Offset::new(insets.left, insets.top);
+        let mut child_layout = nodes[child_id].get().layout;
+        child_layout.offset = Offset::new(insets.left, insets.top);
 
-        node.layout = Layout {
+        let node_layout = Layout {
             offset: Offset::zero(),
             size: Size::new(
-                child.layout.size.width + insets.left + insets.right,
-                child.layout.size.height + insets.top + insets.bottom,
+                child_layout.size.width + insets.left + insets.right,
+                child_layout.size.height + insets.top + insets.bottom,
             ),
-            baseline: child.layout.baseline.map(|b| b + insets.top),
+            baseline: child_layout.baseline.map(|b| b + insets.top),
         };
 
-        node
+        nodes[node_id].get_mut().layout = node_layout;
+        nodes[child_id].get_mut().layout = child_layout;
+        node_id
     }
 }

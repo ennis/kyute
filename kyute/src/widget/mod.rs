@@ -1,6 +1,8 @@
 //! `Widget` base trait and built-in widgets.
+pub mod align;
 pub mod baseline;
 pub mod button;
+pub mod constrained;
 pub mod dummy;
 pub mod expand;
 pub mod flex;
@@ -11,8 +13,6 @@ pub mod map;
 pub mod padding;
 pub mod text;
 pub mod textedit;
-pub mod constrained;
-pub mod align;
 
 // re-export common widgets
 pub use baseline::Baseline;
@@ -27,10 +27,10 @@ pub use text::Text;
 use crate::application::WindowCtx;
 use crate::layout::BoxConstraints;
 use crate::renderer::Theme;
-use crate::visual::reconciliation::NodePlace;
-use crate::visual::Visual;
-use crate::visual::{reconciliation, Node};
+use crate::visual::NodeData;
+use crate::visual::{NodeArena, NodeCursor, Visual};
 use crate::{visual, Layout};
+use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
@@ -132,27 +132,43 @@ pub trait Widget<A> {
 
     /// Performs layout, consuming the widget.
     /// Problem: there's no way to know the visual type that the widget expects
-    fn layout<'a>(
+    fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node;
+    ) -> NodeId;
+
+    fn layout_child(
+        self,
+        ctx: &mut LayoutCtx<A>,
+        nodes: &mut NodeArena,
+        parent: NodeId,
+        constraints: &BoxConstraints,
+        theme: &Theme,
+    ) -> NodeId {
+        let mut child_cursor = NodeCursor::Child(parent);
+        let node_id = self.layout(ctx, nodes, &mut child_cursor, constraints, theme);
+        child_cursor.remove_after(nodes);
+        node_id
+    }
 }
 
 /// A widget wrapped in a box, that produce a visual wrapped in a box as well.
 pub type BoxedWidget<A> = Box<dyn Widget<A>>;
 
 impl<A> Widget<A> for Box<dyn Widget<A>> {
-    fn layout<'a>(
+    fn layout(
         self,
         ctx: &mut LayoutCtx<A>,
-        place: &'a mut dyn NodePlace,
+        nodes: &mut NodeArena,
+        cursor: &mut NodeCursor,
         constraints: &BoxConstraints,
         theme: &Theme,
-    ) -> &'a mut Node {
-        (*self).layout(ctx, place, constraints, theme)
+    ) -> NodeId {
+        (*self).layout(ctx, nodes, cursor, constraints, theme)
     }
 }
 
