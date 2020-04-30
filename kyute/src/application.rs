@@ -1,10 +1,8 @@
-use crate::event::{
-    Event, KeyboardEvent, PointerButton, PointerButtons, PointerEvent, WheelDeltaMode, WheelEvent,
-};
+use crate::event::{Event, KeyboardEvent, PointerButton, PointerButtons, PointerEvent, WheelDeltaMode, WheelEvent, InputEvent};
 use crate::layout::Size;
 use crate::renderer::Theme;
 use crate::visual::{
-    DummyVisual, EventCtx, EventResult, FocusState, InputState, LayoutBox, NodeTree, PaintCtx,
+    DummyVisual, EventCtx, FocusState, InputState, LayoutBox, NodeTree, PaintCtx,
     PointerState, RepaintRequest,
 };
 use crate::widget::{ActionCollector, LayoutCtx, ActionSink};
@@ -131,7 +129,6 @@ struct Window {
     window: PlatformWindow,
     tree: NodeTree,
     inputs: InputState,
-    focus_state: FocusState,
 }
 
 impl Window {
@@ -147,11 +144,7 @@ impl Window {
         let window = Window {
             window,
             tree,
-            inputs: InputState {
-                mods: winit::event::ModifiersState::default(),
-                pointers: HashMap::new(),
-            },
-            focus_state: FocusState::new(),
+            inputs: InputState::default()
         };
         let window = Rc::new(RefCell::new(window));
 
@@ -211,26 +204,18 @@ impl Window {
 
                 let e = match state {
                     winit::event::ElementState::Pressed => {
-                        // TODO auto-grab pointer?
                         Event::PointerDown(p)
                     }
                     winit::event::ElementState::Released => {
-                        // POINTER UNGRAB: If all pointer buttons are released, force ungrab
-                        if p.buttons.is_empty() {
-                            self.focus_state.release_pointer_grab();
-                        }
                         Event::PointerUp(p)
                     }
                 };
 
                 self.tree.event(
-                    &e,
                     ctx,
                     &self.window,
-                    Point::origin(),
                     &self.inputs,
-                    &mut self.focus_state,
-                )
+                    &e)
             }
             WindowEvent::CursorMoved {
                 device_id,
@@ -257,13 +242,10 @@ impl Window {
                 };
 
                 self.tree.event(
-                    &Event::PointerMove(p),
                     ctx,
                     &self.window,
-                    Point::origin(),
                     &self.inputs,
-                    &mut self.focus_state,
-                )
+                    &Event::PointerMove(p))
             }
             WindowEvent::MouseWheel {
                 device_id,
@@ -290,17 +272,23 @@ impl Window {
                         },
                     };
                     self.tree.event(
-                        &Event::Wheel(wheel_event),
                         ctx,
                         &self.window,
-                        Point::origin(),
                         &self.inputs,
-                        &mut self.focus_state,
-                    )
+                        &Event::Wheel(wheel_event))
                 } else {
                     warn!("wheel event received but pointer position is not yet known");
                     return;
                 }
+            }
+            WindowEvent::ReceivedCharacter(char) => {
+                self.tree.event(
+                ctx,
+                &self.window,
+                &self.inputs,
+                &Event::Input(InputEvent {
+                        character: *char
+                }))
             }
 
             _ => {
@@ -309,7 +297,7 @@ impl Window {
         };
 
         // handle follow-up actions
-        match event_result.repaint {
+        match event_result {
             RepaintRequest::Repaint | RepaintRequest::Relayout => {
                 // TODO ask for relayout
                 self.window.window().request_redraw();
@@ -336,11 +324,11 @@ impl Window {
     }
 
     /// Called when the window needs to be repainted.
-    fn paint(&mut self, theme: &Theme) {
+    fn paint(&mut self, platform: &Platform, theme: &Theme) {
         {
             let mut draw_context = DrawContext::new(&mut self.window);
             draw_context.clear(Color::new(0.0, 0.5, 0.8, 1.0));
-            self.tree.paint(&mut draw_context, &self.focus_state,&self.inputs, theme);
+            self.tree.paint(platform, &mut draw_context,&self.inputs, theme);
         }
         self.window.present();
     }
@@ -412,7 +400,7 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
                 // A window needs to be repainted
                 if let Some(window) = open_windows.get(&window_id) {
                     if let Some(window) = window.upgrade() {
-                        window.borrow_mut().paint(&theme);
+                        window.borrow_mut().paint(&platform, &theme);
                     }
                 }
             }

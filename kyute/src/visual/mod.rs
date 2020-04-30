@@ -26,9 +26,11 @@ use winit::event::DeviceId;
 mod reconciliation;
 use std::cell::Cell;
 pub use reconciliation::NodeCursor;
+use kyute_shell::platform::Platform;
 
 /// Context passed to [`Visual::paint`].
 pub struct PaintCtx<'a, 'b> {
+    platform: &'a Platform,
     pub(crate) draw_ctx: &'a mut DrawContext<'b>,
     pub(crate) size: Size,
     node_id: NodeId,
@@ -38,6 +40,11 @@ pub struct PaintCtx<'a, 'b> {
 }
 
 impl<'a, 'b> PaintCtx<'a, 'b> {
+
+    pub fn platform(&self) -> &Platform {
+        self.platform
+    }
+
     /// Returns the bounds of the visual.
     pub fn bounds(&self) -> Bounds {
         Bounds::new(Point::origin(), self.size)
@@ -234,6 +241,15 @@ impl InputState {
     }
 }
 
+impl Default for InputState {
+    fn default() -> Self {
+        InputState {
+            mods: winit::event::ModifiersState::default(),
+            pointers: HashMap::new(),
+        }
+    }
+}
+
 /// Global state related to focus and pointer grab.
 pub struct FocusState {
     focus: Option<NodeId>,
@@ -269,7 +285,8 @@ impl FocusState {
     }
 }
 
-pub(crate) enum RepaintRequest {
+#[derive(Copy,Clone,Debug,Eq,PartialEq,Ord,PartialOrd)]
+pub enum RepaintRequest {
     /// Do nothing
     None,
     /// Repaint the widgets
@@ -278,10 +295,9 @@ pub(crate) enum RepaintRequest {
     Relayout,
 }
 
+
 /// The result of event delivery.
-pub(crate) struct EventResult {
-    /// The event was handled.
-    pub(crate) handled_by: Option<NodeId>,
+pub(crate) struct DispatchResult {
     /// Whether repaint or relayout was requested.
     pub(crate) repaint: RepaintRequest,
 }
@@ -291,53 +307,47 @@ pub enum FocusChange {
     /// Keep the focus, or do nothing if the node does not have it.
     Keep,
     /// Acquire focus, if the node does not have it already
-    Acquire(NodeId),
+    Acquire,
     /// Release the focus, if the node has it
     Release,
     /// Move the focus.
     Move(MoveFocusDirection),
 }
 
-/// Event traversal state (shared)
-pub struct EventFlowCtx<'fcx, 'wcx> {
-    /// Window context
-    window_ctx: &'fcx mut WindowCtx<'wcx>,
-    /// Window
-    window: &'fcx PlatformWindow,
-    /// State of various input devices.
-    input_state: &'fcx InputState,
-    /// Contains information about currently focused and pointer-grabbing nodes.
-    focus: &'fcx mut FocusState,
-    /// The node that handled the event, or None if the event has yet to be handled.
-    handled: Option<NodeId>,
-    /// Focus change request
-    focus_change: FocusChange,
-    /// Redraw requested
-    repaint: RepaintRequest,
-}
-
-/*impl<'fcx, 'wcx> EventFlowCtx<'fcx, 'wcx> {
-    /// Returns whether we should follow a pointer-capture flow.
-    fn is_capturing_pointer(&self) -> bool {
-        self.focus.pointer_grab.is_some()
-    }
-
-    fn is_capturing_keyboard(&self) -> bool {
-        self.focus.focus.is_some()
-    }
-}*/
 
 /// Context passed to [`Visual::event`] during event propagation.
 /// Also serves as a return value for this function.
-pub struct EventCtx<'a, 'fctx, 'wctx> {
-    flow: &'a mut EventFlowCtx<'fctx, 'wctx>,
+pub struct EventCtx<'a, 'wctx> {
+    /// Window context
+    window_ctx: &'a mut WindowCtx<'wctx>,
+    /// Window
+    window: &'a PlatformWindow,
+    /// State of various input devices.
+    inputs: &'a InputState,
+    /// Contains information about currently focused and pointer-grabbing nodes.
+    focus: &'a mut FocusState,
     /// The ID of the current node.
-    node: NodeId,
+    node_id: NodeId,
     /// The bounds of the current visual.
     bounds: Bounds,
+    /// Focus change requested
+    focus_change: FocusChange,
+    /// Redraw requested
+    repaint: RepaintRequest,
+    /// Pointer grab requested
+    pointer_capture: bool,
+    /// Event handled
+    handled: bool,
+    // Whether this is a focus change event
+    //in_focus_event: bool,
 }
 
-impl<'a, 'fctx, 'wctx> EventCtx<'a, 'fctx, 'wctx> {
+impl<'a, 'wctx> EventCtx<'a, 'wctx> {
+
+    pub fn platform(&self) -> &Platform {
+        self.window_ctx.platform
+    }
+
     /// Returns the bounds of the current widget.
     pub fn bounds(&self) -> Bounds {
         self.bounds
@@ -345,52 +355,53 @@ impl<'a, 'fctx, 'wctx> EventCtx<'a, 'fctx, 'wctx> {
 
     /// Requests a redraw of the current visual.
     pub fn request_redraw(&mut self) {
-        self.flow.repaint = RepaintRequest::Repaint;
+        self.repaint = RepaintRequest::Repaint;
     }
 
     /// Requests that the current node grabs all pointer events.
     pub fn capture_pointer(&mut self) {
-        trace!("capture_pointer: {}", self.node);
-        self.set_handled();
-        self.flow.focus.pointer_grab = Some(self.node);
+        trace!("capture_pointer: {}", self.node_id);
+        self.handled = true;
+        self.pointer_capture = true;
     }
 
     /// Returns whether the current node is capturing the pointer.
     pub fn is_capturing_pointer(&self) -> bool {
-        self.flow.focus.pointer_grab == Some(self.node)
+        self.focus.pointer_grab == Some(self.node_id)
     }
 
     /// Releases the pointer grab, if the current node is holding it.
     pub fn release_pointer(&mut self) {
-        if self.flow.focus.pointer_grab == Some(self.node) {
-            self.flow.focus.pointer_grab = None;
+        if self.focus.pointer_grab == Some(self.node_id) {
+            self.focus.pointer_grab = None;
         }
     }
 
     /// Acquires the focus.
     pub fn request_focus(&mut self) {
+        //assert!(!self.in_focus_event, "cannot request focus in a focus handler");
         self.set_handled();
-        self.flow.focus_change = FocusChange::Acquire(self.node);
+        self.focus_change = FocusChange::Acquire;
     }
 
     /// Returns whether the current node has the focus.
     pub fn has_focus(&self) -> bool {
-        self.flow.focus.focus == Some(self.node)
+        self.focus.focus == Some(self.node_id)
     }
 
     /// Signals that the passed event was handled and should not bubble up further.
     pub fn set_handled(&mut self) {
-        self.flow.handled = Some(self.node);
+        self.handled = true;
     }
 
     /// Returns the window that the event was originally sent to.
     pub fn window(&self) -> &PlatformWindow {
-        self.flow.window
+        self.window
     }
 
     #[must_use]
     pub fn handled(&self) -> bool {
-        self.flow.handled.is_some()
+        self.handled
     }
 }
 
@@ -405,6 +416,9 @@ pub type NodeArena = generational_indextree::Arena<Box<NodeData>>;
 pub struct NodeTree {
     nodes: NodeArena,
     root: NodeId,
+    focus: FocusState,
+    /// TODO useless?
+    window_origin: Point,
 }
 
 impl NodeTree {
@@ -412,8 +426,9 @@ impl NodeTree {
     pub fn new() -> NodeTree {
         let mut nodes = NodeArena::new();
         let root = nodes.new_node(NodeData::dummy());
-        NodeTree { nodes, root }
+        NodeTree { nodes, root, focus: FocusState::new(), window_origin: Point::origin() }
     }
+
 
     /// Given a widget, runs the layout pass that updates the visual nodes of this tree.
     pub(crate) fn layout<A>(
@@ -459,8 +474,6 @@ impl NodeTree {
         id: NodeId,
         window_pos: Point,
         origin: Point,
-        input_state: &InputState,
-        focus_state: &FocusState,
     ) -> Option<NodeId> {
         let layout = &self.nodes[id].get().layout;
         // bounds in window coordinates
@@ -475,8 +488,6 @@ impl NodeTree {
                     id,
                     window_pos,
                     bounds.origin,
-                    input_state,
-                    focus_state,
                 ) {
                     // hit
                     return Some(target_id);
@@ -490,45 +501,29 @@ impl NodeTree {
         }
     }
 
-   /* /// Builds a dispatch chain for a target node.
-    pub(crate) fn build_target_dispatch_chain(&self, target: NodeId) -> Vec<NodeId> {
-        let mut dispatch_chain = Vec::new();
-        let mut next_id = Some(target);
-        while let Some(id) = next_id {
-            dispatch_chain.push(id);
-            next_id = self.nodes[id].parent();
-        }
-        dispatch_chain.reverse();
-        dispatch_chain
-    }*/
 
     /// Builds the dispatch chain followed by an event in the visual tree, or empty vec if it's a traversal.
     pub(crate) fn find_event_target(
         &self,
         event: &Event,
-        origin: Point,
-        input_state: &InputState,
-        focus_state: &FocusState,
     ) -> Option<NodeId> {
         match event {
             Event::PointerMove(pointer_event)
             | Event::PointerDown(pointer_event)
             | Event::PointerUp(pointer_event) => {
                 // if there is a pointer-capturing node, then deliver the event directly to it
-                if let Some(pointer_capture_node_id) = focus_state.pointer_grab {
+                if let Some(pointer_capture_node_id) = self.focus.pointer_grab {
                     Some(pointer_capture_node_id)
                 } else {
                     // otherwise, build a pointer dispatch chain
                     self.find_pointer_event_target(self.root,
                                                    pointer_event.window_position,
-                                                   origin,
-                                                   input_state,
-                                                   focus_state)
+                                                   self.window_origin)
                 }
             }
             Event::KeyUp(keyboard_event) | Event::KeyDown(keyboard_event) => {
                 // keyboard events are delivered to the currently focused node
-                if let Some(focused_node_id) = focus_state.focus {
+                if let Some(focused_node_id) = self.focus.focus {
                     Some(focused_node_id)
                 } else {
                     None
@@ -536,7 +531,7 @@ impl NodeTree {
             }
             Event::Input(input_event) => {
                 // same as keyboard events
-                if let Some(focused_node_id) = focus_state.focus {
+                if let Some(focused_node_id) = self.focus.focus {
                     Some(focused_node_id)
                 } else {
                     None
@@ -547,9 +542,7 @@ impl NodeTree {
                 // is a pointer grab or not
                 self.find_pointer_event_target(self.root,
                                                wheel_event.pointer.window_position,
-                                               origin,
-                                               input_state,
-                                               focus_state)
+                                               self.window_origin)
             }
             // default is standard traversal
             _ => None,
@@ -572,65 +565,118 @@ impl NodeTree {
     }
 
     /// Sends an event to a target node and optionally bubble up.
-    pub(crate) fn dispatch_event(&mut self, flow: &mut EventFlowCtx, event: &Event, target: NodeId, bubble: bool)
+    pub(crate) fn dispatch_event(&mut self,
+                                 window_ctx: &mut WindowCtx,
+                                 window: &PlatformWindow,
+                                 inputs: &InputState,
+                                 event: &Event,
+                                 target: NodeId,
+                                 repaint: &mut RepaintRequest,
+                                 bubble: bool) -> Option<NodeId>
     {
         let mut next_id = Some(target);
+        let mut handled_by = None;
 
         while let Some(id) = next_id {
             let local_event = self.build_local_event(event, id);
-            let mut ctx = EventCtx {
-                flow,
-                node: id,
-                bounds: Bounds::default(),
-            };
             // deliver event to visual
             let node = &mut self.nodes[id];
+
+            let mut ctx = EventCtx {
+                window_ctx,
+                window,
+                inputs,
+                focus: &mut self.focus,
+                node_id: id,
+                bounds: Bounds::new(Point::origin(), node.get().layout.size),
+                focus_change: FocusChange::Keep,
+                repaint: RepaintRequest::None,
+                pointer_capture: false,
+                handled: false
+            };
             node
                 .get_mut()
                 .visual
                 .event(&mut ctx, &local_event);
 
-            if !bubble {
+            *repaint = (*repaint).max(ctx.repaint);
+            let focus_change = ctx.focus_change;
+            let handled = ctx.handled;
+            let pointer_capture = ctx.pointer_capture;
+
+            // after delivering the event, immediately process the focus and pointer-capture related
+            // events that must be sent.
+            match focus_change {
+                FocusChange::Acquire => {
+                    // the current node should be focused
+                    // 1. dispatch an event to the currently focused node to signal that it's about to
+                    // lose focus
+                    //   - the node may try to re-acquire focus by calling acquire_focus in the focusout
+                    //     handler: what to do then? => panic (not supported)
+                    //
+                    let old_focus = self.focus.focus;
+                    if old_focus != Some(id) {
+                        if let Some(old_focus) = old_focus {
+                            let r = self.dispatch_event(window_ctx, window, inputs, &Event::FocusOut, old_focus, repaint,false);
+                        }
+
+                        self.focus.focus = Some(id);
+                        self.dispatch_event(window_ctx, window, inputs, &Event::FocusIn, id, repaint, false);
+                    }
+                }
+                FocusChange::Release => {
+                    if self.focus.focus == Some(id) {
+                        self.dispatch_event(window_ctx, window, inputs, &Event::FocusOut, id, repaint, false);
+                        self.focus.focus = None;
+                    }
+                }
+                FocusChange::Move(_) => todo!("tab navigation"),
+                FocusChange::Keep => {}
+            }
+
+            // handle pointer capture requests
+            if pointer_capture {
+                // TODO events?
+                self.focus.pointer_grab = Some(id);
+            }
+
+            // stop propagation if the event was handled
+            if handled {
+                handled_by = Some(id);
+            }
+
+            if !bubble || handled {
                 break;
             }
-            next_id = node.parent();
+
+            next_id = self.nodes[id].parent();
         }
+
+        handled_by
     }
 
     pub(crate) fn event(
         &mut self,
-        event: &Event,
         window_ctx: &mut WindowCtx,
         window: &PlatformWindow,
-        origin: Point,
-        input_state: &InputState,
-        focus_state: &mut FocusState,
-    ) -> EventResult {
+        inputs: &InputState,
+        event: &Event,
+    ) -> RepaintRequest {
         //trace!("event {:?}", event);
-        let target = self.find_event_target(event, origin, input_state, focus_state);
-
-        let mut flow = EventFlowCtx {
-            window,
-            window_ctx,
-            input_state,
-            focus: focus_state,
-            handled: None,
-            focus_change: FocusChange::Keep,
-            repaint: RepaintRequest::None,
-        };
-
+        let target = self.find_event_target(event);
+        let mut repaint = RepaintRequest::None;
 
         // event pre-processing
         match event {
             Event::PointerUp(p) | Event::PointerDown(p) | Event::PointerMove(p) => {
-                if flow.focus.hot != target {
+                if self.focus.hot != target {
                     // handle pointerout/pointerover
-                    if let Some(old_and_busted) = flow.focus.hot {
-                        self.dispatch_event(&mut flow, &Event::PointerOut(*p), old_and_busted, true);
+                    if let Some(old_and_busted) = self.focus.hot {
+                        self.dispatch_event(window_ctx, window, inputs, &Event::PointerOut(*p), old_and_busted, &mut repaint, true);
                     }
                     if let Some(new_hotness) = target {
-                        self.dispatch_event(&mut flow, &Event::PointerOver(*p), new_hotness, true);
-                        flow.focus.hot.replace(new_hotness);
+                        self.dispatch_event(window_ctx, window, inputs, &Event::PointerOver(*p), new_hotness, &mut repaint,true);
+                        self.focus.hot.replace(new_hotness);
                     }
                 }
             }
@@ -638,27 +684,7 @@ impl NodeTree {
         }
 
         if let Some(target) = target {
-            self.dispatch_event(&mut flow, event, target, true);
-        }
-
-        // handle focus change
-        match flow.focus_change {
-            FocusChange::Acquire(new_focus) => {
-                trace!("acquire focus: {}", new_focus);
-                if let Some(old_focus) = flow.focus.focus {
-                    self.dispatch_event(&mut flow, &Event::FocusOut, old_focus, false);
-                }
-                flow.focus.focus = Some(new_focus);
-                self.dispatch_event(&mut flow, &Event::FocusIn, new_focus, false);
-            }
-            FocusChange::Move(direction) => todo!("focus move"),
-            FocusChange::Release => {
-                if let Some(old_focus) = flow.focus.focus {
-                    self.dispatch_event(&mut flow, &Event::FocusOut, old_focus, false);
-                }
-                flow.focus.focus = None;
-            }
-            FocusChange::Keep => {}
+            self.dispatch_event(window_ctx, window, inputs, event, target, &mut repaint,true);
         }
 
         // post-processing
@@ -667,28 +693,25 @@ impl NodeTree {
                 // automatic release of pointer capture
                 if p.buttons.is_empty() {
                     trace!("auto pointer release");
-                    flow.focus.pointer_grab = None;
+                    self.focus.pointer_grab = None;
                 }
             }
             _ => {}
         }
 
         // TODO Tab navigation
-        EventResult {
-            handled_by: flow.handled,
-            repaint: flow.repaint,
-        }
+        repaint
     }
 
     /// Painting.
     pub fn paint(
         &mut self,
+        platform: &Platform,
         draw_context: &mut DrawContext,
-        focus_state: &FocusState,
         input_state: &InputState,
         theme: &Theme)
     {
-        self.paint_node(draw_context, Offset::zero(), focus_state, input_state, self.root, theme)
+        self.paint_node(platform,draw_context, Offset::zero(), input_state, self.root, theme)
     }
 
     /// Draws the node using the specified theme, in the specified context.
@@ -696,9 +719,9 @@ impl NodeTree {
     /// Effectively, it applies the transform of the node (which, right now, is only an offset relative to the parent),
     /// and calls [`Visual::paint`] on `self.visual`.
     fn paint_node(&mut self,
+                  platform: &Platform,
                   draw_context: &mut DrawContext,
                   offset: Offset,
-                  focus_state: &FocusState,
                   input_state: &InputState,
                   node_id: NodeId,
                   theme: &Theme)
@@ -710,26 +733,30 @@ impl NodeTree {
         let hover = input_state.pointers.iter().any(|(_, state)| window_bounds.contains(state.position));
         dbg!(hover);
 
-        let mut ctx = PaintCtx {
-            draw_ctx: draw_context,
-            size: node_layout.size,
-            node_id,
-            focus_state,
-            input_state,
-            hover
-        };
 
-        ctx.draw_ctx.save();
-        ctx.draw_ctx.transform(&node_layout.offset.to_transform());
-        node.visual.paint(&mut ctx, theme);
+        draw_context.save();
+        draw_context.transform(&node_layout.offset.to_transform());
+
+        {
+            let mut ctx = PaintCtx {
+                platform,
+                draw_ctx: draw_context,
+                size: node_layout.size,
+                node_id,
+                focus_state: &self.focus,
+                input_state,
+                hover
+            };
+            node.visual.paint(&mut ctx, theme);
+        }
 
         // paint children
         let mut child_id = self.nodes[node_id].first_child();
         while let Some(id) = child_id {
-            self.paint_node(ctx.draw_ctx, offset + node_layout.offset, focus_state, input_state, id, theme);
+            self.paint_node(platform, draw_context, offset + node_layout.offset, input_state, id, theme);
             child_id = self.nodes[id].next_sibling();
         }
 
-        ctx.draw_ctx.restore();
+        draw_context.restore();
     }
 }

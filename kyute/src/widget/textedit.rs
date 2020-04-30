@@ -45,6 +45,11 @@ impl Selection {
     }
 }
 
+// layout strategy:
+// - the text layout is calculated during widget layout, but also when an event causes the text to
+//   change
+// - update the text layout during painting if necessary
+
 pub struct TextEditVisual {
     /// The text displayed to the user.
     text: String,
@@ -58,6 +63,9 @@ pub struct TextEditVisual {
     /// The currently selected range. If no text is selected, this is a zero-length range
     /// at the cursor position.
     selection: Selection,
+
+    /// Flag that indicates that the text inside the box needs to be relayouted
+    needs_text_relayout: bool,
 
     /// Flag that indicates that the visual needs to be repainted.
     /// Q: Could also be a return value of the methods of visual.
@@ -114,6 +122,7 @@ impl TextEditVisual {
         let max = self.selection.max();
         self.text.replace_range(min..max, text);
         self.selection = Selection::empty(min + text.len());
+        self.needs_text_relayout = true;
         self.needs_repaint = true;
     }
 
@@ -127,6 +136,7 @@ impl TextEditVisual {
             return;
         }
         self.insert("");
+        self.needs_text_relayout = true;
         self.needs_repaint = true;
         // reset blink
         // need layout
@@ -165,6 +175,17 @@ impl TextEditVisual {
 impl Visual for TextEditVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
         let size = ctx.size;
+
+        if self.needs_text_relayout {
+            // relayout text
+            self.text_layout = TextLayout::new(
+                ctx.platform(),
+                &self.text,
+                &theme.label_text_format,
+                size,
+            ).unwrap();
+            self.needs_text_relayout = false;
+        }
 
         let text_color = Color::new(0.0, 0.0, 0.0, 1.0);
         let selected_bg_color = Color::new(0.0, 0.0, 0.0, 1.0);
@@ -253,11 +274,17 @@ impl Visual for TextEditVisual {
             Event::PointerUp(p) => {
                 // nothing to do (pointer grab automatically ends)
             }
+            Event::Input(input) => {
+                trace!("insert {}", input.character);
+                let mut buf = [0u8;4];
+                self.insert(input.character.encode_utf8(&mut buf[..]));
+            }
             _ => {}
         }
 
         if self.needs_repaint {
             ctx.request_redraw();
+            self.needs_repaint = false;
         }
     }
 
@@ -318,7 +345,8 @@ impl<A: 'static> Widget<A> for TextEditBase {
                     text: text.to_owned(),
                     text_layout,
                     selection: Selection::empty(0),
-                    needs_repaint: false,
+                    needs_repaint: true,
+                    needs_text_relayout: false,
                 },
             )
         });

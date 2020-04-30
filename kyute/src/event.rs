@@ -101,7 +101,7 @@ pub struct WheelEvent {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct InputEvent {
-    character: char,
+    pub character: char,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
