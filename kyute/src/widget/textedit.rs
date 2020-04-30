@@ -15,6 +15,7 @@ use palette::{Srgb, Srgba};
 use std::any::Any;
 use std::ops::Range;
 use unicode_segmentation::GraphemeCursor;
+use bitflags::_core::mem::transmute_copy;
 
 /// Text selection.
 ///
@@ -182,12 +183,14 @@ impl Visual for TextEditVisual {
         }
 
         // selection highlight
-        let selected_areas = self
-            .text_layout
-            .hit_test_text_range(self.selection.min()..self.selection.max(), &Point::origin())
-            .unwrap();
-        for sa in selected_areas {
-            ctx.fill_rectangle(sa.bounds.round_out(), &selected_bg_brush);
+        if !self.selection.is_empty() {
+            let selected_areas = self
+                .text_layout
+                .hit_test_text_range(self.selection.min()..self.selection.max(), &Point::origin())
+                .unwrap();
+            for sa in selected_areas {
+                ctx.fill_rectangle(sa.bounds.round_out(), &selected_bg_brush);
+            }
         }
 
         // text
@@ -199,19 +202,21 @@ impl Visual for TextEditVisual {
         );
 
         // caret
-        //eprintln!("selection={:?}", self.selection);
-        let caret_hit_test = self
-            .text_layout
-            .hit_test_text_position(self.selection.end)
-            .unwrap();
-        //dbg!(caret_hit_test);
-        ctx.fill_rectangle(
-            Rect::new(
-                caret_hit_test.point.floor(),
-                Size::new(1.0, caret_hit_test.metrics.bounds.size.height),
-            ),
-            &caret_brush,
-        );
+        if ctx.has_focus() {
+            trace!("has focus");
+            let caret_hit_test = self
+                .text_layout
+                .hit_test_text_position(self.selection.end)
+                .unwrap();
+            //dbg!(caret_hit_test);
+            ctx.fill_rectangle(
+                Rect::new(
+                    caret_hit_test.point.floor(),
+                    Size::new(1.0, caret_hit_test.metrics.bounds.size.height),
+                ),
+                &caret_brush,
+            );
+        }
 
         self.needs_repaint = false;
     }
@@ -222,18 +227,28 @@ impl Visual for TextEditVisual {
 
     fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
         match event {
+            Event::FocusIn => {
+                trace!("focus in");
+                ctx.request_redraw();
+            }
+            Event::FocusOut => {
+                trace!("focus out");
+                let pos = self.selection.end;
+                self.set_cursor(pos);
+            }
             Event::PointerDown(p) => {
                 let pos = self.position_to_text(p.position);
                 self.set_cursor(pos);
+                ctx.request_focus();
                 ctx.capture_pointer();
             }
             Event::PointerMove(p) => {
                 // update selection
-                //if ctx.is_grabbing_pointer() {
+                if ctx.is_capturing_pointer() {
                     let pos = self.position_to_text(p.position);
                     self.set_selection_end(pos);
                     trace!("selection: {:?}", self.selection)
-                //}
+                }
             }
             Event::PointerUp(p) => {
                 // nothing to do (pointer grab automatically ends)

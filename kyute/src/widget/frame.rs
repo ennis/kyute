@@ -75,19 +75,26 @@ impl Visual for FrameVisual {
         // box background
         ctx.fill_rectangle(rect.stroke_inset(self.border_width), &bg_brush);
         // border
-        ctx.draw_rectangle(
-            rect.stroke_inset(self.border_width),
-            &border_brush,
-            self.border_width,
-        );
-        // child
-        //self.inner.paint(ctx, theme);
+        if ctx.is_hovering() {
+            ctx.draw_rectangle(
+                rect.stroke_inset(self.border_width),
+                &border_brush,
+                self.border_width,
+            );
+        }
     }
 
     fn hit_test(&mut self, point: Point, bounds: Bounds) -> bool {
         unimplemented!()
     }
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {}
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
+        match event {
+            Event::PointerOver(_) | Event::PointerOut(_) => {
+                ctx.request_redraw()
+            }
+            _ => {}
+        }
+    }
     fn as_any(&self) -> &dyn Any {
         self
     }

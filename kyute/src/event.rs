@@ -118,18 +118,14 @@ pub enum Event {
     PointerDown(PointerEvent),
     PointerUp(PointerEvent),
     PointerMove(PointerEvent),
-    PointerEnter(PointerEvent),
-    PointerLeave(PointerEvent),
+    PointerOver(PointerEvent),
+    PointerOut(PointerEvent),
     Wheel(WheelEvent),
     KeyDown(KeyboardEvent),
     KeyUp(KeyboardEvent),
     Input(InputEvent),
-
-    // non-input events
-    /// Move the focus to the previous or next node in the focus chain.
-    MoveFocus(MoveFocusDirection),
-    /// Set focus to the right or left-most (depending on the direction) focusable leaf node.
-    SetFocus(MoveFocusDirection),
+    FocusIn,
+    FocusOut,
 }
 
 impl Event {
