@@ -268,9 +268,10 @@ impl HitTestMetrics {
         // convert utf16 code unit offset to utf8
         //dbg!(metrics.textPosition);
         let text_position = count_until_utf16(text, metrics.textPosition as usize);
+        let length = count_until_utf16(&text[text_position..], metrics.length as usize);
         HitTestMetrics {
             text_position,
-            length: metrics.length as usize,
+            length,
             bounds: Rect::new(
                 Point::new(metrics.left as f64, metrics.top as f64),
                 Size::new(metrics.width as f64, metrics.height as f64),
@@ -489,12 +490,12 @@ impl TextLayout {
             Bound::Unbounded => self.text.len(),
         };
 
-        let start = count_utf16(&self.text[0..start]);
-        let len = count_utf16(&self.text[start..end]);
+        let utf16_start = count_utf16(&self.text[0..start]);
+        let utf16_len = count_utf16(&self.text[start..end]);
 
         DWRITE_TEXT_RANGE {
-            startPosition: start as u32,
-            length: len as u32,
+            startPosition: utf16_start as u32,
+            length: utf16_len as u32,
         }
     }
 
