@@ -14,8 +14,10 @@ use winapi::um::d3d11::*;
 use winapi::um::d3dcommon::*;
 use winapi::um::dwrite::*;
 use winapi::um::unknwnbase::IUnknown;
+use winapi::um::winuser::GetDoubleClickTime;
 use winapi::Interface;
 use wio::com::ComPtr;
+use std::time::Duration;
 
 /// Contains a bunch of application-global objects and factories, mostly DirectX stuff for drawing
 /// to the screen.
@@ -142,5 +144,13 @@ impl Platform {
             d2d_factory,
             d2d_device,
         }))
+    }
+
+    /// Returns the system double click time in milliseconds.
+    pub fn double_click_time(&self) -> Duration {
+        unsafe {
+            let ms = GetDoubleClickTime();
+            Duration::from_millis(ms as u64)
+        }
     }
 }

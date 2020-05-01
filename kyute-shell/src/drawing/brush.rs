@@ -21,8 +21,9 @@ impl SolidColorBrush {
                 opacity: 1.0, // FIXME what's the difference with color.a?
                 transform: mk_matrix_3x2(&Transform::identity()),
             };
-            let hr =
-                ctx.ctx.CreateSolidColorBrush(&mk_color_f(color), &brush_props, &mut brush);
+            let hr = ctx
+                .ctx
+                .CreateSolidColorBrush(&mk_color_f(color), &brush_props, &mut brush);
             assert!(SUCCEEDED(hr));
             SolidColorBrush(ComPtr::from_raw(brush))
         }

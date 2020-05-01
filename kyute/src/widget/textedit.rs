@@ -7,6 +7,7 @@ use crate::widget::frame::Frame;
 use crate::widget::padding::Padding;
 use crate::widget::LayoutCtx;
 use crate::{Bounds, BoxedWidget, Point, Widget, WidgetExt};
+use bitflags::_core::mem::transmute_copy;
 use generational_indextree::NodeId;
 use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt, SolidColorBrush};
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
@@ -15,8 +16,8 @@ use palette::{Srgb, Srgba};
 use std::any::Any;
 use std::ops::Range;
 use unicode_segmentation::GraphemeCursor;
-use bitflags::_core::mem::transmute_copy;
 use winit::event::VirtualKeyCode;
+use kyute_shell::drawing::context::{FloodImage, CompositeMode, InterpolationMode};
 
 /// Text selection.
 ///
@@ -143,7 +144,6 @@ impl TextEditVisual {
         // need layout
     }*/
 
-
     /// Sets cursor position.
     pub fn set_cursor(&mut self, pos: usize) {
         if self.selection.is_empty() && self.selection.end == pos {
@@ -179,13 +179,11 @@ impl Visual for TextEditVisual {
         let size = ctx.size;
 
         if self.needs_text_relayout {
+            trace!("text relayout");
             // relayout text
-            self.text_layout = TextLayout::new(
-                ctx.platform(),
-                &self.text,
-                &theme.label_text_format,
-                size,
-            ).unwrap();
+            self.text_layout =
+                TextLayout::new(ctx.platform(), &self.text, &theme.label_text_format, size)
+                    .unwrap();
             self.needs_text_relayout = false;
         }
 
@@ -196,9 +194,10 @@ impl Visual for TextEditVisual {
         let selected_bg_brush = SolidColorBrush::new(ctx, selected_bg_color);
         let selected_text_brush = SolidColorBrush::new(ctx, Color::new(1.0, 1.0, 1.0, 1.0));
 
-        // selected text color
+        // text color
         self.text_layout.set_drawing_effect(&text_brush, ..);
         if !self.selection.is_empty() {
+            // FIXME slightly changes the layout when the selection straddles a kerning pair?
             self.text_layout.set_drawing_effect(
                 &selected_text_brush,
                 self.selection.min()..self.selection.max(),
@@ -221,16 +220,17 @@ impl Visual for TextEditVisual {
             Point::origin(),
             &self.text_layout,
             &text_brush,
-            DrawTextOptions::empty(),
+            DrawTextOptions::ENABLE_COLOR_FONT,
         );
 
         // caret
-        if ctx.is_focused() {
+        /*if ctx.is_focused() {
             trace!("has focus");
             let caret_hit_test = self
                 .text_layout
                 .hit_test_text_position(self.selection.end)
                 .unwrap();
+
             //dbg!(caret_hit_test);
             ctx.fill_rectangle(
                 Rect::new(
@@ -239,7 +239,22 @@ impl Visual for TextEditVisual {
                 ),
                 &caret_brush,
             );
-        }
+        }*/
+
+        // selection highlight V2 (ugly with cleartype)
+        /*if !self.selection.is_empty() {
+            let selected_areas = self
+                .text_layout
+                .hit_test_text_range(self.selection.min()..self.selection.max(), &Point::origin())
+                .unwrap();
+            for sa in selected_areas {
+                let fill = FloodImage::new(ctx, Color::new(1.0, 1.0, 1.0, 1.0));
+                let round_bounds = sa.bounds.round_out();
+                ctx.draw_image(&fill, round_bounds.origin, Rect::new(Point::origin(), round_bounds.size),
+                               InterpolationMode::NearestNeighbor,
+                               CompositeMode::MaskInvert);
+            }
+        }*/
 
         self.needs_repaint = false;
     }
@@ -284,7 +299,7 @@ impl Visual for TextEditVisual {
                                 self.move_cursor(Movement::Left, true);
                             }
                             self.insert("");
-                        },
+                        }
                         VirtualKeyCode::Delete => {
                             if self.selection.is_empty() {
                                 self.move_cursor(Movement::Right, true);

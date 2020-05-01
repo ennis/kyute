@@ -38,14 +38,14 @@ impl From<HRESULT> for Error {
     }
 }
 
-/*/// Checks that `SUCCEEDED(hr)` is true, otherwise returns an `Err(HResultError(hr))`;
+/// Checks that `SUCCEEDED(hr)` is true, otherwise returns an `Err(HResultError(hr))`;
 pub(crate) fn check_hr(hr: HRESULT) -> Result<HRESULT> {
     if !SUCCEEDED(hr) {
         Err(Error::HResultError(hr))
     } else {
         Ok(hr)
     }
-}*/
+}
 
 pub(crate) fn wrap_hr<R, F: FnOnce() -> R>(hr: HRESULT, f: F) -> Result<R> {
     if !SUCCEEDED(hr) {

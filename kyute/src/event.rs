@@ -49,6 +49,7 @@ impl Default for PointerButtons {
 }
 
 /// Modeled after [W3C's PointerEvent](https://www.w3.org/TR/pointerevents3/#pointerevent-interface)
+// TODO separate PointerEvent from PointerButtonEvent (which has a PointerEvent + info on the button just pressed or released and the repeat count).
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct PointerEvent {
     /// Position in device-independent (logical) pixels, relative to the visual node that the event
@@ -64,6 +65,9 @@ pub struct PointerEvent {
     pub buttons: PointerButtons,
     /// Identifies the pointer.
     pub pointer_id: winit::event::DeviceId,
+    /// The repeat count for double, triple (and more) for button press events (`Event::PointerDown`).
+    /// Otherwise, the value is unspecified.
+    pub repeat_count: u32,
     //pub contact_width: f64,
     //pub contact_height: f64,
     //pub pressure: f32,

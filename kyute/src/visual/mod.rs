@@ -3,7 +3,7 @@ use crate::event::{Event, MoveFocusDirection, PointerButtons, PointerEvent};
 use crate::layout::{Layout, Offset, Point};
 use crate::renderer::Theme;
 use crate::state::NodeKey;
-use crate::{Bounds, BoxConstraints, Widget, BoxedWidget};
+use crate::{Bounds, BoxConstraints, BoxedWidget, Widget};
 use euclid::{Point2D, UnknownUnit};
 use log::trace;
 use std::any;
@@ -15,7 +15,7 @@ use std::rc::{Rc, Weak};
 use crate::application::WindowCtx;
 use crate::widget::{ActionSink, LayoutCtx};
 use generational_indextree::{Node, NodeEdge, NodeId};
-use kyute_shell::drawing::{Size, Transform, DrawContext};
+use kyute_shell::drawing::{DrawContext, Size, Transform};
 use kyute_shell::window::PlatformWindow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -24,9 +24,9 @@ use std::ops::DerefMut;
 use winit::event::DeviceId;
 
 mod reconciliation;
-use std::cell::Cell;
-pub use reconciliation::NodeCursor;
 use kyute_shell::platform::Platform;
+pub use reconciliation::NodeCursor;
+use std::cell::Cell;
 
 /// Context passed to [`Visual::paint`].
 pub struct PaintCtx<'a> {
@@ -41,7 +41,6 @@ pub struct PaintCtx<'a> {
 }
 
 impl<'a> PaintCtx<'a> {
-
     pub fn platform(&self) -> &Platform {
         self.platform
     }
@@ -62,7 +61,6 @@ impl<'a> PaintCtx<'a> {
     pub fn is_focused(&self) -> bool {
         self.focus
     }
-
 
     pub fn is_capturing_pointer(&self) -> bool {
         self.focus_state.pointer_grab == Some(self.node_id)
@@ -207,7 +205,6 @@ where
     }
 }
 
-
 pub struct PointerState {
     pub(crate) buttons: PointerButtons,
     pub(crate) position: Point,
@@ -239,6 +236,7 @@ impl InputState {
             button: None,
             buttons: state.buttons,
             pointer_id: device_id,
+            repeat_count: 0
         })
     }
 }
@@ -287,7 +285,7 @@ impl FocusState {
     }
 }
 
-#[derive(Copy,Clone,Debug,Eq,PartialEq,Ord,PartialOrd)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum RepaintRequest {
     /// Do nothing
     None,
@@ -296,7 +294,6 @@ pub enum RepaintRequest {
     /// Relayout and repaint the widgets
     Relayout,
 }
-
 
 /// The result of event delivery.
 pub(crate) struct DispatchResult {
@@ -315,7 +312,6 @@ pub enum FocusChange {
     /// Move the focus.
     Move(MoveFocusDirection),
 }
-
 
 /// Context passed to [`Visual::event`] during event propagation.
 /// Also serves as a return value for this function.
@@ -345,7 +341,6 @@ pub struct EventCtx<'a, 'wctx> {
 }
 
 impl<'a, 'wctx> EventCtx<'a, 'wctx> {
-
     pub fn platform(&self) -> &Platform {
         self.window_ctx.platform
     }
@@ -428,9 +423,13 @@ impl NodeTree {
     pub fn new() -> NodeTree {
         let mut nodes = NodeArena::new();
         let root = nodes.new_node(NodeData::dummy());
-        NodeTree { nodes, root, focus: FocusState::new(), window_origin: Point::origin() }
+        NodeTree {
+            nodes,
+            root,
+            focus: FocusState::new(),
+            window_origin: Point::origin(),
+        }
     }
-
 
     /// Given a widget, runs the layout pass that updates the visual nodes of this tree.
     pub(crate) fn layout<A>(
@@ -440,13 +439,19 @@ impl NodeTree {
         root_constraints: &BoxConstraints,
         theme: &Theme,
         win_ctx: &mut WindowCtx,
-        action_sink: Rc<dyn ActionSink<A>>)
-    {
+        action_sink: Rc<dyn ActionSink<A>>,
+    ) {
         let mut layout_ctx = LayoutCtx {
             win_ctx,
-            action_sink
+            action_sink,
         };
-        widget.layout_child(&mut layout_ctx, &mut self.nodes, self.root, &root_constraints, theme);
+        widget.layout_child(
+            &mut layout_ctx,
+            &mut self.nodes,
+            self.root,
+            &root_constraints,
+            theme,
+        );
         self.nodes[self.root].get_mut().layout.size = size;
         self.propagate_root_layout(Point::origin(), size);
     }
@@ -486,11 +491,9 @@ impl NodeTree {
             // recurse on children
             let mut child_id = self.nodes[id].first_child();
             while let Some(id) = child_id {
-                if let Some(target_id) = self.find_pointer_event_target(
-                    id,
-                    window_pos,
-                    bounds.origin,
-                ) {
+                if let Some(target_id) =
+                    self.find_pointer_event_target(id, window_pos, bounds.origin)
+                {
                     // hit
                     return Some(target_id);
                 }
@@ -503,12 +506,8 @@ impl NodeTree {
         }
     }
 
-
     /// Builds the dispatch chain followed by an event in the visual tree, or empty vec if it's a traversal.
-    pub(crate) fn find_event_target(
-        &self,
-        event: &Event,
-    ) -> Option<NodeId> {
+    pub(crate) fn find_event_target(&self, event: &Event) -> Option<NodeId> {
         match event {
             Event::PointerMove(pointer_event)
             | Event::PointerDown(pointer_event)
@@ -518,9 +517,11 @@ impl NodeTree {
                     Some(pointer_capture_node_id)
                 } else {
                     // otherwise, build a pointer dispatch chain
-                    self.find_pointer_event_target(self.root,
-                                                   pointer_event.window_position,
-                                                   self.window_origin)
+                    self.find_pointer_event_target(
+                        self.root,
+                        pointer_event.window_position,
+                        self.window_origin,
+                    )
                 }
             }
             Event::KeyUp(keyboard_event) | Event::KeyDown(keyboard_event) => {
@@ -542,9 +543,11 @@ impl NodeTree {
             Event::Wheel(wheel_event) => {
                 // wheel events always follow a pointer dispatch chain, regardless of whether there
                 // is a pointer grab or not
-                self.find_pointer_event_target(self.root,
-                                               wheel_event.pointer.window_position,
-                                               self.window_origin)
+                self.find_pointer_event_target(
+                    self.root,
+                    wheel_event.pointer.window_position,
+                    self.window_origin,
+                )
             }
             // default is standard traversal
             _ => None,
@@ -567,15 +570,16 @@ impl NodeTree {
     }
 
     /// Sends an event to a target node and optionally bubble up.
-    pub(crate) fn dispatch_event(&mut self,
-                                 window_ctx: &mut WindowCtx,
-                                 window: &PlatformWindow,
-                                 inputs: &InputState,
-                                 event: &Event,
-                                 target: NodeId,
-                                 repaint: &mut RepaintRequest,
-                                 bubble: bool) -> Option<NodeId>
-    {
+    pub(crate) fn dispatch_event(
+        &mut self,
+        window_ctx: &mut WindowCtx,
+        window: &PlatformWindow,
+        inputs: &InputState,
+        event: &Event,
+        target: NodeId,
+        repaint: &mut RepaintRequest,
+        bubble: bool,
+    ) -> Option<NodeId> {
         let mut next_id = Some(target);
         let mut handled_by = None;
 
@@ -594,12 +598,9 @@ impl NodeTree {
                 focus_change: FocusChange::Keep,
                 repaint: RepaintRequest::None,
                 pointer_capture: false,
-                handled: false
+                handled: false,
             };
-            node
-                .get_mut()
-                .visual
-                .event(&mut ctx, &local_event);
+            node.get_mut().visual.event(&mut ctx, &local_event);
 
             *repaint = (*repaint).max(ctx.repaint);
             let focus_change = ctx.focus_change;
@@ -613,16 +614,40 @@ impl NodeTree {
                     let old_focus = self.focus.focus;
                     if old_focus != Some(id) {
                         if let Some(old_focus) = old_focus {
-                            let r = self.dispatch_event(window_ctx, window, inputs, &Event::FocusOut, old_focus, repaint,true);
+                            let r = self.dispatch_event(
+                                window_ctx,
+                                window,
+                                inputs,
+                                &Event::FocusOut,
+                                old_focus,
+                                repaint,
+                                true,
+                            );
                         }
 
                         self.focus.focus = Some(id);
-                        self.dispatch_event(window_ctx, window, inputs, &Event::FocusIn, id, repaint, true);
+                        self.dispatch_event(
+                            window_ctx,
+                            window,
+                            inputs,
+                            &Event::FocusIn,
+                            id,
+                            repaint,
+                            true,
+                        );
                     }
                 }
                 FocusChange::Release => {
                     if self.focus.focus == Some(id) {
-                        self.dispatch_event(window_ctx, window, inputs, &Event::FocusOut, id, repaint, true);
+                        self.dispatch_event(
+                            window_ctx,
+                            window,
+                            inputs,
+                            &Event::FocusOut,
+                            id,
+                            repaint,
+                            true,
+                        );
                         self.focus.focus = None;
                     }
                 }
@@ -668,10 +693,26 @@ impl NodeTree {
                 if self.focus.hot != target {
                     // handle pointerout/pointerover
                     if let Some(old_and_busted) = self.focus.hot {
-                        self.dispatch_event(window_ctx, window, inputs, &Event::PointerOut(*p), old_and_busted, &mut repaint, true);
+                        self.dispatch_event(
+                            window_ctx,
+                            window,
+                            inputs,
+                            &Event::PointerOut(*p),
+                            old_and_busted,
+                            &mut repaint,
+                            true,
+                        );
                     }
                     if let Some(new_hotness) = target {
-                        self.dispatch_event(window_ctx, window, inputs, &Event::PointerOver(*p), new_hotness, &mut repaint,true);
+                        self.dispatch_event(
+                            window_ctx,
+                            window,
+                            inputs,
+                            &Event::PointerOver(*p),
+                            new_hotness,
+                            &mut repaint,
+                            true,
+                        );
                         self.focus.hot.replace(new_hotness);
                     }
                 }
@@ -680,7 +721,15 @@ impl NodeTree {
         }
 
         if let Some(target) = target {
-            self.dispatch_event(window_ctx, window, inputs, event, target, &mut repaint,true);
+            self.dispatch_event(
+                window_ctx,
+                window,
+                inputs,
+                event,
+                target,
+                &mut repaint,
+                true,
+            );
         }
 
         // post-processing
@@ -705,30 +754,43 @@ impl NodeTree {
         platform: &Platform,
         draw_context: &mut DrawContext,
         input_state: &InputState,
-        theme: &Theme)
-    {
-        self.paint_node(platform,draw_context, Offset::zero(), input_state, self.root, theme)
+        theme: &Theme,
+    ) {
+        self.paint_node(
+            platform,
+            draw_context,
+            Offset::zero(),
+            input_state,
+            self.root,
+            theme,
+        )
     }
 
     /// Draws the node using the specified theme, in the specified context.
     ///
     /// Effectively, it applies the transform of the node (which, right now, is only an offset relative to the parent),
     /// and calls [`Visual::paint`] on `self.visual`.
-    fn paint_node(&mut self,
-                  platform: &Platform,
-                  draw_context: &mut DrawContext,
-                  offset: Offset,
-                  input_state: &InputState,
-                  node_id: NodeId,
-                  theme: &Theme)
-    {
+    fn paint_node(
+        &mut self,
+        platform: &Platform,
+        draw_context: &mut DrawContext,
+        offset: Offset,
+        input_state: &InputState,
+        node_id: NodeId,
+        theme: &Theme,
+    ) {
         let mut node = self.nodes[node_id].get_mut();
         let node_layout = node.layout;
-        let window_bounds = Bounds::new(Point::origin() + offset + node_layout.offset, node_layout.size);
+        let window_bounds = Bounds::new(
+            Point::origin() + offset + node_layout.offset,
+            node_layout.size,
+        );
 
-        let hover = input_state.pointers.iter().any(|(_, state)| window_bounds.contains(state.position));
+        let hover = input_state
+            .pointers
+            .iter()
+            .any(|(_, state)| window_bounds.contains(state.position));
         dbg!(hover);
-
 
         draw_context.save();
         draw_context.transform(&node_layout.offset.to_transform());
@@ -742,7 +804,7 @@ impl NodeTree {
                 focus_state: &self.focus,
                 input_state,
                 hover,
-                focus: self.focus.focus == Some(node_id)
+                focus: self.focus.focus == Some(node_id),
             };
             node.visual.paint(&mut ctx, theme);
         }
@@ -750,7 +812,14 @@ impl NodeTree {
         // paint children
         let mut child_id = self.nodes[node_id].first_child();
         while let Some(id) = child_id {
-            self.paint_node(platform, draw_context, offset + node_layout.offset, input_state, id, theme);
+            self.paint_node(
+                platform,
+                draw_context,
+                offset + node_layout.offset,
+                input_state,
+                id,
+                theme,
+            );
             child_id = self.nodes[id].next_sibling();
         }
 

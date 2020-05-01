@@ -3,15 +3,17 @@ use crate::drawing::brush::Brush;
 use crate::drawing::{
     mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Point, Rect, Transform,
 };
-use crate::error::Error;
+use crate::error::{check_hr, wrap_hr, Error};
 use crate::text::TextLayout;
 use bitflags::bitflags;
 use log::error;
 use std::mem::MaybeUninit;
-use std::ptr;
+use std::{mem, ptr};
 use winapi::shared::winerror::SUCCEEDED;
 use winapi::um::d2d1::*;
 use winapi::um::d2d1_1::*;
+use winapi::um::d2d1effects::*;
+use winapi::um::dcommon::*;
 use wio::com::ComPtr;
 
 pub struct DrawingState(ComPtr<ID2D1DrawingStateBlock>);
@@ -24,8 +26,13 @@ pub enum SaveState {
     AxisAlignedClip,
 }
 
+/// Trait implemented by types that can be
 pub trait Image {
     fn as_raw_image(&self) -> *mut ID2D1Image;
+}
+
+pub trait Effect {
+    fn output_image(&self) -> *mut ID2D1Effect;
 }
 
 pub struct Bitmap(pub(crate) ComPtr<ID2D1Bitmap1>);
@@ -33,6 +40,48 @@ pub struct Bitmap(pub(crate) ComPtr<ID2D1Bitmap1>);
 impl Image for Bitmap {
     fn as_raw_image(&self) -> *mut ID2D1Image {
         self.0.as_raw().cast()
+    }
+}
+
+pub struct FloodImage {
+    effect: ComPtr<ID2D1Effect>,
+    output_image: ComPtr<ID2D1Image>,
+}
+
+impl FloodImage {
+    pub fn new(ctx: &DrawContext, fill_color: Color) -> FloodImage {
+        unsafe {
+            let mut effect = ptr::null_mut();
+            check_hr(ctx.ctx.CreateEffect(&CLSID_D2D1Flood, &mut effect))
+                .expect("CreateEffect failed");
+            let effect = ComPtr::from_raw(effect);
+            let (r, g, b, a) = fill_color.into_components();
+            let color_v = D2D_VECTOR_4F {
+                x: r,
+                y: g,
+                z: b,
+                w: a,
+            };
+            effect.SetValue(
+                D2D1_FLOOD_PROP_COLOR,
+                D2D1_PROPERTY_TYPE_VECTOR4,
+                &color_v as *const _ as *const u8,
+                mem::size_of::<D2D_VECTOR_4F>() as u32,
+            );
+            let mut output_image = ptr::null_mut();
+            effect.GetOutput(&mut output_image);
+            let output_image = ComPtr::from_raw(output_image);
+            FloodImage {
+                effect,
+                output_image,
+            }
+        }
+    }
+}
+
+impl Image for FloodImage {
+    fn as_raw_image(&self) -> *mut ID2D1Image {
+        self.output_image.as_raw()
     }
 }
 
@@ -44,13 +93,73 @@ bitflags! {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum PrimitiveBlend {
     SourceOver,
     Copy,
     Min,
     Add,
     Max,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum InterpolationMode {
+    NearestNeighbor,
+    Linear,
+    Cubic,
+    MultiSampleLinear,
+    Anisotropic,
+    HighQualityCubic,
+}
+
+impl InterpolationMode {
+    fn to_d2d(self) -> D2D1_INTERPOLATION_MODE {
+        match self {
+            InterpolationMode::NearestNeighbor => D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+            InterpolationMode::Linear => D2D1_INTERPOLATION_MODE_LINEAR,
+            InterpolationMode::Cubic => D2D1_INTERPOLATION_MODE_CUBIC,
+            InterpolationMode::MultiSampleLinear => D2D1_INTERPOLATION_MODE_MULTI_SAMPLE_LINEAR,
+            InterpolationMode::Anisotropic => D2D1_INTERPOLATION_MODE_ANISOTROPIC,
+            InterpolationMode::HighQualityCubic => D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum CompositeMode {
+    SourceOver,
+    DestinationOver,
+    SourceIn,
+    DestinationIn,
+    SourceOut,
+    DestinationOut,
+    SourceAtop,
+    DestinationAtop,
+    Xor,
+    Plus,
+    SourceCopy,
+    BoundedSourceCopy,
+    MaskInvert,
+}
+
+impl CompositeMode {
+    fn to_d2d(self) -> D2D1_COMPOSITE_MODE {
+        match self {
+            CompositeMode::SourceOver => D2D1_COMPOSITE_MODE_SOURCE_OVER,
+            CompositeMode::DestinationOver => D2D1_COMPOSITE_MODE_DESTINATION_OVER,
+            CompositeMode::SourceIn => D2D1_COMPOSITE_MODE_SOURCE_IN,
+            CompositeMode::DestinationIn => D2D1_COMPOSITE_MODE_DESTINATION_IN,
+            CompositeMode::SourceOut => D2D1_COMPOSITE_MODE_SOURCE_OUT,
+            CompositeMode::DestinationOut => D2D1_COMPOSITE_MODE_DESTINATION_OUT,
+            CompositeMode::SourceAtop => D2D1_COMPOSITE_MODE_SOURCE_ATOP,
+            CompositeMode::DestinationAtop => D2D1_COMPOSITE_MODE_DESTINATION_ATOP,
+            CompositeMode::Xor => D2D1_COMPOSITE_MODE_XOR,
+            CompositeMode::Plus => D2D1_COMPOSITE_MODE_PLUS,
+            CompositeMode::SourceCopy => D2D1_COMPOSITE_MODE_SOURCE_COPY,
+            CompositeMode::BoundedSourceCopy => D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY,
+            CompositeMode::MaskInvert => D2D1_COMPOSITE_MODE_MASK_INVERT,
+        }
+    }
 }
 
 pub struct DrawContext {
@@ -178,9 +287,7 @@ impl DrawContext {
     }
 }
 
-
 impl DrawContext {
-
     pub fn clear(&mut self, color: Color) {
         unsafe {
             self.ctx.Clear(&mk_color_f(color));
@@ -191,7 +298,7 @@ impl DrawContext {
         &mut self,
         origin: Point,
         text_layout: &TextLayout,
-        default_fill_brush: &dyn Brush,
+        default_fill_brush: &impl Brush,
         text_options: DrawTextOptions,
     ) {
         unsafe {
@@ -204,8 +311,7 @@ impl DrawContext {
         }
     }
 
-
-    pub fn draw_rectangle(&mut self, rect: Rect, brush: &dyn Brush, width: f64) {
+    pub fn draw_rectangle(&mut self, rect: Rect, brush: &impl Brush, width: f64) {
         unsafe {
             self.ctx.DrawRectangle(
                 &mk_rect_f(rect),
@@ -216,14 +322,29 @@ impl DrawContext {
         }
     }
 
-    pub fn fill_rectangle(&mut self, rect: Rect, brush: &dyn Brush) {
+    pub fn fill_rectangle(&mut self, rect: Rect, brush: &impl Brush) {
         unsafe {
             self.ctx
                 .FillRectangle(&mk_rect_f(rect), brush.as_raw_brush());
         }
     }
 
-    /*pub fn set_primitive_blend(&mut self, blend; PrimitiveBlend) {
-
-    }*/
+    pub fn draw_image(
+        &mut self,
+        image: &impl Image,
+        at: Point,
+        source_rect: Rect,
+        interpolation_mode: InterpolationMode,
+        composite_mode: CompositeMode,
+    ) {
+        unsafe {
+            self.ctx.DrawImage(
+                image.as_raw_image(),
+                &mk_point_f(at),
+                &mk_rect_f(source_rect),
+                interpolation_mode.to_d2d(),
+                composite_mode.to_d2d(),
+            );
+        }
+    }
 }

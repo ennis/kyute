@@ -21,10 +21,12 @@ thiserror = "1.0.13"
 [dependencies.winapi]
 version = "0.3.8"
 features = [
+    "dcommon",
     "d2d1",
     "d2d1_1",
     "d2d1_2",
     "d2d1_3",
+    "d2d1effects",
     "d3d11",
     "dxgi",
     "dxgi1_2",

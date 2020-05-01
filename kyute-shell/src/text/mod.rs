@@ -48,8 +48,8 @@ pub enum FontWeight {
     UltraBlack,
 }
 
-impl Into<DWRITE_FONT_WEIGHT> for FontWeight {
-    fn into(self) -> DWRITE_FONT_WEIGHT {
+impl FontWeight {
+    fn to_dwrite(self) -> DWRITE_FONT_WEIGHT {
         match self {
             FontWeight::Thin => DWRITE_FONT_WEIGHT_THIN,
             FontWeight::ExtraLight => DWRITE_FONT_WEIGHT_EXTRA_LIGHT,
@@ -80,8 +80,8 @@ pub enum FontStyle {
     Italic,
 }
 
-impl Into<DWRITE_FONT_STYLE> for FontStyle {
-    fn into(self) -> DWRITE_FONT_STYLE {
+impl FontStyle {
+    fn to_dwrite(self) -> DWRITE_FONT_STYLE {
         match self {
             FontStyle::Normal => DWRITE_FONT_STYLE_NORMAL,
             FontStyle::Oblique => DWRITE_FONT_STYLE_OBLIQUE,
@@ -106,8 +106,8 @@ pub enum FontStretch {
     UltraExpanded,
 }
 
-impl Into<DWRITE_FONT_STRETCH> for FontStretch {
-    fn into(self) -> DWRITE_FONT_STRETCH {
+impl FontStretch {
+    fn to_dwrite(self) -> DWRITE_FONT_STRETCH {
         match self {
             FontStretch::Undefined => DWRITE_FONT_STRETCH_UNDEFINED,
             FontStretch::UltraCondensed => DWRITE_FONT_STRETCH_ULTRA_CONDENSED,
@@ -164,9 +164,9 @@ impl<'a> TextFormatBuilder<'a> {
             let hr = self.factory.CreateTextFormat(
                 family.as_ptr(),
                 ptr::null_mut(), // collection
-                self.weight.into(),
-                self.style.into(),
-                self.stretch.into(),
+                self.weight.to_dwrite(),
+                self.style.to_dwrite(),
+                self.stretch.to_dwrite(),
                 self.size,
                 locale.as_ptr(),
                 &mut ptr,
@@ -505,7 +505,7 @@ impl TextLayout {
     {
         let range = self.to_utf16_text_range(range);
         unsafe {
-            self.ptr.SetFontWeight(weight.into(), range);
+            self.ptr.SetFontWeight(weight.to_dwrite(), range);
         }
     }
 

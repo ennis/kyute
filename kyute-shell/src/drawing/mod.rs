@@ -6,8 +6,8 @@ pub use brush::IntoBrush;
 pub use brush::LinearGradientBrush;
 pub use brush::RadialGradientBrush;
 pub use brush::SolidColorBrush;
-pub use context::DrawTextOptions;
 pub use context::DrawContext;
+pub use context::DrawTextOptions;
 
 use winapi::um::d2d1::{D2D1_COLOR_F, D2D1_MATRIX_3X2_F, D2D1_POINT_2F, D2D1_RECT_F};
 

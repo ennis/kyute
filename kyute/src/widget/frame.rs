@@ -89,9 +89,7 @@ impl Visual for FrameVisual {
     }
     fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
         match event {
-            Event::PointerOver(_) | Event::PointerOut(_) => {
-                ctx.request_redraw()
-            }
+            Event::PointerOver(_) | Event::PointerOut(_) => ctx.request_redraw(),
             _ => {}
         }
     }

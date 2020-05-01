@@ -78,12 +78,7 @@ impl Theme {
     }
 
     /// Draws a button frame in the specified bounds.
-    pub fn draw_button_frame(
-        &self,
-        ctx: &mut DrawContext,
-        bounds: Bounds,
-        _state: &ButtonState,
-    ) {
+    pub fn draw_button_frame(&self, ctx: &mut DrawContext, bounds: Bounds, _state: &ButtonState) {
         let bg_brush = DEFAULT_COLORS.button.into_brush(ctx);
         let border_brush = DEFAULT_COLORS.border.into_brush(ctx);
 

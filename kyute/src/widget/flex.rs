@@ -90,7 +90,6 @@ impl<A: 'static> Flex<A> {
     }
 }
 
-
 impl<A: 'static> Widget<A> for Flex<A> {
     fn layout(
         self,
