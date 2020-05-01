@@ -15,8 +15,8 @@ use std::rc::{Rc, Weak};
 use crate::application::WindowCtx;
 use crate::widget::{ActionSink, LayoutCtx};
 use generational_indextree::{Node, NodeEdge, NodeId};
-use kyute_shell::drawing::{Size, Transform};
-use kyute_shell::window::{DrawContext, PlatformWindow};
+use kyute_shell::drawing::{Size, Transform, DrawContext};
+use kyute_shell::window::PlatformWindow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::CoerceUnsized;
@@ -29,17 +29,18 @@ pub use reconciliation::NodeCursor;
 use kyute_shell::platform::Platform;
 
 /// Context passed to [`Visual::paint`].
-pub struct PaintCtx<'a, 'b> {
+pub struct PaintCtx<'a> {
     platform: &'a Platform,
-    pub(crate) draw_ctx: &'a mut DrawContext<'b>,
+    pub(crate) draw_ctx: &'a mut DrawContext,
     pub(crate) size: Size,
     node_id: NodeId,
     focus_state: &'a FocusState,
     input_state: &'a InputState,
     hover: bool,
+    focus: bool,
 }
 
-impl<'a, 'b> PaintCtx<'a, 'b> {
+impl<'a> PaintCtx<'a> {
 
     pub fn platform(&self) -> &Platform {
         self.platform
@@ -58,24 +59,25 @@ impl<'a, 'b> PaintCtx<'a, 'b> {
         self.hover
     }
 
-    pub fn has_focus(&self) -> bool {
-        self.focus_state.focus == Some(self.node_id)
+    pub fn is_focused(&self) -> bool {
+        self.focus
     }
+
 
     pub fn is_capturing_pointer(&self) -> bool {
         self.focus_state.pointer_grab == Some(self.node_id)
     }
 }
 
-impl<'a, 'b> Deref for PaintCtx<'a, 'b> {
-    type Target = DrawContext<'b>;
+impl<'a> Deref for PaintCtx<'a> {
+    type Target = DrawContext;
 
     fn deref(&self) -> &Self::Target {
         self.draw_ctx
     }
 }
 
-impl<'a, 'b> DerefMut for PaintCtx<'a, 'b> {
+impl<'a> DerefMut for PaintCtx<'a> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.draw_ctx
     }
@@ -608,25 +610,19 @@ impl NodeTree {
             // events that must be sent.
             match focus_change {
                 FocusChange::Acquire => {
-                    // the current node should be focused
-                    // 1. dispatch an event to the currently focused node to signal that it's about to
-                    // lose focus
-                    //   - the node may try to re-acquire focus by calling acquire_focus in the focusout
-                    //     handler: what to do then? => panic (not supported)
-                    //
                     let old_focus = self.focus.focus;
                     if old_focus != Some(id) {
                         if let Some(old_focus) = old_focus {
-                            let r = self.dispatch_event(window_ctx, window, inputs, &Event::FocusOut, old_focus, repaint,false);
+                            let r = self.dispatch_event(window_ctx, window, inputs, &Event::FocusOut, old_focus, repaint,true);
                         }
 
                         self.focus.focus = Some(id);
-                        self.dispatch_event(window_ctx, window, inputs, &Event::FocusIn, id, repaint, false);
+                        self.dispatch_event(window_ctx, window, inputs, &Event::FocusIn, id, repaint, true);
                     }
                 }
                 FocusChange::Release => {
                     if self.focus.focus == Some(id) {
-                        self.dispatch_event(window_ctx, window, inputs, &Event::FocusOut, id, repaint, false);
+                        self.dispatch_event(window_ctx, window, inputs, &Event::FocusOut, id, repaint, true);
                         self.focus.focus = None;
                     }
                 }
@@ -745,7 +741,8 @@ impl NodeTree {
                 node_id,
                 focus_state: &self.focus,
                 input_state,
-                hover
+                hover,
+                focus: self.focus.focus == Some(node_id)
             };
             node.visual.paint(&mut ctx, theme);
         }

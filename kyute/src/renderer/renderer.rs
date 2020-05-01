@@ -3,10 +3,9 @@ use crate::renderer::colors::DEFAULT_COLORS;
 use crate::renderer::ButtonState;
 use euclid::default::Rect;
 use kyute_shell::drawing::brush::IntoBrush;
-use kyute_shell::drawing::{Color, RenderTarget};
+use kyute_shell::drawing::{Color, DrawContext};
 use kyute_shell::platform::Platform;
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
-use kyute_shell::window::DrawContext;
 use palette::Srgba;
 use std::ops::Range;
 use std::rc::Rc;
@@ -81,16 +80,16 @@ impl Theme {
     /// Draws a button frame in the specified bounds.
     pub fn draw_button_frame(
         &self,
-        target: &mut RenderTarget,
+        ctx: &mut DrawContext,
         bounds: Bounds,
         _state: &ButtonState,
     ) {
-        let bg_brush = DEFAULT_COLORS.button.into_brush(target);
-        let border_brush = DEFAULT_COLORS.border.into_brush(target);
+        let bg_brush = DEFAULT_COLORS.button.into_brush(ctx);
+        let border_brush = DEFAULT_COLORS.border.into_brush(ctx);
 
-        target.fill_rectangle(bounds, &bg_brush);
+        ctx.fill_rectangle(bounds, &bg_brush);
         let stroke_size = 1.0;
-        target.draw_rectangle(
+        ctx.draw_rectangle(
             bounds.inflate(-0.5 * stroke_size, -0.5 * stroke_size),
             &border_brush,
             1.0,
@@ -98,7 +97,7 @@ impl Theme {
     }
 
     /// Draws a panel background in the specified bounds.
-    pub fn draw_panel_background(&self, _target: &mut RenderTarget, _bounds: Bounds) {}
+    pub fn draw_panel_background(&self, _ctx: &mut DrawContext, _bounds: Bounds) {}
 }
 
 /// Default button metrics.

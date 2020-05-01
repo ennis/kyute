@@ -16,6 +16,7 @@ use std::any::Any;
 use std::ops::Range;
 use unicode_segmentation::GraphemeCursor;
 use bitflags::_core::mem::transmute_copy;
+use winit::event::VirtualKeyCode;
 
 /// Text selection.
 ///
@@ -126,7 +127,7 @@ impl TextEditVisual {
         self.needs_repaint = true;
     }
 
-    /// Removes text.
+    /*/// Removes text.
     pub fn delete(&mut self) {
         if self.selection.is_empty() {
             self.move_cursor(Movement::Right, true);
@@ -140,7 +141,8 @@ impl TextEditVisual {
         self.needs_repaint = true;
         // reset blink
         // need layout
-    }
+    }*/
+
 
     /// Sets cursor position.
     pub fn set_cursor(&mut self, pos: usize) {
@@ -223,7 +225,7 @@ impl Visual for TextEditVisual {
         );
 
         // caret
-        if ctx.has_focus() {
+        if ctx.is_focused() {
             trace!("has focus");
             let caret_hit_test = self
                 .text_layout
@@ -274,10 +276,38 @@ impl Visual for TextEditVisual {
             Event::PointerUp(p) => {
                 // nothing to do (pointer grab automatically ends)
             }
+            Event::KeyDown(k) => {
+                if let Some(vk) = k.key {
+                    match vk {
+                        VirtualKeyCode::Back => {
+                            if self.selection.is_empty() {
+                                self.move_cursor(Movement::Left, true);
+                            }
+                            self.insert("");
+                        },
+                        VirtualKeyCode::Delete => {
+                            if self.selection.is_empty() {
+                                self.move_cursor(Movement::Right, true);
+                            }
+                            self.insert("");
+                        }
+                        VirtualKeyCode::Left => {
+                            self.move_cursor(Movement::Left, k.modifiers.shift());
+                        }
+                        VirtualKeyCode::Right => {
+                            self.move_cursor(Movement::Right, k.modifiers.shift());
+                        }
+                        _ => {}
+                    }
+                }
+            }
             Event::Input(input) => {
-                trace!("insert {}", input.character);
-                let mut buf = [0u8;4];
-                self.insert(input.character.encode_utf8(&mut buf[..]));
+                // reject control characters (handle in KeyDown instead)
+                if !input.character.is_control() {
+                    trace!("insert {:?}", input.character);
+                    let mut buf = [0u8; 4];
+                    self.insert(input.character.encode_utf8(&mut buf[..]));
+                }
             }
             _ => {}
         }

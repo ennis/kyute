@@ -11,6 +11,7 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use winapi::shared::winerror::SUCCEEDED;
 use winapi::um::d2d1::*;
+use winapi::um::d2d1_1::*;
 use wio::com::ComPtr;
 
 pub struct DrawingState(ComPtr<ID2D1DrawingStateBlock>);
@@ -23,11 +24,16 @@ pub enum SaveState {
     AxisAlignedClip,
 }
 
-pub struct RenderTarget {
-    pub(crate) target: ComPtr<ID2D1RenderTarget>,
-    pub(crate) factory: ComPtr<ID2D1Factory>,
-    save_states: Vec<SaveState>,
-    transform: Transform,
+pub trait Image {
+    fn as_raw_image(&self) -> *mut ID2D1Image;
+}
+
+pub struct Bitmap(pub(crate) ComPtr<ID2D1Bitmap1>);
+
+impl Image for Bitmap {
+    fn as_raw_image(&self) -> *mut ID2D1Image {
+        self.0.as_raw().cast()
+    }
 }
 
 bitflags! {
@@ -38,30 +44,57 @@ bitflags! {
     }
 }
 
-impl RenderTarget {
-    pub unsafe fn from_raw(
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum PrimitiveBlend {
+    SourceOver,
+    Copy,
+    Min,
+    Add,
+    Max,
+}
+
+pub struct DrawContext {
+    pub(crate) ctx: ComPtr<ID2D1DeviceContext>,
+    pub(crate) factory: ComPtr<ID2D1Factory>,
+    save_states: Vec<SaveState>,
+    transform: Transform,
+}
+
+impl Drop for DrawContext {
+    fn drop(&mut self) {
+        self.end_draw()
+    }
+}
+
+impl DrawContext {
+    /// Acquires (shared) ownership of the device context.
+    /// A target must already be set on the DC with SetTarget.
+    pub unsafe fn from_device_context(
         factory: ComPtr<ID2D1Factory>,
-        ptr: *mut ID2D1RenderTarget,
-    ) -> RenderTarget {
-        RenderTarget {
+        device_context: ComPtr<ID2D1DeviceContext>,
+    ) -> DrawContext {
+        device_context.BeginDraw();
+        DrawContext {
             factory,
-            target: ComPtr::from_raw(ptr),
+            ctx: device_context,
             save_states: Vec::new(),
             transform: Transform::identity(),
         }
     }
 
-    pub(crate) fn begin_draw(&mut self) {
-        unsafe {
-            self.target.BeginDraw();
+    /*pub fn new(device: &mut Device, image: &mut dyn Image) -> DrawContext {
+        device_context.ctx.SetTarget(target.as_raw_image());
+        DrawContext {
+            ctx: device_context,
+            image
         }
-    }
+    }*/
 
     pub(crate) fn end_draw(&mut self) {
         unsafe {
             let mut tag1 = MaybeUninit::<D2D1_TAG>::uninit();
             let mut tag2 = MaybeUninit::<D2D1_TAG>::uninit();
-            let hr = self.target.EndDraw(tag1.as_mut_ptr(), tag2.as_mut_ptr());
+            let hr = self.ctx.EndDraw(tag1.as_mut_ptr(), tag2.as_mut_ptr());
             let tag1 = tag1.assume_init();
             let tag2 = tag2.assume_init();
             if !SUCCEEDED(hr) {
@@ -78,65 +111,17 @@ impl RenderTarget {
         }
     }
 
-    pub fn clear(&mut self, color: Color) {
-        unsafe {
-            self.target.Clear(&mk_color_f(color));
-        }
-    }
-
-    pub fn draw_text_layout(
-        &mut self,
-        origin: Point,
-        text_layout: &TextLayout,
-        default_fill_brush: &dyn Brush,
-        text_options: DrawTextOptions,
-    ) {
-        unsafe {
-            self.target.DrawTextLayout(
-                mk_point_f(origin),
-                text_layout.as_raw(),
-                default_fill_brush.as_raw_brush(),
-                text_options.bits,
-            );
-        }
-    }
-
-    pub fn transform(&mut self, transform: &Transform) {
-        self.transform = self.transform.post_transform(transform);
-        unsafe {
-            self.target.SetTransform(&mk_matrix_3x2(&self.transform));
-        }
-    }
-
-    pub fn draw_rectangle(&mut self, rect: Rect, brush: &dyn Brush, width: f64) {
-        unsafe {
-            self.target.DrawRectangle(
-                &mk_rect_f(rect),
-                brush.as_raw_brush(),
-                width as f32,
-                ptr::null_mut(),
-            );
-        }
-    }
-
-    pub fn fill_rectangle(&mut self, rect: Rect, brush: &dyn Brush) {
-        unsafe {
-            self.target
-                .FillRectangle(&mk_rect_f(rect), brush.as_raw_brush());
-        }
-    }
-
     /// Safety: use a closure instead?
     pub fn push_axis_aligned_clip(&mut self, rect: Rect) {
         unsafe {
-            self.target
+            self.ctx
                 .PushAxisAlignedClip(&mk_rect_f(rect), D2D1_ANTIALIAS_MODE_ALIASED);
         }
     }
 
     pub fn pop_axis_aligned_clip(&mut self) {
         unsafe {
-            self.target.PopAxisAlignedClip();
+            self.ctx.PopAxisAlignedClip();
         }
     }
 
@@ -155,7 +140,7 @@ impl RenderTarget {
                 .CreateDrawingStateBlock(&desc, ptr::null_mut(), &mut ptr);
             assert!(SUCCEEDED(hr));
             //trace!("SaveDrawingState");
-            self.target.SaveDrawingState(ptr);
+            self.ctx.SaveDrawingState(ptr);
             let transform = self.transform;
             self.save_states.push(SaveState::DrawingState {
                 transform,
@@ -174,14 +159,71 @@ impl RenderTarget {
                     //trace!("RestoreDrawingState");
                     unsafe {
                         self.transform = transform;
-                        self.target.RestoreDrawingState(drawing_state.0.as_raw());
+                        self.ctx.RestoreDrawingState(drawing_state.0.as_raw());
                     }
                     break;
                 }
                 SaveState::AxisAlignedClip => unsafe {
-                    self.target.PopAxisAlignedClip();
+                    self.ctx.PopAxisAlignedClip();
                 },
             }
         }
     }
+
+    pub fn transform(&mut self, transform: &Transform) {
+        self.transform = self.transform.post_transform(transform);
+        unsafe {
+            self.ctx.SetTransform(&mk_matrix_3x2(&self.transform));
+        }
+    }
+}
+
+
+impl DrawContext {
+
+    pub fn clear(&mut self, color: Color) {
+        unsafe {
+            self.ctx.Clear(&mk_color_f(color));
+        }
+    }
+
+    pub fn draw_text_layout(
+        &mut self,
+        origin: Point,
+        text_layout: &TextLayout,
+        default_fill_brush: &dyn Brush,
+        text_options: DrawTextOptions,
+    ) {
+        unsafe {
+            self.ctx.DrawTextLayout(
+                mk_point_f(origin),
+                text_layout.as_raw(),
+                default_fill_brush.as_raw_brush(),
+                text_options.bits,
+            );
+        }
+    }
+
+
+    pub fn draw_rectangle(&mut self, rect: Rect, brush: &dyn Brush, width: f64) {
+        unsafe {
+            self.ctx.DrawRectangle(
+                &mk_rect_f(rect),
+                brush.as_raw_brush(),
+                width as f32,
+                ptr::null_mut(),
+            );
+        }
+    }
+
+    pub fn fill_rectangle(&mut self, rect: Rect, brush: &dyn Brush) {
+        unsafe {
+            self.ctx
+                .FillRectangle(&mk_rect_f(rect), brush.as_raw_brush());
+        }
+    }
+
+    /*pub fn set_primitive_blend(&mut self, blend; PrimitiveBlend) {
+
+    }*/
 }

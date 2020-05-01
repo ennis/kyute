@@ -1,13 +1,13 @@
 pub mod brush;
-pub mod target;
+pub mod context;
 
 pub use brush::Brush;
 pub use brush::IntoBrush;
 pub use brush::LinearGradientBrush;
 pub use brush::RadialGradientBrush;
 pub use brush::SolidColorBrush;
-pub use target::DrawTextOptions;
-pub use target::RenderTarget;
+pub use context::DrawTextOptions;
+pub use context::DrawContext;
 
 use winapi::um::d2d1::{D2D1_COLOR_F, D2D1_MATRIX_3X2_F, D2D1_POINT_2F, D2D1_RECT_F};
 

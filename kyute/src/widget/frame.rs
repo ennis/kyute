@@ -75,7 +75,7 @@ impl Visual for FrameVisual {
         // box background
         ctx.fill_rectangle(rect.stroke_inset(self.border_width), &bg_brush);
         // border
-        if ctx.is_hovering() {
+        if ctx.is_hovering() || ctx.is_focused() {
             ctx.draw_rectangle(
                 rect.stroke_inset(self.border_width),
                 &border_brush,

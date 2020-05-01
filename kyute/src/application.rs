@@ -10,7 +10,7 @@ use crate::{Bounds, BoxConstraints, BoxedWidget, Layout, NodeData, Point, Visual
 use anyhow::Result;
 use kyute_shell::drawing::Color;
 use kyute_shell::platform::Platform;
-use kyute_shell::window::{DrawContext, PlatformWindow};
+use kyute_shell::window::{WindowDrawContext, PlatformWindow};
 use log::trace;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -290,6 +290,27 @@ impl Window {
                         character: *char
                 }))
             }
+            WindowEvent::KeyboardInput {
+                device_id, input, is_synthetic
+            } => {
+                let keyboard_event = KeyboardEvent {
+                    scan_code: input.scancode,
+                    key: input.virtual_keycode,
+                    repeat: false,  // TODO
+                    modifiers: self.inputs.mods
+                };
+
+                let event = match input.state {
+                    winit::event::ElementState::Pressed => {
+                        Event::KeyDown(keyboard_event)
+                    }
+                    winit::event::ElementState::Released => {
+                        Event::KeyUp(keyboard_event)
+                    }
+                };
+
+                self.tree.event(ctx, &self.window, &self.inputs, &event)
+            }
 
             _ => {
                 return;
@@ -326,9 +347,9 @@ impl Window {
     /// Called when the window needs to be repainted.
     fn paint(&mut self, platform: &Platform, theme: &Theme) {
         {
-            let mut draw_context = DrawContext::new(&mut self.window);
-            draw_context.clear(Color::new(0.0, 0.5, 0.8, 1.0));
-            self.tree.paint(platform, &mut draw_context,&self.inputs, theme);
+            let mut wdc = WindowDrawContext::new(&mut self.window);
+            wdc.clear(Color::new(0.0, 0.5, 0.8, 1.0));
+            self.tree.paint(platform, &mut wdc,&self.inputs, theme);
         }
         self.window.present();
     }

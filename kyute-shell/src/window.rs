@@ -1,5 +1,5 @@
 //! Platform-specific window creation
-use crate::drawing::target::RenderTarget;
+use crate::drawing::context::DrawContext;
 use crate::error::{self, Error, Result};
 use crate::opengl;
 use crate::opengl::api::gl;
@@ -30,6 +30,7 @@ use winapi::shared::minwindef::HINSTANCE;
 use winapi::shared::windef::HWND;
 use winapi::shared::winerror::SUCCEEDED;
 use winapi::um::d2d1::*;
+use winapi::um::d2d1_1::*;
 use winapi::um::d3d11::*;
 use winapi::um::dcommon::*;
 use winapi::um::errhandlingapi::GetLastError;
@@ -304,51 +305,57 @@ impl<'a> Drop for OpenGlDrawContext<'a> {
 
 /// Context object to draw on a window.
 ///
-/// It implicitly derefs to [`RenderTarget`], which has methods to draw primitives on the
+/// It implicitly derefs to [`DrawContext`], which has methods to draw primitives on the
 /// window surface.
 ///
-/// [`RenderTarget`]: crate::drawing::target::RenderTarget
-pub struct DrawContext<'a> {
+/// [`DrawContext`]: crate::drawing::context::DrawContext
+pub struct WindowDrawContext<'a> {
     window: &'a mut PlatformWindow,
-    target: RenderTarget,
+    draw_context: DrawContext,
 }
 
-impl<'a> DrawContext<'a> {
-    /// Creates a new [`DrawContext`] for the specified window, allowing to draw on the window.
-    pub fn new(window: &'a mut PlatformWindow) -> DrawContext<'a> {
-        let d2d = &window.shared.d2d_factory;
-        let swap_res = window.swap_res.as_ref().unwrap();
+impl<'a> WindowDrawContext<'a> {
+    /// Creates a new [`WindowDrawContext`] for the specified window, allowing to draw on the window.
+    pub fn new(window: &'a mut PlatformWindow) -> WindowDrawContext<'a> {
+        let d2d_device_context = &window.d2d_device_context;
+        let swap_res = window.swap_res.as_ref().expect("swap chain was not initialized");
         let dxgi_buffer = swap_res.backbuffer.cast::<IDXGISurface>().unwrap();
 
         let dpi = 96.0 * window.window.scale_factor() as f32;
-        let props = D2D1_RENDER_TARGET_PROPERTIES {
-            _type: D2D1_RENDER_TARGET_TYPE_DEFAULT,
+        let props = D2D1_BITMAP_PROPERTIES1 {
             pixelFormat: D2D1_PIXEL_FORMAT {
                 format: DXGI_FORMAT_R8G8B8A8_UNORM,
                 alphaMode: D2D1_ALPHA_MODE_IGNORE,
             },
             dpiX: dpi,
             dpiY: dpi,
-            usage: D2D1_RENDER_TARGET_USAGE_NONE,
-            minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
+            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET |  D2D1_BITMAP_OPTIONS_CANNOT_DRAW ,
+            colorContext: ptr::null()
         };
 
-        let mut target = unsafe {
-            let mut render_target: *mut ID2D1RenderTarget = ptr::null_mut();
+        // create target bitmap
+        let mut bitmap = unsafe {
+            let mut bitmap: *mut ID2D1Bitmap1 = ptr::null_mut();
             let hr =
-                d2d.CreateDxgiSurfaceRenderTarget(dxgi_buffer.as_raw(), &props, &mut render_target);
+                d2d_device_context.CreateBitmapFromDxgiSurface(dxgi_buffer.as_raw(), &props, &mut bitmap);
             if !SUCCEEDED(hr) {
                 panic!(
-                    "CreateDxgiSurfaceRenderTarget failed: {}",
+                    "CreateBitmapFromDxgiSurface failed: {}",
                     Error::HResultError(hr)
                 );
             }
-            // start drawing immediately
-            RenderTarget::from_raw(d2d.clone().up(), render_target)
+            ComPtr::from_raw(bitmap)
         };
 
-        target.begin_draw();
-        DrawContext { window, target }
+        let draw_context = unsafe {
+            // set the target on the DC
+            d2d_device_context.SetTarget(bitmap.up().up().as_raw());
+            // the draw context acquires shared ownership of the device context, but that's OK since we borrow the window,
+            // so we can't create another WindowDrawContext that would conflict with it.
+            DrawContext::from_device_context(window.shared.d2d_factory.clone().up(), d2d_device_context.clone())
+        };
+
+        WindowDrawContext { window, draw_context }
     }
 
     /// Returns the [`PlatformWindow`] that is being drawn to.
@@ -357,23 +364,26 @@ impl<'a> DrawContext<'a> {
     }
 }
 
-impl<'a> Drop for DrawContext<'a> {
+impl<'a> Drop for WindowDrawContext<'a> {
     fn drop(&mut self) {
-        self.target.end_draw()
+        // set the target to null to release the borrow of the backbuffer surface
+        // (otherwise it will fail to resize)
+        unsafe {
+            self.ctx.SetTarget(ptr::null());
+        }
     }
 }
 
-impl<'a> Deref for DrawContext<'a> {
-    type Target = RenderTarget;
-
-    fn deref(&self) -> &RenderTarget {
-        &self.target
+impl<'a> Deref for WindowDrawContext<'a> {
+    type Target = DrawContext;
+    fn deref(&self) -> &DrawContext {
+        &self.draw_context
     }
 }
 
-impl<'a> DerefMut for DrawContext<'a> {
+impl<'a> DerefMut for WindowDrawContext<'a> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.target
+        &mut self.draw_context
     }
 }
 
@@ -389,6 +399,7 @@ pub struct PlatformWindow {
     swap_res: Option<SwapChainResources>,
     gl: Option<GlState>,
     interop_needs_staging: bool,
+    d2d_device_context: ComPtr<ID2D1DeviceContext>,
 }
 
 impl PlatformWindow {
@@ -412,6 +423,11 @@ impl PlatformWindow {
     /// Must be called whenever winit sends a resize message.
     pub fn resize(&mut self, (width, height): (u32, u32)) {
         trace!("resizing swap chain: {}x{}", width, height);
+
+        // resizing to 0x0 will fail, so don't bother
+        if width == 0 || height == 0 {
+            return;
+        }
 
         // signal the GL context as well if we have one
         if let Some(ref mut gl) = self.gl {
@@ -583,6 +599,17 @@ impl PlatformWindow {
                 (swap_res, None)
             };
 
+            // create a D2D device context to paint to the window
+            let mut d2d_device_context = ptr::null_mut();
+            let hr = platform.0.d2d_device.CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &mut d2d_device_context);
+            if !SUCCEEDED(hr) {
+                panic!(
+                    "Could not create a Direct2D device context: {}",
+                    Error::HResultError(hr)
+                );
+            }
+            let d2d_device_context = ComPtr::from_raw(d2d_device_context);
+
             let pw = PlatformWindow {
                 shared: platform.0.clone(),
                 window,
@@ -592,6 +619,7 @@ impl PlatformWindow {
                 swap_res: Some(swap_res),
                 gl,
                 interop_needs_staging,
+                d2d_device_context
             };
 
             Ok(pw)
