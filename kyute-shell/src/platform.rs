@@ -5,6 +5,7 @@ use crate::error::Error;
 use std::os::raw::c_void;
 use std::ptr;
 use std::rc::Rc;
+use std::time::Duration;
 use winapi::shared::dxgi::*;
 use winapi::shared::dxgi1_3::*;
 use winapi::shared::winerror::SUCCEEDED;
@@ -17,7 +18,6 @@ use winapi::um::unknwnbase::IUnknown;
 use winapi::um::winuser::GetDoubleClickTime;
 use winapi::Interface;
 use wio::com::ComPtr;
-use std::time::Duration;
 
 /// Contains a bunch of application-global objects and factories, mostly DirectX stuff for drawing
 /// to the screen.

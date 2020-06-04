@@ -17,6 +17,7 @@ winapi = "0.3.8"
 unicode-segmentation = "1.6.0"
 replace_with = "0.1.5"
 generational-indextree = "1.0.2"
+num-traits = "0.2.1"
 
 [dev-dependencies]
 pretty_env_logger = "0.4.0"

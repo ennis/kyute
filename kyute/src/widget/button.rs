@@ -1,44 +1,58 @@
 use crate::event::Event;
-use crate::layout::Alignment;
+use crate::layout::{Alignment, align_boxes, SideOffsets};
 use crate::layout::BoxConstraints;
-use crate::layout::EdgeInsets;
-use crate::layout::Layout;
+use crate::layout::Measurements;
 use crate::layout::Offset;
 use crate::layout::Point;
 use crate::layout::Size;
-use crate::renderer::{ButtonState, Theme};
-use crate::visual::{EventCtx, NodeData, PaintCtx};
-use crate::visual::{NodeArena, NodeCursor, Visual};
-use crate::widget::Text;
+use crate::renderer::{ButtonState};
+use crate::visual::Visual;
+use crate::widget::BoxedWidget;
 use crate::widget::Widget;
 use crate::widget::WidgetExt;
-use crate::widget::{BoxedWidget, LayoutCtx};
-use crate::Bounds;
+use crate::widget::{Text, TypedWidget};
+use crate::{Bounds, EventCtx, LayoutCtx, PaintCtx, env, Environment, theme};
 use generational_indextree::NodeId;
-use std::any::Any;
+use std::any::{Any, TypeId};
+use euclid::default::SideOffsets2D;
+use kyute_shell::drawing::{Color, IntoBrush};
 
 /// Node visual for a button.
 pub struct ButtonVisual<A> {
     on_click: Option<A>,
+    bg_color: Color,
+    border_color: Color,
 }
 
 impl<A> Default for ButtonVisual<A> {
     fn default() -> Self {
-        ButtonVisual { on_click: None }
+        ButtonVisual { on_click: None,
+            bg_color: Default::default(),
+            border_color: Default::default()
+        }
     }
 }
 
 impl<A: 'static> Visual for ButtonVisual<A> {
-    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
+    fn paint(&mut self,
+             ctx: &mut PaintCtx)
+    {
         let bounds = ctx.bounds();
-        theme.draw_button_frame(
-            ctx,
-            bounds,
-            &ButtonState {
-                disabled: false,
-                clicked: false,
-                hot: true,
-            },
+        let button_state = ButtonState {
+            disabled: false,
+            clicked: false,
+            hot: true,
+        };
+
+        // draw the button frame
+        let bg_brush = self.bg_color.into_brush(ctx);
+        let border_brush = self.border_color.into_brush(ctx);
+        ctx.fill_rectangle(bounds, &bg_brush);
+        let stroke_size = 1.0;
+        ctx.draw_rectangle(
+            bounds.inflate(-0.5 * stroke_size, -0.5 * stroke_size),
+            &border_brush,
+            1.0,
         );
     }
 
@@ -65,7 +79,10 @@ impl<A: 'static> Visual for ButtonVisual<A> {
     }
 }
 
-/// Button element.
+/// A clickable push button with a text label.
+///
+/// This widget is influenced by the following style variables:
+/// - [`PADDING`](crate::style::PADDING): padding for the label inside the button.
 pub struct Button<A> {
     label: BoxedWidget<A>,
     /// Action to emit on button click.
@@ -82,50 +99,49 @@ impl<A: 'static> Button<A> {
     }
 }
 
-impl<A: 'static> Widget<A> for Button<A> {
-    fn layout<'a>(
+
+//-----------------------------------------------------
+// Widget implementation
+impl<A: 'static> TypedWidget<A> for Button<A> {
+    type Visual = ButtonVisual<A>;
+
+    fn layout(
         self,
-        ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        context: &mut LayoutCtx<A>,
+        previous_visual: Option<Box<ButtonVisual<A>>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> NodeId {
+        env: Environment,
+    ) -> (Box<ButtonVisual<A>>, Measurements)
+    {
         let on_click = self.on_click;
-        let node_id = cursor.reconcile(nodes, move |_old: Option<NodeData<ButtonVisual<A>>>| {
-            NodeData::new(Layout::default(), None, ButtonVisual { on_click })
-        });
+        let mut visual = previous_visual.unwrap_or_default();
 
-        let button_metrics = &theme.button_metrics();
+        visual.bg_color = env.get(theme::ButtonBackgroundColor);
+        visual.border_color = env.get(theme::ButtonBorderColor);
+        visual.on_click = on_click;
+        let min_width = env.get(theme::MinButtonWidth);
+        let min_height = env.get(theme::MinButtonHeight);
 
-        let label_id = self.label.layout_child(
-            ctx,
-            nodes,
-            node_id,
-            &constraints.deflate(&EdgeInsets::all(button_metrics.label_padding.into())),
-            theme,
-        );
+        // measure the label inside
+        let padding : SideOffsets = env.get(theme::ButtonLabelPadding);
+        let label_constraints = constraints.deflate(&padding);
+        let (label_id, label_measurements) =
+            context.emit_child(self.label, &label_constraints, env);
 
-        // base button size
-        let mut label_layout = nodes[label_id].get().layout;
-        let mut button_size = Size::new(
-            label_layout.size.width + 2.0 * button_metrics.label_padding,
-            label_layout.size.height + 2.0 * button_metrics.label_padding,
-        );
+        // now measure the button itself
+        let mut measurements = Measurements {
+            size: label_measurements.size + Size::new(padding.horizontal(), padding.vertical()),
+            baseline: None
+        };
 
-        // apply minimum dimensions
-        button_size = button_size.max(Size::new(
-            button_metrics.min_width,
-            button_metrics.min_height,
-        ));
-        // apply parent constraints
-        button_size = constraints.constrain(button_size);
+        // apply minimum size
+        measurements.size.width = measurements.size.width.max(min_width);
+        measurements.size.height = measurements.size.width.max(min_height);
 
-        let mut node_layout = Layout::new(button_size);
-        Layout::align(&mut node_layout, &mut label_layout, Alignment::CENTER);
+        // center the label inside the button
+        let label_offset = align_boxes(Alignment::CENTER, &mut measurements, label_measurements);
+        context.set_child_offset(label_id, label_offset);
 
-        nodes[node_id].get_mut().layout = node_layout;
-        nodes[label_id].get_mut().layout = label_layout;
-        node_id
+        (visual, measurements)
     }
 }

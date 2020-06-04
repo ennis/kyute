@@ -1,50 +1,47 @@
-use crate::layout::{BoxConstraints, EdgeInsets, Layout, Offset, Size};
-use crate::renderer::Theme;
-use crate::visual::{LayoutBox, NodeArena, NodeCursor, NodeData};
-use crate::widget::{LayoutCtx, Widget};
+use crate::layout::{BoxConstraints, Measurements, Offset, Size, SideOffsets};
 use generational_indextree::NodeId;
+use crate::{TypedWidget, Widget, LayoutBox, LayoutCtx, Environment};
 
 /// Padding.
 pub struct Padding<W> {
     inner: W,
-    insets: EdgeInsets,
+    insets: SideOffsets,
 }
 
 impl<W> Padding<W> {
-    pub fn new(insets: EdgeInsets, inner: W) -> Padding<W> {
+    pub fn new(insets: SideOffsets, inner: W) -> Padding<W> {
         Padding { inner, insets }
     }
 }
 
-impl<A: 'static, W: Widget<A>> Widget<A> for Padding<W> {
-    fn layout<'a>(
+impl<A: 'static, W: Widget<A>> TypedWidget<A> for Padding<W>
+{
+    type Visual = LayoutBox;
+
+    fn key(&self) -> Option<u64> { None }
+
+    fn layout(
         self,
-        ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        context: &mut LayoutCtx<A>,
+        previous_visual: Option<Box<LayoutBox>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> NodeId {
+        env: Environment,
+    ) -> (Box<LayoutBox>, Measurements)
+    {
         let Padding { inner, insets } = self;
+        let visual = previous_visual.unwrap_or_default();
 
-        let node_id = cursor.get_or_insert_default::<LayoutBox>(nodes);
-        let child_id =
-            inner.layout_child(ctx, nodes, node_id, &constraints.deflate(&insets), theme);
-
-        let mut child_layout = nodes[child_id].get().layout;
-        child_layout.offset = Offset::new(insets.left, insets.top);
-
-        let node_layout = Layout {
-            offset: Offset::zero(),
+        let (child_id, child_measurements) = context.emit_child(inner, &constraints.deflate(&insets), env);
+        context.set_child_offset(child_id, Offset::new(insets.left, insets.top));
+        
+        let measurements = Measurements {
             size: Size::new(
-                child_layout.size.width + insets.left + insets.right,
-                child_layout.size.height + insets.top + insets.bottom,
+                child_measurements.size.width + insets.left + insets.right,
+                child_measurements.size.height + insets.top + insets.bottom,
             ),
-            baseline: child_layout.baseline.map(|b| b + insets.top),
+            baseline: child_measurements.baseline.map(|b| b + insets.top),
         };
 
-        nodes[node_id].get_mut().layout = node_layout;
-        nodes[child_id].get_mut().layout = child_layout;
-        node_id
+        (visual, measurements)
     }
 }

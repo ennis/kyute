@@ -1,13 +1,16 @@
 use crate::event::Event;
-use crate::renderer::Theme;
-use crate::visual::{EventCtx, NodeArena, NodeCursor, PaintCtx};
-use crate::widget::LayoutCtx;
-use crate::{Bounds, BoxConstraints, BoxedWidget, Layout, NodeData, Point, Visual, Widget};
+use crate::{Bounds, BoxConstraints, BoxedWidget, Measurements, Point, Visual, Widget, TypedWidget, LayoutCtx, PaintCtx, EventCtx, Environment};
 use generational_indextree::NodeId;
 use kyute_shell::drawing::{Color, IntoBrush, RectExt};
 use std::any::Any;
 
-/// A widget that draws a frame.
+pub enum WidgetType {
+    Button,
+    TextEdit,
+    Slider,
+}
+
+/// A widget that draws a theme-specific frame (a box with borders).
 pub struct Frame<A> {
     pub border_color: Color,
     pub border_width: f64,
@@ -15,15 +18,19 @@ pub struct Frame<A> {
     pub inner: BoxedWidget<A>,
 }
 
-impl<A: 'static> Widget<A> for Frame<A> {
+impl<A: 'static> TypedWidget<A> for Frame<A> {
+    type Visual = FrameVisual;
+
+    //fn key(&self) -> Option<u64> { None }
+
     fn layout(
         self,
-        ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        context: &mut LayoutCtx<A>,
+        _previous_visual: Option<Box<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> NodeId {
+        env: Environment,
+    ) -> (Box<Self::Visual>, Measurements)
+    {
         let Frame {
             border_color,
             border_width,
@@ -31,30 +38,21 @@ impl<A: 'static> Widget<A> for Frame<A> {
             inner,
         } = self;
 
-        let node_id = cursor.get_or_insert_with(nodes, || {
-            NodeData::new(
-                Layout::default(),
-                None,
-                FrameVisual {
-                    border_color,
-                    border_width,
-                    fill_color,
-                },
-            )
+        let visual = Box::new(FrameVisual {
+            border_color,
+            border_width,
+            fill_color
         });
 
-        let child_id = inner.layout_child(ctx, nodes, node_id, constraints, theme);
-
-        let child_layout = nodes[child_id].get().layout;
-        nodes[node_id].get_mut().layout = child_layout;
-        node_id
+        let (child_id, child_measurements) = context.emit_child(inner, constraints, env);
+        (visual, child_measurements)
     }
 }
 
 pub struct FrameVisual {
-    border_color: Color,
-    border_width: f64,
-    fill_color: Color,
+    pub border_color: Color,
+    pub border_width: f64,
+    pub fill_color: Color,
 }
 
 impl Default for FrameVisual {
@@ -68,7 +66,7 @@ impl Default for FrameVisual {
 }
 
 impl Visual for FrameVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
+    fn paint(&mut self, ctx: &mut PaintCtx) {
         let rect = ctx.bounds();
         let bg_brush = self.fill_color.into_brush(ctx);
         let border_brush = self.border_color.into_brush(ctx);

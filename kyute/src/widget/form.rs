@@ -1,16 +1,12 @@
 use crate::event::Event;
-use crate::renderer::Theme;
-use crate::visual::{EventCtx, NodeArena, NodeCursor, PaintCtx};
 use crate::widget::align::Align;
 use crate::widget::constrained::ConstrainedBox;
-use crate::widget::{Axis, Baseline, Flex, LayoutCtx, Text};
-use crate::{
-    Alignment, Bounds, BoxConstraints, BoxedWidget, Layout, NodeData, Point, Visual, Widget,
-    WidgetExt,
-};
+use crate::widget::{Axis, Baseline, Flex, Text};
+use crate::{Alignment, Bounds, BoxConstraints, BoxedWidget, Measurements, Point, Visual, Widget, WidgetExt, LayoutCtx, TypedWidget, Environment};
 use generational_indextree::NodeId;
 use kyute_shell::drawing::{Color, RectExt};
 use std::any::Any;
+use crate::widget::flex::FlexVisual;
 
 pub struct Field<A> {
     label: String,
@@ -35,18 +31,19 @@ impl<A: 'static> Form<A> {
     }
 }
 
-// constraints!(100 x _);
-// (100 x 100 => 200 x 200
+impl<A: 'static> TypedWidget<A> for Form<A>
+{
+    type Visual = FlexVisual;
 
-impl<A: 'static> Widget<A> for Form<A> {
+    /// Performs layout, consuming the widget.
     fn layout(
         self,
-        ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        context: &mut LayoutCtx<A>,
+        previous_visual: Option<Box<FlexVisual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> NodeId {
+        env: Environment,
+    ) -> (Box<FlexVisual>, Measurements)
+    {
         let mut vbox = Flex::new(Axis::Vertical);
         for f in self.fields.into_iter() {
             vbox = vbox.push(
@@ -61,6 +58,6 @@ impl<A: 'static> Widget<A> for Form<A> {
                     .push(Baseline::new(20.0, f.widget)),
             );
         }
-        vbox.layout(ctx, nodes, cursor, constraints, theme)
+        vbox.layout(context, previous_visual, constraints, env)
     }
 }

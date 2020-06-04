@@ -1,25 +1,24 @@
 use crate::event::Event;
-use crate::layout::{BoxConstraints, Layout};
-use crate::renderer::Theme;
-use crate::visual::{DummyVisual, NodeData, PaintCtx, Visual};
-use crate::visual::{NodeArena, NodeCursor};
-use crate::widget::{LayoutCtx, Widget};
-use crate::Bounds;
+use crate::layout::{BoxConstraints, Measurements};
+use crate::{Bounds, Widget, LayoutCtx, Visual, DummyVisual, Size, TypedWidget, Environment};
 use generational_indextree::NodeId;
 use std::any::Any;
+use std::any::TypeId;
 
 /// Dummy widget that does nothing.
 pub struct DummyWidget;
 
-impl<A: 'static> Widget<A> for DummyWidget {
+impl<A: 'static> TypedWidget<A> for DummyWidget {
+    type Visual = DummyVisual;
+
     fn layout(
         self,
-        _ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        _context: &mut LayoutCtx<A>,
+        _previous_visual: Option<Box<DummyVisual>>,
         _constraints: &BoxConstraints,
-        _theme: &Theme,
-    ) -> NodeId {
-        cursor.get_or_insert_default::<DummyVisual>(nodes)
+        _env: Environment,
+    ) -> (Box<DummyVisual>, Measurements)
+    {
+        (Box::new(DummyVisual), Measurements::new(Size::new(0.0,0.0)))
     }
 }

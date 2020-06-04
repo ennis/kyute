@@ -1,5 +1,6 @@
 use kyute::application::{run_application, Application};
 use kyute::widget::form::Form;
+use kyute::widget::slider::Slider;
 use kyute::widget::textedit::{TextEdit, TextEditBase};
 use kyute::{BoxedWidget, WidgetExt};
 
@@ -28,7 +29,8 @@ impl Application for SimpleApplication {
                     .field("Field 2", TextEdit::new("Edit 2"))
                     .field("Field 3", TextEdit::new("Edit 3"))
                     .field("Field with a longer label 4", TextEdit::new("Edit 4"))
-                    .field("Field 5", TextEdit::new("Edit 4")),
+                    .field("Field 5", TextEdit::new("Edit 4"))
+                    .field("Slider", Slider::new(0.5).min(0.0).max(1.0)),
             )
             .push(
                 Flex::new(Axis::Vertical)

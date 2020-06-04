@@ -1,5 +1,8 @@
 //! [`Events`](Event) sent to widgets, and related types.
 use crate::Point;
+use std::collections::HashMap;
+use winit::event::DeviceId;
+use winit::event::ModifiersState;
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -49,7 +52,6 @@ impl Default for PointerButtons {
 }
 
 /// Modeled after [W3C's PointerEvent](https://www.w3.org/TR/pointerevents3/#pointerevent-interface)
-// TODO separate PointerEvent from PointerButtonEvent (which has a PointerEvent + info on the button just pressed or released and the repeat count).
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct PointerEvent {
     /// Position in device-independent (logical) pixels, relative to the visual node that the event
@@ -59,15 +61,10 @@ pub struct PointerEvent {
     pub window_position: Point,
     /// State of the keyboard modifiers when this event was emitted.
     pub modifiers: winit::event::ModifiersState,
-    /// The button that triggered this event, if there is one.
-    pub button: Option<PointerButton>,
     /// The state of the mouse buttons when this event was emitted.
     pub buttons: PointerButtons,
     /// Identifies the pointer.
     pub pointer_id: winit::event::DeviceId,
-    /// The repeat count for double, triple (and more) for button press events (`Event::PointerDown`).
-    /// Otherwise, the value is unspecified.
-    pub repeat_count: u32,
     //pub contact_width: f64,
     //pub contact_height: f64,
     //pub pressure: f32,
@@ -77,6 +74,16 @@ pub struct PointerEvent {
     //pub twist: i32,
     //pub pointer_type: PointerType,
     //pub primary: bool,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct PointerButtonEvent {
+    pub pointer: PointerEvent,
+    /// The button that triggered this event, if there is one.
+    pub button: Option<PointerButton>,
+    /// The repeat count for double, triple (and more) for button press events (`Event::PointerDown`).
+    /// Otherwise, the value is unspecified.
+    pub repeat_count: u32,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -119,8 +126,8 @@ pub enum MoveFocusDirection {
 /// Events are sent to [Visuals](super::visual::Visual).
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Event {
-    PointerDown(PointerEvent),
-    PointerUp(PointerEvent),
+    PointerDown(PointerButtonEvent),
+    PointerUp(PointerButtonEvent),
     PointerMove(PointerEvent),
     PointerOver(PointerEvent),
     PointerOut(PointerEvent),
@@ -136,8 +143,8 @@ impl Event {
     pub fn pointer_event(&self) -> Option<&PointerEvent> {
         match self {
             Event::PointerMove(p) => Some(p),
-            Event::PointerUp(p) => Some(p),
-            Event::PointerDown(p) => Some(p),
+            Event::PointerUp(p) => Some(&p.pointer),
+            Event::PointerDown(p) => Some(&p.pointer),
             _ => None,
         }
     }
@@ -154,6 +161,51 @@ impl Event {
         match self {
             Event::Input(p) => Some(p),
             _ => None,
+        }
+    }
+}
+
+
+/// Last known state of a pointer.
+pub struct PointerState {
+    pub(crate) buttons: PointerButtons,
+    pub(crate) position: Point,
+}
+
+impl Default for PointerState {
+    fn default() -> Self {
+        PointerState {
+            buttons: PointerButtons(0),
+            position: Point::origin(),
+        }
+    }
+}
+
+/// Last known state of various input devices.
+pub struct InputState {
+    /// Current state of keyboard modifiers.
+    pub mods: ModifiersState,
+    /// Current state of pointers.
+    pub pointers: HashMap<DeviceId, PointerState>,
+}
+
+impl InputState {
+    pub fn synthetic_pointer_event(&self, device_id: DeviceId) -> Option<PointerEvent> {
+        self.pointers.get(&device_id).map(|state| PointerEvent {
+            position: state.position,
+            window_position: state.position,
+            modifiers: self.mods,
+            buttons: state.buttons,
+            pointer_id: device_id,
+        })
+    }
+}
+
+impl Default for InputState {
+    fn default() -> Self {
+        InputState {
+            mods: winit::event::ModifiersState::default(),
+            pointers: HashMap::new(),
         }
     }
 }

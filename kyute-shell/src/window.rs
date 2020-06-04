@@ -1,4 +1,6 @@
 //! Platform-specific window creation
+//!
+//! TODO investigate surfman (https://github.com/pcwalton/surfman) for D2D-GL interop.
 use crate::drawing::context::DrawContext;
 use crate::error::{self, Error, Result};
 use crate::opengl;
@@ -401,7 +403,7 @@ impl<'a> DerefMut for WindowDrawContext<'a> {
 
 /// Encapsulates a Win32 window and associated resources for drawing to it.
 pub struct PlatformWindow {
-    // we don't really need it to  have a shared ref here, but
+    // we don't really need to have a shared ref here, but
     // this way we can avoid passing WindowCtx everywhere.
     shared: Rc<PlatformState>,
     window: Window,

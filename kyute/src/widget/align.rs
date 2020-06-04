@@ -1,9 +1,7 @@
 use crate::layout::BoxConstraints;
-use crate::renderer::Theme;
-use crate::visual::{LayoutBox, NodeArena, NodeCursor, NodeData};
-use crate::widget::{LayoutCtx, Widget};
-use crate::{Alignment, Layout};
+use crate::{Alignment, Measurements, Widget, LayoutCtx, TypedWidget, LayoutBox, layout};
 use generational_indextree::NodeId;
+use crate::Environment;
 
 pub struct Align<W> {
     alignment: Alignment,
@@ -16,33 +14,26 @@ impl<W> Align<W> {
     }
 }
 
-impl<A: 'static, W> Widget<A> for Align<W>
+
+impl<A: 'static, W> TypedWidget<A> for Align<W>
 where
     W: Widget<A>,
 {
+    type Visual = LayoutBox;
+
     fn layout(
         self,
-        ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        context: &mut LayoutCtx<A>,
+        previous_visual: Option<Box<LayoutBox>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> NodeId {
-        let node_id = cursor.get_or_insert_default::<LayoutBox>(nodes);
-        let child_id = self
-            .inner
-            .layout_child(ctx, nodes, node_id, &constraints.loosen(), theme);
-
-        let mut node_layout = nodes[node_id].get().layout;
-        let mut child_layout = nodes[child_id].get().layout;
-
-        node_layout.size = constraints.constrain(child_layout.size);
-        dbg!(node_layout.size);
-
-        Layout::align(&mut node_layout, &mut child_layout, self.alignment);
-
-        nodes[node_id].get_mut().layout = node_layout;
-        nodes[child_id].get_mut().layout = child_layout;
-        node_id
+        env: Environment,
+    ) -> (Box<LayoutBox>, Measurements)
+    {
+        let visual = previous_visual.unwrap_or_default();
+        let (child_id, child_measurements) = context.emit_child(self.inner, &constraints.loosen(), env);
+        let mut measurements = Measurements::new(constraints.constrain(child_measurements.size));
+        let child_offset = layout::align_boxes(self.alignment, &mut measurements, child_measurements);
+        context.set_child_offset(child_id, child_offset);
+        (visual, measurements)
     }
 }

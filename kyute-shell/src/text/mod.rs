@@ -124,6 +124,15 @@ impl FontStretch {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct TextFormatDesc<'a> {
+    family: &'a str,
+    weight: FontWeight,
+    style: FontStyle,
+    stretch: FontStretch,
+    size: f32,
+}
+
 pub struct TextFormatBuilder<'a> {
     factory: &'a ComPtr<IDWriteFactory>,
     family: &'a str,

@@ -1,16 +1,14 @@
-use crate::event::{
-    Event, InputEvent, KeyboardEvent, PointerButton, PointerButtons, PointerEvent, WheelDeltaMode,
-    WheelEvent,
-};
+//! winit-based application wrapper.
+//!
+//! Provides the `run_application` function that opens the main window and translates the incoming
+//! events from winit into the events expected by a kyute [`NodeTree`](crate::node::NodeTree).
+use crate::event::{Event, InputEvent, KeyboardEvent, PointerButton, PointerButtonEvent, PointerButtons, PointerEvent, WheelDeltaMode, WheelEvent, PointerState, InputState};
 use crate::layout::Size;
-use crate::renderer::Theme;
-use crate::visual::{
-    DummyVisual, EventCtx, FocusState, InputState, LayoutBox, NodeTree, PaintCtx, PointerState,
-    RepaintRequest,
-};
-use crate::widget::{ActionCollector, ActionSink, LayoutCtx};
-use crate::{Bounds, BoxConstraints, BoxedWidget, Layout, NodeData, Point, Visual, Widget};
+use crate::node::{NodeTree, RepaintRequest};
+use crate::widget::{ActionCollector, ActionSink};
+use crate::{Bounds, BoxConstraints, BoxedWidget, Measurements, Point, Visual, Widget, Environment};
 use anyhow::Result;
+use std::time::Duration;
 use kyute_shell::drawing::Color;
 use kyute_shell::platform::Platform;
 use kyute_shell::window::{PlatformWindow, WindowDrawContext};
@@ -20,11 +18,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
 use std::rc::{Rc, Weak};
+use std::time::Instant;
 use winit::event::WindowEvent;
 use winit::event_loop::{ControlFlow, EventLoopWindowTarget};
 use winit::window::{WindowBuilder, WindowId};
-use std::time::Instant;
-use bitflags::_core::time::Duration;
 
 /// Encapsulates the behavior of an application.
 pub trait Application {
@@ -49,60 +46,7 @@ pub struct WindowCtx<'a> {
     new_windows: Vec<Rc<RefCell<Window>>>,
 }
 
-// the event loop should have a ref to the windows, so that it knows where to deliver
-// the event based on the window ID.
-//
-// a child window itself is conceptually "owned" by a parent visual.
-//
-// actions can be emitted by a window, but not during a traversal of the whole tree
-// (only the subtree associated to the window), so action mappers can't operate during the traversal.
-// Solution: action mapper has an Rc<ActionSink>
-// - one root action sink, which is ActionSink<RootActionType> + one sink per mapper which forwards
-//   the transformed action to the parent sink
-//      - problem: potentially a lot of mappers, one Rc for each
-//
-// other option:
-// - accumulate all generated actions in a vec alongside the window, then
-//   signal the parent window that a child window has generated actions
-//   then, traverse widget tree of parent window, and collect (and map) generated actions
-//
-// other option:
-// - always propagate events starting from the root
-//    for windows, it means that the event may need to traverse the whole tree before finding the child window
-//
-// other option:
-// - nodes in the visual tree have paths, so that an event that targets a window can be delivered
-//   efficiently to the node
-//      - similar approach in xxgui
-//      - problem: the structure of the visual tree is opaque, so need additional code in Nodes?
-//
-// There is actually a bigger problem, which is delivering events directly to a target node in the
-// hierarchy, without having to do a traversal.
-//  - can be useful for keyboard focus, delivering events to a particular window, etc.
-//  -
-//
-// -> This means that visual nodes should be "addressable" (identifiable + an efficient way of reaching them)
-// -> which is very hard right now, because
-//      - A: the tree is opaque (traversal is the responsibility of each node)
-//      - B: nodes don't have a common related type (there's Visual<A>, but 'A' varies between nodes).
-//      - C: the layout boxes are computed on-the-fly during traversal
-//
-// B: The "Action" type parameter should not be in the nodes?
-// A: The node hierarchy should be visible: have an explicit tree data structure?
-// C: the calculated layout should be stored within the visual node
-//
-//
-// Review of existing approaches:
-// - druid: opaque tree, forced traversal to find the target
-// - iced: transparent layout tree, no widget identity
-// - conrod: graph, nodes accessible by ID
-// - ImGui: forced traversal
-// - Qt: probably pointers to widgets
-// - Servo DOM: tree, garbage collected
-// - Stretch (layout lib): nodes are IDs into a Vec-backed tree
-// - OrbTk: IDs in an ECS
-//
-
+/// Stores information about the last click (for double-click handling)
 struct LastClick {
     device_id: winit::event::DeviceId,
     button: PointerButton,
@@ -117,7 +61,7 @@ struct Window {
     tree: NodeTree,
     inputs: InputState,
     // for double-click detection
-    last_click: Option<LastClick>
+    last_click: Option<LastClick>,
 }
 
 impl Window {
@@ -187,53 +131,57 @@ impl Window {
                 let position = pointer_state.position;
 
                 // determine the repeat count (double-click, triple-click, etc.) for button down event
-                let repeat_count =
-                    match &mut self.last_click {
-                        Some(ref mut last) if last.device_id == *device_id && last.button == button && last.position == position &&
-                            (click_time - last.time) < ctx.platform.double_click_time() =>
-                        {
-                            // same device, button, position, and within the platform specified double-click time
-                            match state {
-                                winit::event::ElementState::Pressed => {
-                                    last.repeat_count += 1;
-                                    last.repeat_count
-                                }
-                                winit::event::ElementState::Released => {
-                                    // no repeat for release events (although that could be possible?),
-                                    1
-                                }
+                let repeat_count = match &mut self.last_click {
+                    Some(ref mut last)
+                        if last.device_id == *device_id
+                            && last.button == button
+                            && last.position == position
+                            && (click_time - last.time) < ctx.platform.double_click_time() =>
+                    {
+                        // same device, button, position, and within the platform specified double-click time
+                        match state {
+                            winit::event::ElementState::Pressed => {
+                                last.repeat_count += 1;
+                                last.repeat_count
+                            }
+                            winit::event::ElementState::Released => {
+                                // no repeat for release events (although that could be possible?),
+                                1
                             }
                         }
-                        other => {
-                            // no match, reset
-                            match state {
-                                winit::event::ElementState::Pressed => {
-                                    *other = Some(LastClick {
-                                        device_id: *device_id,
-                                        button,
-                                        position,
-                                        time: click_time,
-                                        repeat_count: 1
-                                    });
-                                }
-                                winit::event::ElementState::Released => {
-                                    *other = None;
-                                }
-                            };
-                            1
-                        }
-                    };
+                    }
+                    other => {
+                        // no match, reset
+                        match state {
+                            winit::event::ElementState::Pressed => {
+                                *other = Some(LastClick {
+                                    device_id: *device_id,
+                                    button,
+                                    position,
+                                    time: click_time,
+                                    repeat_count: 1,
+                                });
+                            }
+                            winit::event::ElementState::Released => {
+                                *other = None;
+                            }
+                        };
+                        1
+                    }
+                };
 
                 dbg!(repeat_count);
 
-                let p = PointerEvent {
-                    position,
-                    window_position: position,
-                    modifiers: self.inputs.mods,
+                let p = PointerButtonEvent {
+                    pointer: PointerEvent {
+                        position,
+                        window_position: position,
+                        modifiers: self.inputs.mods,
+                        buttons: pointer_state.buttons,
+                        pointer_id: *device_id,
+                    },
                     button: Some(button),
-                    buttons: pointer_state.buttons,
-                    pointer_id: *device_id,
-                    repeat_count
+                    repeat_count,
                 };
 
                 let e = match state {
@@ -262,10 +210,8 @@ impl Window {
                     position: logical,
                     window_position: logical,
                     modifiers: self.inputs.mods,
-                    button: None,
                     buttons: pointer_state.buttons,
                     pointer_id: *device_id,
-                    repeat_count: 0
                 };
 
                 self.tree
@@ -348,7 +294,7 @@ impl Window {
         &mut self,
         window_ctx: &mut WindowCtx,
         action_sink: Rc<dyn ActionSink<A>>,
-        theme: &Theme,
+        env: Environment,
         widget: BoxedWidget<A>,
     ) {
         // get window logical size
@@ -365,7 +311,7 @@ impl Window {
             widget,
             size,
             &BoxConstraints::loose(size),
-            theme,
+            env,
             window_ctx,
             action_sink,
         );
@@ -374,11 +320,11 @@ impl Window {
     }
 
     /// Called when the window needs to be repainted.
-    fn paint(&mut self, platform: &Platform, theme: &Theme) {
+    fn paint(&mut self, platform: &Platform) {
         {
             let mut wdc = WindowDrawContext::new(&mut self.window);
             wdc.clear(Color::new(0.0, 0.5, 0.8, 1.0));
-            self.tree.paint(platform, &mut wdc, &self.inputs, theme);
+            self.tree.paint(platform, &mut wdc, &self.inputs);
         }
         self.window.present();
     }
@@ -390,8 +336,6 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
     let event_loop = winit::event_loop::EventLoop::new();
     // platform-specific, window-independent states
     let platform = unsafe { Platform::init() };
-    // theme resources
-    let theme = Theme::new(&platform);
 
     // create a window to render the main view.
     let mut win_ctx = WindowCtx {
@@ -411,7 +355,7 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
     // perform the initial layout
     main_window
         .borrow_mut()
-        .relayout(&mut win_ctx, collector.clone(), &theme, app.view());
+        .relayout(&mut win_ctx, collector.clone(), Environment::new(), app.view());
 
     event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -445,7 +389,7 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
                     main_window.borrow_mut().relayout(
                         &mut win_ctx,
                         collector.clone(),
-                        &theme,
+                        Environment::new(),
                         widget,
                     );
                 }
@@ -455,7 +399,7 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
                 // A window needs to be repainted
                 if let Some(window) = open_windows.get(&window_id) {
                     if let Some(window) = window.upgrade() {
-                        window.borrow_mut().paint(&platform, &theme);
+                        window.borrow_mut().paint(&platform);
                     }
                 }
             }

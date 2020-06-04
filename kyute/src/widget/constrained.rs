@@ -1,8 +1,7 @@
 use crate::layout::BoxConstraints;
-use crate::renderer::Theme;
-use crate::visual::{NodeArena, NodeCursor, NodeData};
-use crate::widget::{LayoutCtx, Widget};
+use crate::{Widget, LayoutCtx, Visual, Measurements, Environment};
 use generational_indextree::NodeId;
+use std::any::TypeId;
 
 /// Expands the child widget to fill all its available space.
 pub struct ConstrainedBox<W> {
@@ -20,15 +19,23 @@ impl<A: 'static, W> Widget<A> for ConstrainedBox<W>
 where
     W: Widget<A>,
 {
+    fn key(&self) -> Option<u64> {
+        self.inner.key()
+    }
+
+    fn visual_type_id(&self) -> TypeId {
+        self.inner.visual_type_id()
+    }
+
     fn layout(
         self,
-        ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        context: &mut LayoutCtx<A>,
+        previous_visual: Option<Box<dyn Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> NodeId {
+        env: Environment,
+    ) -> (Box<dyn Visual>, Measurements)
+    {
         let constraints = constraints.enforce(&self.constraints);
-        self.inner.layout(ctx, nodes, cursor, &constraints, theme)
+        self.inner.layout(context, previous_visual, &constraints, env)
     }
 }

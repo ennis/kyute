@@ -1,12 +1,9 @@
 use crate::event::Event;
-use crate::layout::{BoxConstraints, Layout, Size};
-use crate::renderer::Theme;
-use crate::visual::{EventCtx, NodeArena, NodeCursor, NodeData, PaintCtx, Visual};
-use crate::widget::LayoutCtx;
-use crate::{Bounds, Point, Widget};
+use crate::layout::{BoxConstraints, Measurements, Size};
+use crate::{Bounds, Point, Widget, Visual, PaintCtx, EventCtx, TypedWidget, LayoutCtx, Environment, theme};
 use generational_indextree::NodeId;
 use kyute_shell::drawing::{Color, DrawTextOptions, IntoBrush};
-use kyute_shell::text::TextLayout;
+use kyute_shell::text::{TextLayout, TextFormatBuilder};
 use log::trace;
 use std::any::Any;
 use std::cell::RefCell;
@@ -18,7 +15,7 @@ pub struct TextVisual {
 }
 
 impl Visual for TextVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
+    fn paint(&mut self, ctx: &mut PaintCtx) {
         let text_brush = Color::new(1.0, 1.0, 1.0, 1.0).into_brush(ctx);
         ctx.draw_text_layout(
             Point::origin(),
@@ -45,43 +42,56 @@ pub struct Text {
     text: String,
 }
 
-impl<A: 'static> Widget<A> for Text {
+impl<A: 'static> TypedWidget<A> for Text
+{
+    type Visual = TextVisual;
+
+    fn key(&self) -> Option<u64> { None }
+
     fn layout(
         self,
-        ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        context: &mut LayoutCtx<A>,
+        previous_visual: Option<Box<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> NodeId {
-        cursor.reconcile(nodes, |_prev: Option<NodeData<TextVisual>>| {
-            // TODO check for changes instead of re-creating from scratch every time
-            let text_layout = TextLayout::new(
-                ctx.platform(),
-                &self.text,
-                &theme.label_text_format,
-                constraints.biggest(),
-            )
-            .unwrap();
+        env: Environment,
+    ) -> (Box<Self::Visual>, Measurements)
+    {
+        let font_name = env.get(theme::FontName);
+        let font_size = env.get(theme::FontSize);
 
-            let text_size = text_layout.metrics().bounds.size.ceil();
+        // TODO re-creating a TextFormat every time might be inefficient; verify the cost of
+        // creating many TextFormats
+        let text_format = TextFormatBuilder::new(context.platform())
+                                .size(font_size as f32)
+                                .family(font_name)
+                                .build().expect("failed to create text format");
 
-            let baseline = text_layout
-                .line_metrics()
-                .first()
-                .map(|m| m.baseline.ceil() as f64);
+        // TODO check for changes instead of re-creating from scratch every time
+        let text_layout =  TextLayout::new(
+            context.platform(),
+            &self.text,
+            &text_format,
+            constraints.biggest(),
+        ).unwrap();
 
-            let layout = Layout::new(text_size).with_baseline(baseline);
+        let text_size = text_layout.metrics().bounds.size;
 
-            NodeData::new(
-                layout,
-                None,
-                TextVisual {
-                    text: self.text,
-                    text_layout,
-                },
-            )
-        })
+        let baseline = text_layout
+            .line_metrics()
+            .first()
+            .map(|m| m.baseline as f64);
+
+        let measurements = Measurements {
+            size: text_size,
+            baseline
+        };
+
+        let visual = TextVisual {
+            text: self.text,
+            text_layout
+        };
+
+        (Box::new(visual), measurements)
     }
 }
 

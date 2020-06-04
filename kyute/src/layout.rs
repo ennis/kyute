@@ -1,14 +1,21 @@
 //! Types and functions used for layouting widgets.
 
+use crate::application::WindowCtx;
+use crate::node::NodeArena;
+use crate::widget::{ActionSink, Baseline};
 use bitflags::_core::ops::RangeBounds;
+use generational_indextree::NodeId;
+use kyute_shell::platform::Platform;
 use std::ops::Bound;
+use std::rc::Rc;
 
+pub type SideOffsets = euclid::default::SideOffsets2D<f64>;
 pub type Size = euclid::default::Size2D<f64>;
 pub type Bounds = euclid::default::Rect<f64>;
 pub type Offset = euclid::default::Vector2D<f64>;
 pub type Point = euclid::default::Point2D<f64>;
 
-/// Edge insets.
+/*/// Edge insets.
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub struct EdgeInsets {
     pub left: f64,
@@ -32,7 +39,7 @@ impl EdgeInsets {
             bottom: v,
         }
     }
-}
+}*/
 
 /// Box constraints.
 #[derive(Copy, Clone, Debug)]
@@ -101,9 +108,9 @@ impl BoxConstraints {
         }
     }
 
-    pub fn deflate(&self, insets: &EdgeInsets) -> BoxConstraints {
-        let max_w = self.max.width - (insets.left + insets.right);
-        let max_h = self.max.height - (insets.top + insets.bottom);
+    pub fn deflate(&self, insets: &SideOffsets) -> BoxConstraints {
+        let max_w = self.max.width - insets.horizontal();
+        let max_h = self.max.height - insets.vertical();
 
         BoxConstraints {
             min: self.min,
@@ -184,24 +191,26 @@ impl Alignment {
     pub const CENTER: Alignment = Alignment { x: 0.0, y: 0.0 };
 }
 
-pub fn align_box(alignment: Alignment, parent_size: Size, child_size: Size) -> Offset {
+/// Aligns a child box into a parent box. Returns the offset of the child into the parent,
+/// and updates the baseline of the parent.
+pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measurements) -> Offset
+{
     let parent_pos = Point::new(
-        0.5 * parent_size.width * (1.0 + alignment.x),
-        0.5 * parent_size.height * (1.0 + alignment.y),
+        0.5 * parent.size.width * (1.0 + alignment.x),
+        0.5 * parent.size.height * (1.0 + alignment.y),
     );
     let child_pos = Point::new(
-        0.5 * child_size.width * (1.0 + alignment.x),
-        0.5 * child_size.height * (1.0 + alignment.y),
+        0.5 * child.size.width * (1.0 + alignment.x),
+        0.5 * child.size.height * (1.0 + alignment.y),
     );
     let offset = parent_pos - child_pos;
+    parent.baseline = child.baseline.map(|baseline| baseline + offset.y);
     offset
 }
 
 /// Layout information for a visual node, relative to a parent node.
 #[derive(Copy, Clone, Debug)]
-pub struct Layout {
-    /// Offset within the parent node.
-    pub offset: Offset,
+pub struct Measurements {
     /// Size of this node.
     pub size: Size,
     /// Baseline offset relative to *this* node.
@@ -209,46 +218,28 @@ pub struct Layout {
     pub baseline: Option<f64>,
 }
 
-impl Default for Layout {
+impl Default for Measurements {
     fn default() -> Self {
-        Layout {
-            offset: (0.0, 0.0).into(),
+        Measurements {
             size: (0.0, 0.0).into(),
             baseline: None,
         }
     }
 }
 
-impl Layout {
+impl Measurements {
     /// Creates a new [`Layout`] with the given size, with no offset relative to its parent.
-    pub fn new(size: Size) -> Layout {
-        Layout {
-            offset: (0.0, 0.0).into(),
+    pub fn new(size: Size) -> Measurements {
+        Measurements {
             size,
             baseline: None,
         }
     }
 
-    /// Aligns a parent node and a child node.
-    pub fn align(parent: &mut Layout, child: &mut Layout, alignment: Alignment) {
-        child.offset = align_box(alignment, parent.size, child.size);
-        parent.baseline = child.baseline.map(|baseline| baseline + child.offset.y);
-    }
-
     /// Replaces the baseline of this node.
-    pub fn with_baseline(mut self, baseline: Option<f64>) -> Layout {
+    pub fn with_baseline(mut self, baseline: Option<f64>) -> Measurements {
         self.baseline = baseline;
         self
-    }
-
-    /// Replaces the offset within the parent node.
-    pub fn with_offset(mut self, by: Offset) -> Layout {
-        self.offset = by;
-        self
-    }
-
-    pub fn offset(&self) -> Offset {
-        self.offset
     }
 
     pub fn size(&self) -> Size {
@@ -264,8 +255,8 @@ impl Layout {
     }
 }
 
-impl From<Size> for Layout {
+impl From<Size> for Measurements {
     fn from(s: Size) -> Self {
-        Layout::new(s)
+        Measurements::new(s)
     }
 }

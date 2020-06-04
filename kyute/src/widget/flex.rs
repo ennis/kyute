@@ -1,12 +1,5 @@
 use crate::event::{Event, MoveFocusDirection};
-use crate::renderer::Theme;
-use crate::visual::NodeCursor;
-use crate::visual::{EventCtx, NodeArena, PaintCtx};
-use crate::widget::LayoutCtx;
-use crate::{
-    layout::BoxConstraints, layout::Layout, layout::Offset, layout::Size, visual::NodeData,
-    visual::Visual, widget::Widget, widget::WidgetExt, Bounds, BoxedWidget, Point,
-};
+use crate::{layout::BoxConstraints, layout::Measurements, layout::Offset, layout::Size, Bounds, BoxedWidget, Point, TypedWidget, Visual, PaintCtx, EventCtx, LayoutCtx, WidgetExt, Widget, Environment, theme};
 use euclid::{Point2D, UnknownUnit};
 use generational_indextree::NodeId;
 use log::trace;
@@ -90,31 +83,30 @@ impl<A: 'static> Flex<A> {
     }
 }
 
-impl<A: 'static> Widget<A> for Flex<A> {
+impl<A: 'static> TypedWidget<A> for Flex<A> {
+    type Visual = FlexVisual;
+
     fn layout(
         self,
-        ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        context: &mut LayoutCtx<A>,
+        previous_visual: Option<Box<FlexVisual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> NodeId {
-        let node: NodeId = cursor.get_or_insert_default::<FlexVisual>(nodes);
+        env: Environment,
+    ) -> (Box<FlexVisual>, Measurements)
+    {
+        let visual = previous_visual.unwrap_or_default();
 
         let axis = self.axis;
 
-        {
-            // layout child nodes
-            let mut cursor = NodeCursor::Child(node);
-            for c in self.children.into_iter() {
-                c.layout(ctx, nodes, &mut cursor, constraints, theme);
-            }
-            cursor.remove_after(nodes);
+        // layout child nodes
+        let mut child_nodes = Vec::with_capacity(self.children.len());
+        for c in self.children.into_iter() {
+            child_nodes.push(context.emit_child(c, constraints, env.clone()));
         }
 
-        let max_cross_axis_len = node
-            .children(nodes)
-            .map(|child_id| axis.cross_len(nodes[child_id].get().layout.size))
+        let max_cross_axis_len =
+            child_nodes.iter()
+            .map(|(_, m)| axis.cross_len(m.size))
             .fold(0.0, f64::max);
 
         // preferred size of this flex: max size in axis direction, max elem width in cross-axis direction
@@ -125,17 +117,16 @@ impl<A: 'static> Widget<A> for Flex<A> {
 
         // distribute children
         let mut d = 0.0;
-        let mut child_id = nodes[node].first_child();
-        while let Some(id) = child_id {
-            let node = nodes[id].get_mut();
-            let len = axis.main_len(node.layout.size);
+        let spacing = *env.get(theme::FlexSpacing);
+        for (id,m) in child_nodes.iter() {
+            let len = axis.main_len(m.size);
             // offset children
-            match axis {
-                Axis::Vertical => node.layout.offset += Offset::new(0.0, d),
-                Axis::Horizontal => node.layout.offset += Offset::new(d, 0.0),
+            let offset = match axis {
+                Axis::Vertical => Offset::new(0.0, d),
+                Axis::Horizontal => Offset::new(d, 0.0),
             };
-            d += len;
-            child_id = nodes[id].next_sibling();
+            context.set_child_offset(*id, offset);
+            d += len + spacing;
         }
 
         let size = match axis {
@@ -143,8 +134,7 @@ impl<A: 'static> Widget<A> for Flex<A> {
             Axis::Horizontal => Size::new(constraints.constrain_width(d), cross_axis_len),
         };
 
-        nodes[node].get_mut().layout = Layout::new(size);
-        node
+        (visual, Measurements::new(size))
     }
 }
 
@@ -152,9 +142,8 @@ impl<A: 'static> Widget<A> for Flex<A> {
 pub struct FlexVisual;
 
 impl Visual for FlexVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, theme: &Theme) {
+    fn paint(&mut self, ctx: &mut PaintCtx) {
         let bounds = ctx.bounds();
-        theme.draw_panel_background(ctx, bounds);
     }
 
     fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {

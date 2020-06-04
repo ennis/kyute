@@ -1,8 +1,6 @@
-use crate::layout::{BoxConstraints, Layout, Offset, Size};
-use crate::renderer::Theme;
-use crate::visual::{LayoutBox, NodeArena, NodeCursor, NodeData};
-use crate::widget::{LayoutCtx, Widget};
+use crate::layout::{BoxConstraints, Measurements, Offset, Size};
 use generational_indextree::NodeId;
+use crate::{TypedWidget, LayoutBox, LayoutCtx, Widget, Environment};
 
 /// A widget that aligns its child according to a fixed baseline.
 pub struct Baseline<W> {
@@ -16,31 +14,31 @@ impl<W> Baseline<W> {
     }
 }
 
-impl<A: 'static, W: Widget<A>> Widget<A> for Baseline<W> {
+impl<A: 'static, W: Widget<A>> TypedWidget<A> for Baseline<W> {
+    type Visual = LayoutBox;
+
     fn layout(
         self,
-        ctx: &mut LayoutCtx<A>,
-        nodes: &mut NodeArena,
-        cursor: &mut NodeCursor,
+        context: &mut LayoutCtx<A>,
+        previous_visual: Option<Box<Self::Visual>>,
         constraints: &BoxConstraints,
-        theme: &Theme,
-    ) -> NodeId {
-        let node_id = cursor.get_or_insert_default::<LayoutBox>(nodes);
-        let child_id = self
-            .inner
-            .layout_child(ctx, nodes, node_id, constraints, theme);
+        env: Environment,
+    ) -> (Box<Self::Visual>, Measurements)
+    {
+        let visual = previous_visual.unwrap_or_default();
+        let (child_id, child_measurements) = context.emit_child(self.inner, constraints, env);
 
-        let mut child_layout = nodes[child_id].get().layout;
-        let off = self.baseline - child_layout.baseline.unwrap_or(child_layout.size.height);
-        let height = child_layout.size.height + off;
-        child_layout.offset.y = off;
+        let y_offset = self.baseline - child_measurements.baseline.unwrap_or(child_measurements.size.height);
+        context.set_child_offset(child_id, Offset::new(0.0,y_offset));
 
-        let width = child_layout.size.width;
-        let node_layout = Layout::new(constraints.constrain((width, height).into()))
-            .with_baseline(Some(self.baseline));
+        let width = child_measurements.size.width;
+        let height = child_measurements.size.height + y_offset;
 
-        nodes[child_id].get_mut().layout = child_layout;
-        nodes[node_id].get_mut().layout = node_layout;
-        node_id
+        let measurements = Measurements {
+            size: constraints.constrain((width, height).into()),
+            baseline: Some(self.baseline)
+        };
+
+        (visual, measurements)
     }
 }
