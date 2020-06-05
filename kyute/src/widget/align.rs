@@ -1,7 +1,6 @@
 use crate::layout::BoxConstraints;
-use crate::{Alignment, Measurements, Widget, LayoutCtx, TypedWidget, LayoutBox, layout};
-use generational_indextree::NodeId;
 use crate::Environment;
+use crate::{layout, Alignment, LayoutBox, LayoutCtx, Measurements, TypedWidget, Widget};
 
 pub struct Align<W> {
     alignment: Alignment,
@@ -14,25 +13,22 @@ impl<W> Align<W> {
     }
 }
 
-
-impl<A: 'static, W> TypedWidget<A> for Align<W>
-where
-    W: Widget<A>,
-{
+impl<W: Widget> TypedWidget for Align<W> {
     type Visual = LayoutBox;
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<LayoutBox>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<LayoutBox>, Measurements)
-    {
+    ) -> (Box<LayoutBox>, Measurements) {
         let visual = previous_visual.unwrap_or_default();
-        let (child_id, child_measurements) = context.emit_child(self.inner, &constraints.loosen(), env);
+        let (child_id, child_measurements) =
+            context.emit_child(self.inner, &constraints.loosen(), env);
         let mut measurements = Measurements::new(constraints.constrain(child_measurements.size));
-        let child_offset = layout::align_boxes(self.alignment, &mut measurements, child_measurements);
+        let child_offset =
+            layout::align_boxes(self.alignment, &mut measurements, child_measurements);
         context.set_child_offset(child_id, child_offset);
         (visual, measurements)
     }

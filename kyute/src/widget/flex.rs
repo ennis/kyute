@@ -1,7 +1,9 @@
 use crate::event::{Event, MoveFocusDirection};
-use crate::{layout::BoxConstraints, layout::Measurements, layout::Offset, layout::Size, Bounds, BoxedWidget, Point, TypedWidget, Visual, PaintCtx, EventCtx, LayoutCtx, WidgetExt, Widget, Environment, theme};
-use euclid::{Point2D, UnknownUnit};
-use generational_indextree::NodeId;
+use crate::{
+    layout::BoxConstraints, layout::Measurements, layout::Offset, layout::Size, theme, Bounds,
+    BoxedWidget, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget,
+    WidgetExt,
+};
 use log::trace;
 use std::any::Any;
 
@@ -59,12 +61,12 @@ pub enum MainAxisSize {
     Max,
 }
 
-pub struct Flex<A> {
+pub struct Flex {
     axis: Axis,
-    children: Vec<BoxedWidget<A>>,
+    children: Vec<BoxedWidget>,
 }
 
-impl<A: 'static> Flex<A> {
+impl Flex {
     pub fn new(main_axis: Axis) -> Self {
         Flex {
             axis: main_axis,
@@ -72,28 +74,27 @@ impl<A: 'static> Flex<A> {
         }
     }
 
-    pub fn push(mut self, child: impl Widget<A> + 'static) -> Self {
+    pub fn push(mut self, child: impl Widget + 'static) -> Self {
         self.children.push(child.boxed());
         self
     }
 
-    pub fn push_boxed(mut self, child: BoxedWidget<A>) -> Self {
+    pub fn push_boxed(mut self, child: BoxedWidget) -> Self {
         self.children.push(child);
         self
     }
 }
 
-impl<A: 'static> TypedWidget<A> for Flex<A> {
+impl TypedWidget for Flex {
     type Visual = FlexVisual;
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<FlexVisual>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<FlexVisual>, Measurements)
-    {
+    ) -> (Box<FlexVisual>, Measurements) {
         let visual = previous_visual.unwrap_or_default();
 
         let axis = self.axis;
@@ -104,8 +105,8 @@ impl<A: 'static> TypedWidget<A> for Flex<A> {
             child_nodes.push(context.emit_child(c, constraints, env.clone()));
         }
 
-        let max_cross_axis_len =
-            child_nodes.iter()
+        let max_cross_axis_len = child_nodes
+            .iter()
             .map(|(_, m)| axis.cross_len(m.size))
             .fold(0.0, f64::max);
 
@@ -117,8 +118,8 @@ impl<A: 'static> TypedWidget<A> for Flex<A> {
 
         // distribute children
         let mut d = 0.0;
-        let spacing = *env.get(theme::FlexSpacing);
-        for (id,m) in child_nodes.iter() {
+        let spacing = env.get(theme::FlexSpacing);
+        for (id, m) in child_nodes.iter() {
             let len = axis.main_len(m.size);
             // offset children
             let offset = match axis {
@@ -142,7 +143,7 @@ impl<A: 'static> TypedWidget<A> for Flex<A> {
 pub struct FlexVisual;
 
 impl Visual for FlexVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx) {
+    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
         let bounds = ctx.bounds();
     }
 

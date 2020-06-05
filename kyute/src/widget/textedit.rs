@@ -1,14 +1,10 @@
 //! Text editor widget.
 use crate::event::Event;
 use crate::layout::{BoxConstraints, Measurements, Offset, SideOffsets, Size};
-use crate::node::NodeData;
-use crate::widget::frame::Frame;
-use crate::widget::padding::Padding;
 use crate::{
-    theme, Bounds, BoxedWidget, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget,
+    theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget,
     Visual, Widget, WidgetExt,
 };
-use generational_indextree::NodeId;
 use kyute_shell::drawing::context::{CompositeMode, FloodImage, InterpolationMode};
 use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt, SolidColorBrush};
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
@@ -136,7 +132,7 @@ impl TextEditVisual {
         let max = self.selection.max();
         self.text.replace_range(min..max, text);
         self.selection = Selection::empty(min + text.len());
-        self.needs_text_relayout = true;
+        self.needs_relayout = true;
         self.needs_repaint = true;
     }
 
@@ -183,14 +179,13 @@ impl Visual for TextEditVisual {
         // relayout if necessary
         if self.needs_relayout {
             trace!("text relayout");
-            self.text_layout =
-                TextLayout::new(
-                    ctx.platform(),
-                    &self.text,
-                    &self.text_format,
-                    self.content_size,
-                )
-                .unwrap();
+            self.text_layout = TextLayout::new(
+                ctx.platform(),
+                &self.text,
+                &self.text_format,
+                self.content_size,
+            )
+            .unwrap();
         }
 
         // fetch colors
@@ -211,12 +206,16 @@ impl Visual for TextEditVisual {
         self.text_layout.set_drawing_effect(&text_brush, ..);
         if !self.selection.is_empty() {
             // FIXME slightly changes the layout when the selection straddles a kerning pair?
-            self.text_layout.set_drawing_effect(&selected_text_brush, self.selection.min()..self.selection.max());
+            self.text_layout.set_drawing_effect(
+                &selected_text_brush,
+                self.selection.min()..self.selection.max(),
+            );
         }
 
         // selection highlight
         if !self.selection.is_empty() {
-            let selected_areas = self.text_layout
+            let selected_areas = self
+                .text_layout
                 .hit_test_text_range(self.selection.min()..self.selection.max(), &bounds.origin)
                 .unwrap();
             for sa in selected_areas {
@@ -226,7 +225,7 @@ impl Visual for TextEditVisual {
 
         // text
         ctx.draw_text_layout(
-            bounds.origin + self.content_offset.to_point(),
+            bounds.origin + self.content_offset,
             &self.text_layout,
             &text_brush,
             DrawTextOptions::ENABLE_COLOR_FONT,
@@ -234,7 +233,10 @@ impl Visual for TextEditVisual {
 
         // caret
         if ctx.is_focused() {
-            let caret_hit_test = self.text_layout.unwrap().hit_test_text_position(selection.end).unwrap();
+            let caret_hit_test = self
+                .text_layout
+                .hit_test_text_position(self.selection.end)
+                .unwrap();
 
             //dbg!(caret_hit_test);
             ctx.fill_rectangle(
@@ -353,28 +355,28 @@ impl TextEdit {
 // - character is inserted
 // - updated string is sent to the application
 
-impl<A: 'static> TypedWidget<A> for TextEdit {
+impl TypedWidget for TextEdit {
     type Visual = TextEditVisual;
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<TextEditVisual>>,
         constraints: &BoxConstraints,
         env: Environment,
     ) -> (Box<TextEditVisual>, Measurements) {
-        let text = &self.text;
-        let platform = ctx.platform();
+        let text = self.text;
+        let platform = context.platform();
 
         // the only thing that we preserve across relayouts is the selection
-        let mut prev_selection = previous_visual.map(|v| v.selection);
+        let selection = previous_visual.as_ref().map(|v| v.selection).unwrap_or_default();
 
         // text format
         let font_size = env.get(theme::TextEditFontSize);
         let font_name = env.get(theme::TextEditFontName);
         let text_format = TextFormatBuilder::new(context.platform())
             .family(font_name)
-            .size(font_size)
+            .size(font_size as f32)
             .build()
             .expect("could not create text format");
 
@@ -383,43 +385,52 @@ impl<A: 'static> TypedWidget<A> for TextEdit {
 
         // calculate the size available to layout the text
         let padding: SideOffsets = env.get(theme::TextEditPadding);
-        let text_layout_size = Size::new(
+        let content_size = Size::new(
             size.width - padding.horizontal(),
             size.height - padding.vertical(),
         );
 
         // content offset
-        let offset = Offset::new(padding.left, padding.top);
+        let content_offset = Offset::new(padding.left, padding.top);
 
         // determine if we need to relayout the text
         // we relayout the text if:
         // - the text has not actually been layout yet
         // - the text changed
         // - the size available for layout changed
-        let text_layout =
-            if let Some(visual) = previous_visual {
-                if visual.text == text && visual.content_size == text_layout_size {
-                    Some(visual.text_layout)
-                } else {
-                    None
-                }
+        let text_layout = if let Some(visual) = previous_visual {
+            if visual.text == text && visual.content_size == content_size {
+                // recycle
+                Some(visual.text_layout)
             } else {
                 None
-            };
+            }
+        } else {
+            None
+        };
 
         let text_layout = text_layout.unwrap_or_else(|| {
             // layout the text within the content area
-            TextLayout::new(platform, &text, &text_format, text_layout_size).unwrap()
+            TextLayout::new(platform, &text, &text_format, content_size).unwrap()
         });
 
-        // text_layout guaranteed to not by empty
-        let text_layout = visual.text_layout.as_ref().unwrap();
+        // calculate baseline
         let baseline = text_layout
             .line_metrics()
             .first()
-            .map(|m| offset.y + m.baseline as f64);
+            .map(|m| content_offset.y + m.baseline as f64);
 
         let measurements = Measurements { size, baseline };
+        let visual = Box::new(TextEditVisual {
+            text_format,
+            text,
+            content_offset,
+            content_size,
+            text_layout,
+            selection,
+            needs_repaint: true,
+            needs_relayout: false
+        });
 
         (visual, measurements)
     }

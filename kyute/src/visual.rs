@@ -1,5 +1,5 @@
 use crate::event::Event;
-use crate::{Bounds, EventCtx, Point, PaintCtx, Environment};
+use crate::{Bounds, Environment, EventCtx, PaintCtx, Point};
 use std::any::Any;
 
 /// The interface for painting a visual element on the screen, and handling events that target this
@@ -35,7 +35,7 @@ impl dyn Visual {
         if self.as_any().is::<V>() {
             unsafe {
                 // SAFETY: see Box::<dyn Any>::downcast in std
-                let raw: *mut dyn Any = Box::into_raw(self);
+                let raw: *mut dyn Visual = Box::into_raw(self);
                 Ok(Box::from_raw(raw as *mut V))
             }
         } else {
@@ -54,7 +54,7 @@ impl Default for LayoutBox {
 }
 
 impl Visual for LayoutBox {
-    fn paint(&mut self, ctx: &mut PaintCtx) {}
+    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {}
     fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
         true
     }
@@ -72,7 +72,7 @@ impl Visual for LayoutBox {
 pub struct DummyVisual;
 
 impl Visual for DummyVisual {
-    fn paint(&mut self, _ctx: &mut PaintCtx) {}
+    fn paint(&mut self, _ctx: &mut PaintCtx, env: &Environment) {}
     fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
         false
     }

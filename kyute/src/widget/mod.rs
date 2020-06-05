@@ -9,7 +9,6 @@ pub mod flex;
 pub mod form;
 pub mod frame;
 pub mod id;
-pub mod map;
 pub mod padding;
 pub mod slider;
 pub mod text;
@@ -22,44 +21,18 @@ pub use dummy::DummyWidget;
 pub use expand::Expand;
 pub use flex::Axis;
 pub use flex::Flex;
-pub use map::Map;
 pub use text::Text;
 
 use crate::application::WindowCtx;
+use crate::env::Environment;
 use crate::layout::BoxConstraints;
 use crate::visual::Visual;
-use crate::{visual, LayoutCtx, Measurements, env};
+use crate::{env, visual, LayoutCtx, Measurements};
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
 use std::any::TypeId;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
-use crate::env::Environment;
-
-/// Receivers of actions emitted by widgets.
-pub trait ActionSink<A> {
-    fn emit(&self, action: A);
-}
-
-///
-pub(crate) struct ActionCollector<A> {
-    pub(crate) actions: RefCell<Vec<A>>,
-}
-
-impl<A> ActionCollector<A> {
-    pub fn new() -> ActionCollector<A> {
-        ActionCollector {
-            actions: RefCell::new(Vec::new()),
-        }
-    }
-}
-
-impl<A> ActionSink<A> for ActionCollector<A> {
-    fn emit(&self, action: A) {
-        unimplemented!()
-    }
-}
-
 
 /// Trait representing a widget before layout.
 ///
@@ -86,7 +59,7 @@ impl<A> ActionSink<A> for ActionCollector<A> {
 /// long, making the usage impractical.
 ///
 /// See also [Inside Flutter - Building widgets on demand](https://flutter.dev/docs/resources/inside-flutter#building-widgets-on-demand).
-pub trait Widget<A> {
+pub trait Widget {
     /// Returns the key of the widget, used to match the widget to the node tree.
     fn key(&self) -> Option<u64> {
         None
@@ -101,7 +74,7 @@ pub trait Widget<A> {
     /// Performs layout, consuming the widget.
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<dyn Visual>>,
         constraints: &BoxConstraints,
         env: Environment,
@@ -109,9 +82,9 @@ pub trait Widget<A> {
 }
 
 /// A widget wrapped in a box, that produce a visual wrapped in a box as well.
-pub type BoxedWidget<A> = Box<dyn Widget<A>>;
+pub type BoxedWidget = Box<dyn Widget>;
 
-impl<A> Widget<A> for Box<dyn Widget<A>> {
+impl Widget for Box<dyn Widget> {
     fn key(&self) -> Option<u64> {
         self.as_ref().key()
     }
@@ -122,28 +95,19 @@ impl<A> Widget<A> for Box<dyn Widget<A>> {
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<dyn Visual>>,
         constraints: &BoxConstraints,
-        env: &Environment,
+        env: Environment,
     ) -> (Box<dyn Visual>, Measurements) {
-        (*self).layout(context, previous_visual, constraints, theme)
+        (*self).layout(context, previous_visual, constraints, env)
     }
 }
 
 /// Extension methods for [`Widget`].
-pub trait WidgetExt<A: 'static>: Widget<A> {
-    /// TODO
-    fn map<B, F>(self, f: F) -> Map<A, Self, F>
-    where
-        Self: Sized,
-        F: Fn(A) -> B,
-    {
-        Map::new(self, f)
-    }
-
+pub trait WidgetExt: Widget {
     /// Turns this widget into a type-erased boxed representation.
-    fn boxed<'a>(self) -> Box<dyn Widget<A> + 'a>
+    fn boxed<'a>(self) -> Box<dyn Widget + 'a>
     where
         Self: Sized + 'a,
     {
@@ -151,19 +115,21 @@ pub trait WidgetExt<A: 'static>: Widget<A> {
     }
 }
 
-impl<A: 'static, W: Widget<A>> WidgetExt<A> for W {}
+impl<W: Widget> WidgetExt for W {}
 
-pub trait TypedWidget<A: 'static> {
+pub trait TypedWidget {
     type Visual: Visual;
 
-    fn key(&self) -> Option<u64> { None }
+    fn key(&self) -> Option<u64> {
+        None
+    }
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<Self::Visual>>,
         constraints: &BoxConstraints,
-        env: &Environment,
+        env: Environment,
     ) -> (Box<Self::Visual>, Measurements);
 }
 
@@ -176,31 +142,28 @@ pub trait TypedWidget<A: 'static> {
 //          (e.g. widgets that don't emit actions)
 // - remove the `A` trait param and design another mechanism to emit actions
 
-impl<A: 'static, T> Widget<A> for T
-where
-    T: TypedWidget<A>,
-{
+impl<T: TypedWidget> Widget for T {
     fn key(&self) -> Option<u64> {
         self.key()
     }
 
     fn visual_type_id(&self) -> TypeId {
-        TypeId::of::<Self::Visual>()
+        TypeId::of::<T::Visual>()
     }
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<dyn Visual>>,
         constraints: &BoxConstraints,
-        env: &Environment,
+        env: Environment,
     ) -> (Box<dyn Visual>, Measurements) {
         let (visual, measurements) = TypedWidget::layout(
             self,
             context,
-            previous_visual.map(|v| v.downcast().expect("unexpected visual type")),
+            previous_visual.map(|v| v.downcast().ok().expect("unexpected visual type")),
             constraints,
-            theme,
+            env,
         );
         (visual, measurements)
     }

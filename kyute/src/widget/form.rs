@@ -1,28 +1,29 @@
-use crate::event::Event;
 use crate::widget::align::Align;
 use crate::widget::constrained::ConstrainedBox;
-use crate::widget::{Axis, Baseline, Flex, Text};
-use crate::{Alignment, Bounds, BoxConstraints, BoxedWidget, Measurements, Point, Visual, Widget, WidgetExt, LayoutCtx, TypedWidget, Environment};
-use generational_indextree::NodeId;
-use kyute_shell::drawing::{Color, RectExt};
-use std::any::Any;
 use crate::widget::flex::FlexVisual;
+use crate::widget::{Axis, Baseline, Flex, Text};
+use crate::{
+    Alignment, Bounds, BoxConstraints, BoxedWidget, Environment, LayoutCtx, Measurements, Point,
+    TypedWidget, Visual, Widget, WidgetExt,
+};
+use generational_indextree::NodeId;
+use std::any::Any;
 
-pub struct Field<A> {
+pub struct Field {
     label: String,
-    widget: BoxedWidget<A>,
+    widget: BoxedWidget,
 }
 
-pub struct Form<A> {
-    fields: Vec<Field<A>>,
+pub struct Form {
+    fields: Vec<Field>,
 }
 
-impl<A: 'static> Form<A> {
-    pub fn new() -> Form<A> {
+impl Form {
+    pub fn new() -> Form {
         Form { fields: Vec::new() }
     }
 
-    pub fn field(mut self, label: impl Into<String>, widget: impl Widget<A> + 'static) -> Form<A> {
+    pub fn field(mut self, label: impl Into<String>, widget: impl Widget + 'static) -> Form {
         self.fields.push(Field {
             label: label.into(),
             widget: widget.boxed(),
@@ -31,19 +32,17 @@ impl<A: 'static> Form<A> {
     }
 }
 
-impl<A: 'static> TypedWidget<A> for Form<A>
-{
+impl TypedWidget for Form {
     type Visual = FlexVisual;
 
     /// Performs layout, consuming the widget.
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<FlexVisual>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<FlexVisual>, Measurements)
-    {
+    ) -> (Box<FlexVisual>, Measurements) {
         let mut vbox = Flex::new(Axis::Vertical);
         for f in self.fields.into_iter() {
             vbox = vbox.push(
@@ -58,6 +57,6 @@ impl<A: 'static> TypedWidget<A> for Form<A>
                     .push(Baseline::new(20.0, f.widget)),
             );
         }
-        vbox.layout(context, previous_visual, constraints, env)
+        TypedWidget::layout(vbox, context, previous_visual, constraints, env)
     }
 }

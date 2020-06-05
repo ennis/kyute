@@ -2,13 +2,16 @@
 //!
 //! Provides the `run_application` function that opens the main window and translates the incoming
 //! events from winit into the events expected by a kyute [`NodeTree`](crate::node::NodeTree).
-use crate::event::{Event, InputEvent, KeyboardEvent, PointerButton, PointerButtonEvent, PointerButtons, PointerEvent, WheelDeltaMode, WheelEvent, PointerState, InputState};
+use crate::event::{
+    Event, InputEvent, InputState, KeyboardEvent, PointerButton, PointerButtonEvent,
+    PointerButtons, PointerEvent, PointerState, WheelDeltaMode, WheelEvent,
+};
 use crate::layout::Size;
 use crate::node::{NodeTree, RepaintRequest};
-use crate::widget::{ActionCollector, ActionSink};
-use crate::{Bounds, BoxConstraints, BoxedWidget, Measurements, Point, Visual, Widget, Environment};
+use crate::{
+    Bounds, BoxConstraints, BoxedWidget, Environment, Measurements, Point, Visual, Widget,
+};
 use anyhow::Result;
-use std::time::Duration;
 use kyute_shell::drawing::Color;
 use kyute_shell::platform::Platform;
 use kyute_shell::window::{PlatformWindow, WindowDrawContext};
@@ -18,6 +21,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
 use std::rc::{Rc, Weak};
+use std::time::Duration;
 use std::time::Instant;
 use winit::event::WindowEvent;
 use winit::event_loop::{ControlFlow, EventLoopWindowTarget};
@@ -28,11 +32,12 @@ pub trait Application {
     /// The type of actions emitted by the view and handled by the application.
     type Action: 'static;
 
-    /// Handles the specified action emitted by the view.
-    fn update(&mut self, actions: &[Self::Action]);
+    /// Update state
+    /// TODO rethink
+    fn update(&mut self);
 
     /// Returns the view (widget tree) to display to the user.
-    fn view(&mut self) -> BoxedWidget<Self::Action>;
+    fn view(&mut self) -> BoxedWidget;
 
     // Called whenever an OpenGL viewport needs rendering.
     // Used with `OpenGlViewportWidget`.
@@ -290,13 +295,7 @@ impl Window {
     }
 
     /// Updates the current visual tree for this stage.
-    fn relayout<A>(
-        &mut self,
-        window_ctx: &mut WindowCtx,
-        action_sink: Rc<dyn ActionSink<A>>,
-        env: Environment,
-        widget: BoxedWidget<A>,
-    ) {
+    fn relayout(&mut self, window_ctx: &mut WindowCtx, env: Environment, widget: BoxedWidget) {
         // get window logical size
         let size: (f64, f64) = self
             .window
@@ -307,14 +306,8 @@ impl Window {
         let size: Size = size.into();
         dbg!(size);
         // perform layout, update the visual node
-        self.tree.layout(
-            widget,
-            size,
-            &BoxConstraints::loose(size),
-            env,
-            window_ctx,
-            action_sink,
-        );
+        self.tree
+            .layout(widget, size, &BoxConstraints::loose(size), env, window_ctx);
         // request a redraw of this window
         self.window.window().request_redraw()
     }
@@ -350,12 +343,10 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
     let mut open_windows = HashMap::new();
     open_windows.insert(main_window.borrow().id(), Rc::downgrade(&main_window));
 
-    let mut collector = Rc::new(ActionCollector::<A::Action>::new());
-
     // perform the initial layout
     main_window
         .borrow_mut()
-        .relayout(&mut win_ctx, collector.clone(), Environment::new(), app.view());
+        .relayout(&mut win_ctx, Environment::new(), app.view());
 
     event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -386,12 +377,9 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
 
                     // the root of the widget tree is the main window, update it:
                     // this will also send a redraw request for all affected windows.
-                    main_window.borrow_mut().relayout(
-                        &mut win_ctx,
-                        collector.clone(),
-                        Environment::new(),
-                        widget,
-                    );
+                    main_window
+                        .borrow_mut()
+                        .relayout(&mut win_ctx, Environment::new(), widget);
                 }
             }
 

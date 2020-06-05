@@ -1,8 +1,7 @@
 use crate::layout::BoxConstraints;
-use crate::{Widget, LayoutCtx, Visual, Environment, Measurements};
-use generational_indextree::NodeId;
-use std::hash::Hash;
+use crate::{Environment, LayoutCtx, Measurements, Visual, Widget};
 use std::any::TypeId;
+use std::hash::Hash;
 
 /// Identifies a widget.
 pub struct Id<W> {
@@ -15,7 +14,7 @@ impl<W> Id<W> {
     }
 }
 
-impl<A: 'static, W: Widget<A>> Widget<A> for Id<W> {
+impl<W: Widget> Widget for Id<W> {
     fn key(&self) -> Option<u64> {
         self.inner.key()
     }
@@ -26,12 +25,13 @@ impl<A: 'static, W: Widget<A>> Widget<A> for Id<W> {
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<dyn Visual>>,
         constraints: &BoxConstraints,
         env: Environment,
     ) -> (Box<dyn Visual>, Measurements) {
         // TODO ID?
-        self.inner.layout(context, previous_visual, constraints, env)
+        self.inner
+            .layout(context, previous_visual, constraints, env)
     }
 }

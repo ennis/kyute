@@ -2,7 +2,7 @@
 
 use crate::application::WindowCtx;
 use crate::node::NodeArena;
-use crate::widget::{ActionSink, Baseline};
+use crate::widget::Baseline;
 use bitflags::_core::ops::RangeBounds;
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
@@ -193,8 +193,7 @@ impl Alignment {
 
 /// Aligns a child box into a parent box. Returns the offset of the child into the parent,
 /// and updates the baseline of the parent.
-pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measurements) -> Offset
-{
+pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measurements) -> Offset {
     let parent_pos = Point::new(
         0.5 * parent.size.width * (1.0 + alignment.x),
         0.5 * parent.size.height * (1.0 + alignment.y),

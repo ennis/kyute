@@ -1,17 +1,18 @@
 //! Contains event propagation logic for [`NodeTrees`](crate::node::NodeTree).
 use crate::application::WindowCtx;
-use crate::event::{Event, MoveFocusDirection, PointerButtonEvent, PointerButtons, PointerEvent, InputState};
+use crate::event::{
+    Event, InputState, MoveFocusDirection, PointerButtonEvent, PointerButtons, PointerEvent,
+};
 use crate::layout::Bounds;
 use crate::layout::Point;
 use crate::node::NodeTree;
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
 use kyute_shell::window::PlatformWindow;
+use log::trace;
 use std::collections::HashMap;
 use winit::event::DeviceId;
 use winit::event::ModifiersState;
-use log::trace;
-
 
 /// Global state related to focus and pointer grab.
 pub(crate) struct FocusState {
@@ -170,14 +171,16 @@ impl NodeTree {
         window_pos: Point,
         origin: Point,
     ) -> Option<NodeId> {
-        let layout = &self.nodes[id].get().layout;
+        let node_data = &self.arena[id].get();
+        let offset = node_data.offset;
+        let measurements = node_data.measurements;
         // bounds in window coordinates
-        let bounds = Bounds::new(origin + layout.offset, layout.size);
+        let bounds = Bounds::new(origin + offset, measurements.size);
 
         if bounds.contains(window_pos) {
             // TODO more precise hit test
             // recurse on children
-            let mut child_id = self.nodes[id].first_child();
+            let mut child_id = self.arena[id].first_child();
             while let Some(id) = child_id {
                 if let Some(target_id) =
                     self.find_pointer_event_target(id, window_pos, bounds.origin)
@@ -186,7 +189,7 @@ impl NodeTree {
                     return Some(target_id);
                 }
                 // no hit, continue
-                child_id = self.nodes[id].next_sibling();
+                child_id = self.arena[id].next_sibling();
             }
             Some(id)
         } else {
@@ -250,7 +253,7 @@ impl NodeTree {
 
     /// Returns a copy of the event with all local coordinates re-calculated relative to the specified target node.
     pub(crate) fn build_local_event(&self, event: &Event, target: NodeId) -> Event {
-        let node_window_pos = self.nodes[target].get().window_pos.get();
+        let node_window_pos = self.arena[target].get().window_pos.get();
         let mut event = *event;
         match event {
             Event::PointerUp(PointerButtonEvent {
@@ -284,7 +287,7 @@ impl NodeTree {
         while let Some(id) = next_id {
             let local_event = self.build_local_event(event, id);
             // deliver event to visual
-            let node = &mut self.nodes[id];
+            let node = &mut self.arena[id];
 
             let mut ctx = EventCtx {
                 window_ctx,
@@ -292,13 +295,13 @@ impl NodeTree {
                 inputs,
                 focus: &mut self.focus,
                 node_id: id,
-                bounds: Bounds::new(Point::origin(), node.get().layout.size),
+                bounds: Bounds::new(Point::origin(), node.get().measurements.size),
                 focus_change: FocusChange::Keep,
                 repaint: RepaintRequest::None,
                 pointer_capture: false,
                 handled: false,
             };
-            node.get_mut().visual.event(&mut ctx, &local_event);
+            node.get_mut().visual.as_mut().expect("node has no visual").event(&mut ctx, &local_event);
 
             *repaint = (*repaint).max(ctx.repaint);
             let focus_change = ctx.focus_change;
@@ -368,7 +371,7 @@ impl NodeTree {
                 break;
             }
 
-            next_id = self.nodes[id].parent();
+            next_id = self.arena[id].parent();
         }
 
         handled_by

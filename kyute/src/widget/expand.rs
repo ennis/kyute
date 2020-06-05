@@ -1,15 +1,11 @@
 use crate::layout::BoxConstraints;
-use generational_indextree::NodeId;
-use crate::{Widget, LayoutCtx, Visual, Measurements, Environment};
+use crate::{Environment, LayoutCtx, Measurements, Visual, Widget};
 use std::any::TypeId;
 
 /// A widget that forces its contents to fill the available layout space.
 pub struct Expand<W>(pub W);
 
-impl<A: 'static, W> Widget<A> for Expand<W>
-where
-    W: Widget<A>,
-{
+impl<W: Widget> Widget for Expand<W> {
     fn key(&self) -> Option<u64> {
         self.0.key()
     }
@@ -20,12 +16,11 @@ where
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<dyn Visual>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<dyn Visual>, Measurements)
-    {
+    ) -> (Box<dyn Visual>, Measurements) {
         self.0.layout(
             context,
             previous_visual,

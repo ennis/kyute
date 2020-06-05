@@ -1,7 +1,7 @@
 use kyute::application::{run_application, Application};
 use kyute::widget::form::Form;
 use kyute::widget::slider::Slider;
-use kyute::widget::textedit::{TextEdit, TextEditBase};
+use kyute::widget::textedit::TextEdit;
 use kyute::{BoxedWidget, WidgetExt};
 
 struct SimpleApplication;
@@ -9,11 +9,11 @@ struct SimpleApplication;
 impl Application for SimpleApplication {
     type Action = ();
 
-    fn update(&mut self, _actions: &[()]) {
+    fn update(&mut self) {
         unimplemented!()
     }
 
-    fn view(&mut self) -> BoxedWidget<()> {
+    fn view(&mut self) -> BoxedWidget {
         use kyute::widget::*;
         Flex::new(Axis::Vertical)
             .push(

@@ -1,12 +1,12 @@
-use std::any::{TypeId, Any};
-use kyute_shell::drawing::Color;
 use crate::layout::SideOffsets;
 use crate::BoxedWidget;
-use std::rc::Rc;
-use std::collections::HashMap;
-use std::marker::PhantomData;
+use kyute_shell::drawing::Color;
+use std::any::{Any, TypeId};
 use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::fmt;
+use std::marker::PhantomData;
+use std::rc::Rc;
 
 /// A type that identifies a named value in an [`Environment`], of a particular type `T`.
 ///
@@ -17,7 +17,7 @@ use std::fmt;
 pub trait Key<'a> {
     type Value: EnvValue<'a>;
     const NAME: &'static str;
-    fn default() -> <Self::Value as EnvValue<'a>>::Borrowed;
+    fn default() -> Self::Value;
 }
 
 #[macro_export]
@@ -32,7 +32,7 @@ macro_rules! impl_keys {
             impl<'a> Key<'a> for $name {
                 const NAME: &'static str = stringify!($name);
                 type Value = $valty;
-                fn default() -> <Self::Value as $crate::env::EnvValue<'a>>::Borrowed {
+                fn default() -> $valty {
                     $default
                 }
             }
@@ -42,57 +42,74 @@ macro_rules! impl_keys {
 
 
 /// Trait implemented by values that can be stored in an environment.
-///
-/// This trait is implemented by default for all `T: Any + Sized` with `Sized = T`,
-/// but you might want to implement it also for some unsized types or trait object types
-/// (`dyn Trait`), by specifying a wrapper type for storage (typically `Box<T>`).
-pub trait EnvValue<'a>: Any {
-    /// The actual, sized type of the value stored in Env.
-    type Borrowed;
-    fn to_borrowed(&'a self) -> Self::Borrowed;
+pub trait EnvValue<'a>: Sized {
+    fn into_storage(self) -> EnvValueStorage;
+    fn try_from_storage(storage: &'a EnvValueStorage) -> Option<Self>;
 }
 
-// all copy types are copied, not borrowed
-// FIXME this does not work:
-// error[E0119]: conflicting implementations of trait `env::EnvValue<'_>` for type `std::string::String`
-// because "upstream crates may add a new impl of trait `std::marker::Copy` for type `std::string::String` in future versions" (lol)
-// -> So:
-//      - we need to impl EnvValue manually for all types that we want to put in env
-//      - in turn, users of the library won't be able to implement this trait for foreign types. PERFECT.
-// TODO:
-// - evaluate what kind of stuff we actually want to put in the environment
-// - consider removing static key default values, replace by a function that does the initialization
-// -
-impl<'a, T: Copy> EnvValue<'a> for T {
-    type Borrowed = T;
-    fn to_borrowed(&'a self) -> T { *self }
+macro_rules! impl_env_value_builtin {
+    ($t:ty; $variant:ident) => {
+        impl<'a> EnvValue<'a> for $t {
+            fn into_storage(self) -> EnvValueStorage {
+                EnvValueStorage::$variant(self)
+            }
+            fn try_from_storage(storage: &'a EnvValueStorage) -> Option<Self> {
+                match storage {
+                    EnvValueStorage::$variant(x) => Some(*x),
+                    _ => None
+                }
+            }
+        }
+    };
 }
 
-// strings are stored as String, but borrowed
-impl<'a> EnvValue<'a> for String {
-    type Borrowed = &'a str;
-    fn to_borrowed(&'a self) -> &'a str {
-        &*self
+impl_env_value_builtin!(f64; F64);
+impl_env_value_builtin!(Color; Color);
+impl_env_value_builtin!(SideOffsets; SideOffsets);
+
+/// String slices in environment.
+impl<'a> EnvValue<'a> for &'a str {
+    fn into_storage(self) -> EnvValueStorage {
+        EnvValueStorage::String(self.to_string())
+    }
+
+    fn try_from_storage(storage: &'a EnvValueStorage) -> Option<Self> {
+        match storage {
+            EnvValueStorage::String(s) => Some(s.as_str()),
+            _ => None
+        }
     }
 }
+
 
 #[derive(Clone)]
 pub struct Environment(Rc<EnvImpl>);
 
+pub enum EnvValueStorage {
+    F64(f64),
+    Color(Color),
+    SideOffsets(SideOffsets),
+    String(String),
+    Other(Box<dyn Any>)
+}
+
 struct EnvImpl {
     parent: Option<Rc<EnvImpl>>,
-    values: HashMap<&'static str, Box<dyn Any>>
+    values: HashMap<&'static str, EnvValueStorage>,
 }
 
 // <'a> Key<'a> => Value: &'a str, Value::Store = String
 
 impl EnvImpl {
-    fn get<'a, K: Key<'a>>(&'a self, key: K) -> <K::Value as EnvValue<'a>>::Borrowed
-    {
-        self.values.get(K::NAME)
-            .map(|v| v.downcast_ref::<K::Value>().expect("unexpected type of environment value").to_borrowed())
-            .or_else(|| self.parent.and_then(|parent| parent.get(key)))
-            .or_else(|| K::default())
+    fn get<'a, K: Key<'a>>(&'a self, key: K) -> K::Value {
+        self.values
+            .get(K::NAME)
+            .map(|v| {
+                K::Value::try_from_storage(v)
+                    .expect("unexpected type of environment value")
+            })
+            .or_else(|| self.parent.as_ref().map(|parent| parent.get(key)))
+            .unwrap_or_else(|| K::default())
     }
 }
 
@@ -101,32 +118,31 @@ impl Environment {
     pub fn new() -> Environment {
         Environment(Rc::new(EnvImpl {
             parent: None,
-            values: HashMap::new()
+            values: HashMap::new(),
         }))
     }
 
     /// Creates a new environment that adds or overrides a given key.
-    pub fn add<'a, K: Key<'a>>(mut self, _key: K, value: K::Value) -> Environment
-    {
+    pub fn add<'a, K: Key<'a>>(mut self, _key: K, value: K::Value) -> Environment {
         match Rc::get_mut(&mut self.0) {
             Some(env) => {
-                env.values.insert(K::NAME, Box::new(value));
+                env.values.insert(K::NAME, value.into_storage());
                 self
             }
             None => {
                 let mut child_env = EnvImpl {
                     // note: the compiler seems smart enough to understand that the borrow of `self.0` is not held here?
                     parent: Some(self.0.clone()),
-                    values: HashMap::new()
+                    values: HashMap::new(),
                 };
-                child_env.values.insert(K::NAME, Box::new(value));
+                child_env.values.insert(K::NAME, value.into_storage());
                 Environment(Rc::new(child_env))
             }
         }
     }
 
     /// Returns the value corresponding to the key.
-    pub fn get<'a, K: Key<'a>>(&'a self, key: K) -> <K::Value as EnvValue<'a>>::Borrowed {
+    pub fn get<'a, K: Key<'a>>(&'a self, key: K) -> K::Value {
         self.0.get(key)
     }
 }

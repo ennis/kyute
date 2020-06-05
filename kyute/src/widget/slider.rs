@@ -1,10 +1,12 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
 use crate::event::Event;
-use crate::renderer::{Colors, LineSegment};
+use crate::renderer::LineSegment;
 use crate::widget::frame::FrameVisual;
-use crate::{Bounds, BoxConstraints, Measurements, Point, Visual, Widget, LayoutCtx, EventCtx, TypedWidget, PaintCtx, Environment, theme};
-use generational_indextree::NodeId;
+use crate::{
+    theme, Bounds, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
+    TypedWidget, Visual, Widget,
+};
 use kyute_shell::drawing::{Rect, Size};
 use num_traits::{Float, PrimInt};
 use std::any::Any;
@@ -95,7 +97,7 @@ fn get_knob_width(track_width: f64, divisions: Option<u32>, min_w: f64) -> f64 {
     ctx.fill_rectangle(knob, &knob_brush);
 }*/
 
-struct SliderVisual {
+pub struct SliderVisual {
     track: SliderTrack,
     min: f64,
     max: f64,
@@ -104,12 +106,16 @@ struct SliderVisual {
 impl Default for SliderVisual {
     fn default() -> Self {
         SliderVisual {
-            track: SliderTrack::new(LineSegment {
-                start: Point::zero(),
-                end: Point::zero()
-            }, None, 0.0),
+            track: SliderTrack::new(
+                LineSegment {
+                    start: Point::zero(),
+                    end: Point::zero(),
+                },
+                None,
+                0.0,
+            ),
             min: 0.0,
-            max: 0.0
+            max: 0.0,
         }
     }
 }
@@ -123,7 +129,7 @@ impl SliderVisual {
 }
 
 impl Visual for SliderVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx) {
+    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
         // draw the frame
     }
 
@@ -150,20 +156,20 @@ pub struct Slider<T> {
     divisions: Option<u32>,
 }
 
-impl<T: Float> TypedWidget<T> for Slider<T>
-{
+impl<T: Float> TypedWidget for Slider<T> {
     type Visual = SliderVisual;
 
-    fn key(&self) -> Option<u64> { None }
+    fn key(&self) -> Option<u64> {
+        None
+    }
 
     fn layout(
         self,
-        context: &mut LayoutCtx<f64>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<SliderVisual>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<SliderVisual>, Measurements)
-    {
+    ) -> (Box<SliderVisual>, Measurements) {
         // last position
         let last_value = previous_visual.map(|v| v.track.value);
 
@@ -179,14 +185,11 @@ impl<T: Float> TypedWidget<T> for Slider<T>
         );
 
         // position the slider track inside the layout
-        let inner_bounds = Bounds::new(Point::origin(), size).inflate(padding.width(), padding.height());
+        let inner_bounds =
+            Bounds::new(Point::origin(), size).inflate(padding.horizontal(), padding.vertical());
 
         // calculate knob width
-        let knob_width = get_knob_width(
-            inner_bounds.size.width,
-            self.divisions,
-            min_knob_width,
-        );
+        let knob_width = get_knob_width(inner_bounds.size.width, self.divisions, min_knob_width);
         // half knob width
         let hkw = 0.5 * knob_width;
         // y-position of the slider track
@@ -195,23 +198,26 @@ impl<T: Float> TypedWidget<T> for Slider<T>
         // center vertically, add some padding on the sides to account for padding and half-knob size
         let slider_track = LineSegment {
             start: Point::new(inner_bounds.min_x() + hkw, y),
-            end: Point::new(inner_bounds.max_x() - hkw, y)
+            end: Point::new(inner_bounds.max_x() - hkw, y),
         };
 
         let visual = SliderVisual {
             track: SliderTrack {
                 value: last_value.unwrap_or_default(),
                 track: slider_track,
-                divisions: self.divisions
+                divisions: self.divisions,
             },
             min: 0.0,
-            max: 0.0
+            max: 0.0,
         };
 
-        (Box::new(visual), Measurements {
-            size,
-            baseline: None
-        })
+        (
+            Box::new(visual),
+            Measurements {
+                size,
+                baseline: None,
+            },
+        )
     }
 }
 

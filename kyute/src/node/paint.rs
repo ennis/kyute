@@ -1,12 +1,12 @@
+use crate::event::InputState;
 use crate::layout::Offset;
+use crate::node::event::FocusState;
 use crate::node::NodeTree;
-use crate::{Bounds, Point, Size, env};
+use crate::{env, Bounds, Point, Size};
 use generational_indextree::NodeId;
 use kyute_shell::drawing::DrawContext;
 use kyute_shell::platform::Platform;
 use std::ops::{Deref, DerefMut};
-use crate::node::event::FocusState;
-use crate::event::InputState;
 
 /// Context passed to [`Visual::paint`].
 pub struct PaintCtx<'a> {
@@ -74,18 +74,18 @@ impl NodeTree {
         &mut self,
         platform: &Platform,
         draw_context: &mut DrawContext,
-        input_state: &InputState
+        input_state: &InputState,
     ) {
         self.paint_node(
             platform,
             draw_context,
             Offset::zero(),
             input_state,
-            self.root
+            self.root,
         )
     }
 
-    /// Draws the node using the specified theme, in the specified context.
+    /// Draws the node in the specified drawing context.
     ///
     /// Effectively, it applies the transform of the node (which, right now, is only an offset relative to the parent),
     /// and calls [`Visual::paint`] on `self.visual`.
@@ -95,13 +95,14 @@ impl NodeTree {
         draw_context: &mut DrawContext,
         offset: Offset,
         input_state: &InputState,
-        node_id: NodeId
+        node_id: NodeId,
     ) {
         let mut node = self.arena[node_id].get_mut();
-        let node_layout = node.layout;
+        let node_offset = node.offset;
+        let node_size = node.measurements.size;
         let window_bounds = Bounds::new(
-            Point::origin() + offset + node_layout.offset,
-            node_layout.size,
+            Point::origin() + offset + node_offset,
+            node_size,
         );
 
         let hover = input_state
@@ -111,7 +112,7 @@ impl NodeTree {
         dbg!(hover);
 
         draw_context.save();
-        draw_context.transform(&node_layout.offset.to_transform());
+        draw_context.transform(&node_offset.to_transform());
 
         {
             let mut ctx = PaintCtx {
@@ -124,20 +125,21 @@ impl NodeTree {
                 hover,
                 focus: self.focus.focus == Some(node_id),
             };
-            node.visual.as_mut().map(|v| v.paint(&mut ctx));
+            let env = &node.env;
+            node.visual.as_mut().map(|v| v.paint(&mut ctx, &env));
         }
 
         // paint children
-        let mut child_id = self.nodes[node_id].first_child();
+        let mut child_id = self.arena[node_id].first_child();
         while let Some(id) = child_id {
             self.paint_node(
                 platform,
                 draw_context,
-                offset + node_layout.offset,
+                offset + node_offset,
                 input_state,
                 id,
             );
-            child_id = self.nodes[id].next_sibling();
+            child_id = self.arena[id].next_sibling();
         }
 
         draw_context.restore();

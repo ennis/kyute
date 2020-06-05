@@ -1,6 +1,5 @@
-use crate::layout::{BoxConstraints, Measurements, Offset, Size, SideOffsets};
-use generational_indextree::NodeId;
-use crate::{TypedWidget, Widget, LayoutBox, LayoutCtx, Environment};
+use crate::layout::{BoxConstraints, Measurements, Offset, SideOffsets, Size};
+use crate::{Environment, LayoutBox, LayoutCtx, TypedWidget, Widget};
 
 /// Padding.
 pub struct Padding<W> {
@@ -14,26 +13,27 @@ impl<W> Padding<W> {
     }
 }
 
-impl<A: 'static, W: Widget<A>> TypedWidget<A> for Padding<W>
-{
+impl<W: Widget> TypedWidget for Padding<W> {
     type Visual = LayoutBox;
 
-    fn key(&self) -> Option<u64> { None }
+    fn key(&self) -> Option<u64> {
+        None
+    }
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<LayoutBox>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<LayoutBox>, Measurements)
-    {
+    ) -> (Box<LayoutBox>, Measurements) {
         let Padding { inner, insets } = self;
         let visual = previous_visual.unwrap_or_default();
 
-        let (child_id, child_measurements) = context.emit_child(inner, &constraints.deflate(&insets), env);
+        let (child_id, child_measurements) =
+            context.emit_child(inner, &constraints.deflate(&insets), env);
         context.set_child_offset(child_id, Offset::new(insets.left, insets.top));
-        
+
         let measurements = Measurements {
             size: Size::new(
                 child_measurements.size.width + insets.left + insets.right,

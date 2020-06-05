@@ -1,5 +1,5 @@
 use crate::layout::BoxConstraints;
-use crate::{Widget, LayoutCtx, Visual, Measurements, Environment};
+use crate::{Environment, LayoutCtx, Measurements, Visual, Widget};
 use generational_indextree::NodeId;
 use std::any::TypeId;
 
@@ -15,10 +15,7 @@ impl<W> ConstrainedBox<W> {
     }
 }
 
-impl<A: 'static, W> Widget<A> for ConstrainedBox<W>
-where
-    W: Widget<A>,
-{
+impl<W: Widget> Widget for ConstrainedBox<W> {
     fn key(&self) -> Option<u64> {
         self.inner.key()
     }
@@ -29,13 +26,13 @@ where
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<dyn Visual>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<dyn Visual>, Measurements)
-    {
+    ) -> (Box<dyn Visual>, Measurements) {
         let constraints = constraints.enforce(&self.constraints);
-        self.inner.layout(context, previous_visual, &constraints, env)
+        self.inner
+            .layout(context, previous_visual, &constraints, env)
     }
 }

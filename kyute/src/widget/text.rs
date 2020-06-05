@@ -1,13 +1,13 @@
 use crate::event::Event;
 use crate::layout::{BoxConstraints, Measurements, Size};
-use crate::{Bounds, Point, Widget, Visual, PaintCtx, EventCtx, TypedWidget, LayoutCtx, Environment, theme};
+use crate::{
+    theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget,
+};
 use generational_indextree::NodeId;
 use kyute_shell::drawing::{Color, DrawTextOptions, IntoBrush};
-use kyute_shell::text::{TextLayout, TextFormatBuilder};
+use kyute_shell::text::{TextFormatBuilder, TextLayout};
 use log::trace;
 use std::any::Any;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub struct TextVisual {
     text: String,
@@ -15,7 +15,7 @@ pub struct TextVisual {
 }
 
 impl Visual for TextVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx) {
+    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
         let text_brush = Color::new(1.0, 1.0, 1.0, 1.0).into_brush(ctx);
         ctx.draw_text_layout(
             Point::origin(),
@@ -42,37 +42,39 @@ pub struct Text {
     text: String,
 }
 
-impl<A: 'static> TypedWidget<A> for Text
-{
+impl TypedWidget for Text {
     type Visual = TextVisual;
 
-    fn key(&self) -> Option<u64> { None }
+    fn key(&self) -> Option<u64> {
+        None
+    }
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         previous_visual: Option<Box<Self::Visual>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<Self::Visual>, Measurements)
-    {
+    ) -> (Box<Self::Visual>, Measurements) {
         let font_name = env.get(theme::FontName);
         let font_size = env.get(theme::FontSize);
 
         // TODO re-creating a TextFormat every time might be inefficient; verify the cost of
         // creating many TextFormats
         let text_format = TextFormatBuilder::new(context.platform())
-                                .size(font_size as f32)
-                                .family(font_name)
-                                .build().expect("failed to create text format");
+            .size(font_size as f32)
+            .family(font_name)
+            .build()
+            .expect("failed to create text format");
 
         // TODO check for changes instead of re-creating from scratch every time
-        let text_layout =  TextLayout::new(
+        let text_layout = TextLayout::new(
             context.platform(),
             &self.text,
             &text_format,
             constraints.biggest(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let text_size = text_layout.metrics().bounds.size;
 
@@ -83,12 +85,12 @@ impl<A: 'static> TypedWidget<A> for Text
 
         let measurements = Measurements {
             size: text_size,
-            baseline
+            baseline,
         };
 
         let visual = TextVisual {
             text: self.text,
-            text_layout
+            text_layout,
         };
 
         (Box::new(visual), measurements)

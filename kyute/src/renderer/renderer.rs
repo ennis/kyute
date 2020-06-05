@@ -1,8 +1,8 @@
 use crate::layout::{Bounds, Offset, Point, Size};
-use crate::renderer::colors::DEFAULT_COLORS;
-use crate::renderer::{ButtonState, Colors, LineSegment, CheckBoxOptions};
+use crate::renderer::{ButtonState, CheckBoxOptions, LineSegment};
 use crate::widget::textedit::Selection;
 use crate::{BoxConstraints, Measurements, PaintCtx};
+use bitflags::_core::any::Any;
 use euclid::default::Rect;
 use kyute_shell::drawing::brush::IntoBrush;
 use kyute_shell::drawing::{Brush, Color, DrawContext, DrawTextOptions, RectExt, SolidColorBrush};
@@ -11,7 +11,6 @@ use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
 use palette::Srgba;
 use std::ops::Range;
 use std::rc::Rc;
-use bitflags::_core::any::Any;
 
 /// Metrics of a button frame renderered by [`Renderer::draw_button`].
 #[derive(Copy, Clone, Debug, PartialEq)]

@@ -1,6 +1,6 @@
 use crate::layout::{Measurements, Offset, Point};
 use crate::visual::Visual;
-use crate::{Bounds, Size, DummyVisual, Environment};
+use crate::{Bounds, DummyVisual, Environment, Size};
 use generational_indextree::NodeId;
 use kyute_shell::drawing::DrawContext;
 use kyute_shell::platform::Platform;
@@ -11,10 +11,11 @@ mod layout;
 mod paint;
 
 pub use self::event::EventCtx;
+use self::event::FocusState;
 pub use self::event::RepaintRequest;
 pub use self::layout::LayoutCtx;
 pub use self::paint::PaintCtx;
-use self::event::FocusState;
+use std::any::TypeId;
 
 /// A node within the visual tree.
 ///
@@ -36,7 +37,6 @@ pub(crate) struct NodeData<V: ?Sized = dyn Visual> {
 }
 
 impl NodeData<dyn Visual> {
-
     pub(crate) fn new(key: Option<u64>, env: Environment) -> NodeData<dyn Visual> {
         NodeData {
             offset: Default::default(),
@@ -44,7 +44,7 @@ impl NodeData<dyn Visual> {
             window_pos: Cell::new(Default::default()),
             key,
             visual: None,
-            env
+            env,
         }
     }
 
@@ -56,11 +56,15 @@ impl NodeData<dyn Visual> {
             window_pos: Cell::new(Default::default()),
             key: None,
             visual: Some(Box::new(DummyVisual::default())),
-            env
+            env,
         }
     }
 
-    /// Downcasts this node to a concrete type.
+    pub(crate) fn visual_type_id(&self) -> Option<TypeId> {
+        self.visual.as_ref().map(|v| v.as_ref().type_id())
+    }
+
+    /*/// Downcasts this node to a concrete type.
     pub(crate) fn downcast_mut<V: Visual>(&mut self) -> Option<&mut NodeData<V>> {
         if self.visual.as_any().is::<V>() {
             // SAFETY: see <dyn Any>::downcast_mut in std
@@ -69,9 +73,8 @@ impl NodeData<dyn Visual> {
         } else {
             None
         }
-    }
+    }*/
 }
-
 
 /// Container for trees of nodes.
 pub(crate) type NodeArena = generational_indextree::Arena<NodeData>;

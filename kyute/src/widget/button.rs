@@ -1,42 +1,39 @@
 use crate::event::Event;
-use crate::layout::{Alignment, align_boxes, SideOffsets};
 use crate::layout::BoxConstraints;
 use crate::layout::Measurements;
 use crate::layout::Offset;
 use crate::layout::Point;
 use crate::layout::Size;
-use crate::renderer::{ButtonState};
+use crate::layout::{align_boxes, Alignment, SideOffsets};
+use crate::renderer::ButtonState;
 use crate::visual::Visual;
 use crate::widget::BoxedWidget;
 use crate::widget::Widget;
 use crate::widget::WidgetExt;
 use crate::widget::{Text, TypedWidget};
-use crate::{Bounds, EventCtx, LayoutCtx, PaintCtx, env, Environment, theme};
-use generational_indextree::NodeId;
-use std::any::{Any, TypeId};
+use crate::{env, theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx};
 use euclid::default::SideOffsets2D;
+use generational_indextree::NodeId;
 use kyute_shell::drawing::{Color, IntoBrush};
+use std::any::{Any, TypeId};
 
 /// Node visual for a button.
-pub struct ButtonVisual<A> {
-    on_click: Option<A>,
+pub struct ButtonVisual {
     bg_color: Color,
     border_color: Color,
 }
 
-impl<A> Default for ButtonVisual<A> {
+impl Default for ButtonVisual {
     fn default() -> Self {
-        ButtonVisual { on_click: None,
+        ButtonVisual {
             bg_color: Default::default(),
-            border_color: Default::default()
+            border_color: Default::default(),
         }
     }
 }
 
-impl<A: 'static> Visual for ButtonVisual<A> {
-    fn paint(&mut self,
-             ctx: &mut PaintCtx)
-    {
+impl Visual for ButtonVisual {
+    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
         let bounds = ctx.bounds();
         let button_state = ButtonState {
             disabled: false,
@@ -83,47 +80,42 @@ impl<A: 'static> Visual for ButtonVisual<A> {
 ///
 /// This widget is influenced by the following style variables:
 /// - [`PADDING`](crate::style::PADDING): padding for the label inside the button.
-pub struct Button<A> {
-    label: BoxedWidget<A>,
-    /// Action to emit on button click.
-    on_click: Option<A>,
+pub struct Button {
+    label: BoxedWidget,
 }
 
-impl<A: 'static> Button<A> {
+impl Button {
     /// Creates a new button with the given text as the label.
-    pub fn new(label: &str) -> Button<A> {
+    pub fn new(label: &str) -> Button {
         Button {
             label: Text::new(label).boxed(),
-            on_click: None,
         }
     }
 }
 
-
 //-----------------------------------------------------
 // Widget implementation
-impl<A: 'static> TypedWidget<A> for Button<A> {
-    type Visual = ButtonVisual<A>;
+impl TypedWidget for Button {
+    type Visual = ButtonVisual;
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
-        previous_visual: Option<Box<ButtonVisual<A>>>,
+        context: &mut LayoutCtx,
+        previous_visual: Option<Box<ButtonVisual>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<ButtonVisual<A>>, Measurements)
-    {
-        let on_click = self.on_click;
+    ) -> (Box<ButtonVisual>, Measurements) {
+        //let on_click = self.on_click;
         let mut visual = previous_visual.unwrap_or_default();
 
         visual.bg_color = env.get(theme::ButtonBackgroundColor);
         visual.border_color = env.get(theme::ButtonBorderColor);
-        visual.on_click = on_click;
+        //visual.on_click = on_click;
         let min_width = env.get(theme::MinButtonWidth);
         let min_height = env.get(theme::MinButtonHeight);
 
         // measure the label inside
-        let padding : SideOffsets = env.get(theme::ButtonLabelPadding);
+        let padding: SideOffsets = env.get(theme::ButtonLabelPadding);
         let label_constraints = constraints.deflate(&padding);
         let (label_id, label_measurements) =
             context.emit_child(self.label, &label_constraints, env);
@@ -131,7 +123,7 @@ impl<A: 'static> TypedWidget<A> for Button<A> {
         // now measure the button itself
         let mut measurements = Measurements {
             size: label_measurements.size + Size::new(padding.horizontal(), padding.vertical()),
-            baseline: None
+            baseline: None,
         };
 
         // apply minimum size

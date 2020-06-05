@@ -165,7 +165,6 @@ impl Event {
     }
 }
 
-
 /// Last known state of a pointer.
 pub struct PointerState {
     pub(crate) buttons: PointerButtons,

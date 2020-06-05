@@ -11,14 +11,14 @@ pub mod layout;
 pub mod node;
 pub mod renderer;
 pub mod state;
+pub mod theme;
 pub mod visual;
 pub mod widget;
-pub mod theme;
 
 // re-exports
 pub use self::widget::BoxedWidget;
-pub use self::widget::Widget;
 pub use self::widget::TypedWidget;
+pub use self::widget::Widget;
 pub use self::widget::WidgetExt;
 
 pub use self::node::EventCtx;

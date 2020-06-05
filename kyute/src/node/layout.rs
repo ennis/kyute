@@ -1,16 +1,16 @@
 //! Layout and reconciliation pass.
+use super::NodeData;
 use crate::application::WindowCtx;
 use crate::layout::Size;
 use crate::layout::{BoxConstraints, Offset};
 use crate::node::{NodeArena, NodeTree};
 use crate::state::NodeKey;
-use crate::widget::{ActionSink, BoxedWidget};
-use crate::{node, Measurements, Point, Widget, env, Environment};
-use generational_indextree::{NodeEdge, NodeId, Node};
+use crate::widget::BoxedWidget;
+use crate::{env, node, Environment, Measurements, Point, Widget};
+use generational_indextree::{Node, NodeEdge, NodeId};
 use kyute_shell::platform::Platform;
 use std::any::TypeId;
 use std::rc::Rc;
-use super::NodeData;
 
 /// A position between nodes in the node tree.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -27,9 +27,9 @@ impl NodeCursor {
         NodeCursor::Child(parent)
     }
 
-    pub fn insert(&mut self, id: NodeId, arena: &mut NodeArena) {
+    /*pub fn insert(&mut self, id: NodeId, arena: &mut NodeArena) {
         match *self {
-            NodeCursor::Root(root) => unimplemented!(),
+            NodeCursor::Before(root) => unimplemented!(),
             NodeCursor::Child(parent) => {
                 if arena[parent].first_child() != Some(id) {
                     parent.prepend(id, arena);
@@ -43,18 +43,15 @@ impl NodeCursor {
                 }
             }
         }
-    }
+    }*/
 
-    /// Remove all
-    pub fn remove_following_siblings(&mut self, arena: &mut NodeArena) {}
 }
 
 /// Context passed to a widget during the layout pass.
 ///
 /// See [`Widget::layout`].
-pub struct LayoutCtx<'a, 'ctx, A> {
+pub struct LayoutCtx<'a, 'ctx> {
     pub(crate) win_ctx: &'a mut WindowCtx<'ctx>,
-    pub(crate) action_sink: Rc<dyn ActionSink<A>>,
     arena: &'a mut NodeArena,
     // Current (parent) node, None if pre-root
     node: Option<NodeId>,
@@ -62,39 +59,10 @@ pub struct LayoutCtx<'a, 'ctx, A> {
     cursor: &'a mut NodeCursor,
 }
 
-struct ActionMapper<B, F> {
-    parent: Rc<dyn ActionSink<B>>,
-    map: F,
-}
-
-impl<A: 'static, B: 'static, F: Fn(A) -> B + 'static> ActionSink<A> for ActionMapper<B, F> {
-    fn emit(&self, action: A) {
-        self.parent.emit((self.map)(action))
-    }
-}
-
-impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
+impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
     /// Returns the global platform object.
     pub fn platform(&self) -> &'ctx Platform {
         self.win_ctx.platform
-    }
-
-    /// Returns a layout context for a child widget that emits events of a different type.
-    ///
-    /// `f` is a mapper function that transforms events of type `B` into events of type `A` expected
-    /// by the parent widget.
-    pub fn map<B: 'static, F: Fn(B) -> A + 'static>(&mut self, f: F) -> LayoutCtx<'_, 'ctx, B> {
-        LayoutCtx {
-            win_ctx: self.win_ctx,
-            action_sink: Rc::new(ActionMapper {
-                parent: self.action_sink.clone(),
-                map: f,
-            }),
-
-            arena: self.arena,
-            node: self.node,
-            cursor: self.cursor,
-        }
     }
 
     /// Emits a child widget.
@@ -102,7 +70,7 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
     /// Returns the ID of the node associated to the widget, and its measurements.
     pub fn emit_child(
         &mut self,
-        widget: impl Widget<A>,
+        widget: impl Widget,
         constraints: &BoxConstraints,
         env: Environment,
     ) -> (NodeId, Measurements) {
@@ -118,7 +86,7 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
             NodeCursor::Child(parent) => parent.children(self.arena).find(|&id| {
                 let node = self.arena.get(id).unwrap();
                 node.get().visual_type_id() == Some(widget_visual_type_id)
-                    && node.get().key() == widget_key
+                    && node.get().key == widget_key
             }),
             NodeCursor::After(sibling) => {
                 sibling.following_siblings(self.arena).skip(1).find(|&id| {
@@ -135,7 +103,7 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
             (id, prev_visual)
         } else {
             // no match, create a new node
-            let id = self.arena.new_node(NodeData::new(widget_key));
+            let id = self.arena.new_node(NodeData::new(widget_key, env.clone()));
             (id, None)
         };
 
@@ -168,7 +136,6 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
         let mut child_cursor = NodeCursor::Child(id);
         let mut child_ctx = LayoutCtx {
             win_ctx: self.win_ctx,
-            action_sink: self.action_sink.clone(),
             arena: self.arena,
             node: Some(id),
             cursor: &mut child_cursor,
@@ -182,7 +149,7 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
         // remove all remaining nodes after the child cursor:
         // they did not match with any widget, so it means that they should be removed from the GUI
         let mut next_to_remove = match child_cursor {
-            NodeCursor::Before(id) => id,
+            NodeCursor::Before(id) => Some(id),
             NodeCursor::Child(id) => self.arena[id].first_child(),
             NodeCursor::After(id) => self.arena[id].next_sibling(),
         };
@@ -205,7 +172,7 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
     pub fn set_child_offset(&mut self, child: NodeId, offset: Offset) {
         assert_eq!(
             self.arena[child].parent(),
-            Some(self.node),
+            self.node,
             "set_child_position must be called on children of the current node"
         );
         self.arena[child].get_mut().offset = offset;
@@ -214,19 +181,17 @@ impl<'a, 'ctx, A: 'static> LayoutCtx<'a, 'ctx, A> {
 
 impl NodeTree {
     /// Runs the layout and update passes on this tree.
-    pub(crate) fn layout<A>(
+    pub(crate) fn layout(
         &mut self,
-        widget: BoxedWidget<A>,
+        widget: BoxedWidget,
         size: Size,
         root_constraints: &BoxConstraints,
         env: Environment,
         win_ctx: &mut WindowCtx,
-        action_sink: Rc<dyn ActionSink<A>>,
     ) {
         let mut cursor = NodeCursor::Before(self.root);
         let mut layout_ctx = LayoutCtx {
             win_ctx,
-            action_sink,
             arena: &mut self.arena,
             // no parent => inserting into the root list
             node: None,
@@ -249,7 +214,7 @@ impl NodeTree {
                 NodeEdge::Start(id) => {
                     stack.push(current_origin);
                     let node = self.arena[id].get();
-                    current_origin += node.layout.offset;
+                    current_origin += node.offset;
                     node.window_pos.set(current_origin);
                 }
                 NodeEdge::End(id) => {

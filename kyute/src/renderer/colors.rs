@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use palette::Srgba;
-
+/*
 pub struct Colors {
     pub text: [f32; 4],
     pub text_disabled: [f32; 4],
@@ -108,3 +108,4 @@ lazy_static! {
         docking_empty_bg: Srgba::new(0.0, 0.0, 0.0, 1.0),
     };
 }
+*/

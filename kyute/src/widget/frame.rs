@@ -1,6 +1,8 @@
 use crate::event::Event;
-use crate::{Bounds, BoxConstraints, BoxedWidget, Measurements, Point, Visual, Widget, TypedWidget, LayoutCtx, PaintCtx, EventCtx, Environment};
-use generational_indextree::NodeId;
+use crate::{
+    Bounds, BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx,
+    Point, TypedWidget, Visual, Widget,
+};
 use kyute_shell::drawing::{Color, IntoBrush, RectExt};
 use std::any::Any;
 
@@ -11,26 +13,23 @@ pub enum WidgetType {
 }
 
 /// A widget that draws a theme-specific frame (a box with borders).
-pub struct Frame<A> {
+pub struct Frame {
     pub border_color: Color,
     pub border_width: f64,
     pub fill_color: Color,
-    pub inner: BoxedWidget<A>,
+    pub inner: BoxedWidget,
 }
 
-impl<A: 'static> TypedWidget<A> for Frame<A> {
+impl TypedWidget for Frame {
     type Visual = FrameVisual;
-
-    //fn key(&self) -> Option<u64> { None }
 
     fn layout(
         self,
-        context: &mut LayoutCtx<A>,
+        context: &mut LayoutCtx,
         _previous_visual: Option<Box<Self::Visual>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<Self::Visual>, Measurements)
-    {
+    ) -> (Box<Self::Visual>, Measurements) {
         let Frame {
             border_color,
             border_width,
@@ -41,7 +40,7 @@ impl<A: 'static> TypedWidget<A> for Frame<A> {
         let visual = Box::new(FrameVisual {
             border_color,
             border_width,
-            fill_color
+            fill_color,
         });
 
         let (child_id, child_measurements) = context.emit_child(inner, constraints, env);
@@ -66,7 +65,7 @@ impl Default for FrameVisual {
 }
 
 impl Visual for FrameVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx) {
+    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
         let rect = ctx.bounds();
         let bg_brush = self.fill_color.into_brush(ctx);
         let border_brush = self.border_color.into_brush(ctx);
