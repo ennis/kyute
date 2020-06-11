@@ -3,9 +3,11 @@
 use crate::application::WindowCtx;
 use crate::node::NodeArena;
 use crate::widget::Baseline;
+use bitflags::_core::fmt::Formatter;
 use bitflags::_core::ops::RangeBounds;
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
+use std::fmt;
 use std::ops::Bound;
 use std::rc::Rc;
 
@@ -42,7 +44,7 @@ impl EdgeInsets {
 }*/
 
 /// Box constraints.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct BoxConstraints {
     pub min: Size,
     pub max: Size,
@@ -169,6 +171,12 @@ impl BoxConstraints {
 
     pub fn max_height(&self) -> f64 {
         self.max.height
+    }
+}
+
+impl fmt::Debug for BoxConstraints {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[{} => {}]", self.min, self.max)
     }
 }
 

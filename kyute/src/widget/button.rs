@@ -11,10 +11,14 @@ use crate::widget::BoxedWidget;
 use crate::widget::Widget;
 use crate::widget::WidgetExt;
 use crate::widget::{Text, TypedWidget};
-use crate::{env, theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx};
+use crate::{env, theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, style};
 use euclid::default::SideOffsets2D;
 use generational_indextree::NodeId;
-use kyute_shell::drawing::{Color, IntoBrush};
+use kyute_shell::drawing::gradient::{
+    ColorInterpolationMode, ExtendMode, GradientStopCollection
+};
+use kyute_shell::drawing::{Color, DrawContext, IntoBrush};
+use palette::{Blend, LinSrgb, LinSrgba, Srgb};
 use std::any::{Any, TypeId};
 
 /// Node visual for a button.
@@ -34,23 +38,7 @@ impl Default for ButtonVisual {
 
 impl Visual for ButtonVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
-        let bounds = ctx.bounds();
-        let button_state = ButtonState {
-            disabled: false,
-            clicked: false,
-            hot: true,
-        };
-
-        // draw the button frame
-        let bg_brush = self.bg_color.into_brush(ctx);
-        let border_brush = self.border_color.into_brush(ctx);
-        ctx.fill_rectangle(bounds, &bg_brush);
-        let stroke_size = 1.0;
-        ctx.draw_rectangle(
-            bounds.inflate(-0.5 * stroke_size, -0.5 * stroke_size),
-            &border_brush,
-            1.0,
-        );
+        ctx.draw_styled_box("button", style::PaletteIndex(0));
     }
 
     fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
@@ -61,8 +49,12 @@ impl Visual for ButtonVisual {
         match event {
             Event::PointerDown(p) => {
                 eprintln!("BUTTON CLICKED");
+                ctx.request_focus();
+                ctx.request_redraw();
                 ctx.set_handled();
             }
+            Event::PointerOver(p) => ctx.request_redraw(),
+            Event::PointerOut(p) => ctx.request_redraw(),
             _ => {}
         }
     }
@@ -108,8 +100,6 @@ impl TypedWidget for Button {
         //let on_click = self.on_click;
         let mut visual = previous_visual.unwrap_or_default();
 
-        visual.bg_color = env.get(theme::ButtonBackgroundColor);
-        visual.border_color = env.get(theme::ButtonBorderColor);
         //visual.on_click = on_click;
         let min_width = env.get(theme::MinButtonWidth);
         let min_height = env.get(theme::MinButtonHeight);
@@ -122,13 +112,19 @@ impl TypedWidget for Button {
 
         // now measure the button itself
         let mut measurements = Measurements {
-            size: label_measurements.size + Size::new(padding.horizontal(), padding.vertical()),
+            size: label_measurements.size,
             baseline: None,
         };
 
+        // add padding on the sides
+        measurements.size += Size::new(padding.horizontal(), padding.vertical());
+
         // apply minimum size
         measurements.size.width = measurements.size.width.max(min_width);
-        measurements.size.height = measurements.size.width.max(min_height);
+        measurements.size.height = measurements.size.height.max(min_height);
+
+        // constrain size
+        measurements.size = constraints.constrain(measurements.size);
 
         // center the label inside the button
         let label_offset = align_boxes(Alignment::CENTER, &mut measurements, label_measurements);

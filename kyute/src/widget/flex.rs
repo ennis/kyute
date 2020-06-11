@@ -128,6 +128,8 @@ impl TypedWidget for Flex {
             };
             context.set_child_offset(*id, offset);
             d += len + spacing;
+            d = d.ceil();
+            trace!("flex pos={}", d);
         }
 
         let size = match axis {

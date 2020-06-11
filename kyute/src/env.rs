@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
+use crate::style::StyleCollection;
 
 /// A type that identifies a named value in an [`Environment`], of a particular type `T`.
 ///
@@ -40,7 +41,6 @@ macro_rules! impl_keys {
     };
 }
 
-
 /// Trait implemented by values that can be stored in an environment.
 pub trait EnvValue<'a>: Sized {
     fn into_storage(self) -> EnvValueStorage;
@@ -56,13 +56,14 @@ macro_rules! impl_env_value_builtin {
             fn try_from_storage(storage: &'a EnvValueStorage) -> Option<Self> {
                 match storage {
                     EnvValueStorage::$variant(x) => Some(*x),
-                    _ => None
+                    _ => None,
                 }
             }
         }
     };
 }
 
+impl_env_value_builtin!(bool; Bool);
 impl_env_value_builtin!(f64; F64);
 impl_env_value_builtin!(Color; Color);
 impl_env_value_builtin!(SideOffsets; SideOffsets);
@@ -76,7 +77,7 @@ impl<'a> EnvValue<'a> for &'a str {
     fn try_from_storage(storage: &'a EnvValueStorage) -> Option<Self> {
         match storage {
             EnvValueStorage::String(s) => Some(s.as_str()),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -86,11 +87,12 @@ impl<'a> EnvValue<'a> for &'a str {
 pub struct Environment(Rc<EnvImpl>);
 
 pub enum EnvValueStorage {
+    Bool(bool),
     F64(f64),
     Color(Color),
     SideOffsets(SideOffsets),
     String(String),
-    Other(Box<dyn Any>)
+    Other(Box<dyn Any>),
 }
 
 struct EnvImpl {
@@ -104,10 +106,7 @@ impl EnvImpl {
     fn get<'a, K: Key<'a>>(&'a self, key: K) -> K::Value {
         self.values
             .get(K::NAME)
-            .map(|v| {
-                K::Value::try_from_storage(v)
-                    .expect("unexpected type of environment value")
-            })
+            .map(|v| K::Value::try_from_storage(v).expect("unexpected type of environment value"))
             .or_else(|| self.parent.as_ref().map(|parent| parent.get(key)))
             .unwrap_or_else(|| K::default())
     }

@@ -27,10 +27,13 @@ impl<W: Widget> TypedWidget for Baseline<W> {
         let visual = previous_visual.unwrap_or_default();
         let (child_id, child_measurements) = context.emit_child(self.inner, constraints, env);
 
-        let y_offset = self.baseline
+        // baselines are not guaranteed to fall on a pixel boundary, round it manually
+        // FIXME should do pixel snapping instead
+        let y_offset = (self.baseline
             - child_measurements
                 .baseline
-                .unwrap_or(child_measurements.size.height);
+                .unwrap_or(child_measurements.size.height))
+        .round();
         context.set_child_offset(child_id, Offset::new(0.0, y_offset));
 
         let width = child_measurements.size.width;

@@ -8,9 +8,7 @@ use crate::event::{
 };
 use crate::layout::Size;
 use crate::node::{NodeTree, RepaintRequest};
-use crate::{
-    Bounds, BoxConstraints, BoxedWidget, Environment, Measurements, Point, Visual, Widget,
-};
+use crate::{Bounds, BoxConstraints, BoxedWidget, Environment, Measurements, Point, Visual, Widget, style};
 use anyhow::Result;
 use kyute_shell::drawing::Color;
 use kyute_shell::platform::Platform;
@@ -26,6 +24,10 @@ use std::time::Instant;
 use winit::event::WindowEvent;
 use winit::event_loop::{ControlFlow, EventLoopWindowTarget};
 use winit::window::{WindowBuilder, WindowId};
+use crate::style::{StyleCollection, Shape, Brush, Border, StateFilter, ColorRef};
+use config::FileFormat;
+use std::fs::File;
+use std::io::Write;
 
 /// Encapsulates the behavior of an application.
 pub trait Application {
@@ -67,11 +69,13 @@ struct Window {
     inputs: InputState,
     // for double-click detection
     last_click: Option<LastClick>,
+    /// Widget styles for the window.
+    style_collection: Rc<StyleCollection>,
 }
 
 impl Window {
     /// Opens a window and registers the window into the event loop.
-    pub fn open(ctx: &mut WindowCtx, builder: WindowBuilder) -> Result<Rc<RefCell<Window>>> {
+    pub fn open(ctx: &mut WindowCtx, builder: WindowBuilder, style_collection: Rc<StyleCollection>) -> Result<Rc<RefCell<Window>>> {
         // create the platform window
         let window = PlatformWindow::new(ctx.event_loop, builder, ctx.platform, true)?;
         let size: (f64, f64) = window.window().inner_size().to_logical::<f64>(1.0).into();
@@ -84,6 +88,7 @@ impl Window {
             tree,
             inputs: InputState::default(),
             last_click: None,
+            style_collection
         };
         let window = Rc::new(RefCell::new(window));
 
@@ -316,12 +321,174 @@ impl Window {
     fn paint(&mut self, platform: &Platform) {
         {
             let mut wdc = WindowDrawContext::new(&mut self.window);
-            wdc.clear(Color::new(0.0, 0.5, 0.8, 1.0));
-            self.tree.paint(platform, &mut wdc, &self.inputs);
+            wdc.clear(Color::new(0.326, 0.326, 0.326, 1.0));
+            self.tree.paint(platform, &mut wdc, &self.style_collection, &self.inputs);
         }
         self.window.present();
     }
 }
+
+
+/// Loads the application style.
+fn load_application_style(cfg: &config::Config) -> Rc<StyleCollection> {
+    let path = cfg.get_str("app_style").expect("no `app_style` file specified in application settings (`Settings.toml`)");
+    // load RON
+    let f = File::open(&path).expect("failed to open the application style");
+    let app_style : StyleCollection = ron::de::from_reader(f).expect("failed to load the application style");
+    Rc::new(app_style)
+}
+
+/// Creates a default application style
+fn write_default_application_style()
+{
+    use style::{Length, Angle, Shape, StyleSet, Brush, GradientType, Style, State, Palette, PaletteIndex, ColorRef, BlendMode, BorderPosition};
+
+    const FRAME_BG_SUNKEN_COLOR: PaletteIndex =  PaletteIndex(0);
+    const FRAME_BG_NORMAL_COLOR: PaletteIndex =  PaletteIndex(1);
+    const FRAME_BG_RAISED_COLOR: PaletteIndex =  PaletteIndex(2);
+    const FRAME_FOCUS_COLOR: PaletteIndex =  PaletteIndex(3);
+    const FRAME_BORDER_COLOR: PaletteIndex =  PaletteIndex(4);
+    const BUTTON_BACKGROUND_TOP_COLOR: PaletteIndex =  PaletteIndex(5);
+    const BUTTON_BACKGROUND_BOTTOM_COLOR: PaletteIndex =  PaletteIndex(6);
+    const BUTTON_BACKGROUND_TOP_COLOR_HOVER: PaletteIndex =  PaletteIndex(7);
+    const BUTTON_BACKGROUND_BOTTOM_COLOR_HOVER: PaletteIndex =  PaletteIndex(8);
+    const BUTTON_BORDER_BOTTOM_COLOR: PaletteIndex =  PaletteIndex(9);
+    const BUTTON_BORDER_TOP_COLOR: PaletteIndex =  PaletteIndex(10);
+    const WIDGET_OUTER_GROOVE_BOTTOM_COLOR: PaletteIndex =  PaletteIndex(11);
+    const WIDGET_OUTER_GROOVE_TOP_COLOR: PaletteIndex =  PaletteIndex(12);
+    const FRAME_BG_SUNKEN_COLOR_HOVER: PaletteIndex =  PaletteIndex(13);
+
+    let palette = Palette {
+        entries: vec![
+            Color::new(0.227, 0.227, 0.227, 1.0), // FRAME_BG_SUNKEN_COLOR
+            Color::new(0.326, 0.326, 0.326, 1.0), // FRAME_BG_NORMAL_COLOR
+            Color::new(0.424, 0.424, 0.424, 1.0), // FRAME_BG_RAISED_COLOR
+            Color::new(0.600, 0.600, 0.900, 1.0), // FRAME_FOCUS_COLOR
+            Color::new(0.130, 0.130, 0.130, 1.0), // FRAME_BORDER_COLOR
+            Color::new(0.450, 0.450, 0.450, 1.0), // BUTTON_BACKGROUND_TOP_COLOR
+            Color::new(0.400, 0.400, 0.400, 1.0), // BUTTON_BACKGROUND_BOTTOM_COLOR
+            Color::new(0.500, 0.500, 0.500, 1.0), // BUTTON_BACKGROUND_TOP_COLOR_HOVER
+            Color::new(0.450, 0.450, 0.450, 1.0), // BUTTON_BACKGROUND_BOTTOM_COLOR_HOVER
+            Color::new(0.100, 0.100, 0.100, 1.0), // BUTTON_BORDER_BOTTOM_COLOR
+            Color::new(0.180, 0.180, 0.180, 1.0), // BUTTON_BORDER_TOP_COLOR
+            Color::new(1.000, 1.000, 1.000, 0.3), // WIDGET_OUTER_GROOVE_BOTTOM_COLOR
+            Color::new(1.000, 1.000, 1.000, 0.0), // WIDGET_OUTER_GROOVE_TOP_COLOR
+            Color::new(0.180, 0.180, 0.180, 1.0), // FRAME_BG_SUNKEN_COLOR_HOVER
+        ]
+    };
+
+    let button_style_set = style::StyleSet {
+        shape: Shape::RoundedRect(style::Length::Dip(2.0)),
+        styles: vec![
+            style::Style {
+                fill: Some(Brush::Gradient {
+                    angle: Angle::degrees(90.0),
+                    ty: GradientType::Linear,
+                    stops: vec![
+                        (0.0, ColorRef::Palette(BUTTON_BACKGROUND_BOTTOM_COLOR)),
+                        (1.0, ColorRef::Palette(BUTTON_BACKGROUND_TOP_COLOR)),
+                    ],
+                    reverse: false
+                }),
+                borders: vec![Border {
+                    opacity: 1.0,
+                    blend_mode: BlendMode::Normal,
+                    position: BorderPosition::Inside(Length::zero()),
+                    width: Length::Dip(1.0),
+                    brush: Brush::SolidColor(ColorRef::Palette(BUTTON_BORDER_BOTTOM_COLOR)),
+                }, Border {
+                    opacity: 1.0,
+                    blend_mode: BlendMode::Normal,
+                    position: BorderPosition::Outside(Length::zero()),
+                    width: Length::Dip(1.0),
+                    brush: Brush::Gradient {
+                        angle: Angle::degrees(90.0),
+                        ty: GradientType::Linear,
+                        stops: vec![
+                            (0.0, ColorRef::Palette(WIDGET_OUTER_GROOVE_BOTTOM_COLOR)),
+                            (0.3, ColorRef::Palette(WIDGET_OUTER_GROOVE_TOP_COLOR)),
+                        ],
+                        reverse: false
+                    },
+                }],
+                .. Style::default()
+            },
+
+            style::Style {
+                state_filter: StateFilter {
+                    value: State::HOVER,
+                    mask: State::HOVER,
+                },
+                fill: Some(Brush::Gradient {
+                    angle: Angle::degrees(90.0),
+                    ty: GradientType::Linear,
+                    stops: vec![
+                        (0.0, ColorRef::Palette(BUTTON_BACKGROUND_BOTTOM_COLOR_HOVER)),
+                        (1.0, ColorRef::Palette(BUTTON_BACKGROUND_TOP_COLOR_HOVER)),
+                    ],
+                    reverse: false
+                }),
+                .. Style::default()
+            }
+        ]
+    };
+
+    let text_box_style_set = style::StyleSet {
+        shape: Shape::Rect,
+        styles: vec![
+            style::Style {
+                fill: Some(Brush::SolidColor(ColorRef::Palette(FRAME_BG_SUNKEN_COLOR))),
+                borders: vec![Border {
+                    opacity: 1.0,
+                    blend_mode: BlendMode::Normal,
+                    position: BorderPosition::Inside(Length::zero()),
+                    width: Length::Dip(1.0),
+                    brush: Brush::SolidColor(ColorRef::Palette(BUTTON_BORDER_BOTTOM_COLOR)),
+                }, Border {
+                    opacity: 1.0,
+                    blend_mode: BlendMode::Normal,
+                    position: BorderPosition::Outside(Length::zero()),
+                    width: Length::Dip(1.0),
+                    brush: Brush::Gradient {
+                        angle: Angle::degrees(90.0),
+                        ty: GradientType::Linear,
+                        stops: vec![
+                            (0.0, ColorRef::Palette(WIDGET_OUTER_GROOVE_BOTTOM_COLOR)),
+                            (0.3, ColorRef::Palette(WIDGET_OUTER_GROOVE_TOP_COLOR)),
+                        ],
+                        reverse: false
+                    },
+                }],
+                .. Style::default()
+            },
+
+            style::Style {
+                state_filter: StateFilter {
+                    value: State::HOVER,
+                    mask: State::HOVER,
+                },
+                fill: Some(Brush::SolidColor(ColorRef::Palette(FRAME_BG_SUNKEN_COLOR))),
+                .. Style::default()
+            }
+        ]
+    };
+
+    let mut style_sets = HashMap::new();
+    style_sets.insert("button".to_string(), button_style_set);
+    style_sets.insert("text_box".to_string(), text_box_style_set);
+
+    let style_collection = StyleCollection {
+        style_sets,
+        palettes: vec![palette]
+    };
+
+    // serialize
+    let s = ron::ser::to_string_pretty(&style_collection,ron::ser::PrettyConfig::new()).expect("failed to export string");
+    let mut file = File::create("default_style.ron").expect("could not open default_style.ron");
+    file.write_all(s.as_bytes()).expect("could not write default style");
+    log::info!("default style written to default_style.ron");
+}
+
 
 /// Runs the specified application.
 pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
@@ -330,13 +497,19 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
     // platform-specific, window-independent states
     let platform = unsafe { Platform::init() };
 
+    // load application settings
+    let mut cfg = config::Config::new();
+    cfg.merge(config::File::with_name("Settings").format(config::FileFormat::Toml));
+    write_default_application_style();
+    let app_style = load_application_style(&cfg);
+
     // create a window to render the main view.
     let mut win_ctx = WindowCtx {
         platform: &platform,
         event_loop: &event_loop,
         new_windows: Vec::new(),
     };
-    let mut main_window = Window::open(&mut win_ctx, WindowBuilder::new().with_title("Default"))
+    let mut main_window = Window::open(&mut win_ctx, WindowBuilder::new().with_title("Default"), app_style)
         .expect("failed to create main window");
 
     // ID -> Weak<Window>

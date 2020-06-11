@@ -14,6 +14,7 @@ pub mod state;
 pub mod theme;
 pub mod visual;
 pub mod widget;
+pub mod style;
 
 // re-exports
 pub use self::widget::BoxedWidget;

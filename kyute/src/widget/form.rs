@@ -1,6 +1,8 @@
+use crate::layout::SideOffsets;
 use crate::widget::align::Align;
 use crate::widget::constrained::ConstrainedBox;
 use crate::widget::flex::FlexVisual;
+use crate::widget::padding::Padding;
 use crate::widget::{Axis, Baseline, Flex, Text};
 use crate::{
     Alignment, Bounds, BoxConstraints, BoxedWidget, Environment, LayoutCtx, Measurements, Point,
@@ -54,7 +56,10 @@ impl TypedWidget for Form {
                             Align::new(Alignment::TOP_RIGHT, Text::new(f.label)),
                         ),
                     ))
-                    .push(Baseline::new(20.0, f.widget)),
+                    .push(Padding::new(
+                        SideOffsets::new(0.0, 0.0, 0.0, 4.0),
+                        Baseline::new(20.0, f.widget),
+                    )),
             );
         }
         TypedWidget::layout(vbox, context, previous_visual, constraints, env)

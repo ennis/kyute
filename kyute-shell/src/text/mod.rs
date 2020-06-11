@@ -16,7 +16,7 @@ pub trait DrawingEffect {
     fn to_iunknown(&self) -> *mut IUnknown;
 }
 
-impl<T: Brush> DrawingEffect for T {
+impl DrawingEffect for Brush {
     fn to_iunknown(&self) -> *mut IUnknown {
         self.as_raw_brush() as *mut IUnknown
     }

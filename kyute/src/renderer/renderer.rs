@@ -5,7 +5,7 @@ use crate::{BoxConstraints, Measurements, PaintCtx};
 use bitflags::_core::any::Any;
 use euclid::default::Rect;
 use kyute_shell::drawing::brush::IntoBrush;
-use kyute_shell::drawing::{Brush, Color, DrawContext, DrawTextOptions, RectExt, SolidColorBrush};
+use kyute_shell::drawing::{Brush, Color, DrawContext, DrawTextOptions, RectExt};
 use kyute_shell::platform::Platform;
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
 use palette::Srgba;
@@ -41,7 +41,7 @@ pub struct SliderStyle {
 /// GUI renderer.
 ///
 /// The [`Renderer`] and the [`Painter`] types are in charge of rendering the primitive elements
-/// of a user interface, such as labels, button frames, panel backgrounds, slider knows,
+/// of a user interface, such as labels, button frames, panel backgrounds, slider knobs,
 /// scroll bar handles, etc.
 ///
 /// Note that it is the renderer that decides the appearance of those primitive elements:
@@ -223,10 +223,10 @@ impl Theme for DefaultTheme {
         text_layout: &mut TextLayout,
         selection: Selection,
     ) {
-        let text_brush = SolidColorBrush::new(ctx, self.data.colors.text.into());
-        let caret_brush = SolidColorBrush::new(ctx, self.data.colors.text.into());
-        let selected_bg_brush = SolidColorBrush::new(ctx, self.data.colors.text_selected_bg.into());
-        let selected_text_brush = SolidColorBrush::new(ctx, self.data.colors.text.into());
+        let text_brush = Brush::new_solid_color(ctx, self.data.colors.text.into());
+        let caret_brush = Brush::new_solid_color(ctx, self.data.colors.text.into());
+        let selected_bg_brush = Brush::new_solid_color(ctx, self.data.colors.text_selected_bg.into());
+        let selected_text_brush = Brush::new_solid_color(ctx, self.data.colors.text.into());
 
         ctx.save();
         ctx.transform(&bounds.origin.to_vector().to_transform());

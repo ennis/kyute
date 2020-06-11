@@ -298,7 +298,7 @@ impl DrawContext {
         &mut self,
         origin: Point,
         text_layout: &TextLayout,
-        default_fill_brush: &impl Brush,
+        default_fill_brush: &Brush,
         text_options: DrawTextOptions,
     ) {
         unsafe {
@@ -311,7 +311,7 @@ impl DrawContext {
         }
     }
 
-    pub fn draw_rectangle(&mut self, rect: Rect, brush: &impl Brush, width: f64) {
+    pub fn draw_rectangle(&mut self, rect: Rect, brush: &Brush, width: f64) {
         unsafe {
             self.ctx.DrawRectangle(
                 &mk_rect_f(rect),
@@ -322,10 +322,52 @@ impl DrawContext {
         }
     }
 
-    pub fn fill_rectangle(&mut self, rect: Rect, brush: &impl Brush) {
+    pub fn draw_rounded_rectangle(
+        &mut self,
+        rect: Rect,
+        radius_x: f64,
+        radius_y: f64,
+        brush: &Brush,
+        width: f64,
+    ) {
+        unsafe {
+            let rounded_rect = D2D1_ROUNDED_RECT {
+                rect: mk_rect_f(rect),
+                radiusX: radius_x as f32,
+                radiusY: radius_y as f32,
+            };
+
+            self.ctx.DrawRoundedRectangle(
+                &rounded_rect,
+                brush.as_raw_brush(),
+                width as f32,
+                ptr::null_mut(),
+            );
+        }
+    }
+
+    pub fn fill_rectangle(&mut self, rect: Rect, brush: &Brush) {
         unsafe {
             self.ctx
                 .FillRectangle(&mk_rect_f(rect), brush.as_raw_brush());
+        }
+    }
+
+    pub fn fill_rounded_rectangle(
+        &mut self,
+        rect: Rect,
+        radius_x: f64,
+        radius_y: f64,
+        brush: &Brush,
+    ) {
+        unsafe {
+            let rounded_rect = D2D1_ROUNDED_RECT {
+                rect: mk_rect_f(rect),
+                radiusX: radius_x as f32,
+                radiusY: radius_y as f32,
+            };
+            self.ctx
+                .FillRoundedRectangle(&rounded_rect, brush.as_raw_brush());
         }
     }
 
@@ -345,6 +387,18 @@ impl DrawContext {
                 interpolation_mode.to_d2d(),
                 composite_mode.to_d2d(),
             );
+        }
+    }
+
+    /// Scale factor between DIPs and pixels (1 DIP = scale-factor pixels).
+    pub fn scale_factor(&self) -> f64 {
+        unsafe {
+            let mut dpi_x = 0.0f32;
+            let mut dpi_y = 0.0f32;
+            self.ctx.GetDpi(&mut dpi_x, &mut dpi_y);
+            // assume that both DPI values are the same (pixels are square).
+            // TODO non-square pixels?
+            dpi_x as f64 / 96.0
         }
     }
 }

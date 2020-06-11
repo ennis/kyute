@@ -4,7 +4,7 @@ use crate::{
     theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget,
 };
 use generational_indextree::NodeId;
-use kyute_shell::drawing::{Color, DrawTextOptions, IntoBrush};
+use kyute_shell::drawing::{Color, DrawTextOptions, Brush, IntoBrush};
 use kyute_shell::text::{TextFormatBuilder, TextLayout};
 use log::trace;
 use std::any::Any;
@@ -16,7 +16,7 @@ pub struct TextVisual {
 
 impl Visual for TextVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
-        let text_brush = Color::new(1.0, 1.0, 1.0, 1.0).into_brush(ctx);
+        let text_brush = Brush::new_solid_color(ctx, Color::new(0.92, 0.92, 0.92, 1.0));
         ctx.draw_text_layout(
             Point::origin(),
             &self.text_layout,
@@ -76,7 +76,8 @@ impl TypedWidget for Text {
         )
         .unwrap();
 
-        let text_size = text_layout.metrics().bounds.size;
+        // round size to nearest device pixel
+        let text_size = text_layout.metrics().bounds.size.ceil();
 
         let baseline = text_layout
             .line_metrics()

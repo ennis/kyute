@@ -2,6 +2,7 @@ use crate::event::InputState;
 use crate::layout::Offset;
 use crate::node::event::FocusState;
 use crate::node::NodeTree;
+use crate::style;
 use crate::{env, Bounds, Point, Size};
 use generational_indextree::NodeId;
 use kyute_shell::drawing::DrawContext;
@@ -12,6 +13,7 @@ use std::ops::{Deref, DerefMut};
 pub struct PaintCtx<'a> {
     platform: &'a Platform,
     pub(crate) draw_ctx: &'a mut DrawContext,
+    style_collection: &'a style::StyleCollection,
     window_bounds: Bounds,
     node_id: NodeId,
     focus_state: &'a FocusState,
@@ -51,6 +53,29 @@ impl<'a> PaintCtx<'a> {
     pub fn is_capturing_pointer(&self) -> bool {
         self.focus_state.pointer_grab == Some(self.node_id)
     }
+
+    /// Returns the style collection.
+    pub fn style_collection(&self) -> &style::StyleCollection {
+        self.style_collection
+    }
+
+    /// Draws in the bounds using the given style set.
+    pub fn draw_styled_box(&mut self, style_set: &str, palette: style::PaletteIndex) {
+        let mut state_bits = style::State::empty();
+        if self.focus {
+            state_bits |= style::State::FOCUS;
+        }
+        if self.hover {
+            state_bits |= style::State::HOVER;
+        }
+        self.style_collection.draw(
+            self.draw_ctx,
+            Bounds::new(Point::origin(), self.window_bounds.size),
+            style_set,
+            state_bits,
+            palette,
+        )
+    }
 }
 
 // PaintCtx auto-derefs to a DrawContext
@@ -74,11 +99,13 @@ impl NodeTree {
         &mut self,
         platform: &Platform,
         draw_context: &mut DrawContext,
+        style_collection: &style::StyleCollection,
         input_state: &InputState,
     ) {
         self.paint_node(
             platform,
             draw_context,
+            style_collection,
             Offset::zero(),
             input_state,
             self.root,
@@ -93,6 +120,7 @@ impl NodeTree {
         &mut self,
         platform: &Platform,
         draw_context: &mut DrawContext,
+        style_collection: &style::StyleCollection,
         offset: Offset,
         input_state: &InputState,
         node_id: NodeId,
@@ -100,16 +128,13 @@ impl NodeTree {
         let mut node = self.arena[node_id].get_mut();
         let node_offset = node.offset;
         let node_size = node.measurements.size;
-        let window_bounds = Bounds::new(
-            Point::origin() + offset + node_offset,
-            node_size,
-        );
+        let window_bounds = Bounds::new(Point::origin() + offset + node_offset, node_size);
 
         let hover = input_state
             .pointers
             .iter()
             .any(|(_, state)| window_bounds.contains(state.position));
-        dbg!(hover);
+        //  dbg!(hover);
 
         draw_context.save();
         draw_context.transform(&node_offset.to_transform());
@@ -118,6 +143,7 @@ impl NodeTree {
             let mut ctx = PaintCtx {
                 platform,
                 draw_ctx: draw_context,
+                style_collection,
                 window_bounds,
                 node_id,
                 focus_state: &self.focus,
@@ -135,6 +161,7 @@ impl NodeTree {
             self.paint_node(
                 platform,
                 draw_context,
+                style_collection,
                 offset + node_offset,
                 input_state,
                 id,

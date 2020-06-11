@@ -301,7 +301,11 @@ impl NodeTree {
                 pointer_capture: false,
                 handled: false,
             };
-            node.get_mut().visual.as_mut().expect("node has no visual").event(&mut ctx, &local_event);
+            node.get_mut()
+                .visual
+                .as_mut()
+                .expect("node has no visual")
+                .event(&mut ctx, &local_event);
 
             *repaint = (*repaint).max(ctx.repaint);
             let focus_change = ctx.focus_change;

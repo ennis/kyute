@@ -1,12 +1,9 @@
 //! Text editor widget.
 use crate::event::Event;
 use crate::layout::{BoxConstraints, Measurements, Offset, SideOffsets, Size};
-use crate::{
-    theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget,
-    Visual, Widget, WidgetExt,
-};
+use crate::{theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget, WidgetExt, style};
 use kyute_shell::drawing::context::{CompositeMode, FloodImage, InterpolationMode};
-use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt, SolidColorBrush};
+use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt, Brush};
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
 use log::trace;
 use palette::{Srgb, Srgba};
@@ -188,19 +185,21 @@ impl Visual for TextEditVisual {
             .unwrap();
         }
 
+        ctx.draw_styled_box("text_box", style::PaletteIndex(0));
+
         // fetch colors
         let text_color = env.get(theme::TextColor);
         let caret_color = env.get(theme::TextEditCaretColor);
         let selected_bg_color = env.get(theme::SelectedTextBackgroundColor);
         let selected_text_color = env.get(theme::SelectedTextColor);
 
-        let text_brush = SolidColorBrush::new(ctx, text_color);
-        let caret_brush = SolidColorBrush::new(ctx, caret_color);
-        let selected_bg_brush = SolidColorBrush::new(ctx, selected_bg_color);
-        let selected_text_brush = SolidColorBrush::new(ctx, selected_text_color);
+        let text_brush = Brush::new_solid_color(ctx, text_color);
+        let caret_brush = Brush::new_solid_color(ctx, caret_color);
+        let selected_bg_brush = Brush::new_solid_color(ctx, selected_bg_color);
+        let selected_text_brush = Brush::new_solid_color(ctx, selected_text_color);
 
         ctx.save();
-        ctx.transform(&bounds.origin.to_vector().to_transform());
+        ctx.transform(&self.content_offset.to_transform());
 
         // text color
         self.text_layout.set_drawing_effect(&text_brush, ..);
@@ -219,13 +218,13 @@ impl Visual for TextEditVisual {
                 .hit_test_text_range(self.selection.min()..self.selection.max(), &bounds.origin)
                 .unwrap();
             for sa in selected_areas {
-                ctx.fill_rectangle(sa.bounds.round_out(), &selected_bg_brush);
+                ctx.fill_rectangle(dbg!(sa.bounds.round_out()), &selected_bg_brush);
             }
         }
 
         // text
         ctx.draw_text_layout(
-            bounds.origin + self.content_offset,
+            Point::origin(),
             &self.text_layout,
             &text_brush,
             DrawTextOptions::ENABLE_COLOR_FONT,
@@ -369,11 +368,15 @@ impl TypedWidget for TextEdit {
         let platform = context.platform();
 
         // the only thing that we preserve across relayouts is the selection
-        let selection = previous_visual.as_ref().map(|v| v.selection).unwrap_or_default();
+        let selection = previous_visual
+            .as_ref()
+            .map(|v| v.selection)
+            .unwrap_or_default();
 
         // text format
         let font_size = env.get(theme::TextEditFontSize);
         let font_name = env.get(theme::TextEditFontName);
+        let padding: SideOffsets = env.get(theme::TextEditPadding);
         let text_format = TextFormatBuilder::new(context.platform())
             .family(font_name)
             .size(font_size as f32)
@@ -381,17 +384,27 @@ impl TypedWidget for TextEdit {
             .expect("could not create text format");
 
         // take all available space
-        let size = constraints.biggest();
+        const SELECTION_MAGIC: f64 = 3.0;
+        let size = Size::new(
+            constraints.constrain_width(200.0),
+            constraints.constrain_height(font_size + SELECTION_MAGIC + padding.vertical()),
+        );
+        trace!(
+            "TextEdit: constraints={:?}, size={}",
+            constraints,
+            dbg!(size)
+        );
 
         // calculate the size available to layout the text
-        let padding: SideOffsets = env.get(theme::TextEditPadding);
         let content_size = Size::new(
             size.width - padding.horizontal(),
             size.height - padding.vertical(),
         );
+        trace!("TextEdit: content_size={}", content_size);
 
         // content offset
         let content_offset = Offset::new(padding.left, padding.top);
+        trace!("TextEdit: content_offset={}", content_offset);
 
         // determine if we need to relayout the text
         // we relayout the text if:
@@ -429,7 +442,7 @@ impl TypedWidget for TextEdit {
             text_layout,
             selection,
             needs_repaint: true,
-            needs_relayout: false
+            needs_relayout: false,
         });
 
         (visual, measurements)

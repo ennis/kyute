@@ -44,7 +44,6 @@ impl NodeCursor {
             }
         }
     }*/
-
 }
 
 /// Context passed to a widget during the layout pass.
@@ -197,8 +196,6 @@ impl NodeTree {
             node: None,
             cursor: &mut cursor,
         };
-        // Note that there is another "super-root" node on top of the node for the root widget.
-        // This is to avoid a special-case in `NodeCursor` for root nodes.
         let (root, root_measurements) = layout_ctx.emit_child(widget, root_constraints, env);
         // update root (it might not be the same node)
         self.root = root;

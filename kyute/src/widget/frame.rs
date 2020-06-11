@@ -3,7 +3,7 @@ use crate::{
     Bounds, BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx,
     Point, TypedWidget, Visual, Widget,
 };
-use kyute_shell::drawing::{Color, IntoBrush, RectExt};
+use kyute_shell::drawing::{Color, Brush, IntoBrush, RectExt};
 use std::any::Any;
 
 pub enum WidgetType {
@@ -67,8 +67,8 @@ impl Default for FrameVisual {
 impl Visual for FrameVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
         let rect = ctx.bounds();
-        let bg_brush = self.fill_color.into_brush(ctx);
-        let border_brush = self.border_color.into_brush(ctx);
+        let bg_brush = Brush::new_solid_color(ctx, self.fill_color);
+        let border_brush = Brush::new_solid_color(ctx, self.fill_color);
         // box background
         ctx.fill_rectangle(rect.stroke_inset(self.border_width), &bg_brush);
         // border

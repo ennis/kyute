@@ -326,7 +326,7 @@ impl<'a> WindowDrawContext<'a> {
             .expect("swap chain was not initialized");
         let dxgi_buffer = swap_res.backbuffer.cast::<IDXGISurface>().unwrap();
 
-        let dpi = 96.0 * window.window.scale_factor() as f32;
+        let dpi = dbg!(96.0 * window.window.scale_factor() as f32);
         let props = D2D1_BITMAP_PROPERTIES1 {
             pixelFormat: D2D1_PIXEL_FORMAT {
                 format: DXGI_FORMAT_R8G8B8A8_UNORM,
@@ -358,6 +358,7 @@ impl<'a> WindowDrawContext<'a> {
         let draw_context = unsafe {
             // set the target on the DC
             d2d_device_context.SetTarget(bitmap.up().up().as_raw());
+            d2d_device_context.SetDpi(dpi, dpi);
             // the draw context acquires shared ownership of the device context, but that's OK since we borrow the window,
             // so we can't create another WindowDrawContext that would conflict with it.
             DrawContext::from_device_context(
