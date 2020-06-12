@@ -98,7 +98,7 @@ impl TypedWidget for Button {
         env: Environment,
     ) -> (Box<ButtonVisual>, Measurements) {
         //let on_click = self.on_click;
-        let mut visual = previous_visual.unwrap_or_default();
+        let visual = previous_visual.unwrap_or_default();
 
         //visual.on_click = on_click;
         let min_width = env.get(theme::MinButtonWidth);

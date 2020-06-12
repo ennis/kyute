@@ -11,6 +11,8 @@ use bitflags::_core::fmt::Formatter;
 use serde::de::{EnumAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+use kyute_shell::drawing;
+use kyute_shell::platform::Platform;
 
 /// Unit of length: device-independent pixel.
 pub struct Dip;
@@ -103,6 +105,8 @@ pub enum Shape {
     Rect,
     /// Rounded rectangle.
     RoundedRect(Length),
+    /// Path (as an SVG string).
+    Path(String),
     /// URL to the mask.
     MaskBitmap(String),
 }
@@ -323,7 +327,6 @@ fn make_brush(
     brush: &Brush,
     palette: &Palette,
 ) -> kyute_shell::drawing::Brush {
-    use kyute_shell::drawing;
     match brush {
         Brush::SolidColor(colorref) => {
             drawing::Brush::new_solid_color(ctx, palette.resolve(*colorref))
@@ -368,7 +371,7 @@ fn make_brush(
 }
 
 impl StyleSet {
-    pub fn draw(&self, ctx: &mut DrawContext, bounds: &Bounds, state: State, palette: &Palette) {
+    fn draw(&self, platform: &Platform, ctx: &mut DrawContext, bounds: &Bounds, state: State, palette: &Palette) {
         let mut fill = None;
         let mut borders: Vec<Border> = Vec::new();
         let mut inner_shadow = None;
@@ -404,6 +407,12 @@ impl StyleSet {
             eprintln!("WARNING: blurring effects not implemented");
         }
 
+        let path_geometry = if let Shape::Path(ref s) = self.shape {
+            Some(drawing::PathGeometry::try_from_svg_path(platform, s).expect("invalid SVG path"))
+        } else {
+            None
+        };
+
         // fill
         if let Some(fill) = fill {
             let brush = make_brush(ctx, bounds, &fill, palette);
@@ -414,6 +423,9 @@ impl StyleSet {
                 Shape::RoundedRect(radius) => {
                     let radius = radius.to_dips(ctx);
                     ctx.fill_rounded_rectangle(*bounds, radius, radius, &brush);
+                }
+                Shape::Path(_) => {
+                    ctx.fill_geometry(path_geometry.as_ref().unwrap(), &brush);
                 }
                 _ => {
                     eprintln!("Unsupported shape");
@@ -448,6 +460,9 @@ impl StyleSet {
                     let radius = radius.to_dips(ctx);
                     ctx.draw_rounded_rectangle(rect, radius, radius, &brush, width);
                 }
+                Shape::Path(_) => {
+                    ctx.draw_geometry(path_geometry.as_ref().unwrap(), &brush, width);
+                }
                 _ => {
                     eprintln!("unimplemented shape {:?}", self.shape);
                 }
@@ -461,6 +476,7 @@ impl StyleSet {
 impl StyleCollection {
     pub fn draw(
         &self,
+        platform: &Platform,
         ctx: &mut DrawContext,
         bounds: Bounds,
         style_set: &str,
@@ -487,6 +503,6 @@ impl StyleCollection {
             &self.palettes[palette.0 as usize]
         };
 
-        style_set.draw(ctx, &bounds, state_bits, palette);
+        style_set.draw(platform, ctx, &bounds, state_bits, palette);
     }
 }

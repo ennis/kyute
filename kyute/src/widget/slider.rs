@@ -10,6 +10,7 @@ use crate::{
 use kyute_shell::drawing::{Rect, Size};
 use num_traits::{Float, PrimInt};
 use std::any::Any;
+use crate::style::PaletteIndex;
 
 /// Utility class representing a slider track on which a knob can move.
 pub struct SliderTrack {
@@ -131,6 +132,7 @@ impl SliderVisual {
 impl Visual for SliderVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
         // draw the frame
+        ctx.draw_styled_box("slider_knob", PaletteIndex(0));
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &Event) {}

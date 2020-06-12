@@ -1,6 +1,7 @@
 pub mod brush;
 pub mod context;
 pub mod gradient;
+pub mod path;
 
 pub use brush::Brush;
 pub use brush::IntoBrush;
@@ -9,9 +10,12 @@ pub use context::DrawTextOptions;
 pub use context::InterpolationMode;
 pub use context::CompositeMode;
 pub use context::PrimitiveBlend;
+pub use context::Bitmap;
 pub use gradient::ColorInterpolationMode;
 pub use gradient::ExtendMode;
 pub use gradient::GradientStopCollection;
+pub use path::PathGeometry;
+//pub use path::Path;
 
 use winapi::um::d2d1::{D2D1_COLOR_F, D2D1_MATRIX_3X2_F, D2D1_POINT_2F, D2D1_RECT_F};
 

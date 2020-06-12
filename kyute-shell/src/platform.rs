@@ -12,12 +12,16 @@ use winapi::shared::winerror::SUCCEEDED;
 use winapi::um::d2d1::*;
 use winapi::um::d2d1_1::*;
 use winapi::um::d3d11::*;
+use winapi::um::wincodec::*;
 use winapi::um::d3dcommon::*;
 use winapi::um::dwrite::*;
 use winapi::um::unknwnbase::IUnknown;
 use winapi::um::winuser::GetDoubleClickTime;
 use winapi::Interface;
 use wio::com::ComPtr;
+use winapi::um::objbase::CoInitialize;
+use winapi::shared::wtypesbase::CLSCTX_INPROC_SERVER;
+use winapi::um::combaseapi::CoCreateInstance;
 
 /// Contains a bunch of application-global objects and factories, mostly DirectX stuff for drawing
 /// to the screen.
@@ -28,6 +32,7 @@ pub(crate) struct PlatformState {
     pub(crate) d2d_factory: ComPtr<ID2D1Factory1>,
     pub(crate) dwrite_factory: ComPtr<IDWriteFactory>,
     pub(crate) d2d_device: ComPtr<ID2D1Device>,
+    pub(crate) wic_factory: ComPtr<IWICImagingFactory2>
 }
 
 /// Encapsulates the platform-specific application global state.
@@ -136,6 +141,23 @@ impl Platform {
         }
         let d2d_device = ComPtr::from_raw(d2d_device);
 
+        // ---------- Create the Windows Imaging Component (WIC) factory ----------
+        CoInitialize(ptr::null_mut());
+        let mut wic_factory : *mut IWICImagingFactory2 = ptr::null_mut();
+        let hr = CoCreateInstance(
+            &CLSID_WICImagingFactory2,
+            ptr::null_mut(),
+            CLSCTX_INPROC_SERVER,
+            &IWICImagingFactory2::uuidof(),
+            &mut wic_factory as *mut _ as *mut *mut c_void);
+        if !SUCCEEDED(hr) {
+            panic!(
+                "Could not initialize the Windows Imaging Component (WIC): {}",
+                Error::HResultError(hr)
+            );
+        }
+        let wic_factory = ComPtr::from_raw(wic_factory);
+
         Platform(Rc::new(PlatformState {
             d3d11_device,
             d3d11_device_context,
@@ -143,6 +165,7 @@ impl Platform {
             dwrite_factory,
             d2d_factory,
             d2d_device,
+            wic_factory
         }))
     }
 

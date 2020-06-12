@@ -12,6 +12,7 @@ winit = "0.22.0"
 glutin = "0.22"
 wio = "0.2.2"
 euclid = "0.20.8"   # basic 2D geometric types
+svgtypes = "0.5.0"  # SVG path parser and path segment definitions
 palette = "0.5.0"   # colors
 bitflags = "1.2.1"
 lazy_static = "1.4.0"
@@ -32,5 +33,7 @@ features = [
     "dxgi1_2",
     "dxgi1_3",
     "dxgiformat",
-    "dxgitype" ]
+    "dxgitype",
+    "wtypesbase",
+    "wincodec"]
 

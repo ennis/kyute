@@ -1,9 +1,7 @@
 //! Direct2D render target
 use crate::drawing::brush::Brush;
-use crate::drawing::{
-    mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Point, Rect, Transform,
-};
-use crate::error::{check_hr, wrap_hr, Error};
+use crate::drawing::{mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Point, Rect, Transform, PathGeometry};
+use crate::error::{check_hr, Error};
 use crate::text::TextLayout;
 use bitflags::bitflags;
 use log::error;
@@ -24,6 +22,16 @@ pub enum SaveState {
         drawing_state: DrawingState,
     },
     AxisAlignedClip,
+}
+
+pub trait Geometry {
+    fn as_raw_geometry(&self) -> *mut ID2D1Geometry;
+}
+
+impl Geometry for PathGeometry {
+    fn as_raw_geometry(&self) -> *mut ID2D1Geometry {
+        self.0.as_raw().cast()
+    }
 }
 
 /// Trait implemented by types that can be
@@ -371,9 +379,9 @@ impl DrawContext {
         }
     }
 
-    pub fn draw_image(
+    pub fn draw_image<I: Image>(
         &mut self,
-        image: &impl Image,
+        image: &I,
         at: Point,
         source_rect: Rect,
         interpolation_mode: InterpolationMode,
@@ -386,6 +394,36 @@ impl DrawContext {
                 &mk_rect_f(source_rect),
                 interpolation_mode.to_d2d(),
                 composite_mode.to_d2d(),
+            );
+        }
+    }
+
+    pub fn fill_geometry<G: Geometry>(
+        &mut self,
+        geometry: &G,
+        brush: &Brush,
+    ) {
+        unsafe {
+            self.ctx.FillGeometry(
+                geometry.as_raw_geometry(),
+                brush.as_raw_brush(),
+                ptr::null_mut(),
+            );
+        }
+    }
+
+    pub fn draw_geometry<G: Geometry>(
+        &mut self,
+        geometry: &G,
+        brush: &Brush,
+        width: f64,
+    ) {
+        unsafe {
+            self.ctx.DrawGeometry(
+                geometry.as_raw_geometry(),
+                brush.as_raw_brush(),
+                width as f32,
+                ptr::null_mut(),
             );
         }
     }

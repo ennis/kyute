@@ -78,10 +78,10 @@ impl Window {
     pub fn open(ctx: &mut WindowCtx, builder: WindowBuilder, style_collection: Rc<StyleCollection>) -> Result<Rc<RefCell<Window>>> {
         // create the platform window
         let window = PlatformWindow::new(ctx.event_loop, builder, ctx.platform, true)?;
-        let size: (f64, f64) = window.window().inner_size().to_logical::<f64>(1.0).into();
+        //let size: (f64, f64) = window.window().inner_size().to_logical::<f64>(1.0).into();
 
         // create the default visual
-        let mut tree = NodeTree::new();
+        let tree = NodeTree::new();
 
         let window = Window {
             window,
@@ -433,6 +433,48 @@ fn write_default_application_style()
         ]
     };
 
+    let slider_knob = style::StyleSet {
+        shape: Shape::Path("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z".to_string()),
+        styles: vec![
+            style::Style {
+                fill: Some(Brush::Gradient {
+                    angle: Angle::degrees(90.0),
+                    ty: GradientType::Linear,
+                    stops: vec![
+                        (0.0, ColorRef::Palette(BUTTON_BACKGROUND_BOTTOM_COLOR)),
+                        (1.0, ColorRef::Palette(BUTTON_BACKGROUND_TOP_COLOR)),
+                    ],
+                    reverse: false
+                }),
+                borders: vec![Border {
+                    opacity: 1.0,
+                    blend_mode: BlendMode::Normal,
+                    position: BorderPosition::Inside(Length::zero()),
+                    width: Length::Dip(1.0),
+                    brush: Brush::SolidColor(ColorRef::Palette(BUTTON_BORDER_BOTTOM_COLOR)),
+                }],
+                .. Style::default()
+            },
+
+            style::Style {
+                state_filter: StateFilter {
+                    value: State::HOVER,
+                    mask: State::HOVER,
+                },
+                fill: Some(Brush::Gradient {
+                    angle: Angle::degrees(90.0),
+                    ty: GradientType::Linear,
+                    stops: vec![
+                        (0.0, ColorRef::Palette(BUTTON_BACKGROUND_BOTTOM_COLOR_HOVER)),
+                        (1.0, ColorRef::Palette(BUTTON_BACKGROUND_TOP_COLOR_HOVER)),
+                    ],
+                    reverse: false
+                }),
+                .. Style::default()
+            }
+        ]
+    };
+
     let text_box_style_set = style::StyleSet {
         shape: Shape::Rect,
         styles: vec![
@@ -476,6 +518,7 @@ fn write_default_application_style()
     let mut style_sets = HashMap::new();
     style_sets.insert("button".to_string(), button_style_set);
     style_sets.insert("text_box".to_string(), text_box_style_set);
+    style_sets.insert("slider_knob".to_string(), slider_knob);
 
     let style_collection = StyleCollection {
         style_sets,
@@ -509,7 +552,7 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
         event_loop: &event_loop,
         new_windows: Vec::new(),
     };
-    let mut main_window = Window::open(&mut win_ctx, WindowBuilder::new().with_title("Default"), app_style)
+    let main_window = Window::open(&mut win_ctx, WindowBuilder::new().with_title("Default"), app_style)
         .expect("failed to create main window");
 
     // ID -> Weak<Window>

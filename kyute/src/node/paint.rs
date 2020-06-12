@@ -69,6 +69,7 @@ impl<'a> PaintCtx<'a> {
             state_bits |= style::State::HOVER;
         }
         self.style_collection.draw(
+            self.platform,
             self.draw_ctx,
             Bounds::new(Point::origin(), self.window_bounds.size),
             style_set,
@@ -125,7 +126,7 @@ impl NodeTree {
         input_state: &InputState,
         node_id: NodeId,
     ) {
-        let mut node = self.arena[node_id].get_mut();
+        let node = self.arena[node_id].get_mut();
         let node_offset = node.offset;
         let node_size = node.measurements.size;
         let window_bounds = Bounds::new(Point::origin() + offset + node_offset, node_size);
