@@ -2,10 +2,10 @@ use crate::event::InputState;
 use crate::layout::Offset;
 use crate::node::event::FocusState;
 use crate::node::NodeTree;
-use crate::style;
+use crate::{style, Measurements};
 use crate::{env, Bounds, Point, Size};
 use generational_indextree::NodeId;
-use kyute_shell::drawing::DrawContext;
+use kyute_shell::drawing::{DrawContext, Transform, Color, Brush};
 use kyute_shell::platform::Platform;
 use std::ops::{Deref, DerefMut};
 
@@ -60,7 +60,7 @@ impl<'a> PaintCtx<'a> {
     }
 
     /// Draws in the bounds using the given style set.
-    pub fn draw_styled_box(&mut self, style_set: &str, palette: style::PaletteIndex) {
+    pub fn draw_styled_box_in_bounds(&mut self, style_set: &str, bounds: Bounds, palette: style::PaletteIndex) {
         let mut state_bits = style::State::empty();
         if self.focus {
             state_bits |= style::State::FOCUS;
@@ -71,11 +71,16 @@ impl<'a> PaintCtx<'a> {
         self.style_collection.draw(
             self.platform,
             self.draw_ctx,
-            Bounds::new(Point::origin(), self.window_bounds.size),
+            bounds,
             style_set,
             state_bits,
             palette,
-        )
+        );
+    }
+
+    /// Draws in the bounds using the given style set.
+    pub fn draw_styled_box(&mut self, style_set: &str, palette: style::PaletteIndex) {
+        self.draw_styled_box_in_bounds(style_set, self.bounds(), palette)
     }
 }
 
@@ -94,6 +99,39 @@ impl<'a> DerefMut for PaintCtx<'a> {
     }
 }
 
+#[derive(Copy,Clone,Debug,Eq,PartialEq,Hash)]
+pub enum DebugLayout {
+    None,
+    All,
+    Hover
+}
+
+#[derive(Copy,Clone,Debug,PartialEq)]
+pub struct PaintOptions {
+    pub debug_draw_bounds: DebugLayout,
+}
+
+impl Default for PaintOptions {
+    fn default() -> Self {
+        PaintOptions {
+            debug_draw_bounds: DebugLayout::None
+        }
+    }
+}
+
+/// Draws a rectangle that represents the given bounds.
+fn draw_layout(draw_context: &mut DrawContext, m: Measurements) {
+    let px = 1.0 / draw_context.scale_factor();
+    let brush = Brush::new_solid_color(draw_context,Color::new(1.0, 0.0, 0.0, 1.0));
+    let baseline_brush = Brush::new_solid_color(draw_context,Color::new(0.0, 1.0, 0.0, 1.0));
+    let rect = Bounds::from_size(m.size);
+    draw_context.draw_rectangle(rect.inflate(-0.5, -0.5), &brush, px);
+    if let Some(baseline) = m.baseline {
+        let baseline_rect = Bounds::new(rect.origin + Offset::new(px, baseline), Size::new(m.size.width - 2.0*px, px));
+        draw_context.fill_rectangle(baseline_rect, &baseline_brush);
+    }
+}
+
 impl NodeTree {
     /// Painting.
     pub fn paint(
@@ -102,6 +140,7 @@ impl NodeTree {
         draw_context: &mut DrawContext,
         style_collection: &style::StyleCollection,
         input_state: &InputState,
+        options: &PaintOptions,
     ) {
         self.paint_node(
             platform,
@@ -110,6 +149,7 @@ impl NodeTree {
             Offset::zero(),
             input_state,
             self.root,
+            options
         )
     }
 
@@ -125,17 +165,19 @@ impl NodeTree {
         offset: Offset,
         input_state: &InputState,
         node_id: NodeId,
+        options: &PaintOptions,
     ) {
         let node = self.arena[node_id].get_mut();
         let node_offset = node.offset;
-        let node_size = node.measurements.size;
+        let node_measurements = node.measurements;
+        let node_size = node_measurements.size;
         let window_bounds = Bounds::new(Point::origin() + offset + node_offset, node_size);
 
         let hover = input_state
             .pointers
             .iter()
             .any(|(_, state)| window_bounds.contains(state.position));
-        //  dbg!(hover);
+
 
         draw_context.save();
         draw_context.transform(&node_offset.to_transform());
@@ -166,8 +208,20 @@ impl NodeTree {
                 offset + node_offset,
                 input_state,
                 id,
+                options
             );
             child_id = self.arena[id].next_sibling();
+        }
+
+        // bounds debugging
+        match options.debug_draw_bounds {
+            DebugLayout::Hover if hover => {
+                draw_layout(draw_context, node_measurements);
+            }
+            DebugLayout::All => {
+                draw_layout(draw_context, node_measurements);
+            }
+            _ => {}
         }
 
         draw_context.restore();

@@ -15,6 +15,8 @@ use self::event::FocusState;
 pub use self::event::RepaintRequest;
 pub use self::layout::LayoutCtx;
 pub use self::paint::PaintCtx;
+pub use self::paint::DebugLayout;
+pub use self::paint::PaintOptions;
 use std::any::TypeId;
 
 /// A node within the visual tree.

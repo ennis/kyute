@@ -9,8 +9,6 @@ use kyute_shell::drawing::{
 use palette::{Alpha, LinSrgb, LinSrgba, Shade, Srgb, Srgba};
 
 impl_keys!(
-/// Preferred slider height.
-SliderHeight : f64 [10.0];
 /// Default font size.
 FontSize: f64 [11.0];
 /// Default font family
@@ -43,11 +41,13 @@ ButtonLabelPadding : SideOffsets [SideOffsets::new(2.0, 5.0, 2.0, 5.0)];
 FlexSpacing: f64 [2.0];
 
 /// Label padding.
-SliderPadding : SideOffsets [SideOffsets::default()];
-/// Label padding.
-SliderKnobWidth : f64 [5.0];
-/// Label padding.
-SliderKnobHeight : f64 [5.0];
+SliderPadding : SideOffsets [SideOffsets::new_all_same(0.0)];
+SliderHeight : f64 [14.0];
+SliderTrackY : f64 [9.0];
+SliderKnobY : f64 [7.0];
+SliderKnobWidth : f64 [11.0];
+SliderKnobHeight : f64 [11.0];
+SliderTrackHeight : f64 [4.0];
 
 ///
 TextEditFontSize: f64 [12.0];

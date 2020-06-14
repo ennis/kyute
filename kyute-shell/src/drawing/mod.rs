@@ -2,6 +2,7 @@ pub mod brush;
 pub mod context;
 pub mod gradient;
 pub mod path;
+pub mod effect;
 
 pub use brush::Brush;
 pub use brush::IntoBrush;

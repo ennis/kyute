@@ -7,7 +7,7 @@ use palette::Srgba;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use bitflags::_core::fmt::Formatter;
+use std::fmt::Formatter;
 use serde::de::{EnumAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -390,6 +390,10 @@ impl StyleSet {
             }
         }
 
+        ctx.save();
+        ctx.transform(&bounds.origin.to_vector().to_transform());
+        let bounds = Bounds::from_size(bounds.size);
+
         // we draw, in order:
         // - the drop shadow
         // - the fill
@@ -415,14 +419,14 @@ impl StyleSet {
 
         // fill
         if let Some(fill) = fill {
-            let brush = make_brush(ctx, bounds, &fill, palette);
+            let brush = make_brush(ctx, &bounds, &fill, palette);
             match self.shape {
                 Shape::Rect => {
-                    ctx.fill_rectangle(*bounds, &brush);
+                    ctx.fill_rectangle(bounds, &brush);
                 }
                 Shape::RoundedRect(radius) => {
                     let radius = radius.to_dips(ctx);
-                    ctx.fill_rounded_rectangle(*bounds, radius, radius, &brush);
+                    ctx.fill_rounded_rectangle(bounds, radius, radius, &brush);
                 }
                 Shape::Path(_) => {
                     ctx.fill_geometry(path_geometry.as_ref().unwrap(), &brush);
@@ -445,7 +449,7 @@ impl StyleSet {
                     let x = 0.5 + x.to_dips(ctx);
                     bounds.inflate(x, x)
                 }
-                BorderPosition::Center => *bounds,
+                BorderPosition::Center => bounds,
             };
             let brush = make_brush(ctx, &rect, &b.brush, palette);
             if b.blend_mode != BlendMode::Normal {
@@ -469,6 +473,7 @@ impl StyleSet {
             }
         }
 
+        ctx.restore();
         // the rest is unimplemented
     }
 }

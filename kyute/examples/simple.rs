@@ -1,8 +1,9 @@
 use kyute::application::{run_application, Application};
+use kyute::widget::constrained::ConstrainedBox;
 use kyute::widget::form::Form;
 use kyute::widget::slider::Slider;
 use kyute::widget::textedit::TextEdit;
-use kyute::{BoxedWidget, WidgetExt};
+use kyute::{BoxConstraints, BoxedWidget, WidgetExt};
 
 struct SimpleApplication;
 
@@ -23,7 +24,8 @@ impl Application for SimpleApplication {
                     .push(Baseline::new(20.0, Button::new("Button B")))
                     .push(Baseline::new(20.0, Text::new("Baseline alignment test"))),
             )
-            .push(
+            .push(ConstrainedBox::new(
+                BoxConstraints::new(0.0..400.0, ..),
                 Form::new()
                     .field("Field 1", TextEdit::new("Edit 1"))
                     .field("Field 2", TextEdit::new("Edit 2"))
@@ -31,7 +33,7 @@ impl Application for SimpleApplication {
                     .field("Field with a longer label 4", TextEdit::new("Edit 4"))
                     .field("Field 5", TextEdit::new("Edit 4"))
                     .field("Slider", Slider::new(0.5).min(0.0).max(1.0)),
-            )
+            ))
             .push(
                 Flex::new(Axis::Vertical)
                     .push(Button::new("Vertical Flex:"))

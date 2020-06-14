@@ -11,6 +11,7 @@ use kyute_shell::drawing::{Rect, Size};
 use num_traits::{Float, PrimInt};
 use std::any::Any;
 use crate::style::PaletteIndex;
+use crate::layout::Offset;
 
 /// Utility class representing a slider track on which a knob can move.
 pub struct SliderTrack {
@@ -49,14 +50,14 @@ impl SliderTrack {
         // project the point on the track line
         let v = self.track.end - self.track.start;
         let c = pos - self.track.start;
-        let x = c.dot(v);
+        let x = v.normalize().dot(c);
         let track_len = v.length();
 
         if let Some(div) = self.divisions {
             let div = div as f64;
             (div * x / track_len).floor() / div
         } else {
-            x / track_len
+            dbg!(x / track_len)
         }
     }
 
@@ -64,19 +65,6 @@ impl SliderTrack {
     fn knob_position(&self) -> Point {
         self.track.start + (self.track.end - self.track.start) * self.value
     }
-}
-
-/// Determines the position and size of the knob
-fn get_knob_width(track_width: f64, divisions: Option<u32>, min_w: f64) -> f64 {
-    let w = track_width;
-    let kw = if let Some(div) = divisions {
-        w / div as f64
-    } else {
-        // default knob size
-        0.07 * track_width
-    };
-    // apply min width
-    kw.max(min_w)
 }
 
 /*fn draw_slider_knob(
@@ -122,20 +110,75 @@ impl Default for SliderVisual {
 }
 
 impl SliderVisual {
-    fn update_position(&mut self, layout_width: f64, cursor: Point) {
-        // remove padding
-        let w = layout_width - 4.0; // 2px on each side
-                                    //get_slider_position(track_width, cursor, self.divisions, )
+    fn update_position(&mut self, cursor: Point) {
+        let v = self.track.value_from_position(cursor);
+        dbg!(v);
+        self.track.set_value(v);
     }
 }
 
 impl Visual for SliderVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
-        // draw the frame
-        ctx.draw_styled_box("slider_knob", PaletteIndex(0));
+
+        let bounds = ctx.bounds();
+        let track_y = env.get(theme::SliderTrackY);
+        let track_h = env.get(theme::SliderTrackHeight);
+        let knob_w = env.get(theme::SliderKnobWidth);
+        let knob_h = env.get(theme::SliderKnobHeight);
+        let knob_y = env.get(theme::SliderKnobY);
+
+        let track_x_start = self.track.track.start.x;
+        let track_x_end = self.track.track.end.x;
+
+        // track bounds
+        let track_bounds = Bounds::new(
+            Point::new(dbg!(track_x_start), track_y - 0.5*track_h),
+            Size::new(track_x_end - track_x_start, track_h),
+        );
+
+        let kpos = self.track.knob_position();
+        let kx = kpos.x.round()+0.5;
+
+        let knob_bounds = Bounds::new(
+            Point::new(kx-0.5*knob_w, track_y-knob_y),
+            Size::new(knob_w, knob_h),
+        );
+
+        // track
+        ctx.draw_styled_box_in_bounds(
+            "slider_track",
+            track_bounds,
+            PaletteIndex(0));
+
+        ctx.draw_styled_box_in_bounds(
+            "slider_knob",
+            knob_bounds,
+            PaletteIndex(0));
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {}
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
+        match event {
+            Event::PointerOver(_) | Event::PointerOut(_) => {
+                ctx.request_redraw();
+            }
+            Event::PointerDown(p) => {
+                self.update_position(p.pointer.position);
+                ctx.capture_pointer();
+                ctx.request_focus();
+                ctx.request_redraw();
+            }
+            Event::PointerMove(p) => {
+                if ctx.is_capturing_pointer() {
+                    self.update_position(p.position);
+                    ctx.request_redraw();
+                }
+            }
+            Event::PointerUp(p) => {
+
+            }
+            _ => {}
+        }
+    }
 
     fn hit_test(&mut self, point: Point, bounds: Bounds) -> bool {
         unimplemented!()
@@ -176,8 +219,9 @@ impl<T: Float> TypedWidget for Slider<T> {
         let last_value = previous_visual.map(|v| v.track.value);
 
         let height = env.get(theme::SliderHeight);
-        let min_knob_width = env.get(theme::SliderKnobWidth);
-        //let knob_height = env.get(theme::SliderKnobHeight);
+        let knob_width = env.get(theme::SliderKnobWidth);
+        let knob_height = env.get(theme::SliderKnobHeight);
+
         let padding = env.get(theme::SliderPadding);
 
         // fixed height
@@ -191,7 +235,7 @@ impl<T: Float> TypedWidget for Slider<T> {
             Bounds::new(Point::origin(), size).inflate(padding.horizontal(), padding.vertical());
 
         // calculate knob width
-        let knob_width = get_knob_width(inner_bounds.size.width, self.divisions, min_knob_width);
+        //let knob_width = get_knob_width(inner_bounds.size.width, self.divisions, min_knob_width);
         // half knob width
         let hkw = 0.5 * knob_width;
         // y-position of the slider track

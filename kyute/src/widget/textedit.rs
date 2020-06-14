@@ -2,7 +2,7 @@
 use crate::event::Event;
 use crate::layout::{BoxConstraints, Measurements, Offset, SideOffsets, Size};
 use crate::{theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget, WidgetExt, style};
-use kyute_shell::drawing::context::{CompositeMode, FloodImage, InterpolationMode};
+use kyute_shell::drawing::context::{CompositeMode, InterpolationMode};
 use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt, Brush};
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
 use log::trace;

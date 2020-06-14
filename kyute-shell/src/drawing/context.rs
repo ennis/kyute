@@ -51,47 +51,6 @@ impl Image for Bitmap {
     }
 }
 
-pub struct FloodImage {
-    effect: ComPtr<ID2D1Effect>,
-    output_image: ComPtr<ID2D1Image>,
-}
-
-impl FloodImage {
-    pub fn new(ctx: &DrawContext, fill_color: Color) -> FloodImage {
-        unsafe {
-            let mut effect = ptr::null_mut();
-            check_hr(ctx.ctx.CreateEffect(&CLSID_D2D1Flood, &mut effect))
-                .expect("CreateEffect failed");
-            let effect = ComPtr::from_raw(effect);
-            let (r, g, b, a) = fill_color.into_components();
-            let color_v = D2D_VECTOR_4F {
-                x: r,
-                y: g,
-                z: b,
-                w: a,
-            };
-            effect.SetValue(
-                D2D1_FLOOD_PROP_COLOR,
-                D2D1_PROPERTY_TYPE_VECTOR4,
-                &color_v as *const _ as *const u8,
-                mem::size_of::<D2D_VECTOR_4F>() as u32,
-            );
-            let mut output_image = ptr::null_mut();
-            effect.GetOutput(&mut output_image);
-            let output_image = ComPtr::from_raw(output_image);
-            FloodImage {
-                effect,
-                output_image,
-            }
-        }
-    }
-}
-
-impl Image for FloodImage {
-    fn as_raw_image(&self) -> *mut ID2D1Image {
-        self.output_image.as_raw()
-    }
-}
 
 bitflags! {
     pub struct DrawTextOptions: u32 {

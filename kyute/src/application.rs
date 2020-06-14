@@ -7,7 +7,7 @@ use crate::event::{
     PointerButtons, PointerEvent, PointerState, WheelDeltaMode, WheelEvent,
 };
 use crate::layout::Size;
-use crate::node::{NodeTree, RepaintRequest};
+use crate::node::{NodeTree, RepaintRequest, DebugLayout, PaintOptions};
 use crate::{Bounds, BoxConstraints, BoxedWidget, Environment, Measurements, Point, Visual, Widget, style};
 use anyhow::Result;
 use kyute_shell::drawing::Color;
@@ -21,7 +21,7 @@ use std::mem;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 use std::time::Instant;
-use winit::event::WindowEvent;
+use winit::event::{WindowEvent, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoopWindowTarget};
 use winit::window::{WindowBuilder, WindowId};
 use crate::style::{StyleCollection, Shape, Brush, Border, StateFilter, ColorRef};
@@ -71,6 +71,7 @@ struct Window {
     last_click: Option<LastClick>,
     /// Widget styles for the window.
     style_collection: Rc<StyleCollection>,
+    debug_layout: DebugLayout
 }
 
 impl Window {
@@ -88,7 +89,8 @@ impl Window {
             tree,
             inputs: InputState::default(),
             last_click: None,
-            style_collection
+            style_collection,
+            debug_layout: DebugLayout::None,
         };
         let window = Rc::new(RefCell::new(window));
 
@@ -180,8 +182,6 @@ impl Window {
                     }
                 };
 
-                dbg!(repeat_count);
-
                 let p = PointerButtonEvent {
                     pointer: PointerEvent {
                         position,
@@ -224,8 +224,15 @@ impl Window {
                     pointer_id: *device_id,
                 };
 
-                self.tree
-                    .event(ctx, &self.window, &self.inputs, &Event::PointerMove(p))
+                let result = self.tree
+                    .event(ctx, &self.window, &self.inputs, &Event::PointerMove(p));
+
+                // force redraw if bounds debugging mode is on
+                if self.debug_layout != DebugLayout::None {
+                    RepaintRequest::Repaint
+                } else {
+                    result
+                }
             }
             WindowEvent::MouseWheel {
                 device_id,
@@ -281,7 +288,18 @@ impl Window {
                     winit::event::ElementState::Released => Event::KeyUp(keyboard_event),
                 };
 
-                self.tree.event(ctx, &self.window, &self.inputs, &event)
+                // Ctrl+F12 cycles through bounds debugging modes
+                if input.state == winit::event::ElementState::Pressed && input.virtual_keycode == Some(VirtualKeyCode::F12) && self.inputs.mods.ctrl() {
+                    self.debug_layout = match self.debug_layout {
+                        DebugLayout::None => DebugLayout::Hover,
+                        DebugLayout::Hover => DebugLayout::All,
+                        DebugLayout::All => DebugLayout::None,
+                    };
+                    RepaintRequest::Repaint
+                }
+                else {
+                    self.tree.event(ctx, &self.window, &self.inputs, &event)
+                }
             }
 
             _ => {
@@ -322,7 +340,10 @@ impl Window {
         {
             let mut wdc = WindowDrawContext::new(&mut self.window);
             wdc.clear(Color::new(0.326, 0.326, 0.326, 1.0));
-            self.tree.paint(platform, &mut wdc, &self.style_collection, &self.inputs);
+            let options = PaintOptions {
+                debug_draw_bounds: self.debug_layout
+            };
+            self.tree.paint(platform, &mut wdc, &self.style_collection, &self.inputs, &options);
         }
         self.window.present();
     }
@@ -371,7 +392,7 @@ fn write_default_application_style()
             Color::new(0.450, 0.450, 0.450, 1.0), // BUTTON_BACKGROUND_BOTTOM_COLOR_HOVER
             Color::new(0.100, 0.100, 0.100, 1.0), // BUTTON_BORDER_BOTTOM_COLOR
             Color::new(0.180, 0.180, 0.180, 1.0), // BUTTON_BORDER_TOP_COLOR
-            Color::new(1.000, 1.000, 1.000, 0.3), // WIDGET_OUTER_GROOVE_BOTTOM_COLOR
+            Color::new(1.000, 1.000, 1.000, 0.2), // WIDGET_OUTER_GROOVE_BOTTOM_COLOR
             Color::new(1.000, 1.000, 1.000, 0.0), // WIDGET_OUTER_GROOVE_TOP_COLOR
             Color::new(0.180, 0.180, 0.180, 1.0), // FRAME_BG_SUNKEN_COLOR_HOVER
         ]
@@ -475,6 +496,37 @@ fn write_default_application_style()
         ]
     };
 
+    let slider_track = style::StyleSet {
+        shape: Shape::RoundedRect(style::Length::Dip(2.0)),
+        styles: vec![
+            style::Style {
+                fill: Some(Brush::SolidColor(ColorRef::Palette(FRAME_BG_SUNKEN_COLOR))),
+                borders: vec![Border {
+                    opacity: 1.0,
+                    blend_mode: BlendMode::Normal,
+                    position: BorderPosition::Inside(Length::zero()),
+                    width: Length::Dip(1.0),
+                    brush: Brush::SolidColor(ColorRef::Palette(BUTTON_BORDER_BOTTOM_COLOR)),
+                }, Border {
+                    opacity: 1.0,
+                    blend_mode: BlendMode::Normal,
+                    position: BorderPosition::Outside(Length::zero()),
+                    width: Length::Dip(1.0),
+                    brush: Brush::Gradient {
+                        angle: Angle::degrees(90.0),
+                        ty: GradientType::Linear,
+                        stops: vec![
+                            (0.0, ColorRef::Palette(WIDGET_OUTER_GROOVE_BOTTOM_COLOR)),
+                            (0.3, ColorRef::Palette(WIDGET_OUTER_GROOVE_TOP_COLOR)),
+                        ],
+                        reverse: false
+                    },
+                }],
+                .. Style::default()
+            },
+        ]
+    };
+
     let text_box_style_set = style::StyleSet {
         shape: Shape::Rect,
         styles: vec![
@@ -519,6 +571,7 @@ fn write_default_application_style()
     style_sets.insert("button".to_string(), button_style_set);
     style_sets.insert("text_box".to_string(), text_box_style_set);
     style_sets.insert("slider_knob".to_string(), slider_knob);
+    style_sets.insert("slider_track".to_string(), slider_track);
 
     let style_collection = StyleCollection {
         style_sets,
