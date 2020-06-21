@@ -48,9 +48,9 @@ impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
     /// Emits a child widget.
     ///
     /// Returns the ID of the node associated to the widget, and its measurements.
-    pub fn emit_child(
+    pub fn emit_child<'w>(
         &mut self,
-        widget: impl Widget,
+        widget: impl Widget + 'w,
         constraints: &BoxConstraints,
         env: Environment,
     ) -> (NodeId, Measurements) {

@@ -13,14 +13,14 @@ pub enum WidgetType {
 }
 
 /// A widget that draws a theme-specific frame (a box with borders).
-pub struct Frame {
+pub struct Frame<'a> {
     pub border_color: Color,
     pub border_width: f64,
     pub fill_color: Color,
-    pub inner: BoxedWidget,
+    pub inner: BoxedWidget<'a>,
 }
 
-impl TypedWidget for Frame {
+impl<'a> TypedWidget for Frame<'a> {
     type Visual = FrameVisual;
 
     fn layout(

@@ -7,21 +7,21 @@ use crate::{Alignment, Rect, BoxConstraints, BoxedWidget, Environment, LayoutCtx
 use generational_indextree::NodeId;
 use std::any::Any;
 
-pub struct Field {
+pub struct Field<'a> {
     label: String,
-    widget: BoxedWidget,
+    widget: BoxedWidget<'a>,
 }
 
-pub struct Form {
-    fields: Vec<Field>,
+pub struct Form<'a> {
+    fields: Vec<Field<'a>>,
 }
 
-impl Form {
-    pub fn new() -> Form {
+impl<'a> Form<'a> {
+    pub fn new() -> Form<'a> {
         Form { fields: Vec::new() }
     }
 
-    pub fn field(mut self, label: impl Into<String>, widget: impl Widget + 'static) -> Form {
+    pub fn field(mut self, label: impl Into<String>, widget: impl Widget + 'static) -> Form<'a> {
         self.fields.push(Field {
             label: label.into(),
             widget: widget.boxed(),
@@ -30,7 +30,7 @@ impl Form {
     }
 }
 
-impl TypedWidget for Form {
+impl<'a> TypedWidget for Form<'a> {
     type Visual = FlexVisual;
 
     /// Performs layout, consuming the widget.

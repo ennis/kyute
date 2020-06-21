@@ -5,7 +5,7 @@ use kyute::widget::slider::Slider;
 use kyute::widget::textedit::TextEdit;
 use kyute::{BoxConstraints, BoxedWidget, WidgetExt};
 
-
+/*
 struct SimpleComponent;
 
 impl Component for SimpleComponent {
@@ -123,7 +123,7 @@ impl Component for ColorPicker {
         });     // -> BoxedWidget
     }
 }
-
+*/
 
 
 struct SimpleApplication;

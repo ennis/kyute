@@ -2,8 +2,9 @@ use crate::{BoxedWidget, Widget, BoxConstraints, Measurements, LayoutCtx, Enviro
 use generational_indextree::NodeId;
 use std::any::TypeId;
 use crate::event::Event;
-use bitflags::_core::any::Any;
+use std::any::Any;
 
+/*
 /// Components are self-contained GUI elements with internal state (retained), and that produce a widget tree
 /// when asked.
 /// Components are associated (_anchored_) to a _anchor node_ in the NodeTree. The component is in charge of
@@ -19,12 +20,12 @@ pub trait Component<'a> {
 }
 
 /// A wrapper for a component in the node tree.
-struct ComponentWrapper<'a, C: Component<'a>> {
+struct ComponentWrapper<C: for<'a> Component<'a>> {
     component: C,
 }
 
-impl<'a, C: Component<'a>> Visual for ComponentWrapper<'a, C> {
-    fn paint(&mut self, ctx: &mut PaintCtx<'a>, env: &Environment) {}
+impl<C: for<'a> Component<'a>> Visual for ComponentWrapper<C> {
+    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {}
     fn hit_test(&mut self, point: Point, bounds: Rect) -> bool { false }
     fn event(&mut self, event_ctx: &mut EventCtx, event: &Event) {}
     fn as_any(&self) -> &dyn Any {
@@ -39,9 +40,9 @@ struct ComponentWidget<'a, C: Component<'a>> {
     params: C::Params,
 }
 
-impl<'a, C: Component<'a>> TypedWidget for ComponentWidget<'a, C>
+impl<C: for<'a> Component<'a>> TypedWidget for ComponentWidget<C>
 {
-    type Visual = ComponentWrapper<'a, C>;
+    type Visual = ComponentWrapper<C>;
 
     fn layout(self,
               context: &mut LayoutCtx,
@@ -64,3 +65,4 @@ impl<'a, C: Component<'a>> TypedWidget for ComponentWidget<'a, C>
 }
 
 
+*/

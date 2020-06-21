@@ -57,12 +57,12 @@ pub enum MainAxisSize {
     Max,
 }
 
-pub struct Flex {
+pub struct Flex<'a> {
     axis: Axis,
-    children: Vec<BoxedWidget>,
+    children: Vec<BoxedWidget<'a>>,
 }
 
-impl Flex {
+impl<'a> Flex<'a> {
     pub fn new(main_axis: Axis) -> Self {
         Flex {
             axis: main_axis,
@@ -70,18 +70,18 @@ impl Flex {
         }
     }
 
-    pub fn push(mut self, child: impl Widget + 'static) -> Self {
+    pub fn push(mut self, child: impl Widget + 'a) -> Self {
         self.children.push(child.boxed());
         self
     }
 
-    pub fn push_boxed(mut self, child: BoxedWidget) -> Self {
+    pub fn push_boxed(mut self, child: BoxedWidget<'a>) -> Self {
         self.children.push(child);
         self
     }
 }
 
-impl TypedWidget for Flex {
+impl<'a> TypedWidget for Flex<'a> {
     type Visual = FlexVisual;
 
     fn layout(

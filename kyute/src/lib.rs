@@ -32,7 +32,7 @@ pub use self::widget::TypedWidget;
 pub use self::widget::Widget;
 pub use self::widget::WidgetExt;
 
-pub use self::component::Component;
+//pub use self::component::Component;
 
 pub use self::node::EventCtx;
 pub use self::node::LayoutCtx;

@@ -73,21 +73,21 @@ impl Visual for ButtonVisual {
 ///
 /// This widget is influenced by the following style variables:
 /// - [`PADDING`](crate::style::PADDING): padding for the label inside the button.
-pub struct Button {
-    label: BoxedWidget,
+pub struct Button<'a> {
+    label: BoxedWidget<'a>,
     on_click: Option<Box<dyn FnMut(&mut EventCtx)>>,
 }
 
-impl Button {
+impl<'a> Button<'a> {
     /// Creates a new button with the given text as the label.
-    pub fn new(label: &str) -> Button {
+    pub fn new(label: &str) -> Button<'a> {
         Button {
             label: Text::new(label).boxed(),
             on_click: None
         }
     }
 
-    pub fn on_click(mut self, on_click: impl Fn(&mut EventCtx) + 'static) -> Button {
+    pub fn on_click(mut self, on_click: impl Fn(&mut EventCtx) + 'static) -> Button<'a> {
         self.on_click = Some(Box::new(on_click));
         self
     }
@@ -95,7 +95,7 @@ impl Button {
 
 //-----------------------------------------------------
 // Widget implementation
-impl TypedWidget for Button {
+impl<'a> TypedWidget for Button<'a> {
     type Visual = ButtonVisual;
 
     fn layout(
