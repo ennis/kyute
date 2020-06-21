@@ -7,6 +7,7 @@ use generational_indextree::NodeId;
 use kyute_shell::drawing::{Brush, Color, DrawContext, Transform};
 use kyute_shell::platform::Platform;
 use std::ops::{Deref, DerefMut};
+use winit::window::WindowId;
 
 /// Context passed to [`Visual::paint`].
 pub struct PaintCtx<'a> {
@@ -146,7 +147,10 @@ impl NodeTree {
         platform: &Platform,
         draw_context: &mut DrawContext,
         style_collection: &style::StyleCollection,
+        window_id: WindowId,
+        window_root: NodeId,
         input_state: &InputState,
+        focus_state: &FocusState,
         options: &PaintOptions,
     ) {
         self.paint_node(
@@ -154,8 +158,10 @@ impl NodeTree {
             draw_context,
             style_collection,
             Offset::zero(),
+            window_id,
             input_state,
-            self.root,
+            focus_state,
+            window_root,
             options,
         )
     }
@@ -164,17 +170,24 @@ impl NodeTree {
     ///
     /// Effectively, it applies the transform of the node (which, right now, is only an offset relative to the parent),
     /// and calls [`Visual::paint`] on `self.visual`.
-    fn paint_node(
+    pub fn paint_node(
         &mut self,
         platform: &Platform,
         draw_context: &mut DrawContext,
         style_collection: &style::StyleCollection,
         offset: Offset,
+        window_id: WindowId,
         input_state: &InputState,
+        focus_state: &FocusState,
         node_id: NodeId,
         options: &PaintOptions,
     ) {
         let node = self.arena[node_id].get_mut();
+        // don't cross into other windows
+        match node.window_id() {
+            Some(id) if id != window_id => return,
+            _ => {}
+        }
         let node_offset = node.offset;
         let node_measurements = node.measurements;
         let node_size = node_measurements.size;
@@ -195,10 +208,10 @@ impl NodeTree {
                 style_collection,
                 window_bounds,
                 node_id,
-                focus_state: &self.focus,
+                focus_state,
                 input_state,
                 hover,
-                focus: self.focus.focus == Some(node_id),
+                focus: focus_state.focus == Some(node_id),
             };
             let env = &node.env;
             node.visual.as_mut().map(|v| v.paint(&mut ctx, &env));
@@ -212,7 +225,9 @@ impl NodeTree {
                 draw_context,
                 style_collection,
                 offset + node_offset,
+                window_id,
                 input_state,
+                focus_state,
                 id,
                 options,
             );

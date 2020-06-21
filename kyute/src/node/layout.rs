@@ -10,6 +10,7 @@ use generational_indextree::{Node, NodeEdge, NodeId};
 use kyute_shell::platform::Platform;
 use std::any::TypeId;
 use std::rc::Rc;
+use winit::window::WindowId;
 
 /// A position between nodes in the node tree.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -48,9 +49,9 @@ impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
     /// Emits a child widget.
     ///
     /// Returns the ID of the node associated to the widget, and its measurements.
-    pub fn emit_child<'w>(
+    pub fn emit_child(
         &mut self,
-        widget: impl Widget + 'w,
+        widget: impl Widget,
         constraints: &BoxConstraints,
         env: Environment,
     ) -> (NodeId, Measurements) {
@@ -144,6 +145,14 @@ impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
     /// Returns the ID of the node associated to the widget.
     pub fn node_id(&self) -> NodeId {
         self.node.expect("node_id called outside `Widget::layout`")
+    }
+
+    /// Associates this node with a given window ID.
+    ///
+    /// All window events received with the specified ID will be forwarded to this node.
+    pub fn register_window(&mut self, window_id: WindowId) {
+        let nid = self.node_id();
+        self.win_ctx.windows.insert(window_id, nid);
     }
 
     /// Sets the offset of a node relative to its parent.

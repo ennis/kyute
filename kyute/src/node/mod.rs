@@ -11,13 +11,14 @@ mod layout;
 mod paint;
 
 pub use self::event::EventCtx;
-use self::event::FocusState;
+pub use self::event::FocusState;
 pub use self::event::RepaintRequest;
 pub use self::layout::LayoutCtx;
 pub use self::paint::PaintCtx;
 pub use self::paint::DebugLayout;
 pub use self::paint::PaintOptions;
 use std::any::TypeId;
+use winit::window::WindowId;
 
 /// A node within the visual tree.
 ///
@@ -66,6 +67,11 @@ impl NodeData<dyn Visual> {
         self.visual.as_ref().map(|v| v.as_ref().type_id())
     }
 
+    ///
+    pub(crate) fn window_id(&self) -> Option<WindowId> {
+        self.visual.as_ref().and_then(|v| v.window_id())
+    }
+
     /*/// Downcasts this node to a concrete type.
     pub(crate) fn downcast_mut<V: Visual>(&mut self) -> Option<&mut NodeData<V>> {
         if self.visual.as_any().is::<V>() {
@@ -88,9 +94,9 @@ pub(crate) type NodeArena = generational_indextree::Arena<NodeData>;
 ///
 /// See also: [`Widget::layout`](crate::widget::Widget::layout).
 pub struct NodeTree {
-    arena: NodeArena,
+    pub(crate) arena: NodeArena,
     root: NodeId,
-    focus: FocusState,
+    //focus: FocusState,
     /// TODO useless?
     window_origin: Point,
 }
@@ -104,7 +110,7 @@ impl NodeTree {
         NodeTree {
             arena: nodes,
             root,
-            focus: FocusState::new(),
+            //focus: FocusState::new(),
             window_origin: Point::origin(),
         }
     }

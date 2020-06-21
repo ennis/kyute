@@ -4,6 +4,7 @@ use crate::event::{
     Event, InputState, MoveFocusDirection, PointerButtonEvent, PointerButtons, PointerEvent,
 };
 use crate::node::NodeTree;
+use crate::{Point, Rect};
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
 use kyute_shell::window::PlatformWindow;
@@ -11,22 +12,28 @@ use log::trace;
 use std::collections::HashMap;
 use winit::event::DeviceId;
 use winit::event::ModifiersState;
-use crate::{Rect, Point};
+use winit::window::WindowId;
 
 /// Global state related to focus and pointer grab.
-pub(crate) struct FocusState {
+pub struct FocusState {
     pub(crate) focus: Option<NodeId>,
     pub(crate) pointer_grab: Option<NodeId>,
     pub(crate) hot: Option<NodeId>,
 }
 
 impl FocusState {
-    pub(crate) fn new() -> FocusState {
+    pub fn new() -> FocusState {
         FocusState {
             focus: None,
             pointer_grab: None,
             hot: None,
         }
+    }
+}
+
+impl Default for FocusState {
+    fn default() -> Self {
+        FocusState::new()
     }
 }
 
@@ -163,14 +170,22 @@ impl<'a, 'wctx> EventCtx<'a, 'wctx> {
 }
 
 impl NodeTree {
-    /// Builds the dispatch chain for a pointer event.
+    /// Builds the dispatch chain for a pointer event, by recursively hit-testing the bounds of
+    /// nodes.
     pub(crate) fn find_pointer_event_target(
         &self,
         id: NodeId,
+        window_id: WindowId,
         window_pos: Point,
         origin: Point,
     ) -> Option<NodeId> {
         let node_data = &self.arena[id].get();
+        // don't cross into other windows
+        match node_data.window_id() {
+            Some(id) if id != window_id => return None,
+            _ => {}
+        }
+
         let offset = node_data.offset;
         let measurements = node_data.measurements;
         // bounds in window coordinates
@@ -182,7 +197,7 @@ impl NodeTree {
             let mut child_id = self.arena[id].first_child();
             while let Some(id) = child_id {
                 if let Some(target_id) =
-                    self.find_pointer_event_target(id, window_pos, bounds.origin)
+                    self.find_pointer_event_target(id, window_id, window_pos, bounds.origin)
                 {
                     // hit
                     return Some(target_id);
@@ -197,7 +212,13 @@ impl NodeTree {
     }
 
     /// Builds the dispatch chain followed by an event in the visual tree, or empty vec if it's a traversal.
-    pub(crate) fn find_event_target(&self, event: &Event) -> Option<NodeId> {
+    pub(crate) fn find_event_target(
+        &self,
+        root: NodeId,
+        window_id: WindowId,
+        focus: &FocusState,
+        event: &Event,
+    ) -> Option<NodeId> {
         match event {
             Event::PointerMove(pointer_event)
             | Event::PointerDown(PointerButtonEvent {
@@ -208,13 +229,15 @@ impl NodeTree {
                 pointer: pointer_event,
                 ..
             }) => {
+                // we are delivering a pointer event.
                 // if there is a pointer-capturing node, then deliver the event directly to it
-                if let Some(pointer_capture_node_id) = self.focus.pointer_grab {
+                if let Some(pointer_capture_node_id) = focus.pointer_grab {
                     Some(pointer_capture_node_id)
                 } else {
                     // otherwise, build a pointer dispatch chain
                     self.find_pointer_event_target(
-                        self.root,
+                        root,
+                        window_id,
                         pointer_event.window_position,
                         self.window_origin,
                     )
@@ -222,7 +245,7 @@ impl NodeTree {
             }
             Event::KeyUp(keyboard_event) | Event::KeyDown(keyboard_event) => {
                 // keyboard events are delivered to the currently focused node
-                if let Some(focused_node_id) = self.focus.focus {
+                if let Some(focused_node_id) = focus.focus {
                     Some(focused_node_id)
                 } else {
                     None
@@ -230,7 +253,7 @@ impl NodeTree {
             }
             Event::Input(input_event) => {
                 // same as keyboard events
-                if let Some(focused_node_id) = self.focus.focus {
+                if let Some(focused_node_id) = focus.focus {
                     Some(focused_node_id)
                 } else {
                     None
@@ -241,6 +264,7 @@ impl NodeTree {
                 // is a pointer grab or not
                 self.find_pointer_event_target(
                     self.root,
+                    window_id,
                     wheel_event.pointer.window_position,
                     self.window_origin,
                 )
@@ -274,7 +298,9 @@ impl NodeTree {
         &mut self,
         window_ctx: &mut WindowCtx,
         window: &PlatformWindow,
+        root: NodeId,
         inputs: &InputState,
+        focus: &mut FocusState,
         event: &Event,
         target: NodeId,
         repaint: &mut RepaintRequest,
@@ -292,7 +318,7 @@ impl NodeTree {
                 window_ctx,
                 window,
                 inputs,
-                focus: &mut self.focus,
+                focus,
                 node_id: id,
                 bounds: Rect::new(Point::origin(), node.get().measurements.size),
                 focus_change: FocusChange::Keep,
@@ -300,11 +326,13 @@ impl NodeTree {
                 pointer_capture: false,
                 handled: false,
             };
+
+            // the node might not have a visual if it has been "temporarily moved out the tree"
+            // for borrowing reasons: this happens within `Visual::window_paint` and `Visual::window_event`.
             node.get_mut()
                 .visual
                 .as_mut()
-                .expect("node has no visual")
-                .event(&mut ctx, &local_event);
+                .map(|v| v.event(&mut ctx, &local_event));
 
             *repaint = (*repaint).max(ctx.repaint);
             let focus_change = ctx.focus_change;
@@ -315,13 +343,15 @@ impl NodeTree {
             // events that must be sent.
             match focus_change {
                 FocusChange::Acquire => {
-                    let old_focus = self.focus.focus;
+                    let old_focus = focus.focus;
                     if old_focus != Some(id) {
                         if let Some(old_focus) = old_focus {
                             let r = self.dispatch_event(
                                 window_ctx,
                                 window,
+                                root,
                                 inputs,
+                                focus,
                                 &Event::FocusOut,
                                 old_focus,
                                 repaint,
@@ -329,11 +359,13 @@ impl NodeTree {
                             );
                         }
 
-                        self.focus.focus = Some(id);
+                        focus.focus = Some(id);
                         self.dispatch_event(
                             window_ctx,
                             window,
+                            root,
                             inputs,
+                            focus,
                             &Event::FocusIn,
                             id,
                             repaint,
@@ -342,17 +374,19 @@ impl NodeTree {
                     }
                 }
                 FocusChange::Release => {
-                    if self.focus.focus == Some(id) {
+                    if focus.focus == Some(id) {
                         self.dispatch_event(
                             window_ctx,
                             window,
+                            root,
                             inputs,
+                            focus,
                             &Event::FocusOut,
                             id,
                             repaint,
                             true,
                         );
-                        self.focus.focus = None;
+                        focus.focus = None;
                     }
                 }
                 FocusChange::Move(_) => todo!("tab navigation"),
@@ -362,7 +396,7 @@ impl NodeTree {
             // handle pointer capture requests
             if pointer_capture {
                 // TODO events?
-                self.focus.pointer_grab = Some(id);
+                focus.pointer_grab = Some(id);
             }
 
             // stop propagation if the event was handled
@@ -370,25 +404,39 @@ impl NodeTree {
                 handled_by = Some(id);
             }
 
-            if !bubble || handled {
+            if !bubble || handled  {
                 break;
             }
 
+            // FIXME we could bubble to a parent window, is that what we want?
             next_id = self.arena[id].parent();
         }
 
         handled_by
     }
 
+    /// Delivers an event to a subtree.
+    ///
+    /// Parameters:
+    /// - window: the window corresponding to the subtree
+    /// - root: the root node of the window subtree (contents of the window)
+    /// - inputs: tracked input state (keyboard modifiers and pointers)
+    /// - focus: focus state of the window. This should **only** be changed by this function,
+    /// or otherwise widgets may not be notified of a focus change.
+    /// - event: event to be delivered
     pub fn event(
         &mut self,
         window_ctx: &mut WindowCtx,
         window: &PlatformWindow,
+        root: NodeId,
         inputs: &InputState,
+        focus: &mut FocusState,
         event: &Event,
     ) -> RepaintRequest {
         //trace!("event {:?}", event);
-        let target = self.find_event_target(event);
+
+        // find the target of the event
+        let target = self.find_event_target(root, window.id(), focus, event);
         let mut repaint = RepaintRequest::None;
 
         // event pre-processing
@@ -396,13 +444,18 @@ impl NodeTree {
             Event::PointerUp(PointerButtonEvent { pointer: p, .. })
             | Event::PointerDown(PointerButtonEvent { pointer: p, .. })
             | Event::PointerMove(p) => {
-                if self.focus.hot != target {
+                // sending a pointer event, and not to the currently hot target, this means that
+                // the hot widget is changing
+                if focus.hot != target {
                     // handle pointerout/pointerover
-                    if let Some(old_and_busted) = self.focus.hot {
+                    if let Some(old_and_busted) = focus.hot {
+                        // send a pointerout event for the widget losing the hot status
                         self.dispatch_event(
                             window_ctx,
                             window,
+                            root,
                             inputs,
+                            focus,
                             &Event::PointerOut(*p),
                             old_and_busted,
                             &mut repaint,
@@ -410,16 +463,19 @@ impl NodeTree {
                         );
                     }
                     if let Some(new_hotness) = target {
+                        // set a pointerover event for the widget gaining the hot status
                         self.dispatch_event(
                             window_ctx,
                             window,
+                            root,
                             inputs,
+                            focus,
                             &Event::PointerOver(*p),
                             new_hotness,
                             &mut repaint,
                             true,
                         );
-                        self.focus.hot.replace(new_hotness);
+                        focus.hot.replace(new_hotness);
                     }
                 }
             }
@@ -427,10 +483,13 @@ impl NodeTree {
         }
 
         if let Some(target) = target {
+            // dispatch the event if we have determined a target
             self.dispatch_event(
                 window_ctx,
                 window,
+                root,
                 inputs,
+                focus,
                 event,
                 target,
                 &mut repaint,
@@ -444,7 +503,7 @@ impl NodeTree {
                 // automatic release of pointer capture
                 if p.pointer.buttons.is_empty() {
                     trace!("auto pointer release");
-                    self.focus.pointer_grab = None;
+                    focus.pointer_grab = None;
                 }
             }
             _ => {}

@@ -1,7 +1,5 @@
 //! Kyute widget toolkit
 #![feature(unsized_locals)]
-#![feature(coerce_unsized)]
-#![feature(unsize)]
 
 pub mod application;
 #[macro_use]

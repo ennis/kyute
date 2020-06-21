@@ -1,9 +1,14 @@
-use kyute::application::{run_application, Application};
+use kyute::application::run;
+use kyute::component::{Component, ComponentWidget};
 use kyute::widget::constrained::ConstrainedBox;
 use kyute::widget::form::Form;
 use kyute::widget::slider::Slider;
 use kyute::widget::textedit::TextEdit;
+use kyute::widget::Button;
+use kyute::window::Window;
 use kyute::{BoxConstraints, BoxedWidget, WidgetExt};
+use std::marker::PhantomData;
+use winit::window::WindowBuilder;
 
 /*
 struct SimpleComponent;
@@ -14,7 +19,7 @@ impl Component for SimpleComponent {
     type Cmd = i32;
 
     fn command(&mut self, msg: i32) -> EventResult {
-        
+
     }
 
     fn view(&mut self, mq: Messages<i32>) -> BoxedWidget
@@ -125,51 +130,101 @@ impl Component for ColorPicker {
 }
 */
 
+struct SimpleComponent {
+    counter: i32,
+}
 
-struct SimpleApplication;
+struct SimpleComponentParams {
+    big: String,
+}
 
-impl Application for SimpleApplication {
-    type Action = ();
+impl<'a> Component<'a> for SimpleComponent {
+    type Params = &'a SimpleComponentParams;
+    type Cmd = ();
 
-    fn update(&mut self) {
+    fn command(&mut self, command: ()) {
         unimplemented!()
     }
 
-    fn view(&mut self) -> BoxedWidget {
+    fn view(&mut self, params: &'a SimpleComponentParams) -> BoxedWidget {
+        Button::new(&format!("{}.{}", params.big, self.counter)).boxed()
+    }
+
+    fn new(params: &'a SimpleComponentParams) -> Self {
+        SimpleComponent { counter: 0 }
+    }
+}
+
+struct SimpleApplication {
+    data: SimpleComponentParams,
+}
+
+impl<'a> Component<'a> for SimpleApplication {
+    type Params = ();
+    type Cmd = ();
+
+    fn command(&mut self, command: Self::Cmd) {
+        unimplemented!()
+    }
+
+    fn view(&mut self, params: ()) -> BoxedWidget {
         use kyute::widget::*;
-        Flex::new(Axis::Vertical)
-            .push(
-                Flex::new(Axis::Horizontal)
-                    .push(Baseline::new(20.0, Text::new("Horizontal Flex: ")))
-                    .push(Baseline::new(20.0, Button::new("Button A").on_click(|_| eprintln!("clicked button A"))))
-                    .push(Baseline::new(20.0, Button::new("Button B").on_click(|_| eprintln!("clicked button B"))))
-                    .push(Baseline::new(20.0, Text::new("Baseline alignment test"))),
-            )
-            .push(ConstrainedBox::new(
-                BoxConstraints::new(0.0..400.0, ..),
-                Form::new()
-                    .field("Field 1", TextEdit::new("Edit 1"))
-                    .field("Field 2", TextEdit::new("Edit 2"))
-                    .field("Field 3", TextEdit::new("Edit 3"))
-                    .field("Field with a longer label 4", TextEdit::new("Edit 4"))
-                    .field("Field 5", TextEdit::new("Edit 4"))
-                    .field("Slider", Slider::new(0.5).min(0.0).max(1.0)),
-            ))
-            .push(
+        Window::new(WindowBuilder::new())
+            .contents(
                 Flex::new(Axis::Vertical)
-                    .push(Button::new("Vertical Flex:"))
-                    .push(Button::new("Button A").on_click(|_| eprintln!("clicked button A")))
-                    .push(Button::new("Button B").on_click(|_| eprintln!("clicked button B")))
-                    .push(Text::new("Hello world"))
-                    .push(TextEdit::new("WWWWWWWWWWWWWWWWWWW")),
+                    .push(
+                        Flex::new(Axis::Horizontal)
+                            .push(Baseline::new(20.0, Text::new("Horizontal Flex: ")))
+                            .push(Baseline::new(
+                                20.0,
+                                Button::new("Button A").on_click(|_| eprintln!("clicked button A")),
+                            ))
+                            .push(Baseline::new(
+                                20.0,
+                                Button::new("Button B").on_click(|_| eprintln!("clicked button B")),
+                            ))
+                            .push(Baseline::new(20.0, Text::new("Baseline alignment test"))),
+                    )
+                    .push(ConstrainedBox::new(
+                        BoxConstraints::new(0.0..400.0, ..),
+                        Form::new()
+                            .field("Field 1", TextEdit::new("Edit 1"))
+                            .field("Field 2", TextEdit::new("Edit 2"))
+                            .field("Field 3", TextEdit::new("Edit 3"))
+                            .field("Field with a longer label 4", TextEdit::new("Edit 4"))
+                            .field("Field 5", TextEdit::new("Edit 4"))
+                            .field("Slider", Slider::new(0.5).min(0.0).max(1.0)),
+                    ))
+                    .push(
+                        Flex::new(Axis::Vertical)
+                            .push(Button::new("Vertical Flex:"))
+                            .push(
+                                Button::new("Button A").on_click(|_| eprintln!("clicked button A")),
+                            )
+                            .push(
+                                Button::new("Button B").on_click(|_| eprintln!("clicked button B")),
+                            )
+                            .push(Text::new("Hello world"))
+                            .push(TextEdit::new("WWWWWWWWWWWWWWWWWWW")),
+                    )
+                    .push(Text::new("last"))
+                    .push(Window::new(WindowBuilder::new().with_title("child window")))
+                    .push(ComponentWidget::<SimpleComponent>::new(&self.data)),
             )
-            .push(Text::new("last"))
             .boxed()
+    }
+
+    fn new(params: ()) -> Self {
+        unimplemented!()
     }
 }
 
 fn main() {
     pretty_env_logger::init();
 
-    run_application(SimpleApplication);
+    run(SimpleApplication {
+        data: SimpleComponentParams {
+            big: "hello world".to_string(),
+        },
+    });
 }
