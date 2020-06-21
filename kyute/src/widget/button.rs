@@ -1,17 +1,14 @@
 use crate::event::Event;
 use crate::layout::BoxConstraints;
 use crate::layout::Measurements;
-use crate::layout::Offset;
-use crate::layout::Point;
-use crate::layout::Size;
-use crate::layout::{align_boxes, Alignment, SideOffsets};
+use crate::layout::{align_boxes, Alignment};
 use crate::renderer::ButtonState;
 use crate::visual::Visual;
 use crate::widget::BoxedWidget;
 use crate::widget::Widget;
 use crate::widget::WidgetExt;
 use crate::widget::{Text, TypedWidget};
-use crate::{env, theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, style};
+use crate::{env, theme, Rect, Environment, EventCtx, LayoutCtx, PaintCtx, style, Point, SideOffsets, Size};
 use euclid::default::SideOffsets2D;
 use generational_indextree::NodeId;
 use kyute_shell::drawing::gradient::{
@@ -25,6 +22,7 @@ use std::any::{Any, TypeId};
 pub struct ButtonVisual {
     bg_color: Color,
     border_color: Color,
+    on_click: Option<Box<dyn FnMut(&mut EventCtx)>>
 }
 
 impl Default for ButtonVisual {
@@ -32,6 +30,7 @@ impl Default for ButtonVisual {
         ButtonVisual {
             bg_color: Default::default(),
             border_color: Default::default(),
+            on_click: None
         }
     }
 }
@@ -41,14 +40,16 @@ impl Visual for ButtonVisual {
         ctx.draw_styled_box("button", style::PaletteIndex(0));
     }
 
-    fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
+    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
         false
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
         match event {
             Event::PointerDown(p) => {
-                eprintln!("BUTTON CLICKED");
+                if let Some(on_click) = &mut self.on_click {
+                    (on_click)(ctx);
+                }
                 ctx.request_focus();
                 ctx.request_redraw();
                 ctx.set_handled();
@@ -74,6 +75,7 @@ impl Visual for ButtonVisual {
 /// - [`PADDING`](crate::style::PADDING): padding for the label inside the button.
 pub struct Button {
     label: BoxedWidget,
+    on_click: Option<Box<dyn FnMut(&mut EventCtx)>>,
 }
 
 impl Button {
@@ -81,7 +83,13 @@ impl Button {
     pub fn new(label: &str) -> Button {
         Button {
             label: Text::new(label).boxed(),
+            on_click: None
         }
+    }
+
+    pub fn on_click(mut self, on_click: impl Fn(&mut EventCtx) + 'static) -> Button {
+        self.on_click = Some(Box::new(on_click));
+        self
     }
 }
 
@@ -98,7 +106,8 @@ impl TypedWidget for Button {
         env: Environment,
     ) -> (Box<ButtonVisual>, Measurements) {
         //let on_click = self.on_click;
-        let visual = previous_visual.unwrap_or_default();
+        let mut visual = previous_visual.unwrap_or_default();
+        visual.on_click = self.on_click;
 
         //visual.on_click = on_click;
         let min_width = env.get(theme::MinButtonWidth);

@@ -1,6 +1,6 @@
 //! Direct2D render target
 use crate::drawing::brush::Brush;
-use crate::drawing::{mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Point, Rect, Transform, PathGeometry};
+use crate::drawing::{mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Point, Rect, Transform, PathGeometry, Dip, Px, DipLength};
 use crate::error::{check_hr, Error};
 use crate::text::TextLayout;
 use bitflags::bitflags;

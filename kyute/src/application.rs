@@ -6,9 +6,8 @@ use crate::event::{
     Event, InputEvent, InputState, KeyboardEvent, PointerButton, PointerButtonEvent,
     PointerButtons, PointerEvent, PointerState, WheelDeltaMode, WheelEvent,
 };
-use crate::layout::Size;
 use crate::node::{NodeTree, RepaintRequest, DebugLayout, PaintOptions};
-use crate::{Bounds, BoxConstraints, BoxedWidget, Environment, Measurements, Point, Visual, Widget, style};
+use crate::{Rect, BoxConstraints, BoxedWidget, Environment, Measurements, Point, Visual, Widget, style, Size};
 use anyhow::Result;
 use kyute_shell::drawing::Color;
 use kyute_shell::platform::Platform;
@@ -45,310 +44,6 @@ pub trait Application {
     // Used with `OpenGlViewportWidget`.
     // fn render_gl(&mut self, framebuffer: GLuint, viewport_id: ViewportId, bounds: Bounds);
 }
-
-/// Context needed to open a window.
-pub struct WindowCtx<'a> {
-    pub(crate) platform: &'a Platform,
-    event_loop: &'a EventLoopWindowTarget<()>,
-    new_windows: Vec<Rc<RefCell<Window>>>,
-}
-
-/// Stores information about the last click (for double-click handling)
-struct LastClick {
-    device_id: winit::event::DeviceId,
-    button: PointerButton,
-    position: Point,
-    time: Instant,
-    repeat_count: u32,
-}
-
-/// A window managed by kyute with a cached visual node.
-struct Window {
-    window: PlatformWindow,
-    tree: NodeTree,
-    inputs: InputState,
-    // for double-click detection
-    last_click: Option<LastClick>,
-    /// Widget styles for the window.
-    style_collection: Rc<StyleCollection>,
-    debug_layout: DebugLayout
-}
-
-impl Window {
-    /// Opens a window and registers the window into the event loop.
-    pub fn open(ctx: &mut WindowCtx, builder: WindowBuilder, style_collection: Rc<StyleCollection>) -> Result<Rc<RefCell<Window>>> {
-        // create the platform window
-        let window = PlatformWindow::new(ctx.event_loop, builder, ctx.platform, true)?;
-        //let size: (f64, f64) = window.window().inner_size().to_logical::<f64>(1.0).into();
-
-        // create the default visual
-        let tree = NodeTree::new();
-
-        let window = Window {
-            window,
-            tree,
-            inputs: InputState::default(),
-            last_click: None,
-            style_collection,
-            debug_layout: DebugLayout::None,
-        };
-        let window = Rc::new(RefCell::new(window));
-
-        ctx.new_windows.push(window.clone());
-        Ok(window)
-    }
-
-    /// Returns the ID of the window.
-    pub fn id(&self) -> WindowId {
-        self.window.id()
-    }
-
-    /// deliver window event
-    fn window_event(&mut self, ctx: &mut WindowCtx, window_event: &WindowEvent) {
-        let event_result = match window_event {
-            WindowEvent::Resized(size) => {
-                self.window.resize((*size).into());
-                return;
-            }
-            WindowEvent::ModifiersChanged(m) => {
-                self.inputs.mods = *m;
-                return;
-            }
-            WindowEvent::MouseInput {
-                device_id,
-                state,
-                button,
-                ..
-            } => {
-                // update pointer state
-                let pointer_state = self
-                    .inputs
-                    .pointers
-                    .entry(*device_id)
-                    .or_insert(PointerState::default());
-                let button = match button {
-                    winit::event::MouseButton::Left => PointerButton::LEFT,
-                    winit::event::MouseButton::Right => PointerButton::RIGHT,
-                    winit::event::MouseButton::Middle => PointerButton::MIDDLE,
-                    winit::event::MouseButton::Other(3) => PointerButton::X1,
-                    winit::event::MouseButton::Other(4) => PointerButton::X2,
-                    winit::event::MouseButton::Other(b) => PointerButton(*b as u16),
-                };
-                match state {
-                    winit::event::ElementState::Pressed => pointer_state.buttons.set(button),
-                    winit::event::ElementState::Released => pointer_state.buttons.reset(button),
-                };
-
-                let click_time = Instant::now();
-                let position = pointer_state.position;
-
-                // determine the repeat count (double-click, triple-click, etc.) for button down event
-                let repeat_count = match &mut self.last_click {
-                    Some(ref mut last)
-                        if last.device_id == *device_id
-                            && last.button == button
-                            && last.position == position
-                            && (click_time - last.time) < ctx.platform.double_click_time() =>
-                    {
-                        // same device, button, position, and within the platform specified double-click time
-                        match state {
-                            winit::event::ElementState::Pressed => {
-                                last.repeat_count += 1;
-                                last.repeat_count
-                            }
-                            winit::event::ElementState::Released => {
-                                // no repeat for release events (although that could be possible?),
-                                1
-                            }
-                        }
-                    }
-                    other => {
-                        // no match, reset
-                        match state {
-                            winit::event::ElementState::Pressed => {
-                                *other = Some(LastClick {
-                                    device_id: *device_id,
-                                    button,
-                                    position,
-                                    time: click_time,
-                                    repeat_count: 1,
-                                });
-                            }
-                            winit::event::ElementState::Released => {
-                                *other = None;
-                            }
-                        };
-                        1
-                    }
-                };
-
-                let p = PointerButtonEvent {
-                    pointer: PointerEvent {
-                        position,
-                        window_position: position,
-                        modifiers: self.inputs.mods,
-                        buttons: pointer_state.buttons,
-                        pointer_id: *device_id,
-                    },
-                    button: Some(button),
-                    repeat_count,
-                };
-
-                let e = match state {
-                    winit::event::ElementState::Pressed => Event::PointerDown(p),
-                    winit::event::ElementState::Released => Event::PointerUp(p),
-                };
-
-                self.tree.event(ctx, &self.window, &self.inputs, &e)
-            }
-            WindowEvent::CursorMoved {
-                device_id,
-                position,
-                ..
-            } => {
-                let logical = position.to_logical::<f64>(self.window.window().scale_factor());
-                let logical = Point::new(logical.x, logical.y);
-
-                let pointer_state = self
-                    .inputs
-                    .pointers
-                    .entry(*device_id)
-                    .or_insert(PointerState::default());
-                pointer_state.position = logical;
-
-                let p = PointerEvent {
-                    position: logical,
-                    window_position: logical,
-                    modifiers: self.inputs.mods,
-                    buttons: pointer_state.buttons,
-                    pointer_id: *device_id,
-                };
-
-                let result = self.tree
-                    .event(ctx, &self.window, &self.inputs, &Event::PointerMove(p));
-
-                // force redraw if bounds debugging mode is on
-                if self.debug_layout != DebugLayout::None {
-                    RepaintRequest::Repaint
-                } else {
-                    result
-                }
-            }
-            WindowEvent::MouseWheel {
-                device_id,
-                delta,
-                phase,
-                ..
-            } => {
-                let pointer = self.inputs.synthetic_pointer_event(*device_id);
-                if let Some(pointer) = pointer {
-                    let wheel_event = match delta {
-                        winit::event::MouseScrollDelta::LineDelta(x, y) => WheelEvent {
-                            pointer,
-                            delta_x: *x as f64,
-                            delta_y: *y as f64,
-                            delta_z: 0.0,
-                            delta_mode: WheelDeltaMode::Line,
-                        },
-                        winit::event::MouseScrollDelta::PixelDelta(pos) => WheelEvent {
-                            pointer,
-                            delta_x: pos.x,
-                            delta_y: pos.y,
-                            delta_z: 0.0,
-                            delta_mode: WheelDeltaMode::Pixel,
-                        },
-                    };
-                    self.tree
-                        .event(ctx, &self.window, &self.inputs, &Event::Wheel(wheel_event))
-                } else {
-                    warn!("wheel event received but pointer position is not yet known");
-                    return;
-                }
-            }
-            WindowEvent::ReceivedCharacter(char) => self.tree.event(
-                ctx,
-                &self.window,
-                &self.inputs,
-                &Event::Input(InputEvent { character: *char }),
-            ),
-            WindowEvent::KeyboardInput {
-                device_id,
-                input,
-                is_synthetic,
-            } => {
-                let keyboard_event = KeyboardEvent {
-                    scan_code: input.scancode,
-                    key: input.virtual_keycode,
-                    repeat: false, // TODO
-                    modifiers: self.inputs.mods,
-                };
-
-                let event = match input.state {
-                    winit::event::ElementState::Pressed => Event::KeyDown(keyboard_event),
-                    winit::event::ElementState::Released => Event::KeyUp(keyboard_event),
-                };
-
-                // Ctrl+F12 cycles through bounds debugging modes
-                if input.state == winit::event::ElementState::Pressed && input.virtual_keycode == Some(VirtualKeyCode::F12) && self.inputs.mods.ctrl() {
-                    self.debug_layout = match self.debug_layout {
-                        DebugLayout::None => DebugLayout::Hover,
-                        DebugLayout::Hover => DebugLayout::All,
-                        DebugLayout::All => DebugLayout::None,
-                    };
-                    RepaintRequest::Repaint
-                }
-                else {
-                    self.tree.event(ctx, &self.window, &self.inputs, &event)
-                }
-            }
-
-            _ => {
-                return;
-            }
-        };
-
-        // handle follow-up actions
-        match event_result {
-            RepaintRequest::Repaint | RepaintRequest::Relayout => {
-                // TODO ask for relayout
-                self.window.window().request_redraw();
-            }
-            _ => {}
-        }
-    }
-
-    /// Updates the current visual tree for this stage.
-    fn relayout(&mut self, window_ctx: &mut WindowCtx, env: Environment, widget: BoxedWidget) {
-        // get window logical size
-        let size: (f64, f64) = self
-            .window
-            .window()
-            .inner_size()
-            .to_logical::<f64>(1.0)
-            .into();
-        let size: Size = size.into();
-        dbg!(size);
-        // perform layout, update the visual node
-        self.tree
-            .layout(widget, size, &BoxConstraints::loose(size), env, window_ctx);
-        // request a redraw of this window
-        self.window.window().request_redraw()
-    }
-
-    /// Called when the window needs to be repainted.
-    fn paint(&mut self, platform: &Platform) {
-        {
-            let mut wdc = WindowDrawContext::new(&mut self.window);
-            wdc.clear(Color::new(0.326, 0.326, 0.326, 1.0));
-            let options = PaintOptions {
-                debug_draw_bounds: self.debug_layout
-            };
-            self.tree.paint(platform, &mut wdc, &self.style_collection, &self.inputs, &options);
-        }
-        self.window.present();
-    }
-}
-
 
 /// Loads the application style.
 fn load_application_style(cfg: &config::Config) -> Rc<StyleCollection> {
@@ -586,6 +281,311 @@ fn write_default_application_style()
 }
 
 
+/// Context needed to open a window.
+pub struct WindowCtx<'a> {
+    pub(crate) platform: &'a Platform,
+    pub(crate) event_loop: &'a EventLoopWindowTarget<()>,
+    pub(crate) new_windows: Vec<Rc<RefCell<Window>>>,
+}
+
+/// Stores information about the last click (for double-click handling)
+struct LastClick {
+    device_id: winit::event::DeviceId,
+    button: PointerButton,
+    position: Point,
+    time: Instant,
+    repeat_count: u32,
+}
+
+/// A window managed by kyute with a cached visual node.
+pub struct Window {
+    window: PlatformWindow,
+    tree: NodeTree,
+    inputs: InputState,
+    // for double-click detection
+    last_click: Option<LastClick>,
+    /// Widget styles for the window.
+    style_collection: Rc<StyleCollection>,
+    debug_layout: DebugLayout
+}
+
+impl Window {
+    /// Opens a window and registers the window into the event loop.
+    pub fn open(ctx: &mut WindowCtx, builder: WindowBuilder, style_collection: Rc<StyleCollection>) -> Result<Rc<RefCell<Window>>> {
+        // create the platform window
+        let window = PlatformWindow::new(ctx.event_loop, builder, ctx.platform, true)?;
+        //let size: (f64, f64) = window.window().inner_size().to_logical::<f64>(1.0).into();
+
+        // create the default visual
+        let tree = NodeTree::new();
+
+        let window = Window {
+            window,
+            tree,
+            inputs: InputState::default(),
+            last_click: None,
+            style_collection,
+            debug_layout: DebugLayout::None,
+        };
+        let window = Rc::new(RefCell::new(window));
+
+        ctx.new_windows.push(window.clone());
+        Ok(window)
+    }
+
+    /// Returns the ID of the window.
+    pub fn id(&self) -> WindowId {
+        self.window.id()
+    }
+
+    /// deliver window event
+    fn window_event(&mut self, ctx: &mut WindowCtx, window_event: &WindowEvent) {
+        let event_result = match window_event {
+            WindowEvent::Resized(size) => {
+                self.window.resize((*size).into());
+                return;
+            }
+            WindowEvent::ModifiersChanged(m) => {
+                self.inputs.mods = *m;
+                return;
+            }
+            WindowEvent::MouseInput {
+                device_id,
+                state,
+                button,
+                ..
+            } => {
+                // update pointer state
+                let pointer_state = self
+                    .inputs
+                    .pointers
+                    .entry(*device_id)
+                    .or_insert(PointerState::default());
+                let button = match button {
+                    winit::event::MouseButton::Left => PointerButton::LEFT,
+                    winit::event::MouseButton::Right => PointerButton::RIGHT,
+                    winit::event::MouseButton::Middle => PointerButton::MIDDLE,
+                    winit::event::MouseButton::Other(3) => PointerButton::X1,
+                    winit::event::MouseButton::Other(4) => PointerButton::X2,
+                    winit::event::MouseButton::Other(b) => PointerButton(*b as u16),
+                };
+                match state {
+                    winit::event::ElementState::Pressed => pointer_state.buttons.set(button),
+                    winit::event::ElementState::Released => pointer_state.buttons.reset(button),
+                };
+
+                let click_time = Instant::now();
+                let position = pointer_state.position;
+
+                // determine the repeat count (double-click, triple-click, etc.) for button down event
+                let repeat_count = match &mut self.last_click {
+                    Some(ref mut last)
+                    if last.device_id == *device_id
+                        && last.button == button
+                        && last.position == position
+                        && (click_time - last.time) < ctx.platform.double_click_time() =>
+                        {
+                            // same device, button, position, and within the platform specified double-click time
+                            match state {
+                                winit::event::ElementState::Pressed => {
+                                    last.repeat_count += 1;
+                                    last.repeat_count
+                                }
+                                winit::event::ElementState::Released => {
+                                    // no repeat for release events (although that could be possible?),
+                                    1
+                                }
+                            }
+                        }
+                    other => {
+                        // no match, reset
+                        match state {
+                            winit::event::ElementState::Pressed => {
+                                *other = Some(LastClick {
+                                    device_id: *device_id,
+                                    button,
+                                    position,
+                                    time: click_time,
+                                    repeat_count: 1,
+                                });
+                            }
+                            winit::event::ElementState::Released => {
+                                *other = None;
+                            }
+                        };
+                        1
+                    }
+                };
+
+                let p = PointerButtonEvent {
+                    pointer: PointerEvent {
+                        position,
+                        window_position: position,
+                        modifiers: self.inputs.mods,
+                        buttons: pointer_state.buttons,
+                        pointer_id: *device_id,
+                    },
+                    button: Some(button),
+                    repeat_count,
+                };
+
+                let e = match state {
+                    winit::event::ElementState::Pressed => Event::PointerDown(p),
+                    winit::event::ElementState::Released => Event::PointerUp(p),
+                };
+
+                self.tree.event(ctx, &self.window, &self.inputs, &e)
+            }
+            WindowEvent::CursorMoved {
+                device_id,
+                position,
+                ..
+            } => {
+                let logical = position.to_logical::<f64>(self.window.window().scale_factor());
+                let logical = Point::new(logical.x, logical.y);
+
+                let pointer_state = self
+                    .inputs
+                    .pointers
+                    .entry(*device_id)
+                    .or_insert(PointerState::default());
+                pointer_state.position = logical;
+
+                let p = PointerEvent {
+                    position: logical,
+                    window_position: logical,
+                    modifiers: self.inputs.mods,
+                    buttons: pointer_state.buttons,
+                    pointer_id: *device_id,
+                };
+
+                let result = self.tree
+                    .event(ctx, &self.window, &self.inputs, &Event::PointerMove(p));
+
+                // force redraw if bounds debugging mode is on
+                if self.debug_layout != DebugLayout::None {
+                    RepaintRequest::Repaint
+                } else {
+                    result
+                }
+            }
+            WindowEvent::MouseWheel {
+                device_id,
+                delta,
+                phase,
+                ..
+            } => {
+                let pointer = self.inputs.synthetic_pointer_event(*device_id);
+                if let Some(pointer) = pointer {
+                    let wheel_event = match delta {
+                        winit::event::MouseScrollDelta::LineDelta(x, y) => WheelEvent {
+                            pointer,
+                            delta_x: *x as f64,
+                            delta_y: *y as f64,
+                            delta_z: 0.0,
+                            delta_mode: WheelDeltaMode::Line,
+                        },
+                        winit::event::MouseScrollDelta::PixelDelta(pos) => WheelEvent {
+                            pointer,
+                            delta_x: pos.x,
+                            delta_y: pos.y,
+                            delta_z: 0.0,
+                            delta_mode: WheelDeltaMode::Pixel,
+                        },
+                    };
+                    self.tree
+                        .event(ctx, &self.window, &self.inputs, &Event::Wheel(wheel_event))
+                } else {
+                    warn!("wheel event received but pointer position is not yet known");
+                    return;
+                }
+            }
+            WindowEvent::ReceivedCharacter(char) => self.tree.event(
+                ctx,
+                &self.window,
+                &self.inputs,
+                &Event::Input(InputEvent { character: *char }),
+            ),
+            WindowEvent::KeyboardInput {
+                device_id,
+                input,
+                is_synthetic,
+            } => {
+                let keyboard_event = KeyboardEvent {
+                    scan_code: input.scancode,
+                    key: input.virtual_keycode,
+                    repeat: false, // TODO
+                    modifiers: self.inputs.mods,
+                };
+
+                let event = match input.state {
+                    winit::event::ElementState::Pressed => Event::KeyDown(keyboard_event),
+                    winit::event::ElementState::Released => Event::KeyUp(keyboard_event),
+                };
+
+                // Ctrl+F12 cycles through bounds debugging modes
+                if input.state == winit::event::ElementState::Pressed && input.virtual_keycode == Some(VirtualKeyCode::F12) && self.inputs.mods.ctrl() {
+                    self.debug_layout = match self.debug_layout {
+                        DebugLayout::None => DebugLayout::Hover,
+                        DebugLayout::Hover => DebugLayout::All,
+                        DebugLayout::All => DebugLayout::None,
+                    };
+                    RepaintRequest::Repaint
+                }
+                else {
+                    self.tree.event(ctx, &self.window, &self.inputs, &event)
+                }
+            }
+
+            _ => {
+                return;
+            }
+        };
+
+        // handle follow-up actions
+        match event_result {
+            RepaintRequest::Repaint | RepaintRequest::Relayout => {
+                // TODO ask for relayout
+                self.window.window().request_redraw();
+            }
+            _ => {}
+        }
+    }
+
+    /// Updates the current visual tree for this stage.
+    fn relayout(&mut self, window_ctx: &mut WindowCtx, env: Environment, widget: BoxedWidget) {
+        // get window logical size
+        let size: (f64, f64) = self
+            .window
+            .window()
+            .inner_size()
+            .to_logical::<f64>(1.0)
+            .into();
+        let size: Size = size.into();
+        //dbg!(size);
+        // perform layout, update the visual node
+        self.tree
+            .layout(widget, size, &BoxConstraints::loose(size), env, window_ctx);
+        // request a redraw of this window
+        self.window.window().request_redraw()
+    }
+
+    /// Called when the window needs to be repainted.
+    fn paint(&mut self, platform: &Platform) {
+        {
+            let mut wdc = WindowDrawContext::new(&mut self.window);
+            wdc.clear(Color::new(0.326, 0.326, 0.326, 1.0));
+            let options = PaintOptions {
+                debug_draw_bounds: self.debug_layout
+            };
+            self.tree.paint(platform, &mut wdc, &self.style_collection, &self.inputs, &options);
+        }
+        self.window.present();
+    }
+}
+
+
+
 /// Runs the specified application.
 pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
     // winit event loop
@@ -617,6 +617,7 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
         .borrow_mut()
         .relayout(&mut win_ctx, Environment::new(), app.view());
 
+    // enter the main event loop
     event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
 
@@ -628,7 +629,7 @@ pub fn run_application<A: Application + 'static>(mut app: A) -> ! {
 
         match event {
             winit::event::Event::WindowEvent { window_id, event } => {
-                // deliver event to the window
+                // deliver event to the target window
                 if let Some(window) = open_windows.get(&window_id) {
                     if let Some(window) = window.upgrade() {
                         window.borrow_mut().window_event(&mut win_ctx, &event);

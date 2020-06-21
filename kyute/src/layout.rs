@@ -3,45 +3,14 @@
 use crate::application::WindowCtx;
 use crate::node::NodeArena;
 use crate::widget::Baseline;
-use bitflags::_core::fmt::Formatter;
-use bitflags::_core::ops::RangeBounds;
+use std::fmt::Formatter;
+use std::ops::RangeBounds;
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
 use std::fmt;
 use std::ops::Bound;
 use std::rc::Rc;
-
-pub type SideOffsets = euclid::default::SideOffsets2D<f64>;
-pub type Size = euclid::default::Size2D<f64>;
-pub type Bounds = euclid::default::Rect<f64>;
-pub type Offset = euclid::default::Vector2D<f64>;
-pub type Point = euclid::default::Point2D<f64>;
-
-/*/// Edge insets.
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
-pub struct EdgeInsets {
-    pub left: f64,
-    pub top: f64,
-    pub right: f64,
-    pub bottom: f64,
-}
-
-impl From<f64> for EdgeInsets {
-    fn from(v: f64) -> Self {
-        EdgeInsets::all(v)
-    }
-}
-
-impl EdgeInsets {
-    pub fn all(v: f64) -> EdgeInsets {
-        EdgeInsets {
-            left: v,
-            top: v,
-            right: v,
-            bottom: v,
-        }
-    }
-}*/
+use crate::{Size, SideOffsets, Point, Offset};
 
 /// Box constraints.
 #[derive(Copy, Clone)]

@@ -1,12 +1,11 @@
 //! Layout and reconciliation pass.
 use super::NodeData;
 use crate::application::WindowCtx;
-use crate::layout::Size;
-use crate::layout::{BoxConstraints, Offset};
+use crate::layout::BoxConstraints;
 use crate::node::{NodeArena, NodeTree};
 use crate::state::NodeKey;
 use crate::widget::BoxedWidget;
-use crate::{env, node, Environment, Measurements, Point, Widget};
+use crate::{env, node, Environment, Measurements, Point, Widget, Offset, Size};
 use generational_indextree::{Node, NodeEdge, NodeId};
 use kyute_shell::platform::Platform;
 use std::any::TypeId;
@@ -26,24 +25,6 @@ impl NodeCursor {
     pub fn first_child(parent: NodeId) -> NodeCursor {
         NodeCursor::Child(parent)
     }
-
-    /*pub fn insert(&mut self, id: NodeId, arena: &mut NodeArena) {
-        match *self {
-            NodeCursor::Before(root) => unimplemented!(),
-            NodeCursor::Child(parent) => {
-                if arena[parent].first_child() != Some(id) {
-                    parent.prepend(id, arena);
-                }
-                *self = NodeCursor::After(id);
-            }
-            NodeCursor::After(before) => {
-                if id != before {
-                    before.insert_after(id, arena);
-                    *self = NodeCursor::After(id);
-                }
-            }
-        }
-    }*/
 }
 
 /// Context passed to a widget during the layout pass.

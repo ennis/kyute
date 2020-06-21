@@ -4,14 +4,12 @@ use crate::event::Event;
 use crate::renderer::LineSegment;
 use crate::widget::frame::FrameVisual;
 use crate::{
-    theme, Bounds, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
+    theme, Rect, Size, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
     TypedWidget, Visual, Widget,
 };
-use kyute_shell::drawing::{Rect, Size};
 use num_traits::{Float, PrimInt};
 use std::any::Any;
 use crate::style::PaletteIndex;
-use crate::layout::Offset;
 
 /// Utility class representing a slider track on which a knob can move.
 pub struct SliderTrack {
@@ -131,7 +129,7 @@ impl Visual for SliderVisual {
         let track_x_end = self.track.track.end.x;
 
         // track bounds
-        let track_bounds = Bounds::new(
+        let track_bounds = Rect::new(
             Point::new(dbg!(track_x_start), track_y - 0.5*track_h),
             Size::new(track_x_end - track_x_start, track_h),
         );
@@ -139,7 +137,7 @@ impl Visual for SliderVisual {
         let kpos = self.track.knob_position();
         let kx = kpos.x.round()+0.5;
 
-        let knob_bounds = Bounds::new(
+        let knob_bounds = Rect::new(
             Point::new(kx-0.5*knob_w, track_y-knob_y),
             Size::new(knob_w, knob_h),
         );
@@ -180,7 +178,7 @@ impl Visual for SliderVisual {
         }
     }
 
-    fn hit_test(&mut self, point: Point, bounds: Bounds) -> bool {
+    fn hit_test(&mut self, point: Point, bounds: Rect) -> bool {
         unimplemented!()
     }
 
@@ -232,7 +230,7 @@ impl<T: Float> TypedWidget for Slider<T> {
 
         // position the slider track inside the layout
         let inner_bounds =
-            Bounds::new(Point::origin(), size).inflate(padding.horizontal(), padding.vertical());
+            Rect::new(Point::origin(), size).inflate(padding.horizontal(), padding.vertical());
 
         // calculate knob width
         //let knob_width = get_knob_width(inner_bounds.size.width, self.divisions, min_knob_width);

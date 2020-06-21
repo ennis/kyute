@@ -1,9 +1,5 @@
 use crate::event::{Event, MoveFocusDirection};
-use crate::{
-    layout::BoxConstraints, layout::Measurements, layout::Offset, layout::Size, theme, Bounds,
-    BoxedWidget, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget,
-    WidgetExt,
-};
+use crate::{layout::BoxConstraints, layout::Measurements, theme, Rect, BoxedWidget, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget, WidgetExt, Size, Offset};
 use log::trace;
 use std::any::Any;
 
@@ -149,47 +145,11 @@ impl Visual for FlexVisual {
         let bounds = ctx.bounds();
     }
 
-    fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
+    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
         unimplemented!()
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
-        /*match event {
-            Event::MoveFocus(direction) => {
-                // find the focus path
-                let mut i = if let Some(i) = self
-                    .children
-                    .iter()
-                    .position(|node| node.is_on_focus_path(ctx))
-                {
-                    i as isize
-                } else {
-                    // this container does not contain the focus path
-                    return;
-                };
-
-                self.children[i as usize].event(ctx, event);
-
-                let len = self.children.len() as isize;
-                while !ctx.handled() && (0..len).contains(&i) {
-                    i += match direction {
-                        MoveFocusDirection::Before => -1,
-                        MoveFocusDirection::After => 1,
-                    };
-
-                    self.children[i as usize].event(ctx, &Event::SetFocus(*direction));
-                }
-            }
-            // forward all other events
-            event => {
-                for c in self.children.iter_mut() {
-                    c.event(ctx, event);
-                    if ctx.handled() {
-                        break;
-                    }
-                }
-            }
-        }*/
     }
 
     fn as_any(&self) -> &dyn Any {

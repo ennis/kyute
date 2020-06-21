@@ -1,5 +1,5 @@
 //! Rendering of styled boxes.
-use crate::Bounds;
+use crate::Rect;
 use kyute_shell::drawing::{
     Color, ColorInterpolationMode, DrawContext, ExtendMode, GradientStopCollection, Offset, Point,
 };
@@ -323,7 +323,7 @@ fn make_gradient_stop_collection(
 
 fn make_brush(
     ctx: &DrawContext,
-    bounds: &Bounds,
+    bounds: &Rect,
     brush: &Brush,
     palette: &Palette,
 ) -> kyute_shell::drawing::Brush {
@@ -371,7 +371,7 @@ fn make_brush(
 }
 
 impl StyleSet {
-    fn draw(&self, platform: &Platform, ctx: &mut DrawContext, bounds: &Bounds, state: State, palette: &Palette) {
+    fn draw(&self, platform: &Platform, ctx: &mut DrawContext, bounds: &Rect, state: State, palette: &Palette) {
         let mut fill = None;
         let mut borders: Vec<Border> = Vec::new();
         let mut inner_shadow = None;
@@ -392,7 +392,7 @@ impl StyleSet {
 
         ctx.save();
         ctx.transform(&bounds.origin.to_vector().to_transform());
-        let bounds = Bounds::from_size(bounds.size);
+        let bounds = Rect::from_size(bounds.size);
 
         // we draw, in order:
         // - the drop shadow
@@ -483,7 +483,7 @@ impl StyleCollection {
         &self,
         platform: &Platform,
         ctx: &mut DrawContext,
-        bounds: Bounds,
+        bounds: Rect,
         style_set: &str,
         state_bits: State,
         palette: PaletteIndex,

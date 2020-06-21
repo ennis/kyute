@@ -1,6 +1,6 @@
 use crate::event::Event;
 use crate::{
-    Bounds, BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx,
+    Rect, BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx,
     Point, TypedWidget, Visual, Widget,
 };
 use kyute_shell::drawing::{Color, Brush, IntoBrush, RectExt};
@@ -81,7 +81,7 @@ impl Visual for FrameVisual {
         }
     }
 
-    fn hit_test(&mut self, point: Point, bounds: Bounds) -> bool {
+    fn hit_test(&mut self, point: Point, bounds: Rect) -> bool {
         unimplemented!()
     }
     fn event(&mut self, ctx: &mut EventCtx, event: &Event) {

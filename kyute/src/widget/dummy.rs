@@ -1,6 +1,6 @@
 use crate::event::Event;
 use crate::layout::{BoxConstraints, Measurements};
-use crate::{Bounds, DummyVisual, Environment, LayoutCtx, Size, TypedWidget, Visual, Widget};
+use crate::{Rect, DummyVisual, Environment, LayoutCtx, Size, TypedWidget, Visual, Widget};
 
 /// Dummy widget that does nothing.
 pub struct DummyWidget;

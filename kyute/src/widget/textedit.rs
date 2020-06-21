@@ -1,9 +1,9 @@
 //! Text editor widget.
 use crate::event::Event;
-use crate::layout::{BoxConstraints, Measurements, Offset, SideOffsets, Size};
-use crate::{theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget, WidgetExt, style};
+use crate::layout::{BoxConstraints, Measurements};
+use crate::{theme, Offset, SideOffsets, Size, Rect, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget, WidgetExt, style};
 use kyute_shell::drawing::context::{CompositeMode, InterpolationMode};
-use kyute_shell::drawing::{Color, DrawTextOptions, Rect, RectExt, Brush};
+use kyute_shell::drawing::{Color, DrawTextOptions, RectExt, Brush};
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
 use log::trace;
 use palette::{Srgb, Srgba};
@@ -251,7 +251,7 @@ impl Visual for TextEditVisual {
         self.needs_repaint = false;
     }
 
-    fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
+    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
         false
     }
 

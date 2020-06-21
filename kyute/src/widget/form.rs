@@ -1,13 +1,9 @@
-use crate::layout::SideOffsets;
 use crate::widget::align::Align;
 use crate::widget::constrained::ConstrainedBox;
 use crate::widget::flex::FlexVisual;
 use crate::widget::padding::Padding;
 use crate::widget::{Axis, Baseline, Flex, Text};
-use crate::{
-    Alignment, Bounds, BoxConstraints, BoxedWidget, Environment, LayoutCtx, Measurements, Point,
-    TypedWidget, Visual, Widget, WidgetExt,
-};
+use crate::{Alignment, Rect, BoxConstraints, BoxedWidget, Environment, LayoutCtx, Measurements, Point, TypedWidget, Visual, Widget, WidgetExt, SideOffsets};
 use generational_indextree::NodeId;
 use std::any::Any;
 

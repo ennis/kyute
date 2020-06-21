@@ -1,10 +1,5 @@
-mod colors;
-mod renderer;
-mod text;
-
-use crate::layout::Offset;
 use crate::widget::textedit::Selection;
-use kyute_shell::drawing::Point;
+use crate::Point;
 
 /// Represents a 2D line segment
 #[derive(Copy, Clone, Debug, PartialEq)]

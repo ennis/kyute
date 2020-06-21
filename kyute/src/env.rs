@@ -1,5 +1,4 @@
-use crate::layout::SideOffsets;
-use crate::BoxedWidget;
+use crate::{BoxedWidget, SideOffsets};
 use kyute_shell::drawing::Color;
 use std::any::{Any, TypeId};
 use std::borrow::Borrow;

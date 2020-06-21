@@ -1,11 +1,10 @@
 use crate::event::InputState;
-use crate::layout::Offset;
 use crate::node::event::FocusState;
 use crate::node::NodeTree;
-use crate::{style, Measurements};
-use crate::{env, Bounds, Point, Size};
+use crate::{env, Point, Rect, Size};
+use crate::{style, Measurements, Offset};
 use generational_indextree::NodeId;
-use kyute_shell::drawing::{DrawContext, Transform, Color, Brush};
+use kyute_shell::drawing::{Brush, Color, DrawContext, Transform};
 use kyute_shell::platform::Platform;
 use std::ops::{Deref, DerefMut};
 
@@ -14,7 +13,7 @@ pub struct PaintCtx<'a> {
     platform: &'a Platform,
     pub(crate) draw_ctx: &'a mut DrawContext,
     style_collection: &'a style::StyleCollection,
-    window_bounds: Bounds,
+    window_bounds: Rect,
     node_id: NodeId,
     focus_state: &'a FocusState,
     input_state: &'a InputState,
@@ -28,13 +27,13 @@ impl<'a> PaintCtx<'a> {
     }
 
     /// Returns the window bounds of the node
-    pub fn window_bounds(&self) -> Bounds {
+    pub fn window_bounds(&self) -> Rect {
         self.window_bounds
     }
 
     /// Returns the bounds of the node.
-    pub fn bounds(&self) -> Bounds {
-        Bounds::new(Point::origin(), self.window_bounds.size)
+    pub fn bounds(&self) -> Rect {
+        Rect::new(Point::origin(), self.window_bounds.size)
     }
 
     /// Returns the size of the node.
@@ -60,7 +59,12 @@ impl<'a> PaintCtx<'a> {
     }
 
     /// Draws in the bounds using the given style set.
-    pub fn draw_styled_box_in_bounds(&mut self, style_set: &str, bounds: Bounds, palette: style::PaletteIndex) {
+    pub fn draw_styled_box_in_bounds(
+        &mut self,
+        style_set: &str,
+        bounds: Rect,
+        palette: style::PaletteIndex,
+    ) {
         let mut state_bits = style::State::empty();
         if self.focus {
             state_bits |= style::State::FOCUS;
@@ -99,14 +103,14 @@ impl<'a> DerefMut for PaintCtx<'a> {
     }
 }
 
-#[derive(Copy,Clone,Debug,Eq,PartialEq,Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum DebugLayout {
     None,
     All,
-    Hover
+    Hover,
 }
 
-#[derive(Copy,Clone,Debug,PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct PaintOptions {
     pub debug_draw_bounds: DebugLayout,
 }
@@ -114,7 +118,7 @@ pub struct PaintOptions {
 impl Default for PaintOptions {
     fn default() -> Self {
         PaintOptions {
-            debug_draw_bounds: DebugLayout::None
+            debug_draw_bounds: DebugLayout::None,
         }
     }
 }
@@ -122,12 +126,15 @@ impl Default for PaintOptions {
 /// Draws a rectangle that represents the given bounds.
 fn draw_layout(draw_context: &mut DrawContext, m: Measurements) {
     let px = 1.0 / draw_context.scale_factor();
-    let brush = Brush::new_solid_color(draw_context,Color::new(1.0, 0.0, 0.0, 1.0));
-    let baseline_brush = Brush::new_solid_color(draw_context,Color::new(0.0, 1.0, 0.0, 1.0));
-    let rect = Bounds::from_size(m.size);
-    draw_context.draw_rectangle(rect.inflate(-0.5, -0.5), &brush, px);
+    let brush = Brush::new_solid_color(draw_context, Color::new(1.0, 0.0, 0.0, 1.0));
+    let baseline_brush = Brush::new_solid_color(draw_context, Color::new(0.0, 1.0, 0.0, 1.0));
+    let rect = Rect::from_size(m.size);
+    draw_context.draw_rectangle(rect.inflate(-0.5, -0.5), &brush, 1.0 * px);
     if let Some(baseline) = m.baseline {
-        let baseline_rect = Bounds::new(rect.origin + Offset::new(px, baseline), Size::new(m.size.width - 2.0*px, px));
+        let baseline_rect = Rect::new(
+            rect.origin + Offset::new(1.0 * px, baseline),
+            Size::new(m.size.width - 2.0 * px, px),
+        );
         draw_context.fill_rectangle(baseline_rect, &baseline_brush);
     }
 }
@@ -149,7 +156,7 @@ impl NodeTree {
             Offset::zero(),
             input_state,
             self.root,
-            options
+            options,
         )
     }
 
@@ -171,13 +178,12 @@ impl NodeTree {
         let node_offset = node.offset;
         let node_measurements = node.measurements;
         let node_size = node_measurements.size;
-        let window_bounds = Bounds::new(Point::origin() + offset + node_offset, node_size);
+        let window_bounds = Rect::new(Point::origin() + offset + node_offset, node_size);
 
         let hover = input_state
             .pointers
             .iter()
             .any(|(_, state)| window_bounds.contains(state.position));
-
 
         draw_context.save();
         draw_context.transform(&node_offset.to_transform());
@@ -208,7 +214,7 @@ impl NodeTree {
                 offset + node_offset,
                 input_state,
                 id,
-                options
+                options,
             );
             child_id = self.arena[id].next_sibling();
         }

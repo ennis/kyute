@@ -1,7 +1,7 @@
 use crate::event::Event;
-use crate::layout::{BoxConstraints, Measurements, Size};
+use crate::layout::{BoxConstraints, Measurements};
 use crate::{
-    theme, Bounds, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget,
+    theme, Rect, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget,
 };
 use generational_indextree::NodeId;
 use kyute_shell::drawing::{Color, DrawTextOptions, Brush, IntoBrush};
@@ -25,7 +25,7 @@ impl Visual for TextVisual {
         )
     }
 
-    fn hit_test(&mut self, _point: Point, _bounds: Bounds) -> bool {
+    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
         false
     }
     fn event(&mut self, _ctx: &mut EventCtx, _event: &Event) {}

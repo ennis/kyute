@@ -3,8 +3,6 @@ use crate::application::WindowCtx;
 use crate::event::{
     Event, InputState, MoveFocusDirection, PointerButtonEvent, PointerButtons, PointerEvent,
 };
-use crate::layout::Bounds;
-use crate::layout::Point;
 use crate::node::NodeTree;
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
@@ -13,6 +11,7 @@ use log::trace;
 use std::collections::HashMap;
 use winit::event::DeviceId;
 use winit::event::ModifiersState;
+use crate::{Rect, Point};
 
 /// Global state related to focus and pointer grab.
 pub(crate) struct FocusState {
@@ -88,7 +87,7 @@ pub struct EventCtx<'a, 'wctx> {
     /// The ID of the current node.
     pub(crate) node_id: NodeId,
     /// The bounds of the current visual.
-    pub(crate) bounds: Bounds,
+    pub(crate) bounds: Rect,
     /// Focus change requested
     pub(crate) focus_change: FocusChange,
     /// Redraw requested
@@ -107,7 +106,7 @@ impl<'a, 'wctx> EventCtx<'a, 'wctx> {
     }
 
     /// Returns the bounds of the current widget.
-    pub fn bounds(&self) -> Bounds {
+    pub fn bounds(&self) -> Rect {
         self.bounds
     }
 
@@ -175,7 +174,7 @@ impl NodeTree {
         let offset = node_data.offset;
         let measurements = node_data.measurements;
         // bounds in window coordinates
-        let bounds = Bounds::new(origin + offset, measurements.size);
+        let bounds = Rect::new(origin + offset, measurements.size);
 
         if bounds.contains(window_pos) {
             // TODO more precise hit test
@@ -295,7 +294,7 @@ impl NodeTree {
                 inputs,
                 focus: &mut self.focus,
                 node_id: id,
-                bounds: Bounds::new(Point::origin(), node.get().measurements.size),
+                bounds: Rect::new(Point::origin(), node.get().measurements.size),
                 focus_change: FocusChange::Keep,
                 repaint: RepaintRequest::None,
                 pointer_capture: false,

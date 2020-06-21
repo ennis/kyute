@@ -1,6 +1,6 @@
-use crate::layout::{Measurements, Offset, Point};
+use crate::layout::Measurements;
 use crate::visual::Visual;
-use crate::{Bounds, DummyVisual, Environment, Size};
+use crate::{Rect, DummyVisual, Environment, Size, Offset, Point};
 use generational_indextree::NodeId;
 use kyute_shell::drawing::DrawContext;
 use kyute_shell::platform::Platform;

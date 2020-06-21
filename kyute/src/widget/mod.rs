@@ -82,7 +82,7 @@ pub trait Widget {
 }
 
 /// A widget wrapped in a box, that produce a visual wrapped in a box as well.
-pub type BoxedWidget = Box<dyn Widget>;
+pub type BoxedWidget<'a> = Box<dyn Widget + 'a>;
 
 impl Widget for Box<dyn Widget> {
     fn key(&self) -> Option<u64> {

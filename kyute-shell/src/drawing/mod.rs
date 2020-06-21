@@ -20,13 +20,39 @@ pub use path::PathGeometry;
 
 use winapi::um::d2d1::{D2D1_COLOR_F, D2D1_MATRIX_3X2_F, D2D1_POINT_2F, D2D1_RECT_F};
 
+/// The DIP (device-independent pixel) unit.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Dip;
+
+/// Device pixel unit (device-dependent)
+pub struct Px;
+
+/// A length in Dips.
+pub type DipLength = euclid::Length<f64, Dip>;
+
+/// A length in device pixels.
+pub type PxLength = euclid::Length<f64, Px>;
+
+/// One DIP.
+pub const DIP: DipLength = DipLength::new(1.0);
+
+/// One device pixel.
+pub const PX: DipLength = DipLength::new(1.0);
+
+/// Numeric types that can be converted to a size in DIPs.
+pub trait IntoDip {
+    fn into_dip(self, ctx: &DrawContext) -> DipLength;
+}
+
+
 /// Common graphics types
-pub type Size = euclid::default::Size2D<f64>;
-pub type Rect = euclid::default::Rect<f64>;
-pub type Offset = euclid::default::Vector2D<f64>;
-pub type Point = euclid::default::Point2D<f64>;
-pub type Transform = euclid::default::Transform2D<f64>;
+pub type Size = euclid::Size2D<f64, Dip>;
+pub type Rect = euclid::Rect<f64, Dip>;
+pub type Offset = euclid::Vector2D<f64, Dip>;
+pub type Point = euclid::Point2D<f64, Dip>;
+pub type Transform = euclid::Transform2D<f64, Dip, Dip>;
 pub type Color = palette::Srgba;
+pub type Length = DipLength;
 
 pub trait RectExt {
     fn stroke_inset(self, width: f64) -> Self;

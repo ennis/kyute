@@ -1,6 +1,5 @@
 use crate::env::Key;
-use crate::layout::SideOffsets;
-use crate::{Bounds, Environment, Size};
+use crate::{Rect, Environment, Size, SideOffsets};
 /// Environment keys that control the visual aspect (theme) of common widgets.
 use kyute_shell::drawing::{
     Color, ColorInterpolationMode, DrawContext, ExtendMode, GradientStopCollection, IntoBrush,
