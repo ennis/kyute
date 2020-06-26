@@ -35,7 +35,7 @@ pub(crate) struct PlatformState {
     pub(crate) wic_factory: ComPtr<IWICImagingFactory2>
 }
 
-/// Encapsulates the platform-specific application global state.
+/// Encapsulates various platform-specific application services.
 pub struct Platform(pub(crate) Rc<PlatformState>);
 
 impl Platform {

@@ -25,7 +25,7 @@ impl<W: Widget> TypedWidget for Align<W> {
     ) -> (Box<LayoutBox>, Measurements) {
         let visual = previous_visual.unwrap_or_default();
         let (child_id, child_measurements) =
-            context.emit_child(self.inner, &constraints.loosen(), env);
+            context.emit_child(self.inner, &constraints.loosen(), env, None);
         let mut measurements = Measurements::new(constraints.constrain(child_measurements.size));
         let child_offset =
             layout::align_boxes(self.alignment, &mut measurements, child_measurements);

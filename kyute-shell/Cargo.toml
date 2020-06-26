@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 # windowing
-winit = "0.22.0"
+winit = { path = "../ext/winit" }
 glutin = "0.22"
 wio = "0.2.2"
 euclid = "0.20.8"   # basic 2D geometric types

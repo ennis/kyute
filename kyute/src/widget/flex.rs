@@ -98,7 +98,7 @@ impl<'a> TypedWidget for Flex<'a> {
         // layout child nodes
         let mut child_nodes = Vec::with_capacity(self.children.len());
         for c in self.children.into_iter() {
-            child_nodes.push(context.emit_child(c, constraints, env.clone()));
+            child_nodes.push(context.emit_child(c, constraints, env.clone(), None));
         }
 
         let max_cross_axis_len = child_nodes

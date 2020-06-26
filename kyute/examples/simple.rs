@@ -1,5 +1,7 @@
+use futures::channel::mpsc::Sender;
+use futures::SinkExt;
 use kyute::application::run;
-use kyute::component::{Component, ComponentWidget};
+use kyute::component::{CommandSink, Component, State};
 use kyute::widget::constrained::ConstrainedBox;
 use kyute::widget::form::Form;
 use kyute::widget::slider::Slider;
@@ -130,44 +132,61 @@ impl Component for ColorPicker {
 }
 */
 
-struct SimpleComponent {
+struct SimpleComponentState {
     counter: i32,
+}
+
+impl State for SimpleComponentState {
+    type Cmd = ();
+
+    fn command(&mut self, cmd: ()) {
+        eprintln!("button clicked");
+        self.counter += 1;
+    }
 }
 
 struct SimpleComponentParams {
     big: String,
 }
 
-impl<'a> Component<'a> for SimpleComponent {
-    type Params = &'a SimpleComponentParams;
+struct SimpleComponent<'a>(&'a SimpleComponentParams);
+
+impl<'a> Component for SimpleComponent<'a> {
+    type State = SimpleComponentState;
+
+    fn view(&self, state: &mut SimpleComponentState, commands: CommandSink<()>) -> BoxedWidget {
+        Button::new(format!("{}.{}", self.0.big, state.counter))
+            .on_click(commands.emit(()))
+            .boxed()
+    }
+
+    fn mount(&self) -> SimpleComponentState {
+        SimpleComponentState { counter: 0 }
+    }
+}
+
+struct SimpleApplicationState {
+    data: SimpleComponentParams,
+}
+
+impl State for SimpleApplicationState {
     type Cmd = ();
 
     fn command(&mut self, command: ()) {
         unimplemented!()
     }
-
-    fn view(&mut self, params: &'a SimpleComponentParams) -> BoxedWidget {
-        Button::new(&format!("{}.{}", params.big, self.counter)).boxed()
-    }
-
-    fn new(params: &'a SimpleComponentParams) -> Self {
-        SimpleComponent { counter: 0 }
-    }
 }
 
-struct SimpleApplication {
-    data: SimpleComponentParams,
-}
+struct SimpleApplication;
 
-impl<'a> Component<'a> for SimpleApplication {
-    type Params = ();
-    type Cmd = ();
+impl Component for SimpleApplication {
+    type State = SimpleApplicationState;
 
-    fn command(&mut self, command: Self::Cmd) {
-        unimplemented!()
-    }
-
-    fn view(&mut self, params: ()) -> BoxedWidget {
+    fn view<'a>(
+        &'a self,
+        state: &'a mut SimpleApplicationState,
+        cmds: CommandSink<()>,
+    ) -> BoxedWidget<'a> {
         use kyute::widget::*;
         Window::new(WindowBuilder::new())
             .contents(
@@ -209,22 +228,21 @@ impl<'a> Component<'a> for SimpleApplication {
                     )
                     .push(Text::new("last"))
                     .push(Window::new(WindowBuilder::new().with_title("child window")))
-                    .push(ComponentWidget::<SimpleComponent>::new(&self.data)),
+                    .push(SimpleComponent(&state.data)),
             )
             .boxed()
     }
 
-    fn new(params: ()) -> Self {
-        unimplemented!()
+    fn mount(&self) -> SimpleApplicationState {
+        SimpleApplicationState {
+            data: SimpleComponentParams {
+                big: "hello world".to_string(),
+            },
+        }
     }
 }
 
 fn main() {
     pretty_env_logger::init();
-
-    run(SimpleApplication {
-        data: SimpleComponentParams {
-            big: "hello world".to_string(),
-        },
-    });
+    run(|| SimpleApplication);
 }

@@ -21,7 +21,7 @@ use std::ptr;
 use std::rc::Rc;
 
 use winit::event_loop::EventLoopWindowTarget;
-use winit::platform::windows::WindowExtWindows;
+use winit::platform::windows::{WindowExtWindows, WindowBuilderExtWindows};
 use winit::window::{Window, WindowBuilder, WindowId};
 
 use winapi::shared::dxgi::*;
@@ -495,8 +495,9 @@ impl PlatformWindow {
     /// [`WindowBuilder`]: winit::WindowBuilder
     pub fn new(
         event_loop: &EventLoopWindowTarget<()>,
-        builder: WindowBuilder,
+        mut builder: WindowBuilder,
         platform: &Platform,
+        parent_window: Option<&PlatformWindow>,
         with_gl: bool,
     ) -> Result<PlatformWindow> {
         // We want to be able to render 3D stuff with OpenGL, and still be able to use
@@ -506,6 +507,9 @@ impl PlatformWindow {
         // on the same render target.
         unsafe {
             // first, build the window using the provided builder
+            if let Some(parent_window) = parent_window {
+                builder = builder.with_parent_window(parent_window.hwnd);
+            }
             let window = builder.build(event_loop).map_err(Error::Winit)?;
 
             let dxgi_factory = &platform.0.dxgi_factory;

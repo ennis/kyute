@@ -11,6 +11,7 @@ use kyute_shell::platform::Platform;
 use std::any::TypeId;
 use std::rc::Rc;
 use winit::window::WindowId;
+use kyute_shell::window::PlatformWindow;
 
 /// A position between nodes in the node tree.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -32,11 +33,15 @@ impl NodeCursor {
 ///
 /// See [`Widget::layout`].
 pub struct LayoutCtx<'a, 'ctx> {
+    /// Window-creation context.
     pub(crate) win_ctx: &'a mut WindowCtx<'ctx>,
+    /// The node tree
     arena: &'a mut NodeArena,
-    // Current (parent) node, None if pre-root
+    /// Parent window (for child windows on win32)
+    parent_window: Option<&'a PlatformWindow>,
+    /// Current (parent) node, None if pre-root
     node: Option<NodeId>,
-    // reconciliation cursor
+    /// reconciliation cursor
     cursor: &'a mut NodeCursor,
 }
 
@@ -44,6 +49,11 @@ impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
     /// Returns the global platform object.
     pub fn platform(&self) -> &'ctx Platform {
         self.win_ctx.platform
+    }
+
+    /// Returns the parent window.
+    pub fn parent_window(&self) -> Option<&'a PlatformWindow> {
+        self.parent_window
     }
 
     /// Emits a child widget.
@@ -54,6 +64,7 @@ impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
         widget: impl Widget,
         constraints: &BoxConstraints,
         env: Environment,
+        parent_window: Option<&PlatformWindow>
     ) -> (NodeId, Measurements) {
         // Reconciliation
         let widget_key = widget.key();
@@ -120,6 +131,7 @@ impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
             arena: self.arena,
             node: Some(id),
             cursor: &mut child_cursor,
+            parent_window: parent_window.or(self.parent_window)
         };
         // -> recursive call of layout
         let (visual, measurements) = widget.layout(&mut child_ctx, prev_visual, constraints, env);
@@ -185,8 +197,9 @@ impl NodeTree {
             // no parent => inserting into the root list
             node: None,
             cursor: &mut cursor,
+            parent_window: None,
         };
-        let (root, root_measurements) = layout_ctx.emit_child(widget, root_constraints, env);
+        let (root, root_measurements) = layout_ctx.emit_child(widget, root_constraints, env, None);
         // update root (it might not be the same node)
         self.root = root;
         self.calculate_window_positions(Point::origin());

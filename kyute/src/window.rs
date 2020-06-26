@@ -6,15 +6,40 @@ use crate::event::{
 use crate::node::{DebugLayout, FocusState, NodeTree, PaintOptions, RepaintRequest};
 use crate::style::StyleCollection;
 use crate::widget::DummyWidget;
-use crate::{BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect, Size, TypedWidget, Visual, Widget, WidgetExt, Offset};
+use crate::{
+    BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx,
+    Point, Rect, Size, TypedWidget, Visual, Widget, WidgetExt,
+};
 use bitflags::_core::any::Any;
 use generational_indextree::NodeId;
 use kyute_shell::drawing::Color;
 use kyute_shell::window::{PlatformWindow, WindowDrawContext};
 use std::rc::Rc;
 use std::time::Instant;
+use winit::dpi::LogicalSize;
 use winit::event::{VirtualKeyCode, WindowEvent};
 use winit::window::{WindowBuilder, WindowId};
+
+/// Window event callbacks.
+struct Callbacks {
+    on_close_requested: Option<Box<dyn Fn()>>,
+    on_move: Option<Box<dyn Fn(u32, u32)>>,
+    on_resize: Option<Box<dyn Fn(u32, u32)>>,
+    on_focus_gained: Option<Box<dyn Fn()>>,
+    on_focus_lost: Option<Box<dyn Fn()>>,
+}
+
+impl Default for Callbacks {
+    fn default() -> Callbacks {
+        Callbacks {
+            on_close_requested: None,
+            on_move: None,
+            on_resize: None,
+            on_focus_gained: None,
+            on_focus_lost: None,
+        }
+    }
+}
 
 /// Stores information about the last click (for double-click handling)
 struct LastClick {
@@ -35,13 +60,12 @@ pub struct WindowNode {
     /// Widget styles for the window.
     style_collection: Rc<StyleCollection>,
     debug_layout: DebugLayout,
+    callbacks: Callbacks,
 }
-
-pub trait WindowHandler {}
 
 impl Visual for WindowNode {
     fn paint(&mut self, _ctx: &mut PaintCtx, _env: &Environment) {
-        // should never be called
+        // we have nothing to paint in the parent window
     }
 
     fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
@@ -49,7 +73,7 @@ impl Visual for WindowNode {
     }
 
     fn event(&mut self, _event_ctx: &mut EventCtx, _event: &Event) {
-        // should never be called
+        // we don't care about events from the parent window
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -71,9 +95,35 @@ impl Visual for WindowNode {
         tree: &mut NodeTree,
         root: NodeId,
     ) {
+        let child_id = if let Some(child_id) = tree.arena[root].first_child() {
+            child_id
+        } else {
+            // we don't deliver any events if we don't have a content widget
+            return;
+        };
+
         let event_result = match window_event {
             WindowEvent::Resized(size) => {
-                self.window.resize((*size).into());
+                let (w, h) = (*size).into();
+                self.window.resize((w, h));
+                self.callbacks.on_resize.as_ref().map(|f| (f)(w, h));
+                return;
+            }
+            WindowEvent::Moved(pos) => {
+                let (w, h): (u32, u32) = (*pos).into();
+                self.callbacks.on_move.as_ref().map(|f| (f)(w, h));
+                return;
+            }
+            WindowEvent::CloseRequested => {
+                self.callbacks.on_close_requested.as_ref().map(|f| (f)());
+                return;
+            }
+            WindowEvent::Focused(false) => {
+                self.callbacks.on_focus_lost.as_ref().map(|f| (f)());
+                return;
+            }
+            WindowEvent::Focused(true) => {
+                self.callbacks.on_focus_gained.as_ref().map(|f| (f)());
                 return;
             }
             WindowEvent::ModifiersChanged(m) => {
@@ -165,7 +215,14 @@ impl Visual for WindowNode {
                     winit::event::ElementState::Released => Event::PointerUp(p),
                 };
 
-                tree.event(ctx, &self.window, root, &self.inputs, &mut self.focus, &e)
+                tree.event(
+                    ctx,
+                    &self.window,
+                    child_id,
+                    &self.inputs,
+                    &mut self.focus,
+                    &e,
+                )
             }
             WindowEvent::CursorMoved {
                 device_id,
@@ -190,8 +247,14 @@ impl Visual for WindowNode {
                     pointer_id: *device_id,
                 };
 
-                let result =
-                    tree.event(ctx, &self.window, root, &self.inputs, &mut self.focus, &Event::PointerMove(p));
+                let result = tree.event(
+                    ctx,
+                    &self.window,
+                    child_id,
+                    &self.inputs,
+                    &mut self.focus,
+                    &Event::PointerMove(p),
+                );
 
                 // force redraw if bounds debugging mode is on
                 if self.debug_layout != DebugLayout::None {
@@ -224,15 +287,25 @@ impl Visual for WindowNode {
                             delta_mode: WheelDeltaMode::Pixel,
                         },
                     };
-                    tree
-                        .event(ctx, &self.window, root, &self.inputs, &mut self.focus, &Event::Wheel(wheel_event))
+                    tree.event(
+                        ctx,
+                        &self.window,
+                        root,
+                        &self.inputs,
+                        &mut self.focus,
+                        &Event::Wheel(wheel_event),
+                    )
                 } else {
                     log::warn!("wheel event received but pointer position is not yet known");
                     return;
                 }
             }
             WindowEvent::ReceivedCharacter(char) => tree.event(
-                ctx, &self.window, root, &self.inputs, &mut self.focus,
+                ctx,
+                &self.window,
+                child_id,
+                &self.inputs,
+                &mut self.focus,
                 &Event::Input(InputEvent { character: *char }),
             ),
             WindowEvent::KeyboardInput {
@@ -264,7 +337,14 @@ impl Visual for WindowNode {
                     };
                     RepaintRequest::Repaint
                 } else {
-                    tree.event(ctx, &self.window, root, &self.inputs, &mut self.focus, &event)
+                    tree.event(
+                        ctx,
+                        &self.window,
+                        child_id,
+                        &self.inputs,
+                        &mut self.focus,
+                        &event,
+                    )
                 }
             }
 
@@ -283,14 +363,19 @@ impl Visual for WindowNode {
         }
     }
 
-    fn window_paint(&mut self,
-                    ctx: &mut WindowCtx,
-                    tree: &mut NodeTree,
-                    anchor: NodeId) {
+    fn window_paint(&mut self, ctx: &mut WindowCtx, tree: &mut NodeTree, anchor: NodeId) {
         {
             let id = self.window.id();
             let mut wdc = WindowDrawContext::new(&mut self.window);
             wdc.clear(Color::new(0.326, 0.326, 0.326, 1.0));
+
+            let child_id = if let Some(child_id) = tree.arena[anchor].first_child() {
+                child_id
+            } else {
+                // no content to paint
+                return;
+            };
+
             let options = PaintOptions {
                 debug_draw_bounds: self.debug_layout,
             };
@@ -299,7 +384,7 @@ impl Visual for WindowNode {
                 &mut wdc,
                 &self.style_collection,
                 id,
-                anchor,
+                child_id,
                 &self.inputs,
                 &self.focus,
                 &options,
@@ -312,6 +397,8 @@ impl Visual for WindowNode {
 pub struct Window<'a> {
     builder: WindowBuilder,
     contents: BoxedWidget<'a>,
+    callbacks: Callbacks,
+    parent_window: Option<&'a PlatformWindow>,
 }
 
 impl<'a> Window<'a> {
@@ -319,11 +406,43 @@ impl<'a> Window<'a> {
         Window {
             builder,
             contents: DummyWidget.boxed(),
+            callbacks: Callbacks::default(),
+            parent_window: None,
         }
+    }
+
+    pub fn parent_window(mut self, parent_window: &'a PlatformWindow) -> Self {
+        self.parent_window = Some(parent_window);
+        self
     }
 
     pub fn contents(mut self, contents: impl Widget + 'a) -> Self {
         self.contents = contents.boxed();
+        self
+    }
+
+    pub fn on_close_requested(mut self, on_close_requested: impl Fn() + 'static) -> Self {
+        self.callbacks.on_close_requested = Some(Box::new(on_close_requested));
+        self
+    }
+
+    pub fn on_focus_gained(mut self, on_focus_gained: impl Fn() + 'static) -> Self {
+        self.callbacks.on_focus_gained = Some(Box::new(on_focus_gained));
+        self
+    }
+
+    pub fn on_focus_lost(mut self, on_focus_lost: impl Fn() + 'static) -> Self {
+        self.callbacks.on_focus_lost = Some(Box::new(on_focus_lost));
+        self
+    }
+
+    pub fn on_move(mut self, on_move: impl Fn(u32,u32) + 'static) -> Self {
+        self.callbacks.on_move = Some(Box::new(on_move));
+        self
+    }
+
+    pub fn on_resize(mut self, on_resize: impl Fn(u32,u32) + 'static) -> Self {
+        self.callbacks.on_resize = Some(Box::new(on_resize));
         self
     }
 }
@@ -338,16 +457,20 @@ impl<'a> TypedWidget for Window<'a> {
         constraints: &BoxConstraints,
         env: Environment,
     ) -> (Box<WindowNode>, Measurements) {
-        let w = if let Some(w) = previous_visual {
+        let is_resizable = self.builder.window.resizable;
+
+        let mut visual = if let Some(visual) = previous_visual {
             // the window has already been created, update its properties
             // TODO update its properties
-            w
+            visual
         } else {
+            log::info!("creating window of size {:?}", self.builder);
             // create the window for the first time
             let window = PlatformWindow::new(
                 context.win_ctx.event_loop,
                 self.builder,
                 context.win_ctx.platform,
+                self.parent_window,
                 false,
             )
             .expect("failed to create window");
@@ -360,25 +483,47 @@ impl<'a> TypedWidget for Window<'a> {
                 last_click: None,
                 style_collection: context.win_ctx.style.clone(),
                 debug_layout: DebugLayout::None,
+                callbacks: self.callbacks,
             })
         };
 
-        // get the window logical size
-        let size: (f64, f64) = w
-            .window
-            .window()
-            .inner_size()
-            .to_logical::<f64>(1.0)
-            .into();
-        let size: Size = size.into();
+        let (child_id, child_measurements) = if is_resizable {
+            // the window is resizeable by the user:
+            // we use the current window size (possibly constrained by the parent constraints)
+            // as the available layout space
+            let current_size: (f64, f64) =
+                visual.window.window().inner_size().to_logical::<f64>(1.0).into();
+            let current_size: Size = dbg!(current_size.into());
+            let constraints = dbg!(constraints).enforce(&BoxConstraints::loose(current_size));
+            let size = constraints.constrain(current_size);
+            if current_size != size {
+                // we need to resize the window to match the parent constraints
+                visual.window.window().set_inner_size(LogicalSize::new(
+                    size.width,
+                    size.height,
+                ));
+            }
+            context.emit_child(self.contents, &constraints, env, Some(&visual.window))
+        } else {
+            // the window is not resizeable: we use the parent constraints for content layout,
+            // and then set the size of the window to fit the contents
+            let (child_id, child_measurements) =
+                context.emit_child(self.contents, &constraints, env, Some(&visual.window));
+            let size = constraints.constrain(child_measurements.size);
+            log::warn!("fitting window to contents of size {} (constraints: {:?})", size, constraints);
+            visual.window.window().set_inner_size(LogicalSize::new(
+                size.width,
+                size.height,
+            ));
+            (child_id, child_measurements)
+        };
 
-        // perform layout, update the visual node
-        // ignore the parent constraints, since we're in another window
-        context.emit_child(self.contents, &BoxConstraints::loose(size), env);
         // request a redraw, because the contents might have changed
-        w.window.window().request_redraw();
+        visual.window.window().request_redraw();
 
         // a window does not take any space in its parent
-        (w, Measurements::new(Size::zero()))
+        // FIXME that can be surprising, maybe add something extra to Measurements to communicate
+        // that the space is overlapping (does not participate in layout)?
+        (visual, Measurements::new(Size::zero()))
     }
 }

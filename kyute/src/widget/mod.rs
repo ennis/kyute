@@ -13,6 +13,7 @@ pub mod padding;
 pub mod slider;
 pub mod text;
 pub mod textedit;
+pub mod popup;
 
 // re-export common widgets
 pub use baseline::Baseline;
@@ -22,6 +23,7 @@ pub use expand::Expand;
 pub use flex::Axis;
 pub use flex::Flex;
 pub use text::Text;
+pub use popup::Popup;
 
 use crate::application::WindowCtx;
 use crate::env::Environment;
@@ -33,6 +35,7 @@ use kyute_shell::platform::Platform;
 use std::any::TypeId;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
+
 
 /// Trait representing a widget before layout.
 ///

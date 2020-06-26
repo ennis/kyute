@@ -53,7 +53,7 @@ impl SliderTrack {
 
         if let Some(div) = self.divisions {
             let div = div as f64;
-            (div * x / track_len).floor() / div
+            (div * x / track_len).round() / div
         } else {
             dbg!(x / track_len)
         }

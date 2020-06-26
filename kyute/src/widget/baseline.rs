@@ -25,7 +25,7 @@ impl<W: Widget> TypedWidget for Baseline<W> {
         env: Environment,
     ) -> (Box<Self::Visual>, Measurements) {
         let visual = previous_visual.unwrap_or_default();
-        let (child_id, child_measurements) = context.emit_child(self.inner, constraints, env);
+        let (child_id, child_measurements) = context.emit_child(self.inner, constraints, env, None);
 
         // baselines are not guaranteed to fall on a pixel boundary, round it manually
         // FIXME should do pixel snapping instead

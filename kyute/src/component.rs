@@ -8,11 +8,25 @@ use std::any::Any;
 use std::any::TypeId;
 
 use crate::node::NodeTree;
-use futures::channel::mpsc::{Receiver, channel};
-use futures::Stream;
+use futures::channel::mpsc::{Sender, Receiver, channel};
+use futures::{Stream, Sink};
 use futures::StreamExt;
 use std::cell::RefCell;
 use std::rc::Rc;
+use futures::task::LocalSpawnExt;
+use crate::application::NodeTreeHandle;
+
+
+pub struct CommandSink<C>(Sender<C>);
+
+impl <C: Clone + 'static> CommandSink<C> {
+    pub fn emit(&self, c: C) -> impl FnMut(&mut EventCtx) {
+        let mut s = self.0.clone();
+        move |_| {
+            s.try_send(c.clone());
+        }
+    }
+}
 
 /// Reusable GUI elements with internal state.
 ///
@@ -20,28 +34,31 @@ use std::rc::Rc;
 /// producing the node tree at the anchor.
 ///
 /// TODO proper description
-pub trait Component<'a>: 'static {
-    /// The type of the parameters that the component expects.
-    type Params: Clone + 'a;
-    /// The type of the commands that the component receives.
-    type Cmd: Clone + 'static;
-
-    /// Handles a command.
-    fn command(&mut self, command: Self::Cmd);
+pub trait Component {
+    type State: State;
 
     /// Returns the view.
-    fn view(&mut self, params: Self::Params) -> BoxedWidget;
+    fn view<'a>(&'a self, state: &'a mut Self::State, cmd_sink: CommandSink<<Self::State as State>::Cmd>) -> BoxedWidget<'a>;
 
     /// Creates a new instance of the component
-    fn new(params: Self::Params) -> Self
+    fn mount(&self) -> Self::State
     where
         Self: Sized;
 }
 
-/// A wrapper for a component in the node tree.
-pub struct ComponentWrapper<C: for<'a> Component<'a>>(C);
+pub trait State: 'static {
+    /// The type of the commands.
+    type Cmd: Clone + 'static;
 
-impl<C: for<'a> Component<'a>> Visual for ComponentWrapper<C> {
+    /// Handles a command that modifies the state.
+    fn command(&mut self, command: Self::Cmd);
+}
+
+//
+#[doc(hidden)]
+pub struct StateWrapper<S: State>(S);
+
+impl<S: State> Visual for StateWrapper<S> {
     fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {}
     fn hit_test(&mut self, point: Point, bounds: Rect) -> bool {
         false
@@ -55,53 +72,52 @@ impl<C: for<'a> Component<'a>> Visual for ComponentWrapper<C> {
     }
 }
 
-pub struct ComponentWidget<'a, C: Component<'a>> {
-    params: C::Params,
-}
 
-impl<'a, C: Component<'a>> ComponentWidget<'a, C> {
-    pub fn new(params: C::Params) -> ComponentWidget<'a, C> {
-        ComponentWidget { params }
-    }
-}
-
-impl<'a, C: for<'x> Component<'x>> TypedWidget for ComponentWidget<'a, C> {
-    type Visual = ComponentWrapper<C>;
+impl<C: Component> TypedWidget for C
+{
+    type Visual = StateWrapper<C::State>;
 
     fn layout(
         self,
         context: &mut LayoutCtx,
-        previous_visual: Option<Box<ComponentWrapper<C>>>,
+        previous_visual: Option<Box<StateWrapper<C::State>>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<ComponentWrapper<C>>, Measurements) {
+    ) -> (Box<StateWrapper<C::State>>, Measurements)
+    {
         // extract the component instance from the visual wrapper
         let mut wrapper = if let Some(wrapper) = previous_visual {
             wrapper
         } else {
             // start task
-            Box::new(ComponentWrapper(C::new(self.params.clone())))
+            Box::new(StateWrapper(self.mount()))
         };
 
-       // let (tx,rx) = channel(10);
+        // create the channel for receiving and dispatching the commands emitted during event propagation
+        let (tx,rx) = channel::<<C::State as State>::Cmd>(10);
+        let tree_handle = context.win_ctx.tree_handle.clone();
+        let id = context.node_id();
+        context.win_ctx.spawner.spawn_local(command_forwarder::<C::State>(tree_handle, id, rx));
 
-        let widget = wrapper.0.view(self.params);
-        let (_, measurements) = context.emit_child(widget, constraints, env);
+        let widget = self.view(&mut wrapper.0, CommandSink(tx));
+        let (_, measurements) = context.emit_child(widget, constraints, env, None);
 
         (wrapper, measurements)
     }
 }
 
-/*
+
+
 /// In charge of forwarding commands to the component.
-async fn command_forwarder<C: for<'a> Component<'a>>(
-    tree: Rc<RefCell<NodeTree>>,
+async fn command_forwarder<S: State>(
+    tree: NodeTreeHandle,
     node: NodeId,
-    mut commands: Receiver<C::Cmd>,
+    mut commands: Receiver<S::Cmd>,
 ) {
     while let Some(command) = commands.next().await {
         // received a command, lock the tree and send it to the component
-        let tree = tree.borrow_mut();
+        let mut tree = tree.borrow_mut();
+        let tree = tree.as_mut().expect("no tree");
 
         // assert dominance
         tree.arena
@@ -112,12 +128,12 @@ async fn command_forwarder<C: for<'a> Component<'a>>(
             .as_mut() // .. by mut ref
             .expect("no visual")
             .as_any_mut() // convert to any
-            .downcast_mut::<ComponentWrapper<C>>() // downcast to the expected component wrapper type
+            .downcast_mut::<StateWrapper<S>>() // downcast to the expected component wrapper type
             .expect("not a component wrapper")
             .0
-            .command(command); // access component inside, send command
+            .command(command);
         // component may spawn new tasks or emit other commands in response
     }
 
     // broken channel, end task
-}*/
+}

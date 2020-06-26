@@ -180,6 +180,7 @@ impl NodeTree {
         origin: Point,
     ) -> Option<NodeId> {
         let node_data = &self.arena[id].get();
+
         // don't cross into other windows
         match node_data.window_id() {
             Some(id) if id != window_id => return None,

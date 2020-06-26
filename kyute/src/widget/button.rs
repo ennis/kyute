@@ -80,14 +80,14 @@ pub struct Button<'a> {
 
 impl<'a> Button<'a> {
     /// Creates a new button with the given text as the label.
-    pub fn new(label: &str) -> Button<'a> {
+    pub fn new(label: impl Into<String>) -> Button<'a> {
         Button {
             label: Text::new(label).boxed(),
             on_click: None
         }
     }
 
-    pub fn on_click(mut self, on_click: impl Fn(&mut EventCtx) + 'static) -> Button<'a> {
+    pub fn on_click(mut self, on_click: impl FnMut(&mut EventCtx) + 'static) -> Button<'a> {
         self.on_click = Some(Box::new(on_click));
         self
     }
@@ -117,7 +117,7 @@ impl<'a> TypedWidget for Button<'a> {
         let padding: SideOffsets = env.get(theme::ButtonLabelPadding);
         let label_constraints = constraints.deflate(&padding);
         let (label_id, label_measurements) =
-            context.emit_child(self.label, &label_constraints, env);
+            context.emit_child(self.label, &label_constraints, env, None);
 
         // now measure the button itself
         let mut measurements = Measurements {

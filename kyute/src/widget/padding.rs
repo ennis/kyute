@@ -31,7 +31,7 @@ impl<W: Widget> TypedWidget for Padding<W> {
         let visual = previous_visual.unwrap_or_default();
 
         let (child_id, child_measurements) =
-            context.emit_child(inner, &constraints.deflate(&insets), env);
+            context.emit_child(inner, &constraints.deflate(&insets), env, None);
         context.set_child_offset(child_id, Offset::new(insets.left, insets.top));
 
         let measurements = Measurements {

@@ -43,7 +43,7 @@ impl<'a> TypedWidget for Frame<'a> {
             fill_color,
         });
 
-        let (child_id, child_measurements) = context.emit_child(inner, constraints, env);
+        let (child_id, child_measurements) = context.emit_child(inner, constraints, env,None);
         (visual, child_measurements)
     }
 }
