@@ -2,7 +2,7 @@
 //!
 //! Provides the `run_application` function that opens the main window and translates the incoming
 //! events from winit into the events expected by a kyute [`NodeTree`](crate::node::NodeTree).
-use crate::component::Component;
+use crate::component::{Action, Component};
 use crate::event::{
     Event, InputEvent, InputState, KeyboardEvent, PointerButton, PointerButtonEvent,
     PointerButtons, PointerEvent, PointerState, WheelDeltaMode, WheelEvent,
@@ -10,8 +10,8 @@ use crate::event::{
 use crate::node::{DebugLayout, NodeTree, PaintOptions, RepaintRequest};
 use crate::style::{Border, Brush, ColorRef, Shape, StateFilter, StyleCollection};
 use crate::{
-    style, BoxConstraints, BoxedWidget, Environment, Measurements, Point, Rect, Size, Visual,
-    Widget, WidgetExt
+    style, BoxConstraints, BoxedWidget, Environment, Measurements, Point, Rect, Size, Update,
+    Visual, Widget, WidgetExt,
 };
 use anyhow::Result;
 use config::FileFormat;
@@ -29,7 +29,7 @@ use kyute_shell::window::{PlatformWindow, WindowDrawContext};
 use log::trace;
 use log::warn;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::mem;
@@ -287,25 +287,157 @@ fn write_default_application_style() {
     log::info!("default style written to default_style.ron");
 }
 
-pub(crate) type NodeTreeHandle = Rc<RefCell<Option<NodeTree>>>;
-
 /// Context needed to open a window.
-pub struct WindowCtx<'a> {
+pub struct AppCtx {
     /// Platform services (text, drawing, etc.).
-    pub(crate) platform: &'a Platform,
-    /// Handle to the node tree passed to the async tasks spawned by components.
-    pub(crate) tree_handle: NodeTreeHandle,
-    /// Event loop.
-    pub(crate) event_loop: &'a EventLoopWindowTarget<()>,
+    pub(crate) platform: Platform,
     /// The style collection of the application.
     pub(crate) style: Rc<StyleCollection>,
     /// Open windows, mapped to their corresponding node in the node tree.
-    pub(crate) windows: &'a mut HashMap<WindowId, NodeId>,
+    pub(crate) windows: HashMap<WindowId, NodeId>,
     /// Spawner to spawn the tasks in charge of forwarding comments to the components.
     pub(crate) spawner: LocalSpawner,
+    /// Pending actions
+    pub(crate) actions: Vec<Action>,
+    /// Root widget generator
+    pub(crate) root_widget: Box<dyn FnMut() -> BoxedWidget<'static> + 'static>,
 }
 
-pub fn run<W: Widget>(mut root_widget: impl FnMut() -> W + 'static) {
+impl AppCtx {
+    fn new(
+        platform: Platform,
+        style_collection: Rc<StyleCollection>,
+        spawner: LocalSpawner,
+        root_widget: impl FnMut() -> BoxedWidget<'static> + 'static,
+    ) -> AppCtx {
+        AppCtx {
+            platform,
+            style: style_collection,
+            windows: HashMap::new(),
+            spawner,
+            actions: Vec::new(),
+            root_widget: Box::new(root_widget),
+        }
+    }
+
+    fn dispatch_actions(&mut self, tree: &mut NodeTree, event_loop: &EventLoopWindowTarget<()>) {
+        let actions = mem::replace(&mut self.actions, Vec::new());
+        // set of windows to repaint
+        let mut relayout = false;
+        let mut nodes_to_repaint = Vec::new();
+
+        for action in actions {
+            let mut node_data = if let Some(node) = tree.arena.get_mut(action.target) {
+                node.get_mut()
+            } else {
+                log::warn!("action targets deleted node");
+                return;
+            };
+
+            let update = (action.run)(node_data);
+
+            match update {
+                Update::Repaint => {
+                    nodes_to_repaint.push(action.target);
+                }
+                Update::Relayout => {
+                    relayout = true;
+                }
+                Update::None => {}
+            }
+        }
+
+        if relayout {
+            self.layout(tree, event_loop)
+        } else {
+            let mut windows_to_repaint = HashMap::new();
+            // determine windows to repaint
+            for node_to_repaint in nodes_to_repaint {
+                // repaint the window that owns the action target
+                if let Some(parent_window) = tree.find_parent_window(node_to_repaint) {
+                    windows_to_repaint.insert(parent_window.id(), parent_window);
+                }
+            }
+
+            for window in windows_to_repaint.values() {
+                window.window().request_redraw()
+            }
+        }
+    }
+
+    fn layout(&mut self, tree: &mut NodeTree, event_loop: &EventLoopWindowTarget<()>) {
+        // the root available space is infinite, technically, this can produce infinitely big visuals,
+        // but this is never the case for visuals under windows (they are constrained by the size of the window).
+        // Note that there's no window created by default. The user should create window widgets to
+        // have something to render to.
+        tree.layout(
+            (self.root_widget)(),
+            Size::zero(),
+            &BoxConstraints::new(.., ..),
+            Environment::new(),
+            self,
+            event_loop,
+        );
+    }
+
+    fn run(mut self, mut tree: NodeTree, event_loop: EventLoop<()>) {
+        // run event loop
+        event_loop.run(move |event, elwt, control_flow| {
+            *control_flow = ControlFlow::Wait;
+
+            // helper to extract a visual from the node tree
+            fn replace_visual(
+                tree: &mut NodeTree,
+                node_id: NodeId,
+                with: Option<Box<dyn Visual>>,
+            ) -> Option<Box<dyn Visual>> {
+                tree.arena
+                    .get_mut(node_id)
+                    .and_then(|n| mem::replace(&mut n.get_mut().visual, with))
+            }
+
+            match event {
+                winit::event::Event::WindowEvent { window_id, event } => {
+                    // deliver event to the target window in the node tree
+                    if let Some(node_id) = self.windows.get(&window_id).cloned() {
+                        // see RedrawRequested for more comments
+                        let mut v = replace_visual(&mut tree, node_id, None);
+                        v.as_mut()
+                            .and_then(|v| v.window_handler_mut())
+                            .map(|v| v.window_event(&mut self, &event, &mut tree, node_id));
+                        replace_visual(&mut tree, node_id, v);
+                    }
+
+                    if let WindowEvent::Resized(size) = event {
+                        self.layout(&mut tree, elwt)
+                    }
+
+                    self.dispatch_actions(&mut tree, elwt)
+                }
+
+                winit::event::Event::RedrawRequested(window_id) => {
+                    // A window needs to be repainted
+                    if let Some(node_id) = self.windows.get(&window_id).cloned() {
+                        // sleight-of-hand: extract the visual from the tree, then put it back
+                        // so that we can give a mut ref to the tree to Visual::window_paint
+                        let mut v = replace_visual(&mut tree, node_id, None);
+                        // now call the `window_paint` procedure on the visual, if it exists
+                        v.as_mut()
+                            .and_then(|v| v.window_handler_mut())
+                            .map(|v| v.window_paint(&mut self, &mut tree, node_id));
+                        // put back the visual
+                        replace_visual(&mut tree, node_id, v);
+                    } else {
+                        log::warn!("repaint for unregistered window")
+                    }
+                }
+                _ => (),
+            }
+        })
+    }
+}
+
+pub fn run(mut root_widget: impl Widget + Clone + 'static) {
     // winit event loop
     let event_loop = EventLoop::new();
     // platform-specific, window-independent initialization
@@ -319,118 +451,13 @@ pub fn run<W: Widget>(mut root_widget: impl FnMut() -> W + 'static) {
 
     let mut pool = LocalPool::new();
     let spawner = pool.spawner();
-    //let winit_task = spawner.spawn_local(winit_event_handler(platform, app_style,event_loop.create_proxy(), events_rx));
-
-    // WindowId -> NodeId
-    let mut window_nodes = HashMap::new();
     let mut tree = NodeTree::new();
-    // Handle to the tree used in futures. We don't wrap the tree itself with Rc<RefCell<>>
-    // because that's supremely annoying in NodeTree::layout (borrow_mut and weird derefs everywhere).
-    // Instead, we pass a Rc handle to a "cell": when polling the futures (run_until_stalled),
-    // we temporarily move the tree into this cell, and move it back once all futures have been polled.
-    let mut temp_tree = Rc::new(RefCell::new(None));
 
+    let mut app_ctx = AppCtx::new(platform, app_style, spawner, move || {
+        root_widget.clone().boxed()
+    });
     // perform the initial layout
-    // the root available space is infinite, technically, this can produce infinitely big visuals,
-    // but this is never the case for visuals under windows (they are constrained by the size of the window).
-    // Note that there's no window created by default. The user should create window widgets to
-    // have something to render to.
-    let mut win_ctx = WindowCtx {
-        platform: &platform,
-        tree_handle: temp_tree.clone(),
-        event_loop: &event_loop,
-        style: app_style.clone(),
-        windows: &mut window_nodes,
-        spawner
-    };
-    tree.layout(
-        root_widget().boxed(),
-        Size::zero(),
-        &BoxConstraints::new(..,..),
-        Environment::new(),
-        &mut win_ctx,
-    );
-    let spawner = win_ctx.spawner;
-
-    // run event loop
-    event_loop.run(move |event, elwt, control_flow| {
-        *control_flow = ControlFlow::Wait;
-
-        let mut win_ctx = WindowCtx {
-            platform: &platform,
-            event_loop: &elwt,
-            style: app_style.clone(),
-            windows: &mut window_nodes,
-            spawner: spawner.clone(),
-            tree_handle: temp_tree.clone(),
-        };
-
-        // helper to extract a visual from the node tree
-        fn replace_visual(
-            tree: &mut NodeTree,
-            node_id: NodeId,
-            with: Option<Box<dyn Visual>>,
-        ) -> Option<Box<dyn Visual>> {
-            tree.arena
-                .get_mut(node_id)
-                .and_then(|n| mem::replace(&mut n.get_mut().visual, with))
-        }
-
-        // fwd to window components
-        match event {
-            winit::event::Event::WindowEvent { window_id, event } => {
-                // deliver event to the target window in the node tree
-                if let Some(node_id) = win_ctx.windows.get(&window_id).cloned() {
-                    // see RedrawRequested for more comments
-                    let mut v = replace_visual(&mut tree, node_id, None);
-                    v.as_mut()
-                        .map(|v| v.window_event(&mut win_ctx, &event, &mut tree, node_id));
-                    replace_visual(&mut tree, node_id, v);
-                }
-
-                if let WindowEvent::Resized(size) = event {
-                    // A window has been resized.
-                    // Note that, currently, we have no way of relayouting each window separately
-                    // (since Application::view() returns the widget tree for all windows).
-                    // For now, just relayout everything.
-                    tree.layout(
-                        root_widget().boxed(),
-                        Size::zero(),
-                        &BoxConstraints::new(..,..),
-                        Environment::new(),
-                        &mut win_ctx,
-                    );
-                }
-            }
-
-            winit::event::Event::RedrawRequested(window_id) => {
-                // A window needs to be repainted
-                if let Some(node_id) = win_ctx.windows.get(&window_id).cloned() {
-                    // sleight-of-hand: extract the visual from the tree, then put it back
-                    // so that we can give a mut ref to the tree to Visual::window_paint
-                    let mut v = replace_visual(&mut tree, node_id, None);
-                    // now call the `window_paint` procedure on the visual, if it exists
-                    v.as_mut()
-                        .map(|v| v.window_paint(&mut win_ctx, &mut tree, node_id));
-                    // put back the visual
-                    replace_visual(&mut tree, node_id, v);
-                } else {
-                    log::warn!("repaint for unregistered window")
-                }
-            }
-            _ => (),
-        }
-
-        // after having processed the event, poll all pending futures.
-        // the "replace_with" trick is because we need to move the tree out and place it into the
-        // shared cell, but we don't want to create a new tree
-        replace_with::replace_with_or_abort(&mut tree, |tree| {
-            // move the node tree into the temp cell visible to the tasks
-            temp_tree.borrow_mut().replace(tree);
-            // poll futures
-            pool.run_until_stalled();
-            // put the tree back into place
-            temp_tree.borrow_mut().take().unwrap()
-        })
-    })
+    app_ctx.layout(&mut tree, &event_loop);
+    // enter the main event loop
+    app_ctx.run(tree, event_loop);
 }

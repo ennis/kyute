@@ -25,7 +25,7 @@ pub use flex::Flex;
 pub use text::Text;
 pub use popup::Popup;
 
-use crate::application::WindowCtx;
+use crate::application::AppCtx;
 use crate::env::Environment;
 use crate::layout::BoxConstraints;
 use crate::visual::Visual;

@@ -1,4 +1,4 @@
-use crate::application::WindowCtx;
+use crate::application::AppCtx;
 use crate::event::{
     Event, InputEvent, InputState, KeyboardEvent, PointerButton, PointerButtonEvent, PointerEvent,
     PointerState, WheelDeltaMode, WheelEvent,
@@ -19,6 +19,7 @@ use std::time::Instant;
 use winit::dpi::LogicalSize;
 use winit::event::{VirtualKeyCode, WindowEvent};
 use winit::window::{WindowBuilder, WindowId};
+use crate::visual::WindowHandler;
 
 /// Window event callbacks.
 struct Callbacks {
@@ -63,34 +64,19 @@ pub struct WindowNode {
     callbacks: Callbacks,
 }
 
-impl Visual for WindowNode {
-    fn paint(&mut self, _ctx: &mut PaintCtx, _env: &Environment) {
-        // we have nothing to paint in the parent window
+impl WindowHandler for WindowNode {
+
+    fn window(&self) -> &PlatformWindow {
+        &self.window
     }
 
-    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
-        unimplemented!()
-    }
-
-    fn event(&mut self, _event_ctx: &mut EventCtx, _event: &Event) {
-        // we don't care about events from the parent window
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn window_id(&self) -> Option<WindowId> {
-        Some(self.window.id())
+    fn window_mut(&mut self) -> &mut PlatformWindow {
+        &mut self.window
     }
 
     fn window_event(
         &mut self,
-        ctx: &mut WindowCtx,
+        ctx: &mut AppCtx,
         window_event: &WindowEvent,
         tree: &mut NodeTree,
         root: NodeId,
@@ -161,23 +147,23 @@ impl Visual for WindowNode {
                 // determine the repeat count (double-click, triple-click, etc.) for button down event
                 let repeat_count = match &mut self.last_click {
                     Some(ref mut last)
-                        if last.device_id == *device_id
-                            && last.button == button
-                            && last.position == position
-                            && (click_time - last.time) < ctx.platform.double_click_time() =>
-                    {
-                        // same device, button, position, and within the platform specified double-click time
-                        match state {
-                            winit::event::ElementState::Pressed => {
-                                last.repeat_count += 1;
-                                last.repeat_count
-                            }
-                            winit::event::ElementState::Released => {
-                                // no repeat for release events (although that could be possible?),
-                                1
+                    if last.device_id == *device_id
+                        && last.button == button
+                        && last.position == position
+                        && (click_time - last.time) < ctx.platform.double_click_time() =>
+                        {
+                            // same device, button, position, and within the platform specified double-click time
+                            match state {
+                                winit::event::ElementState::Pressed => {
+                                    last.repeat_count += 1;
+                                    last.repeat_count
+                                }
+                                winit::event::ElementState::Released => {
+                                    // no repeat for release events (although that could be possible?),
+                                    1
+                                }
                             }
                         }
-                    }
                     other => {
                         // no match, reset
                         match state {
@@ -363,7 +349,7 @@ impl Visual for WindowNode {
         }
     }
 
-    fn window_paint(&mut self, ctx: &mut WindowCtx, tree: &mut NodeTree, anchor: NodeId) {
+    fn window_paint(&mut self, ctx: &mut AppCtx, tree: &mut NodeTree, anchor: NodeId) {
         {
             let id = self.window.id();
             let mut wdc = WindowDrawContext::new(&mut self.window);
@@ -380,7 +366,7 @@ impl Visual for WindowNode {
                 debug_draw_bounds: self.debug_layout,
             };
             tree.paint(
-                ctx.platform,
+                &ctx.platform,
                 &mut wdc,
                 &self.style_collection,
                 id,
@@ -391,6 +377,32 @@ impl Visual for WindowNode {
             );
         }
         self.window.present();
+    }
+}
+
+impl Visual for WindowNode {
+    fn paint(&mut self, _ctx: &mut PaintCtx, _env: &Environment) {
+        // we have nothing to paint in the parent window
+    }
+
+    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
+        unimplemented!()
+    }
+
+    fn event(&mut self, _event_ctx: &mut EventCtx, _event: &Event) {
+        // we don't care about events from the parent window
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn window_handler_mut(&mut self) -> Option<&mut dyn WindowHandler> {
+        Some(self)
     }
 }
 
@@ -467,9 +479,9 @@ impl<'a> TypedWidget for Window<'a> {
             log::info!("creating window of size {:?}", self.builder);
             // create the window for the first time
             let window = PlatformWindow::new(
-                context.win_ctx.event_loop,
+                context.event_loop,
                 self.builder,
-                context.win_ctx.platform,
+                &context.app_ctx.platform,
                 self.parent_window,
                 false,
             )
@@ -481,7 +493,7 @@ impl<'a> TypedWidget for Window<'a> {
                 inputs: Default::default(),
                 focus: FocusState::default(),
                 last_click: None,
-                style_collection: context.win_ctx.style.clone(),
+                style_collection: context.app_ctx.style.clone(),
                 debug_layout: DebugLayout::None,
                 callbacks: self.callbacks,
             })

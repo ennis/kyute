@@ -1,6 +1,6 @@
 //! Types and functions used for layouting widgets.
 
-use crate::application::WindowCtx;
+use crate::application::AppCtx;
 use crate::node::NodeArena;
 use crate::widget::Baseline;
 use std::fmt::Formatter;

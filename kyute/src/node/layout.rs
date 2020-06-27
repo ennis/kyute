@@ -1,6 +1,6 @@
 //! Layout and reconciliation pass.
 use super::NodeData;
-use crate::application::WindowCtx;
+use crate::application::AppCtx;
 use crate::layout::BoxConstraints;
 use crate::node::{NodeArena, NodeTree};
 use crate::state::NodeKey;
@@ -12,6 +12,7 @@ use std::any::TypeId;
 use std::rc::Rc;
 use winit::window::WindowId;
 use kyute_shell::window::PlatformWindow;
+use winit::event_loop::EventLoopWindowTarget;
 
 /// A position between nodes in the node tree.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -32,28 +33,35 @@ impl NodeCursor {
 /// Context passed to a widget during the layout pass.
 ///
 /// See [`Widget::layout`].
-pub struct LayoutCtx<'a, 'ctx> {
-    /// Window-creation context.
-    pub(crate) win_ctx: &'a mut WindowCtx<'ctx>,
+pub struct LayoutCtx<'a> {
+    pub(crate) app_ctx: &'a mut AppCtx,
+    pub(crate) event_loop: &'a EventLoopWindowTarget<()>,
     /// The node tree
     arena: &'a mut NodeArena,
     /// Parent window (for child windows on win32)
     parent_window: Option<&'a PlatformWindow>,
+    /// Parent window node
+    parent_window_node: Option<NodeId>,
     /// Current (parent) node, None if pre-root
     node: Option<NodeId>,
     /// reconciliation cursor
     cursor: &'a mut NodeCursor,
 }
 
-impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
+impl<'a> LayoutCtx<'a> {
     /// Returns the global platform object.
-    pub fn platform(&self) -> &'ctx Platform {
-        self.win_ctx.platform
+    pub fn platform(&self) -> &Platform {
+        &self.app_ctx.platform
     }
 
     /// Returns the parent window.
     pub fn parent_window(&self) -> Option<&'a PlatformWindow> {
         self.parent_window
+    }
+
+    /// Returns the node corresponding to the parent window node.
+    fn parent_window_node(&self) -> Option<NodeId> {
+        self.parent_window_node
     }
 
     /// Emits a child widget.
@@ -127,11 +135,13 @@ impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
         // reconciliation starts at the beginning of the child list
         let mut child_cursor = NodeCursor::Child(id);
         let mut child_ctx = LayoutCtx {
-            win_ctx: self.win_ctx,
+            app_ctx: self.app_ctx,
+            event_loop: self.event_loop,
             arena: self.arena,
             node: Some(id),
             cursor: &mut child_cursor,
-            parent_window: parent_window.or(self.parent_window)
+            parent_window: parent_window.or(self.parent_window),
+            parent_window_node: if parent_window.is_some() { self.node } else { self.parent_window_node }
         };
         // -> recursive call of layout
         let (visual, measurements) = widget.layout(&mut child_ctx, prev_visual, constraints, env);
@@ -164,7 +174,7 @@ impl<'a, 'ctx> LayoutCtx<'a, 'ctx> {
     /// All window events received with the specified ID will be forwarded to this node.
     pub fn register_window(&mut self, window_id: WindowId) {
         let nid = self.node_id();
-        self.win_ctx.windows.insert(window_id, nid);
+        self.app_ctx.windows.insert(window_id, nid);
     }
 
     /// Sets the offset of a node relative to its parent.
@@ -188,16 +198,19 @@ impl NodeTree {
         size: Size,
         root_constraints: &BoxConstraints,
         env: Environment,
-        win_ctx: &mut WindowCtx,
+        app_ctx: &mut AppCtx,
+        event_loop: &EventLoopWindowTarget<()>
     ) {
         let mut cursor = NodeCursor::Before(self.root);
         let mut layout_ctx = LayoutCtx {
-            win_ctx,
+            app_ctx,
             arena: &mut self.arena,
             // no parent => inserting into the root list
             node: None,
             cursor: &mut cursor,
             parent_window: None,
+            parent_window_node: None,
+            event_loop
         };
         let (root, root_measurements) = layout_ctx.emit_child(widget, root_constraints, env, None);
         // update root (it might not be the same node)

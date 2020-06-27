@@ -8,7 +8,7 @@ use kyute::widget::slider::Slider;
 use kyute::widget::textedit::TextEdit;
 use kyute::widget::Button;
 use kyute::window::Window;
-use kyute::{BoxConstraints, BoxedWidget, WidgetExt};
+use kyute::{BoxConstraints, BoxedWidget, WidgetExt, Update};
 use std::marker::PhantomData;
 use winit::window::WindowBuilder;
 
@@ -139,9 +139,10 @@ struct SimpleComponentState {
 impl State for SimpleComponentState {
     type Cmd = ();
 
-    fn command(&mut self, cmd: ()) {
+    fn command(&mut self, cmd: ()) -> Update {
         eprintln!("button clicked");
         self.counter += 1;
+        Update::Relayout
     }
 }
 
@@ -154,7 +155,7 @@ struct SimpleComponent<'a>(&'a SimpleComponentParams);
 impl<'a> Component for SimpleComponent<'a> {
     type State = SimpleComponentState;
 
-    fn view(&self, state: &mut SimpleComponentState, commands: CommandSink<()>) -> BoxedWidget {
+    fn view(&self, state: &mut SimpleComponentState, commands: CommandSink<Self::State>) -> BoxedWidget {
         Button::new(format!("{}.{}", self.0.big, state.counter))
             .on_click(commands.emit(()))
             .boxed()
@@ -172,11 +173,12 @@ struct SimpleApplicationState {
 impl State for SimpleApplicationState {
     type Cmd = ();
 
-    fn command(&mut self, command: ()) {
-        unimplemented!()
+    fn command(&mut self, command: ()) -> Update {
+        Update::None
     }
 }
 
+#[derive(Copy,Clone,Debug)]
 struct SimpleApplication;
 
 impl Component for SimpleApplication {
@@ -185,7 +187,7 @@ impl Component for SimpleApplication {
     fn view<'a>(
         &'a self,
         state: &'a mut SimpleApplicationState,
-        cmds: CommandSink<()>,
+        cmds: CommandSink<Self::State>,
     ) -> BoxedWidget<'a> {
         use kyute::widget::*;
         Window::new(WindowBuilder::new())
@@ -244,5 +246,5 @@ impl Component for SimpleApplication {
 
 fn main() {
     pretty_env_logger::init();
-    run(|| SimpleApplication);
+    run( SimpleApplication);
 }

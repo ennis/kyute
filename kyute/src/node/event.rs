@@ -1,5 +1,5 @@
 //! Contains event propagation logic for [`NodeTrees`](crate::node::NodeTree).
-use crate::application::WindowCtx;
+use crate::application::AppCtx;
 use crate::event::{
     Event, InputState, MoveFocusDirection, PointerButtonEvent, PointerButtons, PointerEvent,
 };
@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use winit::event::DeviceId;
 use winit::event::ModifiersState;
 use winit::window::WindowId;
+use crate::component::Action;
 
 /// Global state related to focus and pointer grab.
 pub struct FocusState {
@@ -82,9 +83,9 @@ pub enum FocusChange {
 
 /// Context passed to [`Visual::event`] during event propagation.
 /// Also serves as a return value for this function.
-pub struct EventCtx<'a, 'wctx> {
+pub struct EventCtx<'a> {
     /// Window context
-    pub(crate) window_ctx: &'a mut WindowCtx<'wctx>,
+    pub(crate) app_ctx: &'a mut AppCtx,
     /// Window
     pub(crate) window: &'a PlatformWindow,
     /// State of various input devices.
@@ -107,9 +108,9 @@ pub struct EventCtx<'a, 'wctx> {
     //in_focus_event: bool,
 }
 
-impl<'a, 'wctx> EventCtx<'a, 'wctx> {
+impl<'a> EventCtx<'a> {
     pub fn platform(&self) -> &Platform {
-        self.window_ctx.platform
+        &self.app_ctx.platform
     }
 
     /// Returns the bounds of the current widget.
@@ -166,6 +167,10 @@ impl<'a, 'wctx> EventCtx<'a, 'wctx> {
     #[must_use]
     pub fn handled(&self) -> bool {
         self.handled
+    }
+
+    pub(crate) fn push_action(&mut self, action: Action) {
+        self.app_ctx.actions.push(action)
     }
 }
 
@@ -297,7 +302,7 @@ impl NodeTree {
     /// Sends an event to a target node and optionally bubble up.
     pub(crate) fn dispatch_event(
         &mut self,
-        window_ctx: &mut WindowCtx,
+        window_ctx: &mut AppCtx,
         window: &PlatformWindow,
         root: NodeId,
         inputs: &InputState,
@@ -316,7 +321,7 @@ impl NodeTree {
             let node = &mut self.arena[id];
 
             let mut ctx = EventCtx {
-                window_ctx,
+                app_ctx: window_ctx,
                 window,
                 inputs,
                 focus,
@@ -427,7 +432,7 @@ impl NodeTree {
     /// - event: event to be delivered
     pub fn event(
         &mut self,
-        window_ctx: &mut WindowCtx,
+        window_ctx: &mut AppCtx,
         window: &PlatformWindow,
         root: NodeId,
         inputs: &InputState,

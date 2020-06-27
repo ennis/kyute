@@ -5,7 +5,33 @@ use crate::node::NodeTree;
 use generational_indextree::NodeId;
 use winit::event::WindowEvent;
 use winit::window::WindowId;
-use crate::application::WindowCtx;
+use crate::application::AppCtx;
+use kyute_shell::window::PlatformWindow;
+
+
+pub trait WindowHandler {
+    /// Returns the window
+    fn window(&self) -> &PlatformWindow;
+
+    /// Returns the window
+    fn window_mut(&mut self) -> &mut PlatformWindow;
+
+    /// Handles a raw window event.
+    ///
+    /// This is called only if the node has been registered as a window.
+    /// Returns the translated events to dispatch to this node (and the rest of the children)
+    /// afterwards.
+    fn window_event(&mut self, _ctx: &mut AppCtx, _window_event: &WindowEvent, _tree: &mut NodeTree, _anchor: NodeId) {
+    }
+
+    /// Paints a subtree into the window.
+    ///
+    /// This is called only if the node has been registered as a window.
+    /// This method is responsible for creating a drawing context and passing it down to the nodes.
+    fn window_paint(&mut self,
+                    _ctx: &mut AppCtx, _tree: &mut NodeTree, _anchor: NodeId) {
+    }
+}
 
 /// The interface for painting a visual element on the screen, and handling events that target this
 /// visual.
@@ -32,26 +58,11 @@ pub trait Visual: Any {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
-    /// If the visual is implemented as a window, return its ID.
-    fn window_id(&self) -> Option<WindowId> {
-        None
-    }
+    /// Returns a reference to the window handler object if this visual corresponds to a platform window.
+    fn window_handler(&self) -> Option<&dyn WindowHandler> { None }
 
-    /// Handles a raw window event.
-    ///
-    /// This is called only if the node has been registered as a window.
-    /// Returns the translated events to dispatch to this node (and the rest of the children)
-    /// afterwards.
-    fn window_event(&mut self, _ctx: &mut WindowCtx, _window_event: &WindowEvent, _tree: &mut NodeTree, _anchor: NodeId) {
-    }
-
-    /// Paints a subtree into the window.
-    ///
-    /// This is called only if the node has been registered as a window.
-    /// This method is responsible for creating a drawing context and passing it down to the nodes.
-    fn window_paint(&mut self,
-                    _ctx: &mut WindowCtx, _tree: &mut NodeTree, _anchor: NodeId) {
-    }
+    /// Returns a reference to the window handler object if this visual corresponds to a platform window.
+    fn window_handler_mut(&mut self) -> Option<&mut dyn WindowHandler> { None }
 }
 
 impl dyn Visual {

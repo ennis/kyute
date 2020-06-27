@@ -1,6 +1,6 @@
 use crate::layout::Measurements;
 use crate::visual::Visual;
-use crate::{Rect, DummyVisual, Environment, Size, Offset, Point};
+use crate::{DummyVisual, Environment, Offset, Point, Rect, Size};
 use generational_indextree::NodeId;
 use kyute_shell::drawing::DrawContext;
 use kyute_shell::platform::Platform;
@@ -14,9 +14,10 @@ pub use self::event::EventCtx;
 pub use self::event::FocusState;
 pub use self::event::RepaintRequest;
 pub use self::layout::LayoutCtx;
-pub use self::paint::PaintCtx;
 pub use self::paint::DebugLayout;
+pub use self::paint::PaintCtx;
 pub use self::paint::PaintOptions;
+use kyute_shell::window::PlatformWindow;
 use std::any::TypeId;
 use winit::window::WindowId;
 
@@ -69,7 +70,10 @@ impl NodeData<dyn Visual> {
 
     ///
     pub(crate) fn window_id(&self) -> Option<WindowId> {
-        self.visual.as_ref().and_then(|v| v.window_id())
+        self.visual
+            .as_ref()
+            .and_then(|v| v.window_handler())
+            .map(|v| v.window().id())
     }
 
     /*/// Downcasts this node to a concrete type.
@@ -114,5 +118,23 @@ impl NodeTree {
             window_origin: Point::origin(),
         }
     }
-}
 
+    /// Searches the parents of the node for the nearest window node.
+    pub(crate) fn find_parent_window(&self, node_id: NodeId) -> Option<&PlatformWindow> {
+        let mut next_id = Some(node_id);
+        while let Some(id) = next_id {
+            let node = &self.arena[id];
+            if let Some(window) = node
+                .get()
+                .visual
+                .as_ref()
+                .and_then(|v| v.window_handler())
+                .map(|w| w.window())
+            {
+                return Some(window);
+            }
+            next_id = node.parent();
+        }
+        None
+    }
+}
