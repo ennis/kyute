@@ -9,7 +9,7 @@ use palette::{Alpha, LinSrgb, LinSrgba, Shade, Srgb, Srgba};
 
 impl_keys!(
 /// Default font size.
-FontSize: f64 [11.0];
+FontSize: f64 [14.0];
 /// Default font family
 #[cfg(windows)]
 FontName: &'a str ["Segoe UI"];

@@ -30,6 +30,7 @@ features = [
     "d2d1effects",
     "d3d11",
     "dxgi",
+    "dwrite",
     "dxgi1_2",
     "dxgi1_3",
     "dxgiformat",
