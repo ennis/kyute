@@ -1,10 +1,10 @@
 use crate::event::Event;
 use crate::layout::{BoxConstraints, Measurements};
 use crate::{
-    theme, Rect, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget,
+    theme, Environment, EventCtx, LayoutCtx, PaintCtx, Point, Rect, TypedWidget, Visual, Widget,
 };
 use generational_indextree::NodeId;
-use kyute_shell::drawing::{Color, DrawTextOptions, Brush, IntoBrush};
+use kyute_shell::drawing::{Brush, Color, DrawTextOptions, IntoBrush};
 use kyute_shell::text::{TextFormatBuilder, TextLayout};
 use log::trace;
 use std::any::Any;

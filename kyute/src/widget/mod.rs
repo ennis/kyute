@@ -10,10 +10,10 @@ pub mod form;
 pub mod frame;
 pub mod id;
 pub mod padding;
+pub mod popup;
 pub mod slider;
 pub mod text;
 pub mod textedit;
-pub mod popup;
 
 // re-export common widgets
 pub use baseline::Baseline;
@@ -22,8 +22,8 @@ pub use dummy::DummyWidget;
 pub use expand::Expand;
 pub use flex::Axis;
 pub use flex::Flex;
-pub use text::Text;
 pub use popup::Popup;
+pub use text::Text;
 
 use crate::application::AppCtx;
 use crate::env::Environment;
@@ -35,7 +35,6 @@ use kyute_shell::platform::Platform;
 use std::any::TypeId;
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
-
 
 /// Trait representing a widget before layout.
 ///
@@ -62,6 +61,7 @@ use std::rc::Rc;
 /// long, making the usage impractical.
 ///
 /// See also [Inside Flutter - Building widgets on demand](https://flutter.dev/docs/resources/inside-flutter#building-widgets-on-demand).
+///
 pub trait Widget {
     /// Returns the key of the widget, used to match the widget to the node tree.
     fn key(&self) -> Option<u64> {

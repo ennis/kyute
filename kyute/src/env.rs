@@ -1,3 +1,4 @@
+use crate::style::StyleCollection;
 use crate::{BoxedWidget, SideOffsets};
 use kyute_shell::drawing::Color;
 use std::any::{Any, TypeId};
@@ -6,7 +7,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use crate::style::StyleCollection;
 
 /// A type that identifies a named value in an [`Environment`], of a particular type `T`.
 ///
@@ -80,7 +80,6 @@ impl<'a> EnvValue<'a> for &'a str {
         }
     }
 }
-
 
 #[derive(Clone)]
 pub struct Environment(Rc<EnvImpl>);

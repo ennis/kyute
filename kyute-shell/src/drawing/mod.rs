@@ -1,17 +1,17 @@
 pub mod brush;
 pub mod context;
+pub mod effect;
 pub mod gradient;
 pub mod path;
-pub mod effect;
 
 pub use brush::Brush;
 pub use brush::IntoBrush;
+pub use context::Bitmap;
+pub use context::CompositeMode;
 pub use context::DrawContext;
 pub use context::DrawTextOptions;
 pub use context::InterpolationMode;
-pub use context::CompositeMode;
 pub use context::PrimitiveBlend;
-pub use context::Bitmap;
 pub use gradient::ColorInterpolationMode;
 pub use gradient::ExtendMode;
 pub use gradient::GradientStopCollection;
@@ -43,7 +43,6 @@ pub const PX: DipLength = DipLength::new(1.0);
 pub trait IntoDip {
     fn into_dip(self, ctx: &DrawContext) -> DipLength;
 }
-
 
 /// Common graphics types
 pub type Size = euclid::Size2D<f64, Dip>;

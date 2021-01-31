@@ -8,7 +8,7 @@ use kyute::widget::slider::Slider;
 use kyute::widget::textedit::TextEdit;
 use kyute::widget::Button;
 use kyute::window::Window;
-use kyute::{BoxConstraints, BoxedWidget, WidgetExt, Update};
+use kyute::{BoxConstraints, BoxedWidget, Update, WidgetExt};
 use std::marker::PhantomData;
 use winit::window::WindowBuilder;
 
@@ -155,7 +155,11 @@ struct SimpleComponent<'a>(&'a SimpleComponentParams);
 impl<'a> Component for SimpleComponent<'a> {
     type State = SimpleComponentState;
 
-    fn view(&self, state: &mut SimpleComponentState, commands: CommandSink<Self::State>) -> BoxedWidget {
+    fn view(
+        &self,
+        state: &mut SimpleComponentState,
+        commands: CommandSink<Self::State>,
+    ) -> BoxedWidget {
         Button::new(format!("{}.{}", self.0.big, state.counter))
             .on_click(commands.emit(()))
             .boxed()
@@ -178,7 +182,11 @@ impl State for SimpleApplicationState {
     }
 }
 
-#[derive(Copy,Clone,Debug)]
+// application state?
+// - within a node, maybe wrapped in Arc
+// -
+
+#[derive(Copy, Clone, Debug)]
 struct SimpleApplication;
 
 impl Component for SimpleApplication {
@@ -246,5 +254,5 @@ impl Component for SimpleApplication {
 
 fn main() {
     pretty_env_logger::init();
-    run( SimpleApplication);
+    run(SimpleApplication);
 }

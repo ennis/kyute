@@ -7,12 +7,12 @@ use palette::Srgba;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use std::fmt::Formatter;
+use kyute_shell::drawing;
+use kyute_shell::platform::Platform;
 use serde::de::{EnumAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
-use kyute_shell::drawing;
-use kyute_shell::platform::Platform;
+use std::fmt::Formatter;
 
 /// Unit of length: device-independent pixel.
 pub struct Dip;
@@ -72,7 +72,7 @@ impl serde::Serialize for ColorRef {
                 b: c.blue,
                 a: c.alpha,
             },
-            ColorRef::Palette(c) => SerdeColorRef::Palette{ index: c.0 }
+            ColorRef::Palette(c) => SerdeColorRef::Palette { index: c.0 },
         };
         c.serialize(serializer)
     }
@@ -371,7 +371,14 @@ fn make_brush(
 }
 
 impl StyleSet {
-    fn draw(&self, platform: &Platform, ctx: &mut DrawContext, bounds: &Rect, state: State, palette: &Palette) {
+    fn draw(
+        &self,
+        platform: &Platform,
+        ctx: &mut DrawContext,
+        bounds: &Rect,
+        state: State,
+        palette: &Palette,
+    ) {
         let mut fill = None;
         let mut borders: Vec<Border> = Vec::new();
         let mut inner_shadow = None;

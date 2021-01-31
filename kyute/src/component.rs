@@ -7,24 +7,27 @@ use generational_indextree::NodeId;
 use std::any::Any;
 use std::any::TypeId;
 
-use crate::node::{NodeTree, NodeData};
+use crate::node::{NodeData, NodeTree};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::marker::PhantomData;
+use std::rc::Rc;
 
 /// An action that modifies a particular node in the node tree.
 pub(crate) struct Action {
     pub(crate) target: NodeId,
-    pub(crate) run: Box<dyn FnOnce(&mut NodeData) -> Update + 'static>
+    pub(crate) run: Box<dyn FnOnce(&mut NodeData) -> Update + 'static>,
 }
 
 impl Action {
-     pub(crate) fn new(target: NodeId, run: impl FnOnce(&mut NodeData) -> Update + 'static) -> Action {
-         Action {
-             target,
-             run: Box::new(run)
-         }
-     }
+    pub(crate) fn new(
+        target: NodeId,
+        run: impl FnOnce(&mut NodeData) -> Update + 'static,
+    ) -> Action {
+        Action {
+            target,
+            run: Box::new(run),
+        }
+    }
 }
 
 /// Helper type to send commands
@@ -33,12 +36,11 @@ impl Action {
 #[derive(Clone)]
 pub struct CommandSink<S> {
     target: NodeId,
-    _phantom: PhantomData<*const S>
+    _phantom: PhantomData<*const S>,
 }
 
-impl <S: State> CommandSink<S> {
-    pub fn emit(&self, c: S::Cmd) -> impl FnMut(&mut EventCtx)
-    {
+impl<S: State> CommandSink<S> {
+    pub fn emit(&self, c: S::Cmd) -> impl FnMut(&mut EventCtx) {
         let target = self.target;
         move |ectx| {
             let c = c.clone();
@@ -49,23 +51,17 @@ impl <S: State> CommandSink<S> {
     }
 }
 
-
 /// In charge of forwarding commands to the component.
-fn dispatch_command<S: State>(
-    id: NodeId,
-    node: &mut NodeData,
-    cmd: S::Cmd,
-) -> Update {
-        node.visual // access the visual impl inside ...
-            .as_mut() // .. by mut ref
-            .expect("no visual")
-            .as_any_mut() // convert to any
-            .downcast_mut::<StateWrapper<S>>() // downcast to the expected component wrapper type
-            .expect("not a component wrapper")
-            .0
-            .command(cmd)
+fn dispatch_command<S: State>(id: NodeId, node: &mut NodeData, cmd: S::Cmd) -> Update {
+    node.visual // access the visual impl inside ...
+        .as_mut() // .. by mut ref
+        .expect("no visual")
+        .as_any_mut() // convert to any
+        .downcast_mut::<StateWrapper<S>>() // downcast to the expected component wrapper type
+        .expect("not a component wrapper")
+        .0
+        .command(cmd)
 }
-
 
 /// Reusable GUI elements with internal state.
 ///
@@ -77,7 +73,11 @@ pub trait Component {
     type State: State;
 
     /// Returns the view.
-    fn view<'a>(&'a self, state: &'a mut Self::State, cmd_sink: CommandSink<Self::State>) -> BoxedWidget<'a>;
+    fn view<'a>(
+        &'a self,
+        state: &'a mut Self::State,
+        cmd_sink: CommandSink<Self::State>,
+    ) -> BoxedWidget<'a>;
 
     /// Creates a new instance of the component
     fn mount(&self) -> Self::State
@@ -85,11 +85,11 @@ pub trait Component {
         Self: Sized;
 }
 
-#[derive(Copy,Clone,Debug,Eq,PartialEq,Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Update {
     None,
     Relayout,
-    Repaint
+    Repaint,
 }
 
 impl Default for Update {
@@ -124,9 +124,7 @@ impl<S: State> Visual for StateWrapper<S> {
     }
 }
 
-
-impl<C: Component> TypedWidget for C
-{
+impl<C: Component> TypedWidget for C {
     type Visual = StateWrapper<C::State>;
 
     fn layout(
@@ -135,8 +133,7 @@ impl<C: Component> TypedWidget for C
         previous_visual: Option<Box<StateWrapper<C::State>>>,
         constraints: &BoxConstraints,
         env: Environment,
-    ) -> (Box<StateWrapper<C::State>>, Measurements)
-    {
+    ) -> (Box<StateWrapper<C::State>>, Measurements) {
         // extract the component instance from the visual wrapper
         let mut wrapper = if let Some(wrapper) = previous_visual {
             wrapper
@@ -146,7 +143,13 @@ impl<C: Component> TypedWidget for C
         };
 
         // create the channel for receiving and dispatching the commands emitted during event propagation
-        let widget = self.view(&mut wrapper.0, CommandSink { target: context.node_id(), _phantom: PhantomData });
+        let widget = self.view(
+            &mut wrapper.0,
+            CommandSink {
+                target: context.node_id(),
+                _phantom: PhantomData,
+            },
+        );
         let (_, measurements) = context.emit_child(widget, constraints, env, None);
 
         (wrapper, measurements)

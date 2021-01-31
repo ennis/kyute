@@ -1,5 +1,8 @@
 use crate::event::{Event, MoveFocusDirection};
-use crate::{layout::BoxConstraints, layout::Measurements, theme, Rect, BoxedWidget, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget, WidgetExt, Size, Offset};
+use crate::{
+    layout::BoxConstraints, layout::Measurements, theme, BoxedWidget, Environment, EventCtx,
+    LayoutCtx, Offset, PaintCtx, Point, Rect, Size, TypedWidget, Visual, Widget, WidgetExt,
+};
 use log::trace;
 use std::any::Any;
 
@@ -149,8 +152,7 @@ impl Visual for FlexVisual {
         unimplemented!()
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
-    }
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {}
 
     fn as_any(&self) -> &dyn Any {
         self

@@ -5,14 +5,14 @@ use crate::layout::BoxConstraints;
 use crate::node::{NodeArena, NodeTree};
 use crate::state::NodeKey;
 use crate::widget::BoxedWidget;
-use crate::{env, node, Environment, Measurements, Point, Widget, Offset, Size};
+use crate::{env, node, Environment, Measurements, Offset, Point, Size, Widget};
 use generational_indextree::{Node, NodeEdge, NodeId};
 use kyute_shell::platform::Platform;
+use kyute_shell::window::PlatformWindow;
 use std::any::TypeId;
 use std::rc::Rc;
-use winit::window::WindowId;
-use kyute_shell::window::PlatformWindow;
 use winit::event_loop::EventLoopWindowTarget;
+use winit::window::WindowId;
 
 /// A position between nodes in the node tree.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -72,7 +72,7 @@ impl<'a> LayoutCtx<'a> {
         widget: impl Widget,
         constraints: &BoxConstraints,
         env: Environment,
-        parent_window: Option<&PlatformWindow>
+        parent_window: Option<&PlatformWindow>,
     ) -> (NodeId, Measurements) {
         // Reconciliation
         let widget_key = widget.key();
@@ -141,7 +141,11 @@ impl<'a> LayoutCtx<'a> {
             node: Some(id),
             cursor: &mut child_cursor,
             parent_window: parent_window.or(self.parent_window),
-            parent_window_node: if parent_window.is_some() { self.node } else { self.parent_window_node }
+            parent_window_node: if parent_window.is_some() {
+                self.node
+            } else {
+                self.parent_window_node
+            },
         };
         // -> recursive call of layout
         let (visual, measurements) = widget.layout(&mut child_ctx, prev_visual, constraints, env);
@@ -199,7 +203,7 @@ impl NodeTree {
         root_constraints: &BoxConstraints,
         env: Environment,
         app_ctx: &mut AppCtx,
-        event_loop: &EventLoopWindowTarget<()>
+        event_loop: &EventLoopWindowTarget<()>,
     ) {
         let mut cursor = NodeCursor::Before(self.root);
         let mut layout_ctx = LayoutCtx {
@@ -210,7 +214,7 @@ impl NodeTree {
             cursor: &mut cursor,
             parent_window: None,
             parent_window_node: None,
-            event_loop
+            event_loop,
         };
         let (root, root_measurements) = layout_ctx.emit_child(widget, root_constraints, env, None);
         // update root (it might not be the same node)

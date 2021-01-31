@@ -3,14 +3,14 @@
 use crate::application::AppCtx;
 use crate::node::NodeArena;
 use crate::widget::Baseline;
-use std::fmt::Formatter;
-use std::ops::RangeBounds;
+use crate::{Offset, Point, SideOffsets, Size};
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
 use std::fmt;
+use std::fmt::Formatter;
 use std::ops::Bound;
+use std::ops::RangeBounds;
 use std::rc::Rc;
-use crate::{Size, SideOffsets, Point, Offset};
 
 /// Box constraints.
 #[derive(Copy, Clone)]
@@ -27,7 +27,7 @@ impl BoxConstraints {
             Bound::Included(&x) => x,
         };
         let max_width = match width.end_bound() {
-            Bound::Unbounded => std::f64::INFINITY,
+            Bound::Unbounded => f64::INFINITY,
             Bound::Excluded(&x) => x,
             Bound::Included(&x) => x,
         };
@@ -37,7 +37,7 @@ impl BoxConstraints {
             Bound::Included(&x) => x,
         };
         let max_height = match height.end_bound() {
-            Bound::Unbounded => std::f64::INFINITY,
+            Bound::Unbounded => f64::INFINITY,
             Bound::Excluded(&x) => x,
             Bound::Included(&x) => x,
         };

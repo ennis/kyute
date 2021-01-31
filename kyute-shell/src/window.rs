@@ -21,7 +21,7 @@ use std::ptr;
 use std::rc::Rc;
 
 use winit::event_loop::EventLoopWindowTarget;
-use winit::platform::windows::{WindowExtWindows, WindowBuilderExtWindows};
+use winit::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
 use winit::window::{Window, WindowBuilder, WindowId};
 
 use winapi::shared::dxgi::*;

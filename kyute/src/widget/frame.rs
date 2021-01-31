@@ -1,9 +1,9 @@
 use crate::event::Event;
 use crate::{
-    Rect, BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx,
-    Point, TypedWidget, Visual, Widget,
+    BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
+    Rect, TypedWidget, Visual, Widget,
 };
-use kyute_shell::drawing::{Color, Brush, IntoBrush, RectExt};
+use kyute_shell::drawing::{Brush, Color, IntoBrush, RectExt};
 use std::any::Any;
 
 pub enum WidgetType {
@@ -43,7 +43,7 @@ impl<'a> TypedWidget for Frame<'a> {
             fill_color,
         });
 
-        let (child_id, child_measurements) = context.emit_child(inner, constraints, env,None);
+        let (child_id, child_measurements) = context.emit_child(inner, constraints, env, None);
         (visual, child_measurements)
     }
 }

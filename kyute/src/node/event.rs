@@ -1,5 +1,6 @@
 //! Contains event propagation logic for [`NodeTrees`](crate::node::NodeTree).
 use crate::application::AppCtx;
+use crate::component::Action;
 use crate::event::{
     Event, InputState, MoveFocusDirection, PointerButtonEvent, PointerButtons, PointerEvent,
 };
@@ -13,7 +14,6 @@ use std::collections::HashMap;
 use winit::event::DeviceId;
 use winit::event::ModifiersState;
 use winit::window::WindowId;
-use crate::component::Action;
 
 /// Global state related to focus and pointer grab.
 pub struct FocusState {
@@ -410,7 +410,7 @@ impl NodeTree {
                 handled_by = Some(id);
             }
 
-            if !bubble || handled  {
+            if !bubble || handled {
                 break;
             }
 

@@ -1,6 +1,9 @@
 //! Direct2D render target
 use crate::drawing::brush::Brush;
-use crate::drawing::{mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Point, Rect, Transform, PathGeometry, Dip, Px, DipLength};
+use crate::drawing::{
+    mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Dip, DipLength, PathGeometry, Point,
+    Px, Rect, Transform,
+};
 use crate::error::{check_hr, Error};
 use crate::text::TextLayout;
 use bitflags::bitflags;
@@ -50,7 +53,6 @@ impl Image for Bitmap {
         self.0.as_raw().cast()
     }
 }
-
 
 bitflags! {
     pub struct DrawTextOptions: u32 {
@@ -357,11 +359,7 @@ impl DrawContext {
         }
     }
 
-    pub fn fill_geometry<G: Geometry>(
-        &mut self,
-        geometry: &G,
-        brush: &Brush,
-    ) {
+    pub fn fill_geometry<G: Geometry>(&mut self, geometry: &G, brush: &Brush) {
         unsafe {
             self.ctx.FillGeometry(
                 geometry.as_raw_geometry(),
@@ -371,12 +369,7 @@ impl DrawContext {
         }
     }
 
-    pub fn draw_geometry<G: Geometry>(
-        &mut self,
-        geometry: &G,
-        brush: &Brush,
-        width: f64,
-    ) {
+    pub fn draw_geometry<G: Geometry>(&mut self, geometry: &G, brush: &Brush, width: f64) {
         unsafe {
             self.ctx.DrawGeometry(
                 geometry.as_raw_geometry(),

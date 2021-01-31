@@ -1,9 +1,12 @@
 //! Text editor widget.
 use crate::event::Event;
 use crate::layout::{BoxConstraints, Measurements};
-use crate::{theme, Offset, SideOffsets, Size, Rect, Environment, EventCtx, LayoutCtx, PaintCtx, Point, TypedWidget, Visual, Widget, WidgetExt, style};
+use crate::{
+    style, theme, Environment, EventCtx, LayoutCtx, Offset, PaintCtx, Point, Rect, SideOffsets,
+    Size, TypedWidget, Visual, Widget, WidgetExt,
+};
 use kyute_shell::drawing::context::{CompositeMode, InterpolationMode};
-use kyute_shell::drawing::{Color, DrawTextOptions, RectExt, Brush};
+use kyute_shell::drawing::{Brush, Color, DrawTextOptions, RectExt};
 use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
 use log::trace;
 use palette::{Srgb, Srgba};

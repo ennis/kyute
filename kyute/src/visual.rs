@@ -1,13 +1,12 @@
+use crate::application::AppCtx;
 use crate::event::Event;
-use crate::{Rect, Environment, EventCtx, PaintCtx, Point};
-use std::any::Any;
 use crate::node::NodeTree;
+use crate::{Environment, EventCtx, PaintCtx, Point, Rect};
 use generational_indextree::NodeId;
+use kyute_shell::window::PlatformWindow;
+use std::any::Any;
 use winit::event::WindowEvent;
 use winit::window::WindowId;
-use crate::application::AppCtx;
-use kyute_shell::window::PlatformWindow;
-
 
 pub trait WindowHandler {
     /// Returns the window
@@ -21,16 +20,20 @@ pub trait WindowHandler {
     /// This is called only if the node has been registered as a window.
     /// Returns the translated events to dispatch to this node (and the rest of the children)
     /// afterwards.
-    fn window_event(&mut self, _ctx: &mut AppCtx, _window_event: &WindowEvent, _tree: &mut NodeTree, _anchor: NodeId) {
+    fn window_event(
+        &mut self,
+        _ctx: &mut AppCtx,
+        _window_event: &WindowEvent,
+        _tree: &mut NodeTree,
+        _anchor: NodeId,
+    ) {
     }
 
     /// Paints a subtree into the window.
     ///
     /// This is called only if the node has been registered as a window.
     /// This method is responsible for creating a drawing context and passing it down to the nodes.
-    fn window_paint(&mut self,
-                    _ctx: &mut AppCtx, _tree: &mut NodeTree, _anchor: NodeId) {
-    }
+    fn window_paint(&mut self, _ctx: &mut AppCtx, _tree: &mut NodeTree, _anchor: NodeId) {}
 }
 
 /// The interface for painting a visual element on the screen, and handling events that target this
@@ -59,10 +62,14 @@ pub trait Visual: Any {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
     /// Returns a reference to the window handler object if this visual corresponds to a platform window.
-    fn window_handler(&self) -> Option<&dyn WindowHandler> { None }
+    fn window_handler(&self) -> Option<&dyn WindowHandler> {
+        None
+    }
 
     /// Returns a reference to the window handler object if this visual corresponds to a platform window.
-    fn window_handler_mut(&mut self) -> Option<&mut dyn WindowHandler> { None }
+    fn window_handler_mut(&mut self) -> Option<&mut dyn WindowHandler> {
+        None
+    }
 }
 
 impl dyn Visual {

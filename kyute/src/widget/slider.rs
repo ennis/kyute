@@ -2,14 +2,14 @@
 //! a line.
 use crate::event::Event;
 use crate::renderer::LineSegment;
+use crate::style::PaletteIndex;
 use crate::widget::frame::FrameVisual;
 use crate::{
-    theme, Rect, Size, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
-    TypedWidget, Visual, Widget,
+    theme, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect,
+    Size, TypedWidget, Visual, Widget,
 };
 use num_traits::{Float, PrimInt};
 use std::any::Any;
-use crate::style::PaletteIndex;
 
 /// Utility class representing a slider track on which a knob can move.
 pub struct SliderTrack {
@@ -117,7 +117,6 @@ impl SliderVisual {
 
 impl Visual for SliderVisual {
     fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
-
         let bounds = ctx.bounds();
         let track_y = env.get(theme::SliderTrackY);
         let track_h = env.get(theme::SliderTrackHeight);
@@ -130,28 +129,22 @@ impl Visual for SliderVisual {
 
         // track bounds
         let track_bounds = Rect::new(
-            Point::new(dbg!(track_x_start), track_y - 0.5*track_h),
+            Point::new(dbg!(track_x_start), track_y - 0.5 * track_h),
             Size::new(track_x_end - track_x_start, track_h),
         );
 
         let kpos = self.track.knob_position();
-        let kx = kpos.x.round()+0.5;
+        let kx = kpos.x.round() + 0.5;
 
         let knob_bounds = Rect::new(
-            Point::new(kx-0.5*knob_w, track_y-knob_y),
+            Point::new(kx - 0.5 * knob_w, track_y - knob_y),
             Size::new(knob_w, knob_h),
         );
 
         // track
-        ctx.draw_styled_box_in_bounds(
-            "slider_track",
-            track_bounds,
-            PaletteIndex(0));
+        ctx.draw_styled_box_in_bounds("slider_track", track_bounds, PaletteIndex(0));
 
-        ctx.draw_styled_box_in_bounds(
-            "slider_knob",
-            knob_bounds,
-            PaletteIndex(0));
+        ctx.draw_styled_box_in_bounds("slider_knob", knob_bounds, PaletteIndex(0));
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
@@ -171,9 +164,7 @@ impl Visual for SliderVisual {
                     ctx.request_redraw();
                 }
             }
-            Event::PointerUp(p) => {
-
-            }
+            Event::PointerUp(p) => {}
             _ => {}
         }
     }

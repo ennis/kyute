@@ -1,5 +1,5 @@
 use crate::layout::{BoxConstraints, Measurements};
-use crate::{Environment, LayoutBox, LayoutCtx, TypedWidget, Widget, Offset};
+use crate::{Environment, LayoutBox, LayoutCtx, Offset, TypedWidget, Widget};
 use generational_indextree::NodeId;
 
 /// A widget that aligns its child according to a fixed baseline.

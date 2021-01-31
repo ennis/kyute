@@ -8,12 +8,12 @@ use crate::widget::BoxedWidget;
 use crate::widget::Widget;
 use crate::widget::WidgetExt;
 use crate::widget::{Text, TypedWidget};
-use crate::{env, theme, Rect, Environment, EventCtx, LayoutCtx, PaintCtx, style, Point, SideOffsets, Size};
+use crate::{
+    env, style, theme, Environment, EventCtx, LayoutCtx, PaintCtx, Point, Rect, SideOffsets, Size,
+};
 use euclid::default::SideOffsets2D;
 use generational_indextree::NodeId;
-use kyute_shell::drawing::gradient::{
-    ColorInterpolationMode, ExtendMode, GradientStopCollection
-};
+use kyute_shell::drawing::gradient::{ColorInterpolationMode, ExtendMode, GradientStopCollection};
 use kyute_shell::drawing::{Color, DrawContext, IntoBrush};
 use palette::{Blend, LinSrgb, LinSrgba, Srgb};
 use std::any::{Any, TypeId};
@@ -22,7 +22,7 @@ use std::any::{Any, TypeId};
 pub struct ButtonVisual {
     bg_color: Color,
     border_color: Color,
-    on_click: Option<Box<dyn FnMut(&mut EventCtx)>>
+    on_click: Option<Box<dyn FnMut(&mut EventCtx)>>,
 }
 
 impl Default for ButtonVisual {
@@ -30,7 +30,7 @@ impl Default for ButtonVisual {
         ButtonVisual {
             bg_color: Default::default(),
             border_color: Default::default(),
-            on_click: None
+            on_click: None,
         }
     }
 }
@@ -83,7 +83,7 @@ impl<'a> Button<'a> {
     pub fn new(label: impl Into<String>) -> Button<'a> {
         Button {
             label: Text::new(label).boxed(),
-            on_click: None
+            on_click: None,
         }
     }
 

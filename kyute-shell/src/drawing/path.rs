@@ -22,7 +22,10 @@ pub enum PathError {
 }
 
 impl PathGeometry {
-    pub fn try_from_svg_path(platform: &Platform, path_str: &str) -> Result<PathGeometry, PathError> {
+    pub fn try_from_svg_path(
+        platform: &Platform,
+        path_str: &str,
+    ) -> Result<PathGeometry, PathError> {
         // parse the path string
         let mut path: Path = path_str.parse().map_err(|e| PathError::SyntaxError(e))?;
         path.conv_to_absolute();

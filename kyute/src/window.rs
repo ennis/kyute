@@ -5,6 +5,7 @@ use crate::event::{
 };
 use crate::node::{DebugLayout, FocusState, NodeTree, PaintOptions, RepaintRequest};
 use crate::style::StyleCollection;
+use crate::visual::WindowHandler;
 use crate::widget::DummyWidget;
 use crate::{
     BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx,
@@ -19,7 +20,6 @@ use std::time::Instant;
 use winit::dpi::LogicalSize;
 use winit::event::{VirtualKeyCode, WindowEvent};
 use winit::window::{WindowBuilder, WindowId};
-use crate::visual::WindowHandler;
 
 /// Window event callbacks.
 struct Callbacks {
@@ -65,7 +65,6 @@ pub struct WindowNode {
 }
 
 impl WindowHandler for WindowNode {
-
     fn window(&self) -> &PlatformWindow {
         &self.window
     }
@@ -147,23 +146,23 @@ impl WindowHandler for WindowNode {
                 // determine the repeat count (double-click, triple-click, etc.) for button down event
                 let repeat_count = match &mut self.last_click {
                     Some(ref mut last)
-                    if last.device_id == *device_id
-                        && last.button == button
-                        && last.position == position
-                        && (click_time - last.time) < ctx.platform.double_click_time() =>
-                        {
-                            // same device, button, position, and within the platform specified double-click time
-                            match state {
-                                winit::event::ElementState::Pressed => {
-                                    last.repeat_count += 1;
-                                    last.repeat_count
-                                }
-                                winit::event::ElementState::Released => {
-                                    // no repeat for release events (although that could be possible?),
-                                    1
-                                }
+                        if last.device_id == *device_id
+                            && last.button == button
+                            && last.position == position
+                            && (click_time - last.time) < ctx.platform.double_click_time() =>
+                    {
+                        // same device, button, position, and within the platform specified double-click time
+                        match state {
+                            winit::event::ElementState::Pressed => {
+                                last.repeat_count += 1;
+                                last.repeat_count
+                            }
+                            winit::event::ElementState::Released => {
+                                // no repeat for release events (although that could be possible?),
+                                1
                             }
                         }
+                    }
                     other => {
                         // no match, reset
                         match state {
@@ -448,12 +447,12 @@ impl<'a> Window<'a> {
         self
     }
 
-    pub fn on_move(mut self, on_move: impl Fn(u32,u32) + 'static) -> Self {
+    pub fn on_move(mut self, on_move: impl Fn(u32, u32) + 'static) -> Self {
         self.callbacks.on_move = Some(Box::new(on_move));
         self
     }
 
-    pub fn on_resize(mut self, on_resize: impl Fn(u32,u32) + 'static) -> Self {
+    pub fn on_resize(mut self, on_resize: impl Fn(u32, u32) + 'static) -> Self {
         self.callbacks.on_resize = Some(Box::new(on_resize));
         self
     }
@@ -503,17 +502,21 @@ impl<'a> TypedWidget for Window<'a> {
             // the window is resizeable by the user:
             // we use the current window size (possibly constrained by the parent constraints)
             // as the available layout space
-            let current_size: (f64, f64) =
-                visual.window.window().inner_size().to_logical::<f64>(1.0).into();
+            let current_size: (f64, f64) = visual
+                .window
+                .window()
+                .inner_size()
+                .to_logical::<f64>(1.0)
+                .into();
             let current_size: Size = dbg!(current_size.into());
             let constraints = dbg!(constraints).enforce(&BoxConstraints::loose(current_size));
             let size = constraints.constrain(current_size);
             if current_size != size {
                 // we need to resize the window to match the parent constraints
-                visual.window.window().set_inner_size(LogicalSize::new(
-                    size.width,
-                    size.height,
-                ));
+                visual
+                    .window
+                    .window()
+                    .set_inner_size(LogicalSize::new(size.width, size.height));
             }
             context.emit_child(self.contents, &constraints, env, Some(&visual.window))
         } else {
@@ -522,11 +525,15 @@ impl<'a> TypedWidget for Window<'a> {
             let (child_id, child_measurements) =
                 context.emit_child(self.contents, &constraints, env, Some(&visual.window));
             let size = constraints.constrain(child_measurements.size);
-            log::warn!("fitting window to contents of size {} (constraints: {:?})", size, constraints);
-            visual.window.window().set_inner_size(LogicalSize::new(
-                size.width,
-                size.height,
-            ));
+            log::warn!(
+                "fitting window to contents of size {} (constraints: {:?})",
+                size,
+                constraints
+            );
+            visual
+                .window
+                .window()
+                .set_inner_size(LogicalSize::new(size.width, size.height));
             (child_id, child_measurements)
         };
 

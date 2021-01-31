@@ -45,7 +45,7 @@ use winit::window::{WindowBuilder, WindowId};
 fn load_application_style(cfg: &config::Config) -> Rc<StyleCollection> {
     let path = cfg
         .get_str("app_style")
-        .expect("no `app_style` file specified in application settings (`Settings.toml`)");
+        .unwrap_or("default_style.ron".to_string());
     // load RON
     let f = File::open(&path).expect("failed to open the application style");
     let app_style: StyleCollection =
