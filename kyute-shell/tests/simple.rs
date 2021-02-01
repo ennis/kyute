@@ -1,4 +1,4 @@
-use kyute_shell::platform::Platform;
+use kyute_shell::{text::TextFormat, platform::Platform};
 
 #[test]
 fn test_simple() {
