@@ -1,5 +1,4 @@
-use crate::layout::BoxConstraints;
-use crate::{Environment, LayoutCtx, Measurements, Visual, Widget};
+use crate::{layout::BoxConstraints, Environment, LayoutCtx, Measurements, Visual, Widget};
 use std::any::TypeId;
 
 /// A widget that forces its contents to fill the available layout space.

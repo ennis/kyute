@@ -4,17 +4,11 @@ pub mod effect;
 pub mod gradient;
 pub mod path;
 
-pub use brush::Brush;
-pub use brush::IntoBrush;
-pub use context::Bitmap;
-pub use context::CompositeMode;
-pub use context::DrawContext;
-pub use context::DrawTextOptions;
-pub use context::InterpolationMode;
-pub use context::PrimitiveBlend;
-pub use gradient::ColorInterpolationMode;
-pub use gradient::ExtendMode;
-pub use gradient::GradientStopCollection;
+pub use brush::{Brush, IntoBrush};
+pub use context::{
+    Bitmap, CompositeMode, DrawContext, DrawTextOptions, InterpolationMode, PrimitiveBlend,
+};
+pub use gradient::{ColorInterpolationMode, ExtendMode, GradientStopCollection};
 pub use path::PathGeometry;
 //pub use path::Path;
 

@@ -1,12 +1,11 @@
 //! Brushes.
-use crate::drawing::context::DrawContext;
 use crate::drawing::{
-    mk_color_f, mk_matrix_3x2, mk_point_f, Color, GradientStopCollection, Point, Transform,
+    context::DrawContext, mk_color_f, mk_matrix_3x2, mk_point_f, Color, GradientStopCollection,
+    Point, Transform,
 };
 use palette::{Alpha, LinSrgb, LinSrgba, Srgb};
 use std::ptr;
-use winapi::shared::winerror::SUCCEEDED;
-use winapi::um::d2d1::*;
+use winapi::{shared::winerror::SUCCEEDED, um::d2d1::*};
 use wio::com::ComPtr;
 
 pub(crate) enum BrushImpl {

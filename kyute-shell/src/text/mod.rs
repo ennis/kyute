@@ -1,15 +1,21 @@
-use crate::drawing::{Brush, Point, Rect, Size};
-use crate::error::{self, Result};
-use crate::platform::Platform;
-use std::mem::MaybeUninit;
-use std::ops::{Bound, Range, RangeBounds};
-use std::ptr;
-use winapi::shared::minwindef::FALSE;
-use winapi::shared::winerror::{ERROR_INSUFFICIENT_BUFFER, HRESULT_FROM_WIN32, SUCCEEDED};
-use winapi::um::dwrite::*;
-use winapi::um::unknwnbase::IUnknown;
-use wio::com::ComPtr;
-use wio::wide::ToWide;
+use crate::{
+    drawing::{Brush, Point, Rect, Size},
+    error::{self, Result},
+    platform::Platform,
+};
+use std::{
+    mem::MaybeUninit,
+    ops::{Bound, Range, RangeBounds},
+    ptr,
+};
+use winapi::{
+    shared::{
+        minwindef::FALSE,
+        winerror::{ERROR_INSUFFICIENT_BUFFER, HRESULT_FROM_WIN32, SUCCEEDED},
+    },
+    um::{dwrite::*, unknwnbase::IUnknown},
+};
+use wio::{com::ComPtr, wide::ToWide};
 
 /// Text drawing effects.
 pub trait DrawingEffect {

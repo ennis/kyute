@@ -3,9 +3,10 @@ use crate::drawing::{
 };
 use palette::{Gradient, LinSrgba, Mix};
 use std::ptr;
-use winapi::shared::winerror::SUCCEEDED;
-use winapi::um::d2d1::*;
-use winapi::um::d2d1_1::*;
+use winapi::{
+    shared::winerror::SUCCEEDED,
+    um::{d2d1::*, d2d1_1::*},
+};
 use wio::com::ComPtr;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

@@ -1,6 +1,7 @@
-use crate::layout::BoxConstraints;
-use crate::Environment;
-use crate::{layout, Alignment, LayoutBox, LayoutCtx, Measurements, TypedWidget, Widget};
+use crate::{
+    layout, layout::BoxConstraints, Alignment, Environment, LayoutBox, LayoutCtx, Measurements,
+    TypedWidget, Widget,
+};
 
 pub struct Align<W> {
     alignment: Alignment,

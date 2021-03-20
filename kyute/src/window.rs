@@ -1,25 +1,28 @@
-use crate::application::AppCtx;
-use crate::event::{
-    Event, InputEvent, InputState, KeyboardEvent, PointerButton, PointerButtonEvent, PointerEvent,
-    PointerState, WheelDeltaMode, WheelEvent,
-};
-use crate::node::{DebugLayout, FocusState, NodeTree, PaintOptions, RepaintRequest};
-use crate::style::StyleCollection;
-use crate::visual::WindowHandler;
-use crate::widget::DummyWidget;
 use crate::{
+    application::AppCtx,
+    event::{
+        Event, InputEvent, InputState, KeyboardEvent, PointerButton, PointerButtonEvent,
+        PointerEvent, PointerState, WheelDeltaMode, WheelEvent,
+    },
+    node::{DebugLayout, FocusState, NodeTree, PaintOptions, RepaintRequest},
+    style::StyleCollection,
+    visual::WindowHandler,
+    widget::DummyWidget,
     BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx,
     Point, Rect, Size, TypedWidget, Visual, Widget, WidgetExt,
 };
 use bitflags::_core::any::Any;
 use generational_indextree::NodeId;
-use kyute_shell::drawing::Color;
-use kyute_shell::window::{PlatformWindow, WindowDrawContext};
-use std::rc::Rc;
-use std::time::Instant;
-use winit::dpi::LogicalSize;
-use winit::event::{VirtualKeyCode, WindowEvent};
-use winit::window::{WindowBuilder, WindowId};
+use kyute_shell::{
+    drawing::Color,
+    window::{PlatformWindow, WindowDrawContext},
+};
+use std::{rc::Rc, time::Instant};
+use winit::{
+    dpi::LogicalSize,
+    event::{VirtualKeyCode, WindowEvent},
+    window::{WindowBuilder, WindowId},
+};
 
 /// Window event callbacks.
 struct Callbacks {

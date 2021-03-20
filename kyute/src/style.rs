@@ -4,15 +4,14 @@ use kyute_shell::drawing::{
     Color, ColorInterpolationMode, DrawContext, ExtendMode, GradientStopCollection, Offset, Point,
 };
 use palette::Srgba;
-use std::collections::HashMap;
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
-use kyute_shell::drawing;
-use kyute_shell::platform::Platform;
-use serde::de::{EnumAccess, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
-use std::fmt::Formatter;
+use kyute_shell::{drawing, platform::Platform};
+use serde::{
+    de::{EnumAccess, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
+use std::{fmt, fmt::Formatter};
 
 /// Unit of length: device-independent pixel.
 pub struct Dip;

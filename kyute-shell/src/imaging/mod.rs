@@ -1,18 +1,20 @@
 //! Image file I/O (loading and decoding).
 
-use crate::drawing::{Bitmap, DrawContext};
-use crate::error::{check_hr, Result};
-use crate::platform::Platform;
-use std::path::{Path, PathBuf};
-use std::ptr;
+use crate::{
+    drawing::{Bitmap, DrawContext},
+    error::{check_hr, Result},
+    platform::Platform,
+};
+use std::{
+    path::{Path, PathBuf},
+    ptr,
+};
 use thiserror::Error;
-use winapi::shared::winerror::HRESULT;
-use winapi::um::d2d1::*;
-use winapi::um::d2d1_1::*;
-use winapi::um::wincodec::*;
-use winapi::um::winnt::GENERIC_READ;
-use wio::com::ComPtr;
-use wio::wide::ToWide;
+use winapi::{
+    shared::winerror::HRESULT,
+    um::{d2d1::*, d2d1_1::*, wincodec::*, winnt::GENERIC_READ},
+};
+use wio::{com::ComPtr, wide::ToWide};
 
 #[derive(Error, Debug)]
 pub enum ImagingError {

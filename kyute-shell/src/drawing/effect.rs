@@ -1,11 +1,9 @@
-use crate::drawing::context::Image;
-use crate::drawing::{Color, DrawContext};
-use crate::error::check_hr;
+use crate::{
+    drawing::{context::Image, Color, DrawContext},
+    error::check_hr,
+};
 use std::{mem, ptr};
-use winapi::um::d2d1::*;
-use winapi::um::d2d1_1::*;
-use winapi::um::d2d1effects::*;
-use winapi::um::dcommon::*;
+use winapi::um::{d2d1::*, d2d1_1::*, d2d1effects::*, dcommon::*};
 use wio::com::ComPtr;
 
 unsafe fn get_output_image(effect: &ComPtr<ID2D1Effect>) -> ComPtr<ID2D1Image> {

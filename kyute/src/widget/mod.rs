@@ -20,21 +20,21 @@ pub use baseline::Baseline;
 pub use button::Button;
 pub use dummy::DummyWidget;
 pub use expand::Expand;
-pub use flex::Axis;
-pub use flex::Flex;
+pub use flex::{Axis, Flex};
 pub use popup::Popup;
 pub use text::Text;
 
-use crate::application::AppCtx;
-use crate::env::Environment;
-use crate::layout::BoxConstraints;
-use crate::visual::Visual;
-use crate::{env, visual, LayoutCtx, Measurements};
+use crate::{
+    application::AppCtx, env, env::Environment, layout::BoxConstraints, visual, visual::Visual,
+    LayoutCtx, Measurements,
+};
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
-use std::any::TypeId;
-use std::cell::{RefCell, RefMut};
-use std::rc::Rc;
+use std::{
+    any::TypeId,
+    cell::{RefCell, RefMut},
+    rc::Rc,
+};
 
 /// Trait representing a widget before layout.
 ///

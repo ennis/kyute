@@ -1,5 +1,7 @@
-use crate::layout::{BoxConstraints, Measurements};
-use crate::{Environment, LayoutBox, LayoutCtx, Offset, SideOffsets, Size, TypedWidget, Widget};
+use crate::{
+    layout::{BoxConstraints, Measurements},
+    Environment, LayoutBox, LayoutCtx, Offset, SideOffsets, Size, TypedWidget, Widget,
+};
 
 /// Padding.
 pub struct Padding<W> {

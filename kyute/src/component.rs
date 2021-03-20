@@ -1,16 +1,12 @@
-use crate::event::Event;
 use crate::{
-    BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
-    Rect, TypedWidget, Visual, Widget,
+    event::Event, BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements,
+    PaintCtx, Point, Rect, TypedWidget, Visual, Widget,
 };
 use generational_indextree::NodeId;
-use std::any::Any;
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 
 use crate::node::{NodeData, NodeTree};
-use std::cell::RefCell;
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 /// An action that modifies a particular node in the node tree.
 pub(crate) struct Action {

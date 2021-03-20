@@ -1,8 +1,7 @@
 //! [`Events`](Event) sent to widgets, and related types.
 use crate::Point;
 use std::collections::HashMap;
-use winit::event::DeviceId;
-use winit::event::ModifiersState;
+use winit::event::{DeviceId, ModifiersState};
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

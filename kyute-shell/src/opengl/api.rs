@@ -1,13 +1,10 @@
-use std::ops::Deref;
-use std::rc::Rc;
+use std::{ops::Deref, rc::Rc};
 
 pub mod gl {
     #![allow(clippy::all)]
 
     mod __gl_imports {
-        pub use std::marker::Send;
-        pub use std::mem;
-        pub use std::os::raw;
+        pub use std::{marker::Send, mem, os::raw};
     }
 
     pub mod types {
@@ -16824,9 +16821,7 @@ pub mod gl {
 pub mod wgl {
     #![allow(clippy::all)]
     mod __gl_imports {
-        pub use std::marker::Send;
-        pub use std::mem;
-        pub use std::os::raw;
+        pub use std::{marker::Send, mem, os::raw};
     }
 
     pub mod types {

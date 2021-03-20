@@ -1,16 +1,16 @@
 //! Types and functions used for layouting widgets.
 
-use crate::application::AppCtx;
-use crate::node::NodeArena;
-use crate::widget::Baseline;
-use crate::{Offset, Point, SideOffsets, Size};
+use crate::{
+    application::AppCtx, node::NodeArena, widget::Baseline, Offset, Point, SideOffsets, Size,
+};
 use generational_indextree::NodeId;
 use kyute_shell::platform::Platform;
-use std::fmt;
-use std::fmt::Formatter;
-use std::ops::Bound;
-use std::ops::RangeBounds;
-use std::rc::Rc;
+use std::{
+    fmt,
+    fmt::Formatter,
+    ops::{Bound, RangeBounds},
+    rc::Rc,
+};
 
 /// Box constraints.
 #[derive(Copy, Clone)]

@@ -1,7 +1,6 @@
-use crate::event::Event;
 use crate::{
-    BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
-    Rect, TypedWidget, Visual, Widget,
+    event::Event, BoxConstraints, BoxedWidget, Environment, EventCtx, LayoutCtx, Measurements,
+    PaintCtx, Point, Rect, TypedWidget, Visual, Widget,
 };
 use kyute_shell::drawing::{Brush, Color, IntoBrush, RectExt};
 use std::any::Any;

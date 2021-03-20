@@ -1,20 +1,19 @@
-use crate::event::Event;
-use crate::layout::BoxConstraints;
-use crate::layout::Measurements;
-use crate::layout::{align_boxes, Alignment};
-use crate::renderer::ButtonState;
-use crate::visual::Visual;
-use crate::widget::BoxedWidget;
-use crate::widget::Widget;
-use crate::widget::WidgetExt;
-use crate::widget::{Text, TypedWidget};
 use crate::{
-    env, style, theme, Environment, EventCtx, LayoutCtx, PaintCtx, Point, Rect, SideOffsets, Size,
+    env,
+    event::Event,
+    layout::{align_boxes, Alignment, BoxConstraints, Measurements},
+    renderer::ButtonState,
+    style, theme,
+    visual::Visual,
+    widget::{BoxedWidget, Text, TypedWidget, Widget, WidgetExt},
+    Environment, EventCtx, LayoutCtx, PaintCtx, Point, Rect, SideOffsets, Size,
 };
 use euclid::default::SideOffsets2D;
 use generational_indextree::NodeId;
-use kyute_shell::drawing::gradient::{ColorInterpolationMode, ExtendMode, GradientStopCollection};
-use kyute_shell::drawing::{Color, DrawContext, IntoBrush};
+use kyute_shell::drawing::{
+    gradient::{ColorInterpolationMode, ExtendMode, GradientStopCollection},
+    Color, DrawContext, IntoBrush,
+};
 use palette::{Blend, LinSrgb, LinSrgba, Srgb};
 use std::any::{Any, TypeId};
 

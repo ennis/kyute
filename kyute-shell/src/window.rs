@@ -1,42 +1,33 @@
 //! Platform-specific window creation
 //!
 //! TODO investigate surfman (https://github.com/pcwalton/surfman) for D2D-GL interop.
-use crate::drawing::context::DrawContext;
-use crate::error::{self, Error, Result};
-use crate::opengl;
-use crate::opengl::api::gl;
-use crate::opengl::api::gl::types::*;
-use crate::opengl::api::wgl;
-use crate::opengl::api::Gl;
-use crate::opengl::api::Wgl;
-use crate::platform::Platform;
-use crate::platform::PlatformState;
+use crate::{
+    drawing::context::DrawContext,
+    error::{self, Error, Result},
+    opengl,
+    opengl::api::{gl, gl::types::*, wgl, Gl, Wgl},
+    platform::{Platform, PlatformState},
+};
 
-use glutin::platform::windows::RawContextExt;
-use glutin::{ContextBuilder, PossiblyCurrent, RawContext};
+use glutin::{platform::windows::RawContextExt, ContextBuilder, PossiblyCurrent, RawContext};
 use log::{error, info, trace};
 
-use std::os::raw::c_void;
-use std::ptr;
-use std::rc::Rc;
+use std::{os::raw::c_void, ptr, rc::Rc};
 
-use winit::event_loop::EventLoopWindowTarget;
-use winit::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
-use winit::window::{Window, WindowBuilder, WindowId};
+use winit::{
+    event_loop::EventLoopWindowTarget,
+    platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
+    window::{Window, WindowBuilder, WindowId},
+};
 
-use winapi::shared::dxgi::*;
-use winapi::shared::dxgi1_2::*;
-use winapi::shared::dxgiformat::*;
-use winapi::shared::dxgitype::*;
-use winapi::shared::minwindef::HINSTANCE;
-use winapi::shared::windef::HWND;
-use winapi::shared::winerror::SUCCEEDED;
-use winapi::um::d2d1::*;
-use winapi::um::d2d1_1::*;
-use winapi::um::d3d11::*;
-use winapi::um::dcommon::*;
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::Interface;
+use winapi::{
+    shared::{
+        dxgi::*, dxgi1_2::*, dxgiformat::*, dxgitype::*, minwindef::HINSTANCE, windef::HWND,
+        winerror::SUCCEEDED,
+    },
+    um::{d2d1::*, d2d1_1::*, d3d11::*, dcommon::*, errhandlingapi::GetLastError},
+    Interface,
+};
 
 use std::ops::{Deref, DerefMut};
 use wio::com::ComPtr;

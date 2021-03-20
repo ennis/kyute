@@ -1,10 +1,7 @@
 pub mod api;
 
-use api::gl;
-use api::gl::types::*;
-use api::Gl;
-use std::os::raw::c_void;
-use std::ptr;
+use api::{gl, gl::types::*, Gl};
+use std::{os::raw::c_void, ptr};
 
 /// Sets up the OpenGL debug output so that we have more information in case the interop fails.
 pub(crate) unsafe fn init_debug_callback(gl: &Gl) {

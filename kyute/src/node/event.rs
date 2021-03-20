@@ -1,19 +1,21 @@
 //! Contains event propagation logic for [`NodeTrees`](crate::node::NodeTree).
-use crate::application::AppCtx;
-use crate::component::Action;
-use crate::event::{
-    Event, InputState, MoveFocusDirection, PointerButtonEvent, PointerButtons, PointerEvent,
+use crate::{
+    application::AppCtx,
+    component::Action,
+    event::{
+        Event, InputState, MoveFocusDirection, PointerButtonEvent, PointerButtons, PointerEvent,
+    },
+    node::NodeTree,
+    Point, Rect,
 };
-use crate::node::NodeTree;
-use crate::{Point, Rect};
 use generational_indextree::NodeId;
-use kyute_shell::platform::Platform;
-use kyute_shell::window::PlatformWindow;
+use kyute_shell::{platform::Platform, window::PlatformWindow};
 use log::trace;
 use std::collections::HashMap;
-use winit::event::DeviceId;
-use winit::event::ModifiersState;
-use winit::window::WindowId;
+use winit::{
+    event::{DeviceId, ModifiersState},
+    window::WindowId,
+};
 
 /// Global state related to focus and pointer grab.
 pub struct FocusState {

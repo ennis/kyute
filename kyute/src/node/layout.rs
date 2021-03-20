@@ -1,18 +1,19 @@
 //! Layout and reconciliation pass.
 use super::NodeData;
-use crate::application::AppCtx;
-use crate::layout::BoxConstraints;
-use crate::node::{NodeArena, NodeTree};
-use crate::state::NodeKey;
-use crate::widget::BoxedWidget;
-use crate::{env, node, Environment, Measurements, Offset, Point, Size, Widget};
+use crate::{
+    application::AppCtx,
+    env,
+    layout::BoxConstraints,
+    node,
+    node::{NodeArena, NodeTree},
+    state::NodeKey,
+    widget::BoxedWidget,
+    Environment, Measurements, Offset, Point, Size, Widget,
+};
 use generational_indextree::{Node, NodeEdge, NodeId};
-use kyute_shell::platform::Platform;
-use kyute_shell::window::PlatformWindow;
-use std::any::TypeId;
-use std::rc::Rc;
-use winit::event_loop::EventLoopWindowTarget;
-use winit::window::WindowId;
+use kyute_shell::{platform::Platform, window::PlatformWindow};
+use std::{any::TypeId, rc::Rc};
+use winit::{event_loop::EventLoopWindowTarget, window::WindowId};
 
 /// A position between nodes in the node tree.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

@@ -1,7 +1,8 @@
-use crate::event::{Event, MoveFocusDirection};
 use crate::{
-    layout::BoxConstraints, layout::Measurements, theme, BoxedWidget, Environment, EventCtx,
-    LayoutCtx, Offset, PaintCtx, Point, Rect, Size, TypedWidget, Visual, Widget, WidgetExt,
+    event::{Event, MoveFocusDirection},
+    layout::{BoxConstraints, Measurements},
+    theme, BoxedWidget, Environment, EventCtx, LayoutCtx, Offset, PaintCtx, Point, Rect, Size,
+    TypedWidget, Visual, Widget, WidgetExt,
 };
 use log::trace;
 use std::any::Any;

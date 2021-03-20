@@ -1,5 +1,4 @@
-use crate::layout::BoxConstraints;
-use crate::{Environment, LayoutCtx, Measurements, Visual, Widget};
+use crate::{layout::BoxConstraints, Environment, LayoutCtx, Measurements, Visual, Widget};
 use generational_indextree::NodeId;
 use std::any::TypeId;
 

@@ -2,44 +2,47 @@
 //!
 //! Provides the `run_application` function that opens the main window and translates the incoming
 //! events from winit into the events expected by a kyute [`NodeTree`](crate::node::NodeTree).
-use crate::component::{Action, Component};
-use crate::event::{
-    Event, InputEvent, InputState, KeyboardEvent, PointerButton, PointerButtonEvent,
-    PointerButtons, PointerEvent, PointerState, WheelDeltaMode, WheelEvent,
-};
-use crate::node::{DebugLayout, NodeTree, PaintOptions, RepaintRequest};
-use crate::style::{Border, Brush, ColorRef, Shape, StateFilter, StyleCollection};
 use crate::{
-    style, BoxConstraints, BoxedWidget, Environment, Measurements, Point, Rect, Size, Update,
-    Visual, Widget, WidgetExt,
+    component::{Action, Component},
+    event::{
+        Event, InputEvent, InputState, KeyboardEvent, PointerButton, PointerButtonEvent,
+        PointerButtons, PointerEvent, PointerState, WheelDeltaMode, WheelEvent,
+    },
+    node::{DebugLayout, NodeTree, PaintOptions, RepaintRequest},
+    style,
+    style::{Border, Brush, ColorRef, Shape, StateFilter, StyleCollection},
+    BoxConstraints, BoxedWidget, Environment, Measurements, Point, Rect, Size, Update, Visual,
+    Widget, WidgetExt,
 };
 use anyhow::Result;
 use config::FileFormat;
-use futures::channel::mpsc::unbounded;
-use futures::channel::mpsc::Sender;
-use futures::channel::mpsc::{Receiver, UnboundedReceiver};
-use futures::executor::LocalPool;
-use futures::executor::LocalSpawner;
-use futures::task::LocalSpawnExt;
-use futures::{SinkExt, StreamExt};
+use futures::{
+    channel::mpsc::{unbounded, Receiver, Sender, UnboundedReceiver},
+    executor::{LocalPool, LocalSpawner},
+    task::LocalSpawnExt,
+    SinkExt, StreamExt,
+};
 use generational_indextree::NodeId;
-use kyute_shell::drawing::Color;
-use kyute_shell::platform::Platform;
-use kyute_shell::window::{PlatformWindow, WindowDrawContext};
-use log::trace;
-use log::warn;
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-use std::fs::File;
-use std::io::Write;
-use std::mem;
-use std::rc::{Rc, Weak};
-use std::time::Duration;
-use std::time::Instant;
-use winit::event::{VirtualKeyCode, WindowEvent};
-use winit::event_loop::EventLoop;
-use winit::event_loop::{ControlFlow, EventLoopProxy, EventLoopWindowTarget};
-use winit::window::{WindowBuilder, WindowId};
+use kyute_shell::{
+    drawing::Color,
+    platform::Platform,
+    window::{PlatformWindow, WindowDrawContext},
+};
+use log::{trace, warn};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    fs::File,
+    io::Write,
+    mem,
+    rc::{Rc, Weak},
+    time::{Duration, Instant},
+};
+use winit::{
+    event::{VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop, EventLoopProxy, EventLoopWindowTarget},
+    window::{WindowBuilder, WindowId},
+};
 
 /// Loads the application style.
 fn load_application_style(cfg: &config::Config) -> Rc<StyleCollection> {

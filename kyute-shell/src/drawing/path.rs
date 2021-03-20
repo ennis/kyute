@@ -2,13 +2,12 @@ use crate::drawing::{mk_point_f, Point};
 
 use crate::platform::Platform;
 use std::ptr;
-pub use svgtypes::Path;
-pub use svgtypes::PathParser;
-pub use svgtypes::PathSegment;
+pub use svgtypes::{Path, PathParser, PathSegment};
 use thiserror::Error;
-use winapi::shared::winerror::SUCCEEDED;
-use winapi::um::d2d1::*;
-use winapi::um::d2d1_1::*;
+use winapi::{
+    shared::winerror::SUCCEEDED,
+    um::{d2d1::*, d2d1_1::*},
+};
 use wio::com::ComPtr;
 
 pub struct PathGeometry(pub(crate) ComPtr<ID2D1PathGeometry1>);

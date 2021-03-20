@@ -1,14 +1,11 @@
-use futures::channel::mpsc::Sender;
-use futures::SinkExt;
-use kyute::application::run;
-use kyute::component::{CommandSink, Component, State};
-use kyute::widget::constrained::ConstrainedBox;
-use kyute::widget::form::Form;
-use kyute::widget::slider::Slider;
-use kyute::widget::textedit::TextEdit;
-use kyute::widget::Button;
-use kyute::window::Window;
-use kyute::{BoxConstraints, BoxedWidget, Update, WidgetExt};
+use futures::{channel::mpsc::Sender, SinkExt};
+use kyute::{
+    application::run,
+    component::{CommandSink, Component, State},
+    widget::{constrained::ConstrainedBox, form::Form, slider::Slider, textedit::TextEdit, Button},
+    window::Window,
+    BoxConstraints, BoxedWidget, Update, WidgetExt,
+};
 use std::marker::PhantomData;
 use winit::window::WindowBuilder;
 

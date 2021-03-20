@@ -2,25 +2,15 @@
 
 use crate::error::Error;
 
-use std::os::raw::c_void;
-use std::ptr;
-use std::rc::Rc;
-use std::time::Duration;
-use winapi::shared::dxgi::*;
-use winapi::shared::dxgi1_3::*;
-use winapi::shared::winerror::SUCCEEDED;
-use winapi::shared::wtypesbase::CLSCTX_INPROC_SERVER;
-use winapi::um::combaseapi::CoCreateInstance;
-use winapi::um::d2d1::*;
-use winapi::um::d2d1_1::*;
-use winapi::um::d3d11::*;
-use winapi::um::d3dcommon::*;
-use winapi::um::dwrite::*;
-use winapi::um::objbase::CoInitialize;
-use winapi::um::unknwnbase::IUnknown;
-use winapi::um::wincodec::*;
-use winapi::um::winuser::GetDoubleClickTime;
-use winapi::Interface;
+use std::{os::raw::c_void, ptr, rc::Rc, time::Duration};
+use winapi::{
+    shared::{dxgi::*, dxgi1_3::*, winerror::SUCCEEDED, wtypesbase::CLSCTX_INPROC_SERVER},
+    um::{
+        combaseapi::CoCreateInstance, d2d1::*, d2d1_1::*, d3d11::*, d3dcommon::*, dwrite::*,
+        objbase::CoInitialize, unknwnbase::IUnknown, wincodec::*, winuser::GetDoubleClickTime,
+    },
+    Interface,
+};
 use wio::com::ComPtr;
 
 /// Contains a bunch of application-global objects and factories, mostly DirectX stuff for drawing

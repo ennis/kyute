@@ -1,5 +1,4 @@
-use crate::widget::textedit::Selection;
-use crate::Point;
+use crate::{widget::textedit::Selection, Point};
 
 /// Represents a 2D line segment
 #[derive(Copy, Clone, Debug, PartialEq)]

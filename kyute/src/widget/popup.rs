@@ -1,12 +1,13 @@
 //! Popup windows
-use crate::widget::DummyWidget;
-use crate::window::Window;
 use crate::{
-    BoxConstraints, BoxedWidget, Environment, LayoutCtx, Measurements, TypedWidget, WidgetExt,
+    widget::DummyWidget, window::Window, BoxConstraints, BoxedWidget, Environment, LayoutCtx,
+    Measurements, TypedWidget, WidgetExt,
 };
-use winit::dpi::LogicalSize;
-use winit::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
-use winit::window::WindowBuilder;
+use winit::{
+    dpi::LogicalSize,
+    platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
+    window::WindowBuilder,
+};
 
 pub struct Popup<'a> {
     contents: BoxedWidget<'a>,

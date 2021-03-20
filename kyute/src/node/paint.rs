@@ -1,11 +1,14 @@
-use crate::event::InputState;
-use crate::node::event::FocusState;
-use crate::node::NodeTree;
-use crate::{env, Point, Rect, Size};
-use crate::{style, Measurements, Offset};
+use crate::{
+    env,
+    event::InputState,
+    node::{event::FocusState, NodeTree},
+    style, Measurements, Offset, Point, Rect, Size,
+};
 use generational_indextree::NodeId;
-use kyute_shell::drawing::{Brush, Color, DrawContext, Transform};
-use kyute_shell::platform::Platform;
+use kyute_shell::{
+    drawing::{Brush, Color, DrawContext, Transform},
+    platform::Platform,
+};
 use std::ops::{Deref, DerefMut};
 use winit::window::WindowId;
 

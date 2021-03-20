@@ -1,9 +1,8 @@
-use crate::widget::align::Align;
-use crate::widget::constrained::ConstrainedBox;
-use crate::widget::flex::FlexVisual;
-use crate::widget::padding::Padding;
-use crate::widget::{Axis, Baseline, Flex, Text};
 use crate::{
+    widget::{
+        align::Align, constrained::ConstrainedBox, flex::FlexVisual, padding::Padding, Axis,
+        Baseline, Flex, Text,
+    },
     Alignment, BoxConstraints, BoxedWidget, Environment, LayoutCtx, Measurements, Point, Rect,
     SideOffsets, TypedWidget, Visual, Widget, WidgetExt,
 };

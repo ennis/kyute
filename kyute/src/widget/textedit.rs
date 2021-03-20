@@ -1,17 +1,20 @@
 //! Text editor widget.
-use crate::event::Event;
-use crate::layout::{BoxConstraints, Measurements};
 use crate::{
+    event::Event,
+    layout::{BoxConstraints, Measurements},
     style, theme, Environment, EventCtx, LayoutCtx, Offset, PaintCtx, Point, Rect, SideOffsets,
     Size, TypedWidget, Visual, Widget, WidgetExt,
 };
-use kyute_shell::drawing::context::{CompositeMode, InterpolationMode};
-use kyute_shell::drawing::{Brush, Color, DrawTextOptions, RectExt};
-use kyute_shell::text::{TextFormat, TextFormatBuilder, TextLayout};
+use kyute_shell::{
+    drawing::{
+        context::{CompositeMode, InterpolationMode},
+        Brush, Color, DrawTextOptions, RectExt,
+    },
+    text::{TextFormat, TextFormatBuilder, TextLayout},
+};
 use log::trace;
 use palette::{Srgb, Srgba};
-use std::any::Any;
-use std::ops::Range;
+use std::{any::Any, ops::Range};
 use unicode_segmentation::GraphemeCursor;
 use winit::event::VirtualKeyCode;
 

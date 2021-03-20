@@ -1,7 +1,5 @@
-use crate::layout::BoxConstraints;
-use crate::{Environment, LayoutCtx, Measurements, Visual, Widget};
-use std::any::TypeId;
-use std::hash::Hash;
+use crate::{layout::BoxConstraints, Environment, LayoutCtx, Measurements, Visual, Widget};
+use std::{any::TypeId, hash::Hash};
 
 /// Identifies a widget.
 pub struct Id<W> {

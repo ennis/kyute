@@ -1,12 +1,13 @@
-use crate::style::StyleCollection;
-use crate::{BoxedWidget, SideOffsets};
+use crate::{style::StyleCollection, BoxedWidget, SideOffsets};
 use kyute_shell::drawing::Color;
-use std::any::{Any, TypeId};
-use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::fmt;
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{
+    any::{Any, TypeId},
+    borrow::Borrow,
+    collections::HashMap,
+    fmt,
+    marker::PhantomData,
+    rc::Rc,
+};
 
 /// A type that identifies a named value in an [`Environment`], of a particular type `T`.
 ///

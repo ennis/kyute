@@ -1,12 +1,9 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
-use crate::event::Event;
-use crate::renderer::LineSegment;
-use crate::style::PaletteIndex;
-use crate::widget::frame::FrameVisual;
 use crate::{
-    theme, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect,
-    Size, TypedWidget, Visual, Widget,
+    event::Event, renderer::LineSegment, style::PaletteIndex, theme, widget::frame::FrameVisual,
+    BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect, Size,
+    TypedWidget, Visual, Widget,
 };
 use num_traits::{Float, PrimInt};
 use std::any::Any;

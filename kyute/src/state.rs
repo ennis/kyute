@@ -1,8 +1,9 @@
 //! Stack of widget IDs.
-use std::any::Any;
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::{
+    any::Any,
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+};
 
 pub type NodeKey = u64;
 

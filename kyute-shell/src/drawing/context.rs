@@ -1,20 +1,19 @@
 //! Direct2D render target
-use crate::drawing::brush::Brush;
-use crate::drawing::{
-    mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Dip, DipLength, PathGeometry, Point,
-    Px, Rect, Transform,
+use crate::{
+    drawing::{
+        brush::Brush, mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Dip, DipLength,
+        PathGeometry, Point, Px, Rect, Transform,
+    },
+    error::{check_hr, Error},
+    text::TextLayout,
 };
-use crate::error::{check_hr, Error};
-use crate::text::TextLayout;
 use bitflags::bitflags;
 use log::error;
-use std::mem::MaybeUninit;
-use std::{mem, ptr};
-use winapi::shared::winerror::SUCCEEDED;
-use winapi::um::d2d1::*;
-use winapi::um::d2d1_1::*;
-use winapi::um::d2d1effects::*;
-use winapi::um::dcommon::*;
+use std::{mem, mem::MaybeUninit, ptr};
+use winapi::{
+    shared::winerror::SUCCEEDED,
+    um::{d2d1::*, d2d1_1::*, d2d1effects::*, dcommon::*},
+};
 use wio::com::ComPtr;
 
 pub struct DrawingState(ComPtr<ID2D1DrawingStateBlock>);

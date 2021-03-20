@@ -1,12 +1,10 @@
-use crate::application::AppCtx;
-use crate::event::Event;
-use crate::node::NodeTree;
-use crate::{Environment, EventCtx, PaintCtx, Point, Rect};
+use crate::{
+    application::AppCtx, event::Event, node::NodeTree, Environment, EventCtx, PaintCtx, Point, Rect,
+};
 use generational_indextree::NodeId;
 use kyute_shell::window::PlatformWindow;
 use std::any::Any;
-use winit::event::WindowEvent;
-use winit::window::WindowId;
+use winit::{event::WindowEvent, window::WindowId};
 
 pub trait WindowHandler {
     /// Returns the window

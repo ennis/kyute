@@ -1,22 +1,19 @@
-use crate::layout::Measurements;
-use crate::visual::Visual;
-use crate::{DummyVisual, Environment, Offset, Point, Rect, Size};
+use crate::{
+    layout::Measurements, visual::Visual, DummyVisual, Environment, Offset, Point, Rect, Size,
+};
 use generational_indextree::NodeId;
-use kyute_shell::drawing::DrawContext;
-use kyute_shell::platform::Platform;
+use kyute_shell::{drawing::DrawContext, platform::Platform};
 use std::cell::Cell;
 
 mod event;
 mod layout;
 mod paint;
 
-pub use self::event::EventCtx;
-pub use self::event::FocusState;
-pub use self::event::RepaintRequest;
-pub use self::layout::LayoutCtx;
-pub use self::paint::DebugLayout;
-pub use self::paint::PaintCtx;
-pub use self::paint::PaintOptions;
+pub use self::{
+    event::{EventCtx, FocusState, RepaintRequest},
+    layout::LayoutCtx,
+    paint::{DebugLayout, PaintCtx, PaintOptions},
+};
 use kyute_shell::window::PlatformWindow;
 use std::any::TypeId;
 use winit::window::WindowId;
