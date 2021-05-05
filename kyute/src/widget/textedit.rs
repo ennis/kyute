@@ -395,10 +395,11 @@ impl TypedWidget for TextEdit {
             constraints.constrain_width(200.0),
             constraints.constrain_height(font_size + SELECTION_MAGIC + padding.vertical()),
         );
+
         trace!(
             "TextEdit: constraints={:?}, size={}",
             constraints,
-            dbg!(size)
+            size
         );
 
         // calculate the size available to layout the text
