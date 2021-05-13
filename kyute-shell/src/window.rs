@@ -1,193 +1,42 @@
 //! Platform-specific window creation
-//!
-//! TODO investigate surfman (https://github.com/pcwalton/surfman) for D2D-GL interop.
 use crate::{
-    drawing::context::DrawContext,
-    error::{self, Error, Result},
-    opengl,
-    opengl::api::{gl, gl::types::*, wgl, Gl, Wgl},
-    platform::{Platform, PlatformState},
+    bindings::Windows::Win32::{
+        Direct2D::{
+            ID2D1Bitmap1, ID2D1DeviceContext, D2D1_ALPHA_MODE, D2D1_BITMAP_OPTIONS,
+            D2D1_BITMAP_PROPERTIES1, D2D1_PIXEL_FORMAT,
+        },
+        Direct3D11::D3D11_TEXTURE2D_DESC,
+        Dxgi::{
+            IDXGIResource1, IDXGISurface, DXGI_FORMAT, DXGI_SAMPLE_DESC, DXGI_SHARED_RESOURCE_READ,
+            DXGI_SHARED_RESOURCE_WRITE,
+        },
+        SystemServices::HANDLE,
+    },
+    error::{Error, Result},
+    platform::{GpuContext, Platform},
 };
+use graal::{platform::windows::ContextExtWindows, vk};
+use raw_window_handle::HasRawWindowHandle;
+use std::{os::raw::c_void, ptr};
+use tracing::trace;
 
-use glutin::{platform::windows::RawContextExt, ContextBuilder, PossiblyCurrent, RawContext};
-use log::{error, info, trace};
-
-use std::{os::raw::c_void, ptr, rc::Rc};
-
+use crate::bindings::Windows::Win32::{
+    Direct2D::D2D1_DEVICE_CONTEXT_OPTIONS,
+    Direct3D11::{
+        ID3D11Fence, D3D11_BIND_FLAG, D3D11_FENCE_FLAG, D3D11_RESOURCE_MISC_FLAG, D3D11_USAGE,
+    },
+    SystemServices::HINSTANCE,
+    WindowsAndMessaging::HWND,
+};
+use windows::Interface;
 use winit::{
     event_loop::EventLoopWindowTarget,
     platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
     window::{Window, WindowBuilder, WindowId},
 };
+use crate::bindings::Windows::Win32::SystemServices::GENERIC_ALL;
 
-use winapi::{
-    shared::{
-        dxgi::*, dxgi1_2::*, dxgiformat::*, dxgitype::*, minwindef::HINSTANCE, windef::HWND,
-        winerror::SUCCEEDED,
-    },
-    um::{d2d1::*, d2d1_1::*, d3d11::*, dcommon::*, errhandlingapi::GetLastError},
-    Interface,
-};
-
-use std::ops::{Deref, DerefMut};
-use wio::com::ComPtr;
-
-/// DirectX-OpenGL interop state.
-struct DxGlInterop {
-    gl: Gl,
-    wgl: Wgl,
-    /// Interop device handle
-    device: wgl::types::HANDLE,
-    /// Staging texture
-    staging: Option<ComPtr<ID3D11Texture2D>>,
-    /// Interop handle for the OpenGL drawing target.
-    /// If `staging_d3d11` is not None, then this is a handle to the staging texture, otherwise
-    /// it's a handle to the true backbuffer.
-    target: wgl::types::HANDLE,
-    renderbuffer: GLuint,
-    framebuffer: GLuint,
-}
-
-impl Drop for DxGlInterop {
-    fn drop(&mut self) {
-        unsafe {
-            self.gl.DeleteFramebuffers(1, &mut self.framebuffer);
-            self.gl.DeleteRenderbuffers(1, &mut self.renderbuffer);
-        }
-    }
-}
-
-/// Contains resources that should be re-created when the swap chain of a window changes
-/// (e.g. on resize).
-struct SwapChainResources {
-    backbuffer: ComPtr<ID3D11Texture2D>,
-    interop: Option<DxGlInterop>,
-}
-
-impl SwapChainResources {
-    unsafe fn new(
-        swap_chain: &ComPtr<IDXGISwapChain1>,
-        _device: &ComPtr<ID3D11Device>,
-        _width: u32,
-        _height: u32,
-    ) -> Result<SwapChainResources> {
-        let mut buffer: *mut ID3D11Texture2D = ptr::null_mut();
-        let hr = swap_chain.GetBuffer(
-            0,
-            &ID3D11Texture2D::uuidof(),
-            &mut buffer as *mut _ as *mut *mut c_void,
-        );
-        error::wrap_hr(hr, || SwapChainResources {
-            backbuffer: ComPtr::from_raw(buffer),
-            interop: None,
-        })
-    }
-
-    unsafe fn with_gl_interop(
-        swap_chain: &ComPtr<IDXGISwapChain1>,
-        device: &ComPtr<ID3D11Device>,
-        gl: Gl,
-        wgl: Wgl,
-        width: u32,
-        height: u32,
-        use_staging_texture: bool,
-    ) -> Result<SwapChainResources> {
-        let mut res = Self::new(swap_chain, device, width, height)?;
-
-        let interop_device = wgl.DXOpenDeviceNV(device.as_raw() as *mut _);
-        if interop_device.is_null() {
-            error!("Could not create OpenGL-DirectX interop.");
-            return Err(Error::OpenGlInteropError);
-        }
-
-        let mut renderbuffer = 0;
-        gl.GenRenderbuffers(1, &mut renderbuffer);
-
-        let (staging, interop_target) = if use_staging_texture {
-            // use staging texture because directly sharing the swap chain buffer when using FLIP_*
-            // swap effects seems to cause problems.
-            let mut staging = ptr::null_mut();
-            let staging_desc = D3D11_TEXTURE2D_DESC {
-                Width: width,
-                Height: height,
-                MipLevels: 1,
-                ArraySize: 1,
-                Format: DXGI_FORMAT_R8G8B8A8_UNORM,
-                SampleDesc: DXGI_SAMPLE_DESC {
-                    Count: 1,
-                    Quality: 0,
-                },
-                Usage: D3D11_USAGE_DEFAULT,
-                BindFlags: D3D11_BIND_RENDER_TARGET,
-                CPUAccessFlags: 0,
-                MiscFlags: 0,
-            };
-            let hr = device.CreateTexture2D(&staging_desc, ptr::null(), &mut staging);
-            if !SUCCEEDED(hr) {
-                error!("Could not create staging texture.");
-                return Err(hr.into());
-            }
-            let staging = ComPtr::from_raw(staging);
-
-            let interop_staging = wgl.DXRegisterObjectNV(
-                interop_device,
-                staging.as_raw() as *mut _,
-                renderbuffer,
-                gl::RENDERBUFFER,
-                wgl::ACCESS_READ_WRITE_NV,
-            );
-            (Some(staging), interop_staging)
-        } else {
-            // directly share the swap chain buffer (this may cause problems with FLIP_* swap effects)
-            let interop_backbuffer = wgl.DXRegisterObjectNV(
-                interop_device,
-                res.backbuffer.as_raw() as *mut _,
-                renderbuffer,
-                gl::RENDERBUFFER,
-                wgl::ACCESS_READ_WRITE_NV,
-            );
-            (None, interop_backbuffer)
-        };
-
-        if interop_target.is_null() {
-            gl.DeleteRenderbuffers(1, &renderbuffer);
-            return Err(Error::OpenGlInteropError);
-        }
-
-        // create a framebuffer that points to the swap chain buffer
-        let mut framebuffer = 0;
-        gl.CreateFramebuffers(1, &mut framebuffer);
-        gl.NamedFramebufferRenderbuffer(
-            framebuffer,
-            gl::COLOR_ATTACHMENT0,
-            gl::RENDERBUFFER,
-            renderbuffer,
-        );
-
-        let fb_status = gl.CheckNamedFramebufferStatus(framebuffer, gl::DRAW_FRAMEBUFFER);
-        if fb_status != gl::FRAMEBUFFER_COMPLETE {
-            // don't forget to release the GL resources still lying around.
-            wgl.DXUnregisterObjectNV(interop_device, interop_target);
-            gl.DeleteRenderbuffers(1, &renderbuffer);
-            gl.DeleteFramebuffers(1, &framebuffer);
-            error!("OpenGL framebuffer not complete");
-            return Err(Error::OpenGlInteropError);
-        }
-
-        res.interop = Some(DxGlInterop {
-            gl,
-            wgl,
-            device: interop_device,
-            staging,
-            target: interop_target,
-            renderbuffer,
-            framebuffer,
-        });
-
-        Ok(res)
-    }
-}
-
+/*#[allow(unused)]
 fn check_win32_last_error(returned: i32, function: &str) {
     unsafe {
         if returned == 0 {
@@ -195,217 +44,311 @@ fn check_win32_last_error(returned: i32, function: &str) {
             panic!("{} failed, GetLastError={:08x}", function, err);
         }
     }
+}*/
+
+struct SharedDrawSurface {
+    shared_handle: HANDLE,
+    fence_shared_handle: HANDLE,
+    dxgi_surface: IDXGISurface,
+    d3d_fence: ID3D11Fence,
+    d2d_bitmap: ID2D1Bitmap1,
+    vulkan_image: graal::ImageInfo,
+    vulkan_timeline: vk::Semaphore,
+    dpi: f32,
 }
 
-impl Drop for SwapChainResources {
-    fn drop(&mut self) {
-        if let Some(ref mut interop) = self.interop {
-            unsafe {
-                check_win32_last_error(
-                    interop
-                        .wgl
-                        .DXUnregisterObjectNV(interop.device, interop.target),
-                    "wglDXUnregisterObjectNV",
-                );
-                check_win32_last_error(
-                    interop.wgl.DXCloseDeviceNV(interop.device),
-                    "wglDXCloseDeviceNV",
-                );
-            }
-        }
-    }
-}
+impl SharedDrawSurface {
+    fn new(
+        d2d_device_context: &ID2D1DeviceContext,
+        size: (u32, u32),
+        scale_factor: f64,
+    ) -> SharedDrawSurface {
+        let platform = Platform::instance();
+        let d3d11_device = &platform.d3d11_device;
+        let mut context = platform.gpu_context.lock().unwrap();
 
-pub struct GlState {
-    context: RawContext<PossiblyCurrent>,
-    gl: Gl,
-    wgl: Wgl,
-}
-
-const SWAP_CHAIN_BUFFERS: u32 = 2;
-//const USE_INTEROP_STAGING_TEXTURE: bool = false;
-
-/// Guard object that holds a lock on an interop OpenGL context.
-pub struct OpenGlDrawContext<'a> {
-    gl: &'a Gl,
-    wgl: &'a Wgl,
-    interop: &'a mut DxGlInterop,
-    backbuffer: &'a ComPtr<ID3D11Texture2D>,
-    d3d11_ctx: &'a ComPtr<ID3D11DeviceContext>,
-}
-
-impl<'a> OpenGlDrawContext<'a> {
-    pub fn new(w: &'a mut PlatformWindow) -> OpenGlDrawContext<'a> {
-        let gl_state = w.gl.as_mut().expect("a GL context was not requested");
-        let swap_res = w
-            .swap_res
-            .as_mut()
-            .expect("the swap chain is not initialized");
-        let backbuffer = &swap_res.backbuffer;
-        let interop = swap_res
-            .interop
-            .as_mut()
-            .expect("DX-GL interop not initialized");
-
-        let gl = &gl_state.gl;
-        let wgl = &gl_state.wgl;
-
-        unsafe {
-            // signals to the interop device that OpenGL is going to use the resource specified by the
-            // given interop handle.
-            wgl.DXLockObjectsNV(interop.device, 1, &mut interop.target);
-        }
-
-        OpenGlDrawContext {
-            gl,
-            wgl,
-            interop,
-            backbuffer,
-            d3d11_ctx: &w.shared.d3d11_device_context,
-        }
-    }
-
-    /// Returns the OpenGL functions.
-    pub fn functions(&self) -> &Gl {
-        self.gl
-    }
-
-    /// Returns the framebuffer associated to the window surface.
-    pub fn framebuffer(&self) -> GLuint {
-        self.interop.framebuffer
-    }
-}
-
-impl<'a> Drop for OpenGlDrawContext<'a> {
-    fn drop(&mut self) {
-        // finished using the resource
-        unsafe {
-            self.wgl
-                .DXUnlockObjectsNV(self.interop.device, 1, &mut self.interop.target);
-        }
-
-        if let Some(ref staging_d3d11) = self.interop.staging {
-            // copy staging tex to actual backbuffer
-            let backbuffer = self.backbuffer.cast::<ID3D11Resource>().unwrap();
-            let staging = staging_d3d11.cast::<ID3D11Resource>().unwrap();
-            unsafe {
-                self.d3d11_ctx
-                    .CopyResource(staging.as_raw(), backbuffer.as_raw());
-            }
-        }
-    }
-}
-
-/// Context object to draw on a window.
-///
-/// It implicitly derefs to [`DrawContext`], which has methods to draw primitives on the
-/// window surface.
-///
-/// [`DrawContext`]: crate::drawing::context::DrawContext
-pub struct WindowDrawContext<'a> {
-    window: &'a mut PlatformWindow,
-    draw_context: DrawContext,
-}
-
-impl<'a> WindowDrawContext<'a> {
-    /// Creates a new [`WindowDrawContext`] for the specified window, allowing to draw on the window.
-    pub fn new(window: &'a mut PlatformWindow) -> WindowDrawContext<'a> {
-        let d2d_device_context = &window.d2d_device_context;
-        let swap_res = window
-            .swap_res
-            .as_ref()
-            .expect("swap chain was not initialized");
-        let dxgi_buffer = swap_res.backbuffer.cast::<IDXGISurface>().unwrap();
-
-        let dpi = dbg!(96.0 * window.window.scale_factor() as f32);
-        let props = D2D1_BITMAP_PROPERTIES1 {
-            pixelFormat: D2D1_PIXEL_FORMAT {
-                format: DXGI_FORMAT_R8G8B8A8_UNORM,
-                alphaMode: D2D1_ALPHA_MODE_IGNORE,
+        // ---- NEW
+        let texture_desc = D3D11_TEXTURE2D_DESC {
+            Width: size.0,
+            Height: size.1,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT::DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
             },
-            dpiX: dpi,
-            dpiY: dpi,
-            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-            colorContext: ptr::null(),
+            Usage: D3D11_USAGE::D3D11_USAGE_DEFAULT,
+            BindFlags: (D3D11_BIND_FLAG::D3D11_BIND_RENDER_TARGET.0
+                | D3D11_BIND_FLAG::D3D11_BIND_SHADER_RESOURCE.0) as u32,
+            CPUAccessFlags: 0,
+            MiscFlags: (D3D11_RESOURCE_MISC_FLAG::D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX.0
+                | D3D11_RESOURCE_MISC_FLAG::D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0)
+                as u32,
+        };
+        let d3d_texture = unsafe {
+            let mut d3d_texture = None;
+            d3d11_device
+                .CreateTexture2D(&texture_desc, ptr::null(), &mut d3d_texture)
+                .and_some(d3d_texture)
+                .unwrap()
         };
 
-        // create target bitmap
-        let mut bitmap = unsafe {
-            let mut bitmap: *mut ID2D1Bitmap1 = ptr::null_mut();
-            let hr = d2d_device_context.CreateBitmapFromDxgiSurface(
-                dxgi_buffer.as_raw(),
-                &props,
-                &mut bitmap,
-            );
-            if !SUCCEEDED(hr) {
-                panic!(
-                    "CreateBitmapFromDxgiSurface failed: {}",
-                    Error::HResultError(hr)
-                );
-            }
-            ComPtr::from_raw(bitmap)
-        };
+        let dxgi_resource = d3d_texture.cast::<IDXGIResource1>().unwrap();
+        let dxgi_surface = d3d_texture.cast::<IDXGISurface>().unwrap();
 
-        let draw_context = unsafe {
-            // set the target on the DC
-            d2d_device_context.SetTarget(bitmap.up().up().as_raw());
-            d2d_device_context.SetDpi(dpi, dpi);
-            // the draw context acquires shared ownership of the device context, but that's OK since we borrow the window,
-            // so we can't create another WindowDrawContext that would conflict with it.
-            DrawContext::from_device_context(
-                window.shared.d2d_factory.clone().up(),
-                d2d_device_context.clone(),
+        let mut shared_handle = HANDLE::INVALID;
+        unsafe {
+            dxgi_resource
+                .CreateSharedHandle(
+                    ptr::null(),
+                    (DXGI_SHARED_RESOURCE_READ as u32) | DXGI_SHARED_RESOURCE_WRITE,
+                    None,
+                    &mut shared_handle,
+                )
+                .unwrap();
+        }
+
+        let vulkan_image = unsafe {
+            context.create_imported_image_win32(
+                "SharedDrawSurface",
+                &graal::ResourceMemoryInfo::DEVICE_LOCAL,
+                &graal::ImageResourceCreateInfo {
+                    image_type: vk::ImageType::TYPE_2D,
+                    usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::TRANSFER_DST
+                        | vk::ImageUsageFlags::TRANSFER_SRC,
+                    format: vk::Format::B8G8R8A8_UNORM, // TODO
+                    extent: vk::Extent3D {
+                        width: size.0,
+                        height: size.1,
+                        depth: 1,
+                    },
+                    mip_levels: 1,
+                    array_layers: 1,
+                    samples: 1,
+                    tiling: vk::ImageTiling::OPTIMAL,
+                },
+                vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE,
+                shared_handle.0 as *mut _,
+                None,
             )
         };
 
-        WindowDrawContext {
-            window,
-            draw_context,
-        }
-    }
+        // --- fence
+        let d3d_fence = unsafe {
+            d3d11_device
+                .CreateFence::<ID3D11Fence>(0, D3D11_FENCE_FLAG::D3D11_FENCE_FLAG_SHARED)
+                .unwrap()
+        };
 
-    /// Returns the [`PlatformWindow`] that is being drawn to.
-    pub fn window(&self) -> &PlatformWindow {
-        self.window
-    }
-}
-
-impl<'a> Drop for WindowDrawContext<'a> {
-    fn drop(&mut self) {
-        // set the target to null to release the borrow of the backbuffer surface
-        // (otherwise it will fail to resize)
+        let mut fence_shared_handle = HANDLE::INVALID;
         unsafe {
-            self.ctx.SetTarget(ptr::null());
+            d3d_fence
+                .CreateSharedHandle(ptr::null(), GENERIC_ALL, None, &mut fence_shared_handle)
+                .unwrap();
+        }
+
+        // import fence in vulkan as a timeline semaphore
+        let vulkan_timeline = unsafe {
+            context.create_imported_semaphore_win32(
+                vk::SemaphoreImportFlags::TEMPORARY,
+                vk::ExternalSemaphoreHandleTypeFlags::D3D12_FENCE,
+                fence_shared_handle.0 as vk::HANDLE,
+                None,
+            )
+        };
+
+        // ---- OLD
+        /*let (target, target_shared_handle) = unsafe {
+            context.create_exported_image_win32(
+                "SharedDrawSurface",
+                &graal::ResourceMemoryInfo::DEVICE_LOCAL,
+                &graal::ImageResourceCreateInfo {
+                    image_type: vk::ImageType::TYPE_2D,
+                    usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::TRANSFER_DST
+                        | vk::ImageUsageFlags::TRANSFER_SRC,
+                    format: vk::Format::B8G8R8A8_UNORM, // TODO
+                    extent: vk::Extent3D {
+                        width: size.0,
+                        height: size.1,
+                        depth: 1,
+                    },
+                    mip_levels: 1,
+                    array_layers: 1,
+                    samples: 1,
+                    tiling: vk::ImageTiling::OPTIMAL,
+                },
+                vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE,
+                ptr::null(),
+                DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE | GENERIC_ALL,
+                None,
+            )
+        };
+        dbg!(target_shared_handle);
+        // open the shared handle on the D2D side
+        let target_surface = unsafe {
+            let mut ptr: *mut ID3D11Texture2D = ptr::null_mut();
+            check_hr(d3d11_device.OpenSharedResource1(
+                target_shared_handle,
+                &ID3D11Texture2D::uuidof(),
+                &mut ptr as *mut _ as *mut *mut c_void,
+            ))
+            .unwrap();
+            ComPtr::from_raw(ptr)
+        };
+        let target_surface: ComPtr<IDXGISurface> = target_surface.cast().unwrap();*/
+
+        // create the target D2D bitmap
+        let dpi = (96.0 * scale_factor) as f32;
+        let props = D2D1_BITMAP_PROPERTIES1 {
+            pixelFormat: D2D1_PIXEL_FORMAT {
+                format: DXGI_FORMAT::DXGI_FORMAT_B8G8R8A8_UNORM, // TODO
+                alphaMode: D2D1_ALPHA_MODE::D2D1_ALPHA_MODE_IGNORE,
+            },
+            dpiX: dpi,
+            dpiY: dpi,
+            bitmapOptions: D2D1_BITMAP_OPTIONS::D2D1_BITMAP_OPTIONS_TARGET
+                | D2D1_BITMAP_OPTIONS::D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+            colorContext: None,
+        };
+
+        // create target bitmap
+        let d2d_bitmap = unsafe {
+            let mut bitmap = None;
+            d2d_device_context
+                .CreateBitmapFromDxgiSurface(&dxgi_surface, &props, &mut bitmap)
+                .and_some(bitmap)
+                .unwrap()
+        };
+
+        SharedDrawSurface {
+            vulkan_image,
+            shared_handle,
+            fence_shared_handle,
+            dxgi_surface,
+            dpi,
+            d2d_bitmap,
+            d3d_fence,
+            vulkan_timeline
         }
     }
 }
 
-impl<'a> Deref for WindowDrawContext<'a> {
-    type Target = DrawContext;
-    fn deref(&self) -> &DrawContext {
-        &self.draw_context
+impl Drop for SharedDrawSurface {
+    fn drop(&mut self) {
+        let mut context = Platform::instance().gpu_context().lock().unwrap();
+        context.destroy_image(self.vulkan_image.id);
+        // TODO close the shared handle?
     }
 }
 
-impl<'a> DerefMut for WindowDrawContext<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.draw_context
+pub struct DrawSurface {
+    /// Direct2D device context (independent of the surface)
+    d2d_device_context: ID2D1DeviceContext,
+    /// Fence used for synchronizing between D3D11 and vulkan (payload shared with `vk_semaphore`)
+    //d3d11_fence: ID3D11Fence,
+    /// Semaphore for synchronization on the vulkan side, imported from `d3d11_fence`.
+    //vk_semaphore: vk::Semaphore,
+    surface: Option<SharedDrawSurface>,
+}
+
+impl DrawSurface {
+    pub fn new(size: (u32, u32), scale_factor: f64) -> DrawSurface {
+        // create the device context
+        let mut d2d_device_context = None;
+        let d2d_device_context = unsafe {
+            Platform::instance()
+                .d2d_device
+                .CreateDeviceContext(
+                    D2D1_DEVICE_CONTEXT_OPTIONS::D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
+                    &mut d2d_device_context,
+                )
+                .and_some(d2d_device_context)
+                .unwrap()
+        };
+
+        //let d3d_fence
+
+        let surface = SharedDrawSurface::new(&d2d_device_context, size, scale_factor);
+
+        unsafe {
+            // set the target on the DC
+            d2d_device_context.SetTarget(&surface.d2d_bitmap);
+            d2d_device_context.SetDpi(surface.dpi, surface.dpi);
+        }
+
+        DrawSurface {
+            d2d_device_context,
+            surface: Some(surface),
+        }
+    }
+
+    // TODO:
+    // * D2D: flush?
+    // * D3D: wait for fence
+    // * D2D: draw
+    // * D2D: flush
+    // * D2D: fence signal
+    // * Vulkan: fence wait
+    // * Vulkan: copy to swapchain
+    // * Vulkan: fence signal
+    //
+    // Two types:
+    // - Draw2DContext(&'a mut DrawSurface): provides a drawing target
+    //      - need access to the D3D immediate mode context
+    // - Draw3DContext(&graal::Frame, &'a mut DrawSurface): provides access to the underlying vulkan image
+    //
+    // Since both borrow mutably, they can't be alive at the same time
+    // - however, it's a bit too easy to just copy the vulkan ImageInfo
+
+    /*pub fn acquire(&self, frame: &graal::Frame) {
+        let semaphore = self.surface.unwrap().vulkan_timeline;
+        frame.add_graphics_pass("draw surface acquire", |pass| {
+            pass.add_external_semaphore_wait(semaphore, vk::PipelineStageFlags::ALL_COMMANDS);
+        });
+    }*/
+
+    pub fn resize(&mut self, size: (u32, u32), scale_factor: f64) {
+        // release the old surface
+        unsafe {
+            self.d2d_device_context.SetTarget(None);
+        }
+        self.surface = None;
+
+        let new_surface = SharedDrawSurface::new(&self.d2d_device_context, size, scale_factor);
+
+        unsafe {
+            // set the target on the DC
+            self.d2d_device_context.SetTarget(&new_surface.d2d_bitmap);
+            self.d2d_device_context
+                .SetDpi(new_surface.dpi, new_surface.dpi);
+        }
+
+        self.surface = Some(new_surface);
+    }
+
+    pub fn image(&self) -> graal::ImageInfo {
+        self.surface.as_ref().unwrap().vulkan_image
     }
 }
+
+struct SurfaceDrawContext {}
 
 /// Encapsulates a Win32 window and associated resources for drawing to it.
 pub struct PlatformWindow {
-    // we don't really need to have a shared ref here, but
-    // this way we can avoid passing WindowCtx everywhere.
-    shared: Rc<PlatformState>,
     window: Window,
     hwnd: HWND,
     hinstance: HINSTANCE,
-    swap_chain: ComPtr<IDXGISwapChain1>,
-    swap_res: Option<SwapChainResources>,
-    gl: Option<GlState>,
-    interop_needs_staging: bool,
-    d2d_device_context: ComPtr<ID2D1DeviceContext>,
+    surface: vk::SurfaceKHR,
+    swap_chain: graal::SwapchainInfo,
+    swap_chain_width: u32,
+    swap_chain_height: u32,
 }
 
 impl PlatformWindow {
@@ -424,10 +367,22 @@ impl PlatformWindow {
         self.window.id()
     }
 
+    /// Returns the rendering context associated to this window.
+    pub fn gpu_context(&self) -> &GpuContext {
+        Platform::instance().gpu_context()
+    }
+
+    /// Returns the current swap chain size in physical pixels.
+    pub fn swap_chain_size(&self) -> (u32, u32) {
+        (self.swap_chain_width, self.swap_chain_height)
+    }
+
     /// Resizes the swap chain and associated resources of the window.
     ///
     /// Must be called whenever winit sends a resize message.
     pub fn resize(&mut self, (width, height): (u32, u32)) {
+        let platform = Platform::instance();
+
         trace!("resizing swap chain: {}x{}", width, height);
 
         // resizing to 0x0 will fail, so don't bother
@@ -435,48 +390,21 @@ impl PlatformWindow {
             return;
         }
 
-        // signal the GL context as well if we have one
-        if let Some(ref mut gl) = self.gl {
-            gl.context.resize((width, height).into());
-        }
-
         unsafe {
-            // explicitly release swap-chain dependent resources
-            self.swap_res = None;
-
-            // resize the swap chain
-            let hr = self
-                .swap_chain
-                .ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-            if !SUCCEEDED(hr) {
-                // it fails sometimes...
-                error!(
-                    "IDXGISwapChain1::ResizeBuffers failed: {}",
-                    Error::HResultError(hr)
-                );
-                return;
-            }
-
-            // re-create all resources that depend on the swap chain
-            let new_swap_res = if let Some(ref mut gl) = self.gl {
-                SwapChainResources::with_gl_interop(
-                    &self.swap_chain,
-                    &self.shared.d3d11_device,
-                    gl.gl.clone(),
-                    gl.wgl.clone(),
-                    width,
-                    height,
-                    self.interop_needs_staging,
-                )
-            } else {
-                SwapChainResources::new(&self.swap_chain, &self.shared.d3d11_device, width, height)
-            };
-
-            match new_swap_res {
-                Ok(r) => self.swap_res = Some(r),
-                Err(e) => error!("Failed to allocate swap chain resources: {}", e),
-            }
+            platform
+                .gpu_context()
+                .lock()
+                .unwrap()
+                .resize_swapchain(self.swap_chain.id, (width, height));
         }
+
+        self.swap_chain_width = width;
+        self.swap_chain_height = height;
+    }
+
+    /// Returns the swap chain object for the window.
+    pub fn swap_chain(&self) -> graal::SwapchainInfo {
+        self.swap_chain
     }
 
     /// Creates a new window from the options given in the provided [`WindowBuilder`].
@@ -487,167 +415,39 @@ impl PlatformWindow {
     pub fn new(
         event_loop: &EventLoopWindowTarget<()>,
         mut builder: WindowBuilder,
-        platform: &Platform,
         parent_window: Option<&PlatformWindow>,
-        with_gl: bool,
     ) -> Result<PlatformWindow> {
-        // We want to be able to render 3D stuff with OpenGL, and still be able to use
-        // D3D11/Direct2D/DirectWrite.
-        // To do so, we use a DXGI swap chain to manage presenting. Then, using WGL_NV_DX_interop2,
-        // we register the buffers of the swap chain as a renderbuffer in GL so we can use both
-        // on the same render target.
-        unsafe {
-            // first, build the window using the provided builder
-            if let Some(parent_window) = parent_window {
-                builder = builder.with_parent_window(parent_window.hwnd);
-            }
-            let window = builder.build(event_loop).map_err(Error::Winit)?;
+        let platform = Platform::instance();
 
-            let dxgi_factory = &platform.0.dxgi_factory;
-            let d3d11_device = &platform.0.d3d11_device;
-            //let dxgi_device = &d3d11_device.cast::<IDXGIDevice>().unwrap(); // shouldn't fail?
-
-            // create a DXGI swap chain for the window
-            let hinstance: HINSTANCE = window.hinstance() as HINSTANCE;
-            let hwnd: HWND = window.hwnd() as HWND;
-            let (width, height): (u32, u32) = window.inner_size().into();
-
-            // it might also be better to just use Discard always
-            //let swap_effect = if with_gl {
-            //   SwapEffect::Discard
-            //} else {
-            //    SwapEffect::FlipDiscard
-            //};
-            let swap_effect = DXGI_SWAP_EFFECT_SEQUENTIAL;
-
-            // OpenGL interop does not work well with FLIP_* swap effects
-            // (generates a "D3D11 Device Lost" error during resizing after a while).
-            // In those cases, draw on a staging texture, and then copy to the backbuffer.
-            let interop_needs_staging = match swap_effect {
-                DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL | DXGI_SWAP_EFFECT_FLIP_DISCARD => true,
-                _ => false,
-            };
-
-            if interop_needs_staging && with_gl {
-                info!("FLIP_DISCARD or FLIP_SEQUENTIAL swap chains with OpenGL interop may cause crashes. \
-                 Will allocate a staging target to work around this issue.");
-            }
-
-            // create the swap chain
-            let mut swap_chain = ptr::null_mut();
-            let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
-                Width: 0,
-                Height: 0,
-                Format: DXGI_FORMAT_R8G8B8A8_UNORM,
-                Stereo: 0,
-                SampleDesc: DXGI_SAMPLE_DESC {
-                    Count: 1,
-                    Quality: 0,
-                },
-                BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                BufferCount: SWAP_CHAIN_BUFFERS,
-                Scaling: DXGI_SCALING_STRETCH,
-                SwapEffect: swap_effect,
-                AlphaMode: DXGI_ALPHA_MODE_UNSPECIFIED,
-                Flags: 0,
-            };
-
-            let hr = dxgi_factory.CreateSwapChainForHwnd(
-                d3d11_device.clone().up().as_raw(),
-                hwnd,
-                &swap_chain_desc,
-                ptr::null(),
-                ptr::null_mut(),
-                &mut swap_chain,
-            );
-
-            if !SUCCEEDED(hr) {
-                return Err(hr.into());
-            }
-
-            let swap_chain = ComPtr::from_raw(swap_chain);
-
-            // Create the OpenGL context
-            let (swap_res, gl) = if with_gl {
-                trace!("creating OpenGL context");
-                let context = ContextBuilder::new()
-                    .with_gl_profile(glutin::GlProfile::Core)
-                    .with_gl_debug_flag(true)
-                    .with_vsync(true)
-                    .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (4, 6)))
-                    .build_raw_context(hwnd as *mut c_void)
-                    .expect("failed to create OpenGL context on window");
-                let context = context
-                    .make_current()
-                    .expect("could not make context current");
-                // load GL functions
-                let loader = |symbol| {
-                    let ptr = context.get_proc_address(symbol) as *const _;
-                    ptr
-                };
-                let gl = Gl::load_with(loader);
-                let wgl = Wgl::load_with(loader);
-                // set up a debug callback so we have a clue of what's going wrong
-                opengl::init_debug_callback(&gl);
-                // first-time initialization of the swap chain resources, with GL interop enabled
-                let swap_res = SwapChainResources::with_gl_interop(
-                    &swap_chain,
-                    &d3d11_device,
-                    gl.clone(),
-                    wgl.clone(),
-                    width,
-                    height,
-                    interop_needs_staging,
-                )?;
-
-                let gl = GlState { context, gl, wgl };
-
-                (swap_res, Some(gl))
-            } else {
-                // no OpenGL requested for this window
-                let swap_res = SwapChainResources::new(&swap_chain, &d3d11_device, width, height)?;
-                (swap_res, None)
-            };
-
-            // create a D2D device context to paint to the window
-            let mut d2d_device_context = ptr::null_mut();
-            let hr = platform
-                .0
-                .d2d_device
-                .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &mut d2d_device_context);
-            if !SUCCEEDED(hr) {
-                panic!(
-                    "Could not create a Direct2D device context: {}",
-                    Error::HResultError(hr)
-                );
-            }
-            let d2d_device_context = ComPtr::from_raw(d2d_device_context);
-
-            let pw = PlatformWindow {
-                shared: platform.0.clone(),
-                window,
-                hwnd,
-                hinstance,
-                swap_chain,
-                swap_res: Some(swap_res),
-                gl,
-                interop_needs_staging,
-                d2d_device_context,
-            };
-
-            Ok(pw)
+        if let Some(parent_window) = parent_window {
+            builder = builder.with_parent_window(parent_window.hwnd.0 as *mut _);
         }
-    }
+        let window = builder.build(event_loop).map_err(Error::Winit)?;
 
-    pub fn present(&mut self) {
-        unsafe {
-            let hr = self.swap_chain.Present(1, 0);
-            if !SUCCEEDED(hr) {
-                error!(
-                    "IDXGISwapChain::Present failed: {}",
-                    Error::HResultError(hr)
-                )
-            }
-        }
+        // create a swap chain for the window
+        let surface = graal::surface::get_vulkan_surface(window.raw_window_handle());
+        let swapchain_size = window.inner_size().into();
+        let swap_chain = unsafe {
+            platform
+                .gpu_context()
+                .lock()
+                .unwrap()
+                .create_swapchain(surface, swapchain_size)
+        };
+
+        let hinstance = HINSTANCE(window.hinstance() as isize);
+        let hwnd = HWND(window.hwnd() as isize);
+
+        let pw = PlatformWindow {
+            window,
+            hwnd,
+            hinstance,
+            surface,
+            swap_chain,
+            swap_chain_width: swapchain_size.0,
+            swap_chain_height: swapchain_size.1,
+        };
+
+        Ok(pw)
     }
 }

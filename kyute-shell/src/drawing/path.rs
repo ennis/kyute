@@ -1,16 +1,13 @@
-use crate::drawing::{mk_point_f, Point};
-
-use crate::platform::Platform;
-use std::ptr;
+use crate::{
+    bindings::Windows::Win32::Direct2D::ID2D1PathGeometry1,
+    platform::Platform,
+};
 pub use svgtypes::{Path, PathParser, PathSegment};
 use thiserror::Error;
-use winapi::{
-    shared::winerror::SUCCEEDED,
-    um::{d2d1::*, d2d1_1::*},
-};
-use wio::com::ComPtr;
+use windows::Interface;
+use crate::bindings::Windows::Win32::Direct2D::{D2D1_FIGURE_BEGIN, D2D1_FIGURE_END, D2D_POINT_2F};
 
-pub struct PathGeometry(pub(crate) ComPtr<ID2D1PathGeometry1>);
+pub struct PathGeometry(pub(crate) ID2D1PathGeometry1);
 
 #[derive(Debug, Error)]
 pub enum PathError {
@@ -21,26 +18,26 @@ pub enum PathError {
 }
 
 impl PathGeometry {
-    pub fn try_from_svg_path(
-        platform: &Platform,
-        path_str: &str,
-    ) -> Result<PathGeometry, PathError> {
+    pub fn try_from_svg_path(path_str: &str) -> Result<PathGeometry, PathError> {
+        let platform = Platform::instance();
+
         // parse the path string
         let mut path: Path = path_str.parse().map_err(|e| PathError::SyntaxError(e))?;
         path.conv_to_absolute();
 
         // build geometry
         unsafe {
-            let factory = &platform.0.d2d_factory;
-            let mut path_geometry: *mut ID2D1PathGeometry1 = ptr::null_mut();
-            let hr = factory.CreatePathGeometry(&mut path_geometry);
-            assert!(SUCCEEDED(hr)); // TODO
-            let path_geometry = ComPtr::from_raw(path_geometry);
-
-            let mut geometry_sink: *mut ID2D1GeometrySink = ptr::null_mut();
-            path_geometry.Open(&mut geometry_sink);
-            let geometry_sink = ComPtr::from_raw(geometry_sink);
-            assert!(SUCCEEDED(hr)); // TODO
+            let factory = &platform.d2d_factory;
+            let mut path_geometry = None;
+            let path_geometry = factory
+                .CreatePathGeometry(&mut path_geometry)
+                .and_some(path_geometry)
+                .unwrap().cast::<ID2D1PathGeometry1>().unwrap();
+            let mut geometry_sink = None;
+            let geometry_sink = path_geometry
+                .Open(&mut geometry_sink)
+                .and_some(geometry_sink)
+                .unwrap();
 
             let mut in_figure = false;
             let (mut init_x, mut init_y) = (0.0, 0.0);
@@ -64,11 +61,11 @@ impl PathGeometry {
                         | PathSegment::SmoothQuadratic { .. }
                         | PathSegment::EllipticalArc { .. } => {
                             geometry_sink.BeginFigure(
-                                D2D1_POINT_2F {
+                                D2D_POINT_2F {
                                     x: init_x as f32,
                                     y: init_y as f32,
                                 },
-                                D2D1_FIGURE_BEGIN_FILLED,
+                                D2D1_FIGURE_BEGIN::D2D1_FIGURE_BEGIN_FILLED,
                             );
                             in_figure = true;
                         }
@@ -77,11 +74,11 @@ impl PathGeometry {
 
                 match seg {
                     PathSegment::MoveTo { x, y, .. } => {
-                        geometry_sink.EndFigure(D2D1_FIGURE_END_OPEN);
+                        geometry_sink.EndFigure(D2D1_FIGURE_END::D2D1_FIGURE_END_OPEN);
                         init_x = x;
                         init_y = y;
                     }
-                    PathSegment::LineTo { x, y, .. } => geometry_sink.AddLine(D2D1_POINT_2F {
+                    PathSegment::LineTo { x, y, .. } => geometry_sink.AddLine(D2D_POINT_2F {
                         x: x as f32,
                         y: y as f32,
                     }),
@@ -94,14 +91,13 @@ impl PathGeometry {
                     PathSegment::EllipticalArc { .. } => unimplemented!(),
                     PathSegment::ClosePath { .. } => {
                         assert!(in_figure);
-                        geometry_sink.EndFigure(D2D1_FIGURE_END_CLOSED);
+                        geometry_sink.EndFigure(D2D1_FIGURE_END::D2D1_FIGURE_END_CLOSED);
                         in_figure = false;
                     }
                 }
             }
 
-            let hr = geometry_sink.Close();
-            assert!(SUCCEEDED(hr)); // TODO
+            geometry_sink.Close().ok().unwrap();
             Ok(PathGeometry(path_geometry))
         }
     }

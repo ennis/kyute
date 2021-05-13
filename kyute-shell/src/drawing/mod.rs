@@ -4,15 +4,16 @@ pub mod effect;
 pub mod gradient;
 pub mod path;
 
+use crate::bindings::Windows::{
+    Foundation::Numerics::Matrix3x2,
+    Win32::Direct2D::{D2D1_COLOR_F, D2D_POINT_2F, D2D_RECT_F},
+};
 pub use brush::{Brush, IntoBrush};
 pub use context::{
     Bitmap, CompositeMode, DrawContext, DrawTextOptions, InterpolationMode, PrimitiveBlend,
 };
 pub use gradient::{ColorInterpolationMode, ExtendMode, GradientStopCollection};
 pub use path::PathGeometry;
-//pub use path::Path;
-
-use winapi::um::d2d1::{D2D1_COLOR_F, D2D1_MATRIX_3X2_F, D2D1_POINT_2F, D2D1_RECT_F};
 
 /// The DIP (device-independent pixel) unit.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -62,16 +63,16 @@ pub(crate) fn mk_color_f(color: Color) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r, g, b, a }
 }
 
-pub(crate) fn mk_point_f(point: Point) -> D2D1_POINT_2F {
-    D2D1_POINT_2F {
+pub(crate) fn mk_point_f(point: Point) -> D2D_POINT_2F {
+    D2D_POINT_2F {
         x: point.x as f32,
         y: point.y as f32,
     }
 }
 
-pub(crate) fn mk_rect_f(rect: Rect) -> D2D1_RECT_F {
+pub(crate) fn mk_rect_f(rect: Rect) -> D2D_RECT_F {
     let ((l, t), (r, b)) = (rect.min().to_tuple(), rect.max().to_tuple());
-    D2D1_RECT_F {
+    D2D_RECT_F {
         left: l as f32,
         top: t as f32,
         right: r as f32,
@@ -79,12 +80,13 @@ pub(crate) fn mk_rect_f(rect: Rect) -> D2D1_RECT_F {
     }
 }
 
-pub(crate) fn mk_matrix_3x2(t: &Transform) -> D2D1_MATRIX_3X2_F {
-    D2D1_MATRIX_3X2_F {
-        matrix: [
-            [t.m11 as f32, t.m12 as f32],
-            [t.m21 as f32, t.m22 as f32],
-            [t.m31 as f32, t.m32 as f32],
-        ],
+pub(crate) fn mk_matrix_3x2(t: &Transform) -> Matrix3x2 {
+    Matrix3x2 {
+        M11: t.m11 as f32,
+        M12: t.m12 as f32,
+        M21: t.m21 as f32,
+        M22: t.m22 as f32,
+        M31: t.m31 as f32,
+        M32: t.m32 as f32,
     }
 }

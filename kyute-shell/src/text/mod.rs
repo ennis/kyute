@@ -1,36 +1,36 @@
+//! Platform text services
 use crate::{
     drawing::{Brush, Point, Rect, Size},
-    error::{self, Result},
+    error::Result,
     platform::Platform,
 };
 use std::{
     mem::MaybeUninit,
     ops::{Bound, Range, RangeBounds},
-    ptr,
 };
-use winapi::{
-    shared::{
-        minwindef::FALSE,
-        winerror::{ERROR_INSUFFICIENT_BUFFER, HRESULT_FROM_WIN32, SUCCEEDED},
+
+use crate::bindings::Windows::Win32::{
+    Debug::WIN32_ERROR,
+    DirectWrite::{
+        IDWriteTextFormat, IDWriteTextLayout, DWRITE_FONT_STRETCH, DWRITE_FONT_STYLE,
+        DWRITE_FONT_WEIGHT, DWRITE_HIT_TEST_METRICS, DWRITE_LINE_METRICS, DWRITE_TEXT_METRICS,
+        DWRITE_TEXT_RANGE,
     },
-    um::{dwrite::*, unknwnbase::IUnknown},
+    SystemServices::BOOL,
 };
-use wio::{com::ComPtr, wide::ToWide};
+use windows::{IUnknown, HRESULT, Interface};
+use crate::bindings::Windows::Win32::SystemServices::PWSTR;
 
 /// Text drawing effects.
 pub trait DrawingEffect {
-    fn to_iunknown(&self) -> *mut IUnknown;
+    fn to_iunknown(&self) -> IUnknown;
 }
 
 impl DrawingEffect for Brush {
-    fn to_iunknown(&self) -> *mut IUnknown {
-        self.as_raw_brush() as *mut IUnknown
+    fn to_iunknown(&self) -> IUnknown {
+        self.to_base_brush().cast().unwrap()
     }
 }
-
-///
-#[derive(Clone)]
-pub struct TextFormat(ComPtr<IDWriteTextFormat>);
 
 /// Font weight
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -57,23 +57,23 @@ pub enum FontWeight {
 impl FontWeight {
     fn to_dwrite(self) -> DWRITE_FONT_WEIGHT {
         match self {
-            FontWeight::Thin => DWRITE_FONT_WEIGHT_THIN,
-            FontWeight::ExtraLight => DWRITE_FONT_WEIGHT_EXTRA_LIGHT,
-            FontWeight::UltraLight => DWRITE_FONT_WEIGHT_ULTRA_LIGHT,
-            FontWeight::Light => DWRITE_FONT_WEIGHT_LIGHT,
-            FontWeight::SemiLight => DWRITE_FONT_WEIGHT_SEMI_LIGHT,
-            FontWeight::Normal => DWRITE_FONT_WEIGHT_NORMAL,
-            FontWeight::Regular => DWRITE_FONT_WEIGHT_REGULAR,
-            FontWeight::Medium => DWRITE_FONT_WEIGHT_MEDIUM,
-            FontWeight::DemiBold => DWRITE_FONT_WEIGHT_DEMI_BOLD,
-            FontWeight::SemiBold => DWRITE_FONT_WEIGHT_SEMI_BOLD,
-            FontWeight::Bold => DWRITE_FONT_WEIGHT_BOLD,
-            FontWeight::ExtraBold => DWRITE_FONT_WEIGHT_EXTRA_BOLD,
-            FontWeight::UltraBold => DWRITE_FONT_WEIGHT_ULTRA_BOLD,
-            FontWeight::Black => DWRITE_FONT_WEIGHT_BLACK,
-            FontWeight::Heavy => DWRITE_FONT_WEIGHT_HEAVY,
-            FontWeight::ExtraBlack => DWRITE_FONT_WEIGHT_EXTRA_BLACK,
-            FontWeight::UltraBlack => DWRITE_FONT_WEIGHT_ULTRA_BLACK,
+            FontWeight::Thin => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_THIN,
+            FontWeight::ExtraLight => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_EXTRA_LIGHT,
+            FontWeight::UltraLight => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_ULTRA_LIGHT,
+            FontWeight::Light => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_LIGHT,
+            FontWeight::SemiLight => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_SEMI_LIGHT,
+            FontWeight::Normal => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_NORMAL,
+            FontWeight::Regular => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_REGULAR,
+            FontWeight::Medium => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_MEDIUM,
+            FontWeight::DemiBold => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_DEMI_BOLD,
+            FontWeight::SemiBold => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_SEMI_BOLD,
+            FontWeight::Bold => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_BOLD,
+            FontWeight::ExtraBold => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_EXTRA_BOLD,
+            FontWeight::UltraBold => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_ULTRA_BOLD,
+            FontWeight::Black => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_BLACK,
+            FontWeight::Heavy => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_HEAVY,
+            FontWeight::ExtraBlack => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_EXTRA_BLACK,
+            FontWeight::UltraBlack => DWRITE_FONT_WEIGHT::DWRITE_FONT_WEIGHT_ULTRA_BLACK,
         }
     }
 }
@@ -89,9 +89,9 @@ pub enum FontStyle {
 impl FontStyle {
     fn to_dwrite(self) -> DWRITE_FONT_STYLE {
         match self {
-            FontStyle::Normal => DWRITE_FONT_STYLE_NORMAL,
-            FontStyle::Oblique => DWRITE_FONT_STYLE_OBLIQUE,
-            FontStyle::Italic => DWRITE_FONT_STYLE_ITALIC,
+            FontStyle::Normal => DWRITE_FONT_STYLE::DWRITE_FONT_STYLE_NORMAL,
+            FontStyle::Oblique => DWRITE_FONT_STYLE::DWRITE_FONT_STYLE_OBLIQUE,
+            FontStyle::Italic => DWRITE_FONT_STYLE::DWRITE_FONT_STYLE_ITALIC,
         }
     }
 }
@@ -115,32 +115,43 @@ pub enum FontStretch {
 impl FontStretch {
     fn to_dwrite(self) -> DWRITE_FONT_STRETCH {
         match self {
-            FontStretch::Undefined => DWRITE_FONT_STRETCH_UNDEFINED,
-            FontStretch::UltraCondensed => DWRITE_FONT_STRETCH_ULTRA_CONDENSED,
-            FontStretch::ExtraCondensed => DWRITE_FONT_STRETCH_EXTRA_CONDENSED,
-            FontStretch::Condensed => DWRITE_FONT_STRETCH_CONDENSED,
-            FontStretch::SemiCondensed => DWRITE_FONT_STRETCH_SEMI_CONDENSED,
-            FontStretch::Normal => DWRITE_FONT_STRETCH_NORMAL,
-            FontStretch::Medium => DWRITE_FONT_STRETCH_MEDIUM,
-            FontStretch::SemiExpanded => DWRITE_FONT_STRETCH_SEMI_EXPANDED,
-            FontStretch::Expanded => DWRITE_FONT_STRETCH_EXPANDED,
-            FontStretch::ExtraExpanded => DWRITE_FONT_STRETCH_EXTRA_EXPANDED,
-            FontStretch::UltraExpanded => DWRITE_FONT_STRETCH_ULTRA_EXPANDED,
+            FontStretch::Undefined => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_UNDEFINED,
+            FontStretch::UltraCondensed => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_ULTRA_CONDENSED,
+            FontStretch::ExtraCondensed => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_EXTRA_CONDENSED,
+            FontStretch::Condensed => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_CONDENSED,
+            FontStretch::SemiCondensed => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_SEMI_CONDENSED,
+            FontStretch::Normal => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_NORMAL,
+            FontStretch::Medium => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_MEDIUM,
+            FontStretch::SemiExpanded => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_SEMI_EXPANDED,
+            FontStretch::Expanded => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_EXPANDED,
+            FontStretch::ExtraExpanded => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_EXTRA_EXPANDED,
+            FontStretch::UltraExpanded => DWRITE_FONT_STRETCH::DWRITE_FONT_STRETCH_ULTRA_EXPANDED,
         }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+/*#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct TextFormatDesc<'a> {
     family: &'a str,
     weight: FontWeight,
     style: FontStyle,
     stretch: FontStretch,
     size: f32,
+}*/
+
+/// Text formatting options.
+#[derive(Clone)]
+pub struct TextFormat(IDWriteTextFormat);
+
+impl TextFormat {
+    /// Creates a new `TextFormatBuilder` to build a `TextFormat`.
+    pub fn builder<'a>() -> TextFormatBuilder<'a> {
+        TextFormatBuilder::new()
+    }
 }
 
+/// Builder pattern for `TextFormat`.
 pub struct TextFormatBuilder<'a> {
-    factory: &'a ComPtr<IDWriteFactory>,
     family: &'a str,
     weight: FontWeight,
     style: FontStyle,
@@ -149,9 +160,8 @@ pub struct TextFormatBuilder<'a> {
 }
 
 impl<'a> TextFormatBuilder<'a> {
-    pub fn new(platform: &'a Platform) -> TextFormatBuilder<'a> {
+    pub fn new() -> TextFormatBuilder<'a> {
         TextFormatBuilder {
-            factory: &platform.0.dwrite_factory,
             family: "",
             weight: FontWeight::Normal,
             style: FontStyle::Normal,
@@ -171,23 +181,24 @@ impl<'a> TextFormatBuilder<'a> {
     }
 
     pub fn build(self) -> Result<TextFormat> {
-        let family = self.family.to_wide_null();
-        let locale = "en-US".to_wide_null();
+        let platform = Platform::instance();
 
         unsafe {
-            let mut ptr = ptr::null_mut();
-            let hr = self.factory.CreateTextFormat(
-                family.as_ptr(),
-                ptr::null_mut(), // collection
-                self.weight.to_dwrite(),
-                self.style.to_dwrite(),
-                self.stretch.to_dwrite(),
-                self.size,
-                locale.as_ptr(),
-                &mut ptr,
-            );
-
-            error::wrap_hr(hr, || TextFormat(ComPtr::from_raw(ptr)))
+            let mut text_format = None;
+            let text_format = platform
+                .dwrite_factory
+                .CreateTextFormat(
+                    self.family,
+                    None, // collection
+                    self.weight.to_dwrite(),
+                    self.style.to_dwrite(),
+                    self.stretch.to_dwrite(),
+                    self.size,
+                    "en-US",    // TODO
+                    &mut text_format,
+                )
+                .and_some(text_format)?;
+            Ok(TextFormat(text_format))
         }
     }
 }
@@ -232,7 +243,7 @@ impl From<DWRITE_LINE_METRICS> for LineMetrics {
             newline_length: m.newlineLength,
             height: m.height as f64,
             baseline: m.baseline as f64,
-            is_trimmed: m.isTrimmed != 0,
+            is_trimmed: m.isTrimmed.as_bool(),
         }
     }
 }
@@ -312,32 +323,32 @@ pub struct HitTestTextPosition {
 /// Text layout.
 #[derive(Clone)]
 pub struct TextLayout {
-    ptr: ComPtr<IDWriteTextLayout>,
+    text_layout: IDWriteTextLayout,
     text: String,
 }
 
 impl TextLayout {
-    pub fn new(
-        platform: &Platform,
-        text: &str,
-        format: &TextFormat,
-        layout_box_size: Size,
-    ) -> Result<TextLayout> {
-        let wtext = text.to_wide();
+    pub fn new(text: &str, format: &TextFormat, layout_box_size: Size) -> Result<TextLayout> {
+        let platform = Platform::instance();
+        let mut wtext : Vec<u16> = text.encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
 
         unsafe {
-            let mut ptr = ptr::null_mut();
-            let hr = platform.0.dwrite_factory.CreateTextLayout(
-                wtext.as_ptr(),
-                wtext.len() as u32,
-                format.0.as_raw(),
-                layout_box_size.width as f32,
-                layout_box_size.height as f32,
-                &mut ptr,
-            );
-
-            error::wrap_hr(hr, || TextLayout {
-                ptr: ComPtr::from_raw(ptr),
+            let mut text_layout = None;
+            let text_layout = platform
+                .dwrite_factory
+                .CreateTextLayout(
+                    PWSTR(wtext.as_mut_ptr()), // oversight?
+                    wtext.len() as u32,
+                    &format.0,
+                    layout_box_size.width as f32,
+                    layout_box_size.height as f32,
+                    &mut text_layout,
+                )
+                .and_some(text_layout)?;
+            Ok(TextLayout {
+                text_layout,
                 text: text.to_owned(),
             })
         }
@@ -345,19 +356,21 @@ impl TextLayout {
 
     pub fn hit_test_point(&self, point: Point) -> Result<HitTestPoint> {
         unsafe {
-            let mut is_trailing_hit = 0;
-            let mut is_inside = 0;
+            let mut is_trailing_hit = BOOL::default();
+            let mut is_inside = BOOL::default();
             let mut metrics = MaybeUninit::<DWRITE_HIT_TEST_METRICS>::uninit();
-            let hr = self.ptr.HitTestPoint(
-                point.x as f32,
-                point.y as f32,
-                &mut is_trailing_hit,
-                &mut is_inside,
-                metrics.as_mut_ptr(),
-            );
+            self.text_layout
+                .HitTestPoint(
+                    point.x as f32,
+                    point.y as f32,
+                    &mut is_trailing_hit,
+                    &mut is_inside,
+                    metrics.as_mut_ptr(),
+                )
+                .ok()?;
 
-            error::wrap_hr(hr, || HitTestPoint {
-                is_trailing_hit: is_trailing_hit != 0,
+            Ok(HitTestPoint {
+                is_trailing_hit: is_trailing_hit.as_bool(),
                 metrics: HitTestMetrics::from_dwrite(&metrics.assume_init(), &self.text),
             })
         }
@@ -366,8 +379,8 @@ impl TextLayout {
     /// Returns the layout maximum size.
     pub fn max_size(&self) -> Size {
         unsafe {
-            let w = self.ptr.GetMaxWidth();
-            let h = self.ptr.GetMaxHeight();
+            let w = self.text_layout.GetMaxWidth();
+            let h = self.text_layout.GetMaxHeight();
             Size::new(w as f64, h as f64)
         }
     }
@@ -382,15 +395,17 @@ impl TextLayout {
             let mut point_x = 0.0f32;
             let mut point_y = 0.0f32;
             let mut metrics = MaybeUninit::<DWRITE_HIT_TEST_METRICS>::uninit();
-            let hr = self.ptr.HitTestTextPosition(
-                pos_utf16 as u32,
-                FALSE,
-                &mut point_x,
-                &mut point_y,
-                metrics.as_mut_ptr(),
-            );
+            self.text_layout
+                .HitTestTextPosition(
+                    pos_utf16 as u32,
+                    false,
+                    &mut point_x,
+                    &mut point_y,
+                    metrics.as_mut_ptr(),
+                )
+                .ok()?;
 
-            error::wrap_hr(hr, || HitTestTextPosition {
+            Ok(HitTestTextPosition {
                 metrics: HitTestMetrics::from_dwrite(&metrics.assume_init(), &self.text),
                 point: Point::new(point_x as f64, point_y as f64),
             })
@@ -409,8 +424,9 @@ impl TextLayout {
 
             // first call to determine the count
             let mut text_metrics = MaybeUninit::<DWRITE_TEXT_METRICS>::uninit();
-            let hr = self.ptr.GetMetrics(text_metrics.as_mut_ptr());
-            assert!(SUCCEEDED(hr));
+            self.text_layout
+                .GetMetrics(text_metrics.as_mut_ptr())
+                .ok()?;
             let text_metrics = text_metrics.assume_init();
 
             // "A good value to use as an initial value for maxHitTestMetricsCount
@@ -422,7 +438,7 @@ impl TextLayout {
             let mut actual_metrics_count = 0;
             let mut metrics = Vec::with_capacity(max_metrics_count as usize);
 
-            let mut hr = self.ptr.HitTestTextRange(
+            let hr = self.text_layout.HitTestTextRange(
                 text_position as u32,
                 text_length as u32,
                 origin.x as f32,
@@ -431,36 +447,35 @@ impl TextLayout {
                 max_metrics_count,
                 &mut actual_metrics_count,
             );
-            if hr == HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER) {
+            if hr == HRESULT::from_win32(WIN32_ERROR::ERROR_INSUFFICIENT_BUFFER.0) {
                 // reallocate with sufficient space
                 metrics = Vec::with_capacity(actual_metrics_count as usize);
                 max_metrics_count = actual_metrics_count;
-                hr = self.ptr.HitTestTextRange(
-                    text_position as u32,
-                    text_length as u32,
-                    origin.x as f32,
-                    origin.y as f32,
-                    metrics.as_mut_ptr(),
-                    max_metrics_count,
-                    &mut actual_metrics_count,
-                );
+                self.text_layout
+                    .HitTestTextRange(
+                        text_position as u32,
+                        text_length as u32,
+                        origin.x as f32,
+                        origin.y as f32,
+                        metrics.as_mut_ptr(),
+                        max_metrics_count,
+                        &mut actual_metrics_count,
+                    )
+                    .ok()?;
             }
 
-            error::wrap_hr(hr, || {
-                metrics.set_len(actual_metrics_count as usize);
-                metrics
-                    .into_iter()
-                    .map(|m| HitTestMetrics::from_dwrite(&m, &self.text))
-                    .collect()
-            })
+            metrics.set_len(actual_metrics_count as usize);
+            Ok(metrics
+                .into_iter()
+                .map(|m| HitTestMetrics::from_dwrite(&m, &self.text))
+                .collect())
         }
     }
 
     pub fn metrics(&self) -> TextMetrics {
         unsafe {
             let mut metrics = MaybeUninit::<DWRITE_TEXT_METRICS>::uninit();
-            let hr = self.ptr.GetMetrics(metrics.as_mut_ptr());
-            assert!(SUCCEEDED(hr));
+            self.text_layout.GetMetrics(metrics.as_mut_ptr()).unwrap();
             metrics.assume_init().into()
         }
     }
@@ -469,22 +484,19 @@ impl TextLayout {
         unsafe {
             let mut line_count = 1;
             let mut metrics = Vec::with_capacity(line_count as usize);
-            let mut hr = self
-                .ptr
-                .GetLineMetrics(metrics.as_mut_ptr(), line_count, &mut line_count);
+            let hr =
+                self.text_layout
+                    .GetLineMetrics(metrics.as_mut_ptr(), line_count, &mut line_count);
 
-            if hr == HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER) {
+            if hr == HRESULT::from_win32(WIN32_ERROR::ERROR_INSUFFICIENT_BUFFER.0) {
                 // reallocate with sufficient space
                 metrics = Vec::with_capacity(line_count as usize);
-                hr = self
-                    .ptr
-                    .GetLineMetrics(metrics.as_mut_ptr(), line_count, &mut line_count);
+                self.text_layout
+                    .GetLineMetrics(metrics.as_mut_ptr(), line_count, &mut line_count)
+                    .unwrap();
             }
 
-            assert!(SUCCEEDED(hr));
-
             metrics.set_len(line_count as usize);
-
             metrics.into_iter().map(|m| m.into()).collect()
         }
     }
@@ -520,7 +532,9 @@ impl TextLayout {
     {
         let range = self.to_utf16_text_range(range);
         unsafe {
-            self.ptr.SetFontWeight(weight.to_dwrite(), range);
+            self.text_layout
+                .SetFontWeight(weight.to_dwrite(), range)
+                .unwrap();
         }
     }
 
@@ -530,11 +544,13 @@ impl TextLayout {
     {
         let range = self.to_utf16_text_range(range);
         unsafe {
-            self.ptr.SetDrawingEffect(effect.to_iunknown(), range);
+            self.text_layout
+                .SetDrawingEffect(effect.to_iunknown(), range)
+                .unwrap();
         }
     }
 
-    pub fn as_raw(&self) -> *mut IDWriteTextLayout {
-        self.ptr.as_raw()
+    pub(crate) fn as_raw(&self) -> &IDWriteTextLayout {
+        &self.text_layout
     }
 }

@@ -1,22 +1,23 @@
 //! Direct2D render target
 use crate::{
     drawing::{
-        brush::Brush, mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, Dip, DipLength,
-        PathGeometry, Point, Px, Rect, Transform,
+        brush::Brush, mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, PathGeometry, Point,
+        Rect, Transform,
     },
-    error::{check_hr, Error},
     text::TextLayout,
 };
 use bitflags::bitflags;
-use log::error;
-use std::{mem, mem::MaybeUninit, ptr};
-use winapi::{
-    shared::winerror::SUCCEEDED,
-    um::{d2d1::*, d2d1_1::*, d2d1effects::*, dcommon::*},
+use std::mem::MaybeUninit;
+use tracing::error;
+use crate::bindings::Windows::Win32::Direct2D::{
+    ID2D1Bitmap1, ID2D1DeviceContext, ID2D1DrawingStateBlock, ID2D1Factory,
+    ID2D1Geometry, ID2D1Image, D2D1_ANTIALIAS_MODE, D2D1_COMPOSITE_MODE,
+    D2D1_DRAWING_STATE_DESCRIPTION, D2D1_DRAW_TEXT_OPTIONS, D2D1_INTERPOLATION_MODE,
+    D2D1_ROUNDED_RECT, D2D1_TEXT_ANTIALIAS_MODE,
 };
-use wio::com::ComPtr;
+use windows::Interface;
 
-pub struct DrawingState(ComPtr<ID2D1DrawingStateBlock>);
+pub struct DrawingState(ID2D1DrawingStateBlock);
 
 pub enum SaveState {
     DrawingState {
@@ -27,37 +28,34 @@ pub enum SaveState {
 }
 
 pub trait Geometry {
-    fn as_raw_geometry(&self) -> *mut ID2D1Geometry;
+    fn as_raw_geometry(&self) -> ID2D1Geometry;
 }
 
 impl Geometry for PathGeometry {
-    fn as_raw_geometry(&self) -> *mut ID2D1Geometry {
-        self.0.as_raw().cast()
+    fn as_raw_geometry(&self) -> ID2D1Geometry {
+        self.0.clone().into()
     }
 }
 
 /// Trait implemented by types that can be
 pub trait Image {
-    fn as_raw_image(&self) -> *mut ID2D1Image;
+    fn as_raw_image(&self) -> ID2D1Image;
 }
 
-pub trait Effect {
-    fn output_image(&self) -> *mut ID2D1Effect;
-}
-
-pub struct Bitmap(pub(crate) ComPtr<ID2D1Bitmap1>);
+pub struct Bitmap(pub(crate) ID2D1Bitmap1);
 
 impl Image for Bitmap {
-    fn as_raw_image(&self) -> *mut ID2D1Image {
-        self.0.as_raw().cast()
+    fn as_raw_image(&self) -> ID2D1Image {
+        self.0.cast().unwrap()
     }
 }
 
 bitflags! {
+    #[derive(Default)]
     pub struct DrawTextOptions: u32 {
-        const NO_SNAP = D2D1_DRAW_TEXT_OPTIONS_NO_SNAP;
-        const CLIP = D2D1_DRAW_TEXT_OPTIONS_CLIP;
-        const ENABLE_COLOR_FONT = D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT;
+        const NO_SNAP = D2D1_DRAW_TEXT_OPTIONS::D2D1_DRAW_TEXT_OPTIONS_NO_SNAP.0;
+        const CLIP = D2D1_DRAW_TEXT_OPTIONS::D2D1_DRAW_TEXT_OPTIONS_CLIP.0;
+        const ENABLE_COLOR_FONT = D2D1_DRAW_TEXT_OPTIONS::D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT.0;
     }
 }
 
@@ -83,12 +81,20 @@ pub enum InterpolationMode {
 impl InterpolationMode {
     fn to_d2d(self) -> D2D1_INTERPOLATION_MODE {
         match self {
-            InterpolationMode::NearestNeighbor => D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-            InterpolationMode::Linear => D2D1_INTERPOLATION_MODE_LINEAR,
-            InterpolationMode::Cubic => D2D1_INTERPOLATION_MODE_CUBIC,
-            InterpolationMode::MultiSampleLinear => D2D1_INTERPOLATION_MODE_MULTI_SAMPLE_LINEAR,
-            InterpolationMode::Anisotropic => D2D1_INTERPOLATION_MODE_ANISOTROPIC,
-            InterpolationMode::HighQualityCubic => D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
+            InterpolationMode::NearestNeighbor => {
+                D2D1_INTERPOLATION_MODE::D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR
+            }
+            InterpolationMode::Linear => D2D1_INTERPOLATION_MODE::D2D1_INTERPOLATION_MODE_LINEAR,
+            InterpolationMode::Cubic => D2D1_INTERPOLATION_MODE::D2D1_INTERPOLATION_MODE_CUBIC,
+            InterpolationMode::MultiSampleLinear => {
+                D2D1_INTERPOLATION_MODE::D2D1_INTERPOLATION_MODE_MULTI_SAMPLE_LINEAR
+            }
+            InterpolationMode::Anisotropic => {
+                D2D1_INTERPOLATION_MODE::D2D1_INTERPOLATION_MODE_ANISOTROPIC
+            }
+            InterpolationMode::HighQualityCubic => {
+                D2D1_INTERPOLATION_MODE::D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC
+            }
         }
     }
 }
@@ -113,26 +119,34 @@ pub enum CompositeMode {
 impl CompositeMode {
     fn to_d2d(self) -> D2D1_COMPOSITE_MODE {
         match self {
-            CompositeMode::SourceOver => D2D1_COMPOSITE_MODE_SOURCE_OVER,
-            CompositeMode::DestinationOver => D2D1_COMPOSITE_MODE_DESTINATION_OVER,
-            CompositeMode::SourceIn => D2D1_COMPOSITE_MODE_SOURCE_IN,
-            CompositeMode::DestinationIn => D2D1_COMPOSITE_MODE_DESTINATION_IN,
-            CompositeMode::SourceOut => D2D1_COMPOSITE_MODE_SOURCE_OUT,
-            CompositeMode::DestinationOut => D2D1_COMPOSITE_MODE_DESTINATION_OUT,
-            CompositeMode::SourceAtop => D2D1_COMPOSITE_MODE_SOURCE_ATOP,
-            CompositeMode::DestinationAtop => D2D1_COMPOSITE_MODE_DESTINATION_ATOP,
-            CompositeMode::Xor => D2D1_COMPOSITE_MODE_XOR,
-            CompositeMode::Plus => D2D1_COMPOSITE_MODE_PLUS,
-            CompositeMode::SourceCopy => D2D1_COMPOSITE_MODE_SOURCE_COPY,
-            CompositeMode::BoundedSourceCopy => D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY,
-            CompositeMode::MaskInvert => D2D1_COMPOSITE_MODE_MASK_INVERT,
+            CompositeMode::SourceOver => D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_SOURCE_OVER,
+            CompositeMode::DestinationOver => {
+                D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_DESTINATION_OVER
+            }
+            CompositeMode::SourceIn => D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_SOURCE_IN,
+            CompositeMode::DestinationIn => D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_DESTINATION_IN,
+            CompositeMode::SourceOut => D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_SOURCE_OUT,
+            CompositeMode::DestinationOut => {
+                D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_DESTINATION_OUT
+            }
+            CompositeMode::SourceAtop => D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_SOURCE_ATOP,
+            CompositeMode::DestinationAtop => {
+                D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_DESTINATION_ATOP
+            }
+            CompositeMode::Xor => D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_XOR,
+            CompositeMode::Plus => D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_PLUS,
+            CompositeMode::SourceCopy => D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_SOURCE_COPY,
+            CompositeMode::BoundedSourceCopy => {
+                D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY
+            }
+            CompositeMode::MaskInvert => D2D1_COMPOSITE_MODE::D2D1_COMPOSITE_MODE_MASK_INVERT,
         }
     }
 }
 
 pub struct DrawContext {
-    pub(crate) ctx: ComPtr<ID2D1DeviceContext>,
-    pub(crate) factory: ComPtr<ID2D1Factory>,
+    pub(crate) ctx: ID2D1DeviceContext,
+    pub(crate) factory: ID2D1Factory,
     save_states: Vec<SaveState>,
     transform: Transform,
 }
@@ -147,8 +161,8 @@ impl DrawContext {
     /// Acquires (shared) ownership of the device context.
     /// A target must already be set on the DC with SetTarget.
     pub unsafe fn from_device_context(
-        factory: ComPtr<ID2D1Factory>,
-        device_context: ComPtr<ID2D1DeviceContext>,
+        factory: ID2D1Factory,
+        device_context: ID2D1DeviceContext,
     ) -> DrawContext {
         device_context.BeginDraw();
         DrawContext {
@@ -169,15 +183,15 @@ impl DrawContext {
 
     pub(crate) fn end_draw(&mut self) {
         unsafe {
-            let mut tag1 = MaybeUninit::<D2D1_TAG>::uninit();
-            let mut tag2 = MaybeUninit::<D2D1_TAG>::uninit();
+            let mut tag1 = MaybeUninit::<u64>::uninit();
+            let mut tag2 = MaybeUninit::<u64>::uninit();
             let hr = self.ctx.EndDraw(tag1.as_mut_ptr(), tag2.as_mut_ptr());
             let tag1 = tag1.assume_init();
             let tag2 = tag2.assume_init();
-            if !SUCCEEDED(hr) {
+            if hr.is_err() {
                 error!(
                     "EndDraw error: {}, tags=({},{})",
-                    Error::HResultError(hr),
+                    windows::Error::from(hr),
                     tag1,
                     tag2
                 );
@@ -191,8 +205,10 @@ impl DrawContext {
     /// Safety: use a closure instead?
     pub fn push_axis_aligned_clip(&mut self, rect: Rect) {
         unsafe {
-            self.ctx
-                .PushAxisAlignedClip(&mk_rect_f(rect), D2D1_ANTIALIAS_MODE_ALIASED);
+            self.ctx.PushAxisAlignedClip(
+                &mk_rect_f(rect),
+                D2D1_ANTIALIAS_MODE::D2D1_ANTIALIAS_MODE_ALIASED,
+            );
         }
     }
 
@@ -204,24 +220,27 @@ impl DrawContext {
 
     pub fn save(&mut self) {
         unsafe {
-            let mut ptr = ptr::null_mut();
             let desc = D2D1_DRAWING_STATE_DESCRIPTION {
-                antialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
-                textAntialiasMode: D2D1_TEXT_ANTIALIAS_MODE_DEFAULT,
+                antialiasMode: D2D1_ANTIALIAS_MODE::D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                textAntialiasMode: D2D1_TEXT_ANTIALIAS_MODE::D2D1_TEXT_ANTIALIAS_MODE_DEFAULT,
                 tag1: 0,
                 tag2: 0,
                 transform: mk_matrix_3x2(&Transform::identity()),
             };
-            let hr = self
+
+            let mut dsb = None;
+            let dsb = self
                 .factory
-                .CreateDrawingStateBlock(&desc, ptr::null_mut(), &mut ptr);
-            assert!(SUCCEEDED(hr));
+                .CreateDrawingStateBlock(&desc, None, &mut dsb)
+                .and_some(dsb)
+                .unwrap();
+
             //trace!("SaveDrawingState");
-            self.ctx.SaveDrawingState(ptr);
+            self.ctx.SaveDrawingState(&dsb);
             let transform = self.transform;
             self.save_states.push(SaveState::DrawingState {
                 transform,
-                drawing_state: DrawingState(ComPtr::from_raw(ptr)),
+                drawing_state: DrawingState(dsb),
             });
         }
     }
@@ -236,7 +255,7 @@ impl DrawContext {
                     //trace!("RestoreDrawingState");
                     unsafe {
                         self.transform = transform;
-                        self.ctx.RestoreDrawingState(drawing_state.0.as_raw());
+                        self.ctx.RestoreDrawingState(&drawing_state.0);
                     }
                     break;
                 }
@@ -273,20 +292,16 @@ impl DrawContext {
             self.ctx.DrawTextLayout(
                 mk_point_f(origin),
                 text_layout.as_raw(),
-                default_fill_brush.as_raw_brush(),
-                text_options.bits,
+                default_fill_brush.to_base_brush(),
+                D2D1_DRAW_TEXT_OPTIONS::from(text_options.bits),
             );
         }
     }
 
     pub fn draw_rectangle(&mut self, rect: Rect, brush: &Brush, width: f64) {
         unsafe {
-            self.ctx.DrawRectangle(
-                &mk_rect_f(rect),
-                brush.as_raw_brush(),
-                width as f32,
-                ptr::null_mut(),
-            );
+            self.ctx
+                .DrawRectangle(&mk_rect_f(rect), brush.to_base_brush(), width as f32, None);
         }
     }
 
@@ -305,19 +320,15 @@ impl DrawContext {
                 radiusY: radius_y as f32,
             };
 
-            self.ctx.DrawRoundedRectangle(
-                &rounded_rect,
-                brush.as_raw_brush(),
-                width as f32,
-                ptr::null_mut(),
-            );
+            self.ctx
+                .DrawRoundedRectangle(&rounded_rect, brush.to_base_brush(), width as f32, None);
         }
     }
 
     pub fn fill_rectangle(&mut self, rect: Rect, brush: &Brush) {
         unsafe {
             self.ctx
-                .FillRectangle(&mk_rect_f(rect), brush.as_raw_brush());
+                .FillRectangle(&mk_rect_f(rect), brush.to_base_brush());
         }
     }
 
@@ -335,7 +346,7 @@ impl DrawContext {
                 radiusY: radius_y as f32,
             };
             self.ctx
-                .FillRoundedRectangle(&rounded_rect, brush.as_raw_brush());
+                .FillRoundedRectangle(&rounded_rect, brush.to_base_brush());
         }
     }
 
@@ -360,11 +371,8 @@ impl DrawContext {
 
     pub fn fill_geometry<G: Geometry>(&mut self, geometry: &G, brush: &Brush) {
         unsafe {
-            self.ctx.FillGeometry(
-                geometry.as_raw_geometry(),
-                brush.as_raw_brush(),
-                ptr::null_mut(),
-            );
+            self.ctx
+                .FillGeometry(geometry.as_raw_geometry(), brush.to_base_brush(), None);
         }
     }
 
@@ -372,9 +380,9 @@ impl DrawContext {
         unsafe {
             self.ctx.DrawGeometry(
                 geometry.as_raw_geometry(),
-                brush.as_raw_brush(),
+                brush.to_base_brush(),
                 width as f32,
-                ptr::null_mut(),
+                None,
             );
         }
     }

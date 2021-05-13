@@ -1,84 +1,77 @@
 //! Image file I/O (loading and decoding).
 
 use crate::{
+    bindings::Windows::Win32::{
+        WindowsImagingComponent::{
+            GUID_WICPixelFormat32bppPBGRA,
+            WICBitmapDitherType, WICBitmapPaletteType, WICDecodeOptions,
+        },
+    },
     drawing::{Bitmap, DrawContext},
-    error::{check_hr, Result},
+    error::Result,
     platform::Platform,
 };
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     ptr,
 };
-use thiserror::Error;
-use winapi::{
-    shared::winerror::HRESULT,
-    um::{d2d1::*, d2d1_1::*, wincodec::*, winnt::GENERIC_READ},
-};
-use wio::{com::ComPtr, wide::ToWide};
+use windows::Interface;
+use crate::bindings::Windows::Win32::SystemServices::GENERIC_READ;
 
-#[derive(Error, Debug)]
+/*#[derive(Error, Debug)]
 pub enum ImagingError {
     #[error("could not decode image `{path:?}`: {hr}")]
     DecoderError { path: PathBuf, hr: HRESULT },
-}
+}*/
 
-fn load_bitmap_from_file_internal(
-    platform: &Platform,
-    draw_ctx: &DrawContext,
-    path: &Path,
-) -> Result<Bitmap> {
-    let wic = &platform.0.wic_factory;
+fn load_bitmap_from_file_internal(draw_ctx: &DrawContext, path: &Path) -> Result<Bitmap> {
+    let platform = Platform::instance();
+    let wic = &platform.wic_factory;
     unsafe {
-        let mut decoder: *mut IWICBitmapDecoder = ptr::null_mut();
-        let wide_uri = path.to_wide_null();
-        let hr = wic.CreateDecoderFromFilename(
-            wide_uri.as_ptr(),
-            ptr::null_mut(),
-            GENERIC_READ,
-            WICDecodeMetadataCacheOnLoad,
-            &mut decoder,
-        );
-        check_hr(hr)?;
-        let decoder = ComPtr::from_raw(decoder);
+        let mut decoder = None;
+        let decoder = wic
+            .CreateDecoderFromFilename(
+                path.to_str().unwrap(),
+                ptr::null_mut(),
+                GENERIC_READ,
+                WICDecodeOptions::WICDecodeMetadataCacheOnLoad,
+                &mut decoder,
+            )
+            .and_some(decoder)?;
 
-        let mut source: *mut IWICBitmapFrameDecode = ptr::null_mut();
-        let hr = decoder.GetFrame(0, &mut source);
-        check_hr(hr)?;
-        let source = ComPtr::from_raw(source);
+        let mut source = None;
+        let source = decoder.GetFrame(0, &mut source).and_some(source)?;
 
-        let mut converter: *mut IWICFormatConverter = ptr::null_mut();
-        let hr = wic.CreateFormatConverter(&mut converter);
-        check_hr(hr)?;
-        let converter = ComPtr::from_raw(converter);
+        let mut converter = None;
+        let converter = wic
+            .CreateFormatConverter(&mut converter)
+            .and_some(converter)?;
 
-        let hr = converter.Initialize(
-            source.as_raw().cast(),
-            &GUID_WICPixelFormat32bppPBGRA,
-            WICBitmapDitherTypeNone,
-            ptr::null_mut(),
-            0.0,
-            WICBitmapPaletteTypeMedianCut,
-        );
-        check_hr(hr)?;
+        converter
+            .Initialize(
+                &source,
+                &GUID_WICPixelFormat32bppPBGRA as *const _ as *mut _, // *mut GUID? is it an oversight?
+                WICBitmapDitherType::WICBitmapDitherTypeNone,
+                None,
+                0.0,
+                WICBitmapPaletteType::WICBitmapPaletteTypeMedianCut,
+            )
+            .ok()?;
 
-        let mut bitmap: *mut ID2D1Bitmap1 = ptr::null_mut();
-        let hr = draw_ctx.ctx.CreateBitmapFromWicBitmap(
-            converter.as_raw().cast(),
-            ptr::null_mut(),
-            &mut bitmap,
-        );
-        check_hr(hr)?;
-        let bitmap = ComPtr::from_raw(bitmap);
+        let mut bitmap = None;
+        let bitmap = draw_ctx
+            .ctx
+            .CreateBitmapFromWicBitmap(&converter, ptr::null(), &mut bitmap)
+            .and_some(bitmap)?;
 
-        Ok(Bitmap(bitmap))
+        Ok(Bitmap(bitmap.cast().unwrap()))
     }
 }
 
 /// Loads a bitmap from a file for use with the specified draw context.
 pub fn load_bitmap_from_file<P: AsRef<Path>>(
-    platform: &Platform,
     draw_ctx: &DrawContext,
     path: P,
 ) -> Result<Bitmap> {
-    load_bitmap_from_file_internal(platform, draw_ctx, path.as_ref())
+    load_bitmap_from_file_internal(draw_ctx, path.as_ref())
 }

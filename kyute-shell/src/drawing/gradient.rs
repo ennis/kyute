@@ -1,13 +1,6 @@
 use crate::drawing::{
-    mk_color_f, mk_matrix_3x2, mk_point_f, Brush, Color, DrawContext, Point, Transform,
-};
-use palette::{Gradient, LinSrgba, Mix};
-use std::ptr;
-use winapi::{
-    shared::winerror::SUCCEEDED,
-    um::{d2d1::*, d2d1_1::*},
-};
-use wio::com::ComPtr;
+    mk_color_f, Color, DrawContext};
+use crate::bindings::Windows::Win32::Direct2D::{D2D1_GAMMA, D2D1_EXTEND_MODE, ID2D1GradientStopCollection1, D2D1_GRADIENT_STOP, D2D1_COLOR_SPACE, D2D1_BUFFER_PRECISION, D2D1_COLOR_INTERPOLATION_MODE};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ColorInterpolationMode {
@@ -20,8 +13,8 @@ pub enum ColorInterpolationMode {
 impl ColorInterpolationMode {
     fn to_d2d(self) -> D2D1_GAMMA {
         match self {
-            ColorInterpolationMode::GammaCorrect => D2D1_GAMMA_1_0,
-            ColorInterpolationMode::Gamma22 => D2D1_GAMMA_2_2,
+            ColorInterpolationMode::GammaCorrect => D2D1_GAMMA::D2D1_GAMMA_1_0,
+            ColorInterpolationMode::Gamma22 => D2D1_GAMMA::D2D1_GAMMA_2_2,
         }
     }
 }
@@ -36,22 +29,22 @@ pub enum ExtendMode {
 impl ExtendMode {
     fn to_d2d(self) -> D2D1_EXTEND_MODE {
         match self {
-            ExtendMode::Clamp => D2D1_EXTEND_MODE_CLAMP,
-            ExtendMode::Wrap => D2D1_EXTEND_MODE_WRAP,
-            ExtendMode::Mirror => D2D1_EXTEND_MODE_MIRROR,
+            ExtendMode::Clamp => D2D1_EXTEND_MODE::D2D1_EXTEND_MODE_CLAMP,
+            ExtendMode::Wrap => D2D1_EXTEND_MODE::D2D1_EXTEND_MODE_WRAP,
+            ExtendMode::Mirror => D2D1_EXTEND_MODE::D2D1_EXTEND_MODE_MIRROR,
         }
     }
 }
 
 #[derive(Clone)]
-pub struct GradientStopCollection(pub(crate) ComPtr<ID2D1GradientStopCollection1>);
+pub struct GradientStopCollection(pub(crate) ID2D1GradientStopCollection1);
 
 impl GradientStopCollection {
     /// Gamma-correct gradient
     pub fn new(
         ctx: &DrawContext,
         colors: &[(f64, Color)],
-        color_interpolation: ColorInterpolationMode,
+        _color_interpolation: ColorInterpolationMode,
         extend_mode: ExtendMode,
     ) -> Self {
         let gradient_stops: Vec<_> = colors
@@ -72,19 +65,18 @@ impl GradientStopCollection {
         gradientStopCollection1: *mut *mut ID2D1GradientStopCollection1,
         */
         unsafe {
-            let mut collection = ptr::null_mut();
-            let hr = ctx.ctx.CreateGradientStopCollection(
+            let mut collection = None;
+            let collection = ctx.ctx.CreateGradientStopCollection2(
                 gradient_stops.as_ptr(),
                 gradient_stops.len() as u32,
-                D2D1_COLOR_SPACE_SRGB,
-                D2D1_COLOR_SPACE_SRGB,
-                D2D1_BUFFER_PRECISION_32BPC_FLOAT,
+                D2D1_COLOR_SPACE::D2D1_COLOR_SPACE_SRGB,
+                D2D1_COLOR_SPACE::D2D1_COLOR_SPACE_SRGB,
+                D2D1_BUFFER_PRECISION::D2D1_BUFFER_PRECISION_32BPC_FLOAT,
                 extend_mode.to_d2d(),
-                D2D1_COLOR_INTERPOLATION_MODE_PREMULTIPLIED,
+                D2D1_COLOR_INTERPOLATION_MODE::D2D1_COLOR_INTERPOLATION_MODE_PREMULTIPLIED,
                 &mut collection,
-            );
-            assert!(SUCCEEDED(hr));
-            GradientStopCollection(ComPtr::from_raw(collection))
+            ).and_some(collection).unwrap();
+            GradientStopCollection(collection)
         }
     }
 }

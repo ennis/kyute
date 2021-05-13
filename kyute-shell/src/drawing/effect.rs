@@ -1,12 +1,5 @@
-use crate::{
-    drawing::{context::Image, Color, DrawContext},
-    error::check_hr,
-};
-use std::{mem, ptr};
-use winapi::um::{d2d1::*, d2d1_1::*, d2d1effects::*, dcommon::*};
-use wio::com::ComPtr;
 
-unsafe fn get_output_image(effect: &ComPtr<ID2D1Effect>) -> ComPtr<ID2D1Image> {
+/*unsafe fn get_output_image(effect: &ComPtr<ID2D1Effect>) -> ComPtr<ID2D1Image> {
     let mut output_image = ptr::null_mut();
     effect.GetOutput(&mut output_image);
     ComPtr::from_raw(output_image)
@@ -51,7 +44,7 @@ impl Image for FloodImage {
     fn as_raw_image(&self) -> *mut ID2D1Image {
         self.output_image.as_raw()
     }
-}
+}*/
 
 /*
 #[derive(Clone)]
