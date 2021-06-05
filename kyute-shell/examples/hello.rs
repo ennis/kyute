@@ -44,7 +44,7 @@ fn main() {
                 frame.finish();
 
                 // acquire the draw surface
-                draw_surface.
+                //draw_surface.
 
                 /*{
                     let mut dc = WindowDrawContext::new(&mut window);
