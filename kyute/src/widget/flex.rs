@@ -1,11 +1,11 @@
 use crate::{
-    event::{Event, MoveFocusDirection},
-    layout::{BoxConstraints, Measurements},
-    theme, BoxedWidget, Environment, EventCtx, LayoutCtx, Offset, PaintCtx, Point, Rect, Size,
-    TypedWidget, Visual, Widget, WidgetExt,
+    composable,
+    core2::{LayoutCtx, PaintCtx},
+    BoxConstraints, Environment, Event, EventCtx, LayoutItem, Measurements, Offset, Rect, Size,
+    Widget, WidgetPod,
 };
-use log::trace;
-use std::any::Any;
+use kyute_shell::drawing::Color;
+use tracing::trace;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Axis {
@@ -61,53 +61,46 @@ pub enum MainAxisSize {
     Max,
 }
 
-pub struct Flex<'a> {
+pub struct Flex {
     axis: Axis,
-    children: Vec<BoxedWidget<'a>>,
+    items: Vec<WidgetPod>,
 }
 
-impl<'a> Flex<'a> {
-    pub fn new(main_axis: Axis) -> Self {
-        Flex {
-            axis: main_axis,
-            children: Vec::new(),
+impl Flex {
+    #[composable(uncached)]
+    pub fn new(axis: Axis, items: Vec<WidgetPod>) -> WidgetPod<Flex> {
+        WidgetPod::new(Flex { axis, items })
+    }
+}
+
+impl Widget for Flex {
+    fn debug_name(&self) -> &str {
+        std::any::type_name::<Self>()
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &Event) {
+        for item in self.items.iter() {
+            item.event(ctx, event);
         }
     }
-
-    pub fn push(mut self, child: impl Widget + 'a) -> Self {
-        self.children.push(child.boxed());
-        self
-    }
-
-    pub fn push_boxed(mut self, child: BoxedWidget<'a>) -> Self {
-        self.children.push(child);
-        self
-    }
-}
-
-impl<'a> TypedWidget for Flex<'a> {
-    type Visual = FlexVisual;
 
     fn layout(
-        self,
-        context: &mut LayoutCtx,
-        previous_visual: Option<Box<FlexVisual>>,
-        constraints: &BoxConstraints,
-        env: Environment,
-    ) -> (Box<FlexVisual>, Measurements) {
-        let visual = previous_visual.unwrap_or_default();
-
+        &self,
+        ctx: &mut LayoutCtx,
+        constraints: BoxConstraints,
+        env: &Environment,
+    ) -> Measurements {
         let axis = self.axis;
 
-        // layout child nodes
-        let mut child_nodes = Vec::with_capacity(self.children.len());
-        for c in self.children.into_iter() {
-            child_nodes.push(context.emit_child(c, constraints, env.clone(), None));
-        }
-
-        let max_cross_axis_len = child_nodes
+        let item_measures: Vec<Measurements> = self
+            .items
             .iter()
-            .map(|(_, m)| axis.cross_len(m.size))
+            .map(|item| item.layout(ctx, constraints, env))
+            .collect();
+
+        let max_cross_axis_len = item_measures
+            .iter()
+            .map(|l| axis.cross_len(l.size()))
             .fold(0.0, f64::max);
 
         // preferred size of this flex: max size in axis direction, max elem width in cross-axis direction
@@ -118,18 +111,18 @@ impl<'a> TypedWidget for Flex<'a> {
 
         // distribute children
         let mut d = 0.0;
-        let spacing = env.get(theme::FlexSpacing);
-        for (id, m) in child_nodes.iter() {
-            let len = axis.main_len(m.size);
-            // offset children
+        //let spacing = env.get(theme::FlexSpacing);
+        let spacing = 1.0;
+
+        for i in 0..self.items.len() {
+            let len = axis.main_len(item_measures[i].size());
             let offset = match axis {
                 Axis::Vertical => Offset::new(0.0, d),
                 Axis::Horizontal => Offset::new(d, 0.0),
             };
-            context.set_child_offset(*id, offset);
+            self.items[i].set_child_offset(offset);
             d += len + spacing;
             d = d.ceil();
-            trace!("flex pos={}", d);
         }
 
         let size = match axis {
@@ -137,28 +130,13 @@ impl<'a> TypedWidget for Flex<'a> {
             Axis::Horizontal => Size::new(constraints.constrain_width(d), cross_axis_len),
         };
 
-        (visual, Measurements::new(size))
-    }
-}
-
-#[derive(Default)]
-pub struct FlexVisual;
-
-impl Visual for FlexVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
-        let bounds = ctx.bounds();
+        Measurements::new(size)
     }
 
-    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
-        unimplemented!()
-    }
-
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {}
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        ctx.clear(Color::new(0.1, 0.1, 0.3, 1.0));
+        for item in self.items.iter() {
+            item.paint(ctx, bounds, env);
+        }
     }
 }

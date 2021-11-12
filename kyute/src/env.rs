@@ -1,13 +1,19 @@
-use crate::{style::StyleCollection, BoxedWidget, SideOffsets};
-use kyute_shell::drawing::Color;
+use crate::{data::Data, SideOffsets, WidgetPod};
+use kyute_shell::{
+    drawing::Color,
+    text::{TextFormat, TextLayout},
+};
 use std::{
     any::{Any, TypeId},
     borrow::Borrow,
     collections::HashMap,
     fmt,
+    hash::{Hash, Hasher},
     marker::PhantomData,
     rc::Rc,
+    sync::Arc,
 };
+//use crate::style::StyleSet;
 
 /// A type that identifies a named value in an [`Environment`], of a particular type `T`.
 ///
@@ -15,132 +21,145 @@ use std::{
 /// types that cannot be created in const contexts. If we decide to remove compile-time default
 /// values for environment keys, then it might be cleaner to revert to representing keys with
 /// const `Key` values instead of `impl Key` types.
-pub trait Key<'a> {
-    type Value: EnvValue<'a>;
-    const NAME: &'static str;
-    fn default() -> Self::Value;
+#[derive(Debug, Eq, PartialEq)]
+pub struct EnvKey<T> {
+    key: &'static str,
+    _type: PhantomData<T>,
 }
 
-#[macro_export]
-macro_rules! impl_keys {
-    ($($(#[$outer:meta])* $name:ident : $valty:ty [$default:expr];)*) => {
-        $(
-            $(#[$outer])*
-            #[derive(Copy,Clone,Debug,Eq,PartialEq,Hash)]
-            pub struct $name;
+impl<T> Clone for EnvKey<T> {
+    fn clone(&self) -> Self {
+        EnvKey {
+            key: self.key,
+            _type: PhantomData,
+        }
+    }
+}
 
-            $(#[$outer])*
-            impl<'a> Key<'a> for $name {
-                const NAME: &'static str = stringify!($name);
-                type Value = $valty;
-                fn default() -> $valty {
-                    $default
-                }
-            }
-        )*
-    };
+impl<T> Copy for EnvKey<T> {}
+
+impl<T> EnvKey<T> {
+    pub const fn new(key: &'static str) -> EnvKey<T> {
+        EnvKey {
+            key,
+            _type: PhantomData,
+        }
+    }
 }
 
 /// Trait implemented by values that can be stored in an environment.
-pub trait EnvValue<'a>: Sized {
-    fn into_storage(self) -> EnvValueStorage;
-    fn try_from_storage(storage: &'a EnvValueStorage) -> Option<Self>;
+pub trait EnvValue: Sized + Any + Data {
+    fn as_any(&self) -> &dyn Any;
 }
 
-macro_rules! impl_env_value_builtin {
-    ($t:ty; $variant:ident) => {
-        impl<'a> EnvValue<'a> for $t {
-            fn into_storage(self) -> EnvValueStorage {
-                EnvValueStorage::$variant(self)
-            }
-            fn try_from_storage(storage: &'a EnvValueStorage) -> Option<Self> {
-                match storage {
-                    EnvValueStorage::$variant(x) => Some(*x),
-                    _ => None,
-                }
+macro_rules! impl_env_value {
+    ($t:ty) => {
+        impl EnvValue for $t {
+            fn as_any(&self) -> &dyn Any {
+                self
             }
         }
     };
 }
 
-impl_env_value_builtin!(bool; Bool);
-impl_env_value_builtin!(f64; F64);
-impl_env_value_builtin!(Color; Color);
-impl_env_value_builtin!(SideOffsets; SideOffsets);
+impl_env_value!(bool);
+impl_env_value!(f64);
+impl_env_value!(Color);
+impl_env_value!(String);
+impl_env_value!(SideOffsets);
+impl_env_value!(TextFormat);
+impl_env_value!(TextLayout);
 
-/// String slices in environment.
-impl<'a> EnvValue<'a> for &'a str {
-    fn into_storage(self) -> EnvValueStorage {
-        EnvValueStorage::String(self.to_string())
-    }
-
-    fn try_from_storage(storage: &'a EnvValueStorage) -> Option<Self> {
-        match storage {
-            EnvValueStorage::String(s) => Some(s.as_str()),
-            _ => None,
-        }
+impl<T: Any> EnvValue for Arc<T> {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
 #[derive(Clone)]
-pub struct Environment(Rc<EnvImpl>);
+pub struct Environment(Arc<EnvImpl>);
 
-pub enum EnvValueStorage {
-    Bool(bool),
-    F64(f64),
-    Color(Color),
-    SideOffsets(SideOffsets),
-    String(String),
-    Other(Box<dyn Any>),
+impl Data for Environment {
+    fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
 }
 
+impl Hash for Environment {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // reference semantics
+        (&*self.0 as *const EnvImpl).hash(state);
+    }
+}
+
+#[derive(Clone)]
 struct EnvImpl {
-    parent: Option<Rc<EnvImpl>>,
-    values: HashMap<&'static str, EnvValueStorage>,
+    parent: Option<Arc<EnvImpl>>,
+    values: HashMap<&'static str, Arc<dyn Any>>,
 }
-
-// <'a> Key<'a> => Value: &'a str, Value::Store = String
 
 impl EnvImpl {
-    fn get<'a, K: Key<'a>>(&'a self, key: K) -> K::Value {
+    fn get<T>(&self, key: EnvKey<T>) -> Option<T>
+    where
+        T: EnvValue,
+    {
         self.values
-            .get(K::NAME)
-            .map(|v| K::Value::try_from_storage(v).expect("unexpected type of environment value"))
-            .or_else(|| self.parent.as_ref().map(|parent| parent.get(key)))
-            .unwrap_or_else(|| K::default())
+            .get(key.key)
+            .map(|v| {
+                v.downcast_ref::<T>()
+                    .expect("unexpected type of environment value")
+                    .clone()
+            })
+            .or_else(|| self.parent.as_ref().and_then(|parent| parent.get(key)))
     }
 }
 
 impl Environment {
     /// Creates a new, empty environment.
     pub fn new() -> Environment {
-        Environment(Rc::new(EnvImpl {
+        Environment(Arc::new(EnvImpl {
             parent: None,
             values: HashMap::new(),
         }))
     }
 
     /// Creates a new environment that adds or overrides a given key.
-    pub fn add<'a, K: Key<'a>>(mut self, _key: K, value: K::Value) -> Environment {
-        match Rc::get_mut(&mut self.0) {
+    pub fn add<T>(mut self, key: EnvKey<T>, value: T) -> Environment
+    where
+        T: EnvValue,
+    {
+        match Arc::get_mut(&mut self.0) {
             Some(env) => {
-                env.values.insert(K::NAME, value.into_storage());
+                env.values.insert(key.key, Arc::new(value));
                 self
             }
             None => {
                 let mut child_env = EnvImpl {
-                    // note: the compiler seems smart enough to understand that the borrow of `self.0` is not held here?
                     parent: Some(self.0.clone()),
                     values: HashMap::new(),
                 };
-                child_env.values.insert(K::NAME, value.into_storage());
-                Environment(Rc::new(child_env))
+                child_env.values.insert(key.key, Arc::new(value));
+                Environment(Arc::new(child_env))
             }
         }
     }
 
     /// Returns the value corresponding to the key.
-    pub fn get<'a, K: Key<'a>>(&'a self, key: K) -> K::Value {
+    pub fn get<T>(&self, key: EnvKey<T>) -> Option<T>
+    where
+        T: EnvValue,
+    {
         self.0.get(key)
+    }
+
+    pub fn merged(&self, mut with: Environment) -> Environment {
+        let inner = Arc::make_mut(&mut with.0);
+        if let Some(parent) = inner.parent.take() {
+            let tmp = self.merged(Environment(parent));
+            inner.parent = Some(tmp.0);
+        } else {
+            inner.parent = Some(self.0.clone())
+        }
+        with
     }
 }

@@ -22,7 +22,7 @@ pub(crate) enum BrushImpl {
 pub struct Brush(pub(crate) BrushImpl);
 
 impl Brush {
-    pub fn new_solid_color(ctx: &DrawContext, color: Color) -> Brush {
+    pub fn solid_color(ctx: &DrawContext, color: Color) -> Brush {
         unsafe {
             let brush_props = D2D1_BRUSH_PROPERTIES {
                 opacity: 1.0, // FIXME what's the difference with color.a?
@@ -40,7 +40,7 @@ impl Brush {
         }
     }
 
-    pub fn new_linear_gradient(
+    pub fn linear_gradient(
         ctx: &DrawContext,
         stops: &GradientStopCollection,
         start: Point,
@@ -87,13 +87,13 @@ pub trait IntoBrush {
 
 impl IntoBrush for LinSrgba<f32> {
     fn into_brush(self, ctx: &DrawContext) -> Brush {
-        Brush::new_solid_color(ctx, Color::from_linear(self))
+        Brush::solid_color(ctx, Color::from_linear(self))
     }
 }
 
 impl IntoBrush for LinSrgb<f32> {
     fn into_brush(self, ctx: &DrawContext) -> Brush {
-        Brush::new_solid_color(
+        Brush::solid_color(
             ctx,
             Alpha {
                 color: Srgb::from_linear(self),

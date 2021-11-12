@@ -1,19 +1,19 @@
-pub mod brush;
-pub mod context;
-pub mod effect;
-pub mod gradient;
-pub mod path;
+//pub mod brush;
+//pub mod context;
+//pub mod effect;
+//pub mod gradient;
+//pub mod path;
 
-use crate::bindings::Windows::{
-    Foundation::Numerics::Matrix3x2,
-    Win32::Direct2D::{D2D1_COLOR_F, D2D_POINT_2F, D2D_RECT_F},
-};
-pub use brush::{Brush, IntoBrush};
-pub use context::{
-    Bitmap, CompositeMode, DrawContext, DrawTextOptions, InterpolationMode, PrimitiveBlend,
-};
-pub use gradient::{ColorInterpolationMode, ExtendMode, GradientStopCollection};
-pub use path::PathGeometry;
+//use crate::bindings::Windows::{
+//    Foundation::Numerics::Matrix3x2,
+//    Win32::Direct2D::{D2D1_COLOR_F, D2D_POINT_2F, D2D_RECT_F},
+//};
+//pub use brush::{Brush, IntoBrush};
+//pub use context::{
+//    Bitmap, CompositeMode, DrawContext, DrawTextOptions, InterpolationMode, PrimitiveBlend,
+//};
+//pub use gradient::{ColorInterpolationMode, ExtendMode, GradientStopCollection};
+//pub use path::PathGeometry;
 
 /// The DIP (device-independent pixel) unit.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -41,9 +41,11 @@ pub trait IntoDip {
 
 /// Common graphics types
 pub type Size = euclid::Size2D<f64, Dip>;
+pub type PhysicalSize = euclid::Size2D<f64, Px>;
 pub type Rect = euclid::Rect<f64, Dip>;
 pub type Offset = euclid::Vector2D<f64, Dip>;
 pub type Point = euclid::Point2D<f64, Dip>;
+pub type PhysicalPoint = euclid::Point2D<f64, Px>;
 pub type Transform = euclid::Transform2D<f64, Dip, Dip>;
 pub type Color = palette::Srgba;
 pub type Length = DipLength;
@@ -58,7 +60,7 @@ impl RectExt for Rect {
     }
 }
 
-pub(crate) fn mk_color_f(color: Color) -> D2D1_COLOR_F {
+/*pub(crate) fn mk_color_f(color: Color) -> D2D1_COLOR_F {
     let (r, g, b, a) = color.into_components();
     D2D1_COLOR_F { r, g, b, a }
 }
@@ -90,3 +92,4 @@ pub(crate) fn mk_matrix_3x2(t: &Transform) -> Matrix3x2 {
         M32: t.m32 as f32,
     }
 }
+*/

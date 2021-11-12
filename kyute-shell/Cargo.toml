@@ -8,8 +8,9 @@ edition = "2018"
 
 [dependencies]
 # windowing
+anyhow = "1.0.43"
 winit = { path = "../ext/winit" }
-euclid = "0.20.8"   # basic 2D geometric types
+euclid = "0.22"   # basic 2D geometric types
 svgtypes = "0.5.0"  # SVG path parser and path segment definitions
 palette = "0.5.0"   # colors
 bitflags = "1.2.1"
@@ -18,8 +19,9 @@ once_cell = "1.7.2"
 raw-window-handle = "0.3.3"
 tracing = "0.1.25"
 thiserror = "1.0.24"
-graal = { path = "../graal" }
+graal = { path = "../../artifice/graal" }
 windows = "0.9.1"
+skia-safe = { version = "0.43.0", features = ["vulkan", "textlayout"] }
 
 [build-dependencies]
 windows = "0.9.1"

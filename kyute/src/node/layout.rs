@@ -1,15 +1,6 @@
 //! Layout and reconciliation pass.
-use super::NodeData;
-use crate::{
-    application::AppCtx,
-    env,
-    layout::BoxConstraints,
-    node,
-    node::{NodeArena, NodeTree},
-    state::NodeKey,
-    widget::BoxedWidget,
-    Environment, Measurements, Offset, Point, Size, Widget,
-};
+use super::Node;
+use crate::{application::AppCtx, env, layout::BoxConstraints, node, node::{NodeArena, NodeTree}, state::NodeKey, widget::BoxedWidget, Environment, Measurements, Offset, Point, Size, Widget, Rect};
 use generational_indextree::{Node, NodeEdge, NodeId};
 use kyute_shell::{platform::Platform, window::PlatformWindow};
 use std::{any::TypeId, rc::Rc};
@@ -104,7 +95,7 @@ impl<'a> LayoutCtx<'a> {
             (id, prev_visual)
         } else {
             // no match, create a new node
-            let id = self.arena.new_node(NodeData::new(widget_key, env.clone()));
+            let id = self.arena.new_node(Node::new(widget_key, env.clone()));
             (id, None)
         };
 
@@ -196,15 +187,15 @@ impl<'a> LayoutCtx<'a> {
 }
 
 impl NodeTree {
-    /// Runs the layout and update passes on this tree.
+
+    /// Lays out a node subtree in the specified bounds.
     pub(crate) fn layout(
         &mut self,
-        widget: BoxedWidget,
+        layout_root: NodeId,
+        bounds: Rect,
         size: Size,
         root_constraints: &BoxConstraints,
         env: Environment,
-        app_ctx: &mut AppCtx,
-        event_loop: &EventLoopWindowTarget<()>,
     ) {
         let mut cursor = NodeCursor::Before(self.root);
         let mut layout_ctx = LayoutCtx {

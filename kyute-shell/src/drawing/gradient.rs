@@ -1,6 +1,10 @@
-use crate::drawing::{
-    mk_color_f, Color, DrawContext};
-use crate::bindings::Windows::Win32::Direct2D::{D2D1_GAMMA, D2D1_EXTEND_MODE, ID2D1GradientStopCollection1, D2D1_GRADIENT_STOP, D2D1_COLOR_SPACE, D2D1_BUFFER_PRECISION, D2D1_COLOR_INTERPOLATION_MODE};
+use crate::{
+    bindings::Windows::Win32::Direct2D::{
+        ID2D1GradientStopCollection1, D2D1_BUFFER_PRECISION, D2D1_COLOR_INTERPOLATION_MODE,
+        D2D1_COLOR_SPACE, D2D1_EXTEND_MODE, D2D1_GAMMA, D2D1_GRADIENT_STOP,
+    },
+    drawing::{mk_color_f, Color, DrawContext},
+};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ColorInterpolationMode {
@@ -66,16 +70,20 @@ impl GradientStopCollection {
         */
         unsafe {
             let mut collection = None;
-            let collection = ctx.ctx.CreateGradientStopCollection2(
-                gradient_stops.as_ptr(),
-                gradient_stops.len() as u32,
-                D2D1_COLOR_SPACE::D2D1_COLOR_SPACE_SRGB,
-                D2D1_COLOR_SPACE::D2D1_COLOR_SPACE_SRGB,
-                D2D1_BUFFER_PRECISION::D2D1_BUFFER_PRECISION_32BPC_FLOAT,
-                extend_mode.to_d2d(),
-                D2D1_COLOR_INTERPOLATION_MODE::D2D1_COLOR_INTERPOLATION_MODE_PREMULTIPLIED,
-                &mut collection,
-            ).and_some(collection).unwrap();
+            let collection = ctx
+                .ctx
+                .CreateGradientStopCollection2(
+                    gradient_stops.as_ptr(),
+                    gradient_stops.len() as u32,
+                    D2D1_COLOR_SPACE::D2D1_COLOR_SPACE_SRGB,
+                    D2D1_COLOR_SPACE::D2D1_COLOR_SPACE_SRGB,
+                    D2D1_BUFFER_PRECISION::D2D1_BUFFER_PRECISION_32BPC_FLOAT,
+                    extend_mode.to_d2d(),
+                    D2D1_COLOR_INTERPOLATION_MODE::D2D1_COLOR_INTERPOLATION_MODE_PREMULTIPLIED,
+                    &mut collection,
+                )
+                .and_some(collection)
+                .unwrap();
             GradientStopCollection(collection)
         }
     }

@@ -1,64 +1,59 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
 use crate::{
-    event::Event, renderer::LineSegment, style::PaletteIndex, theme, widget::frame::FrameVisual,
-    BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect, Size,
-    TypedWidget, Visual, Widget,
+    core::Widget,
+    event::{Event, PointerEventKind},
+    style::State,
+    theme, BoxConstraints, CompositionCtx, Environment, EventCtx, LayoutCtx, Measurements,
+    PaintCtx, Point, Rect, SideOffsets, Size, WidgetDelegate,
 };
-use num_traits::{Float, PrimInt};
+use kyute_shell::drawing::{Brush, Color};
 use std::any::Any;
 
+// TODO just pass f64 directly as the action?
+#[derive(Copy, Clone, Debug)]
+enum SliderAction {
+    ValueChanged(f64),
+}
+
 /// Utility class representing a slider track on which a knob can move.
-pub struct SliderTrack {
-    track: LineSegment,
-    divisions: Option<u32>,
-    // in 0..1
-    value: f64,
+struct SliderTrack {
+    start: Point,
+    end: Point,
 }
 
 impl SliderTrack {
-    fn new(track: LineSegment, divisions: Option<u32>, initial_value: f64) -> SliderTrack {
-        SliderTrack {
-            track,
-            divisions,
-            value: initial_value,
-        }
-    }
-
-    /// Returns the current value of the slider.
-    fn value(&self) -> f64 {
-        self.value
-    }
-
-    /// Ignores divisions.
-    fn set_value(&mut self, value: f64) {
-        self.value = value.min(1.0).max(0.0);
+    fn new(start: Point, end: Point) -> SliderTrack {
+        SliderTrack { start, end }
     }
 
     /// Returns the value that would be set if the cursor was at the given position.
-    fn value_from_position(&self, pos: Point) -> f64 {
+    fn value_from_position(&self, pos: Point, min: f64, max: f64) -> f64 {
         /*let hkw = 0.5 * get_knob_width(track_width, divisions, min_knob_width);
         // at the end of the sliders, there are two "dead zones" of width kw / 2 that
         // put the slider all the way left or right
         let x = pos.x.max(hkw).min(track_width-hkw-1.0);*/
 
         // project the point on the track line
-        let v = self.track.end - self.track.start;
-        let c = pos - self.track.start;
+        let v = self.end - self.start;
+        let c = pos - self.start;
         let x = v.normalize().dot(c);
         let track_len = v.length();
-
-        if let Some(div) = self.divisions {
-            let div = div as f64;
-            (div * x / track_len).round() / div
-        } else {
-            dbg!(x / track_len)
-        }
+        (min + (max - min) * x / track_len).clamp(min, max)
     }
 
     /// Returns the position of the knob on the track.
-    fn knob_position(&self) -> Point {
-        self.track.start + (self.track.end - self.track.start) * self.value
+    fn knob_position(&self, value: f64) -> Point {
+        self.start + (self.end - self.start) * value
+    }
+}
+
+impl Default for SliderTrack {
+    fn default() -> Self {
+        SliderTrack {
+            start: Default::default(),
+            end: Default::default(),
+        }
     }
 }
 
@@ -81,134 +76,78 @@ impl SliderTrack {
     ctx.fill_rectangle(knob, &knob_brush);
 }*/
 
-pub struct SliderVisual {
+struct Slider {
     track: SliderTrack,
+    value: f64,
     min: f64,
     max: f64,
 }
 
-impl Default for SliderVisual {
-    fn default() -> Self {
-        SliderVisual {
-            track: SliderTrack::new(
-                LineSegment {
-                    start: Point::zero(),
-                    end: Point::zero(),
-                },
-                None,
-                0.0,
-            ),
-            min: 0.0,
-            max: 0.0,
+impl Slider {
+    pub fn new(min: f64, max: f64, value: f64) -> Slider {
+        Slider {
+            // endpoints calculated during layout
+            track: Default::default(),
+            value: value.clamp(min, max),
+            min,
+            max,
         }
     }
-}
 
-impl SliderVisual {
-    fn update_position(&mut self, cursor: Point) {
-        let v = self.track.value_from_position(cursor);
-        dbg!(v);
-        self.track.set_value(v);
+    fn update_value(&mut self, cursor: Point) {
+        self.value = self.track.value_from_position(cursor, self.min, self.max);
+    }
+
+    /// Returns the current value, normalized between 0 and 1.
+    fn value_norm(&self) -> f64 {
+        (self.value - self.min) / (self.max - self.min)
+    }
+
+    fn set_value(&mut self, value: f64) {
+        self.value = value;
     }
 }
 
-impl Visual for SliderVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
-        let bounds = ctx.bounds();
-        let track_y = env.get(theme::SliderTrackY);
-        let track_h = env.get(theme::SliderTrackHeight);
-        let knob_w = env.get(theme::SliderKnobWidth);
-        let knob_h = env.get(theme::SliderKnobHeight);
-        let knob_y = env.get(theme::SliderKnobY);
-
-        let track_x_start = self.track.track.start.x;
-        let track_x_end = self.track.track.end.x;
-
-        // track bounds
-        let track_bounds = Rect::new(
-            Point::new(dbg!(track_x_start), track_y - 0.5 * track_h),
-            Size::new(track_x_end - track_x_start, track_h),
-        );
-
-        let kpos = self.track.knob_position();
-        let kx = kpos.x.round() + 0.5;
-
-        let knob_bounds = Rect::new(
-            Point::new(kx - 0.5 * knob_w, track_y - knob_y),
-            Size::new(knob_w, knob_h),
-        );
-
-        // track
-        ctx.draw_styled_box_in_bounds("slider_track", track_bounds, PaletteIndex(0));
-
-        ctx.draw_styled_box_in_bounds("slider_knob", knob_bounds, PaletteIndex(0));
+impl WidgetDelegate for Slider {
+    fn debug_name(&self) -> &str {
+        std::any::type_name::<Self>()
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
+    fn event(&mut self, ctx: &mut EventCtx, children: &mut [Widget], event: &Event) {
         match event {
-            Event::PointerOver(_) | Event::PointerOut(_) => {
-                ctx.request_redraw();
-            }
-            Event::PointerDown(p) => {
-                self.update_position(p.pointer.position);
-                ctx.capture_pointer();
-                ctx.request_focus();
-                ctx.request_redraw();
-            }
-            Event::PointerMove(p) => {
-                if ctx.is_capturing_pointer() {
-                    self.update_position(p.position);
+            Event::Pointer(p) => match p.kind {
+                PointerEventKind::PointerOver | PointerEventKind::PointerOut => {
                     ctx.request_redraw();
                 }
-            }
-            Event::PointerUp(p) => {}
+                PointerEventKind::PointerDown => {
+                    let new_value = self.track.value_from_position(p.position, self.min, self.max);
+                    ctx.emit_action(SliderAction::ValueChanged(new_value));
+                    ctx.capture_pointer();
+                    ctx.request_focus();
+                }
+                PointerEventKind::PointerMove => {
+                    if ctx.is_capturing_pointer() {
+                        let new_value = self.track.value_from_position(p.position, self.min, self.max);
+                        ctx.emit_action(SliderAction::ValueChanged(new_value));
+                    }
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
 
-    fn hit_test(&mut self, point: Point, bounds: Rect) -> bool {
-        unimplemented!()
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-/// Floating-point sliders.
-pub struct Slider<T> {
-    value: T,
-    min: T,
-    max: T,
-    divisions: Option<u32>,
-}
-
-impl<T: Float> TypedWidget for Slider<T> {
-    type Visual = SliderVisual;
-
-    fn key(&self) -> Option<u64> {
-        None
-    }
-
     fn layout(
-        self,
-        context: &mut LayoutCtx,
-        previous_visual: Option<Box<SliderVisual>>,
+        &mut self,
+        ctx: &mut LayoutCtx,
+        children: &mut [Widget],
         constraints: &BoxConstraints,
-        env: Environment,
-    ) -> (Box<SliderVisual>, Measurements) {
-        // last position
-        let last_value = previous_visual.map(|v| v.track.value);
-
-        let height = env.get(theme::SliderHeight);
-        let knob_width = env.get(theme::SliderKnobWidth);
-        let knob_height = env.get(theme::SliderKnobHeight);
-
-        let padding = env.get(theme::SliderPadding);
+        _env: &Environment,
+    ) -> Measurements {
+        let height = 14.0; //env.get(theme::SliderHeight);
+        let knob_width = 11.0; //env.get(theme::SliderKnobWidth);
+        let knob_height = 11.0; //env.get(theme::SliderKnobHeight);
+        let padding = SideOffsets::new_all_same(0.0);
 
         // fixed height
         let size = Size::new(
@@ -217,8 +156,7 @@ impl<T: Float> TypedWidget for Slider<T> {
         );
 
         // position the slider track inside the layout
-        let inner_bounds =
-            Rect::new(Point::origin(), size).inflate(padding.horizontal(), padding.vertical());
+        let inner_bounds = Rect::new(Point::origin(), size).inner_rect(padding);
 
         // calculate knob width
         //let knob_width = get_knob_width(inner_bounds.size.width, self.divisions, min_knob_width);
@@ -228,53 +166,94 @@ impl<T: Float> TypedWidget for Slider<T> {
         let y = 0.5 * size.height;
 
         // center vertically, add some padding on the sides to account for padding and half-knob size
-        let slider_track = LineSegment {
-            start: Point::new(inner_bounds.min_x() + hkw, y),
-            end: Point::new(inner_bounds.max_x() - hkw, y),
-        };
+        self.track.start = Point::new(inner_bounds.min_x() + hkw, y);
+        self.track.end = Point::new(inner_bounds.max_x() - hkw, y);
 
-        let visual = SliderVisual {
-            track: SliderTrack {
-                value: last_value.unwrap_or_default(),
-                track: slider_track,
-                divisions: self.divisions,
-            },
-            min: 0.0,
-            max: 0.0,
-        };
-
-        (
-            Box::new(visual),
-            Measurements {
-                size,
-                baseline: None,
-            },
-        )
-    }
-}
-
-impl<T: Float> Slider<T> {
-    pub fn new(value: T) -> Slider<T> {
-        Slider {
-            min: T::zero(),
-            max: T::one(),
-            divisions: None,
-            value,
+        Measurements {
+            size,
+            baseline: None,
         }
     }
 
-    pub fn min(mut self, min: T) -> Self {
-        self.min = min;
-        self
-    }
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx,
+        children: &mut [Widget],
+        bounds: Rect,
+        env: &Environment,
+    ) {
+        let track_y = env.get(theme::SLIDER_TRACK_Y).unwrap_or_default();
+        let track_h = env.get(theme::SLIDER_TRACK_HEIGHT).unwrap_or_default();
+        let knob_w = env.get(theme::SLIDER_KNOB_WIDTH).unwrap_or_default();
+        let knob_h = env.get(theme::SLIDER_KNOB_HEIGHT).unwrap_or_default();
+        let knob_y = env.get(theme::SLIDER_KNOB_Y).unwrap_or_default();
+        let track_style = env.get(theme::SLIDER_TRACK_STYLE).unwrap();
+        let knob_style = env.get(theme::SLIDER_KNOB_STYLE).unwrap();
 
-    pub fn max(mut self, max: T) -> Self {
-        self.max = max;
-        self
-    }
+        let track_x_start = self.track.start.x;
+        let track_x_end = self.track.end.x;
 
-    pub fn divisions(mut self, divisions: u32) -> Self {
-        self.divisions = Some(divisions);
+        // track bounds
+        let track_bounds = Rect::new(
+            Point::new(track_x_start, track_y - 0.5 * track_h),
+            Size::new(track_x_end - track_x_start, track_h),
+        );
+
+        let kpos = self.track.knob_position(self.value_norm());
+        let kx = kpos.x.round() + 0.5;
+
+        let knob_bounds = Rect::new(
+            Point::new(kx - 0.5 * knob_w, track_y - knob_y),
+            Size::new(knob_w, knob_h),
+        );
+
+        // track
+        track_style.draw_box(ctx, &track_bounds, State::empty());
+        knob_style.draw_box(ctx, &knob_bounds, State::empty());
+    }
+}
+
+
+#[derive(Copy, Clone, Debug)]
+pub struct SliderResult(Option<SliderAction>);
+
+impl SliderResult {
+    pub fn on_value_change(self, f: impl FnOnce(f64)) -> Self {
+        match &self.0 {
+            None => {}
+            Some(SliderAction::ValueChanged(value)) => f(*value),
+        }
         self
     }
+}
+
+/// Displays a slider widget.
+///
+/// Sliders can be used to pick a numeric value in a specified range.
+///
+/// # Arguments
+/// * `min` - lower bound of the slider range
+/// * `max` - upper bound of the slider range
+/// * `value` - current value of the slider.
+///
+/// # Return value
+/// A `SliderResult` object containing a possible followup action. See [`SliderResult`] for more information.
+///
+/// # Example
+/// ```rust
+/// // pick a value between 0.0 and 10.0.
+/// slider(cx, 0.0, 10.0, *current_value)
+///     .on_value_change(|new_value| *current_value = new_value);
+/// ```
+pub fn slider(cx: &mut CompositionCtx, min: f64, max: f64, value: f64) -> SliderResult {
+    cx.enter(0);
+    let action = cx.emit_node(
+        |cx| Slider::new(min, max, value),
+        |cx, slider| {
+            slider.set_value(value);
+        },
+        |_| {},
+    );
+    cx.exit();
+    SliderResult(action.cast())
 }

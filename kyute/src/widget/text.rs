@@ -1,107 +1,86 @@
+//! Text elements
 use crate::{
-    event::Event,
-    layout::{BoxConstraints, Measurements},
-    theme, Environment, EventCtx, LayoutCtx, PaintCtx, Point, Rect, TypedWidget, Visual, Widget,
+    composable, env::Environment, event::Event, BoxConstraints, EventCtx, LayoutCtx, LayoutItem,
+    Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetPod,
 };
-use generational_indextree::NodeId;
 use kyute_shell::{
-    drawing::{Brush, Color, DrawTextOptions, IntoBrush},
+    skia as sk,
     text::{TextFormatBuilder, TextLayout},
 };
-use log::trace;
-use std::any::Any;
+use std::cell::RefCell;
 
-pub struct TextVisual {
-    text: String,
-    text_layout: TextLayout,
-}
-
-impl Visual for TextVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
-        let text_brush = Brush::new_solid_color(ctx, Color::new(0.92, 0.92, 0.92, 1.0));
-        ctx.draw_text_layout(
-            Point::origin(),
-            &self.text_layout,
-            &text_brush,
-            DrawTextOptions::empty(),
-        )
-    }
-
-    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
-        false
-    }
-    fn event(&mut self, _ctx: &mut EventCtx, _event: &Event) {}
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-/// Text element.
+#[derive(Clone)]
 pub struct Text {
     text: String,
-}
-
-impl TypedWidget for Text {
-    type Visual = TextVisual;
-
-    fn key(&self) -> Option<u64> {
-        None
-    }
-
-    fn layout(
-        self,
-        context: &mut LayoutCtx,
-        previous_visual: Option<Box<Self::Visual>>,
-        constraints: &BoxConstraints,
-        env: Environment,
-    ) -> (Box<Self::Visual>, Measurements) {
-        let font_name = env.get(theme::FontName);
-        let font_size = env.get(theme::FontSize);
-
-        // TODO re-creating a TextFormat every time might be inefficient; verify the cost of
-        // creating many TextFormats
-        let text_format = TextFormatBuilder::new(context.platform())
-            .size(font_size as f32)
-            .family(font_name)
-            .build()
-            .expect("failed to create text format");
-
-        // TODO check for changes instead of re-creating from scratch every time
-        let text_layout = TextLayout::new(
-            context.platform(),
-            &self.text,
-            &text_format,
-            constraints.biggest(),
-        )
-        .unwrap();
-
-        // round size to nearest device pixel
-        let text_size = text_layout.metrics().bounds.size.ceil();
-
-        let baseline = text_layout
-            .line_metrics()
-            .first()
-            .map(|m| m.baseline as f64);
-
-        let measurements = Measurements {
-            size: text_size,
-            baseline,
-        };
-
-        let visual = TextVisual {
-            text: self.text,
-            text_layout,
-        };
-
-        (Box::new(visual), measurements)
-    }
+    text_blob: RefCell<Option<sk::TextBlob>>,
 }
 
 impl Text {
-    pub fn new(text: impl Into<String>) -> Text {
-        Text { text: text.into() }
+    #[composable]
+    pub fn new(text: String) -> WidgetPod<Text> {
+        WidgetPod::new(Text {
+            text,
+            text_blob: RefCell::new(None),
+        })
+    }
+}
+
+impl Widget for Text {
+    fn debug_name(&self) -> &str {
+        std::any::type_name::<Self>()
+    }
+
+    fn event(&self, _ctx: &mut EventCtx, _event: &Event) {}
+
+    fn layout(
+        &self,
+        _ctx: &mut LayoutCtx,
+        constraints: BoxConstraints,
+        _env: &Environment,
+    ) -> Measurements {
+        //let font_name = "Consolas";
+        let font_size = 12;
+
+        let mut font: sk::Font = sk::Font::new(sk::Typeface::default(), Some(font_size));
+        font.set_subpixel(true);
+        font.set_hinting(sk::FontHinting::Full);
+        font.set_edging(sk::font::Edging::SubpixelAntiAlias);
+        let text_blob = sk::TextBlob::from_str(&self.text, &font).unwrap();
+        let paint: sk::Paint = sk::Paint::new(sk::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+        let (_, bounds) = font.measure_str(&self.text, Some(&paint));
+        let bounds = Rect {
+            origin: Point::new(bounds.left, bounds.top),
+            size: Size::new(bounds.right - bounds.left, bounds.bottom - bounds.top),
+        };
+
+        // round size to nearest device pixel
+        let size = bounds.size.ceil();
+
+        // TODO baseline
+        /*let baseline = text_layout
+        .line_metrics()
+        .first()
+        .map(|m| m.baseline as f64);*/
+
+        self.text_blob.replace(Some(text_blob));
+        Measurements {
+            size,
+            baseline: None, // TODO
+            is_window: false,
+        }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, _env: &Environment) {
+        let text_blob = self.text_blob.borrow();
+
+        if let Some(ref text_blob) = &*text_blob {
+            let mut paint: sk::Paint = sk::Paint::new(sk::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
+            paint.set_anti_alias(true);
+            ctx.canvas
+                .draw_text_blob(&text_blob, sk::Point::new(0.0, 0.0), &paint);
+            ctx.canvas.clear(sk::Color4f::new(0.1, 0.2, 0.7, 1.0));
+        } else {
+            tracing::warn!("text layout wasn't calculated before paint")
+        }
     }
 }

@@ -1,34 +1,42 @@
 //! Windows-specific UI stuff.
-use crate::bindings::Windows::Win32::{
-    Com::{CoCreateInstance, CoInitialize, CLSCTX},
-    Direct2D::{
-        D2D1CreateFactory, ID2D1Device, ID2D1Factory1, D2D1_FACTORY_OPTIONS,
-        D2D1_FACTORY_TYPE,
+use crate::{
+    bindings::Windows::Win32::{
+        Com::{CoCreateInstance, CoInitialize, CLSCTX},
+        Direct2D::{
+            D2D1CreateFactory, ID2D1Device, ID2D1DeviceContext, ID2D1Factory1, D2D1_DEBUG_LEVEL,
+            D2D1_DEVICE_CONTEXT_OPTIONS, D2D1_FACTORY_OPTIONS, D2D1_FACTORY_TYPE,
+        },
+        Direct3D11::{
+            D3D11CreateDevice, ID3D11Device5, D3D11_CREATE_DEVICE_FLAG, D3D11_SDK_VERSION,
+            D3D_DRIVER_TYPE, D3D_FEATURE_LEVEL,
+        },
+        DirectWrite::{DWriteCreateFactory, IDWriteFactory, DWRITE_FACTORY_TYPE},
+        Dxgi::{
+            CreateDXGIFactory2, IDXGIDevice, IDXGIFactory3, DXGI_ADAPTER_DESC1,
+            DXGI_ERROR_NOT_FOUND,
+        },
+        KeyboardAndMouseInput::GetDoubleClickTime,
+        WindowsImagingComponent::{CLSID_WICImagingFactory2, IWICImagingFactory2},
     },
-    Direct3D11::{
-        D3D11CreateDevice, ID3D11Device5, D3D11_CREATE_DEVICE_FLAG,
-        D3D11_SDK_VERSION, D3D_DRIVER_TYPE, D3D_FEATURE_LEVEL,
-    },
-    DirectWrite::{DWriteCreateFactory, IDWriteFactory, DWRITE_FACTORY_TYPE},
-    Dxgi::{
-        CreateDXGIFactory2, IDXGIDevice, IDXGIFactory3, DXGI_ADAPTER_DESC1, DXGI_ERROR_NOT_FOUND,
-    },
-    WindowsImagingComponent::{CLSID_WICImagingFactory2, IWICImagingFactory2},
+    winit::event_loop::EventLoop,
 };
 use once_cell::sync::OnceCell;
 use palette::encoding::pixel::RawPixel;
 use std::{
+    cell::RefCell,
     ffi::OsString,
     mem::MaybeUninit,
     ops::Deref,
     os::raw::c_void,
     ptr,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 use windows::Interface;
-use crate::bindings::Windows::Win32::Direct2D::D2D1_DEBUG_LEVEL;
-use crate::bindings::Windows::Win32::KeyboardAndMouseInput::GetDoubleClickTime;
+use winit::event_loop::EventLoopWindowTarget;
 
 /// Mutex-protected and ref-counted alias to `graal::Context`.
 pub type GpuContext = Arc<Mutex<graal::Context>>;
@@ -37,8 +45,21 @@ macro_rules! sync_com_ptr_wrapper {
     ($wrapper:ident ( $iface:ident ) ) => {
         #[derive(Clone)]
         pub(crate) struct $wrapper(pub(crate) $iface);
-        // thread-safe according to MSDN
         unsafe impl Sync for $wrapper {} // ok to send &I across threads
+        unsafe impl Send for $wrapper {} // ok to send I across threads
+        impl Deref for $wrapper {
+            type Target = $iface;
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+    };
+}
+
+macro_rules! send_com_ptr_wrapper {
+    ($wrapper:ident ( $iface:ident ) ) => {
+        #[derive(Clone)]
+        pub(crate) struct $wrapper(pub(crate) $iface);
         unsafe impl Send for $wrapper {} // ok to send I across threads
         impl Deref for $wrapper {
             type Target = $iface;
@@ -65,6 +86,7 @@ sync_com_ptr_wrapper! { D2D1Factory1(ID2D1Factory1) }
 sync_com_ptr_wrapper! { DWriteFactory(IDWriteFactory) }
 sync_com_ptr_wrapper! { D2D1Device(ID2D1Device) }
 sync_com_ptr_wrapper! { WICImagingFactory2(IWICImagingFactory2) }
+send_com_ptr_wrapper! { D2D1DeviceContext(ID2D1DeviceContext) }
 
 /// Encapsulates various platform-specific application services.
 ///
@@ -72,7 +94,7 @@ sync_com_ptr_wrapper! { WICImagingFactory2(IWICImagingFactory2) }
 /// to the screen.
 ///
 // all of this must be either directly Sync, or wrapped in a mutex, or wrapped in a main-thread-only wrapper.
-pub struct Platform {
+pub(crate) struct PlatformImpl {
     pub(crate) gpu_context: GpuContext,
     pub(crate) d3d11_device: D3D11Device, // thread safe
     //pub(crate) d3d12_device: D3D12Device,  // thread safe
@@ -81,23 +103,68 @@ pub struct Platform {
     pub(crate) d2d_factory: D2D1Factory1,
     pub(crate) dwrite_factory: DWriteFactory,
     pub(crate) d2d_device: D2D1Device,
+    // FIXME: it's far too easy to clone the ID2D11DeviceContext accidentally and use it in a thread-unsafe way: maybe create it on-the-fly instead?
+    pub(crate) d2d_device_context: D2D1DeviceContext,
     pub(crate) wic_factory: WICImagingFactory2,
 }
 
-/// Platform singleton.
-static PLATFORM: OnceCell<Platform> = OnceCell::new();
+#[derive(Clone)]
+pub struct Platform(pub(crate) Arc<PlatformImpl>);
+
+thread_local! {
+    /// Platform singleton. Only accessible from the main thread, hence the `thread_local`.
+
+    // NOTE: we previously used `OnceCell` so that we could get a `&'static Platform` that lived for
+    // the duration of the application, but the destructor wasn't called. This has consequences on
+    // windows because the DirectX debug layers trigger panics when objects are leaked.
+    // Now we use shared ownership instead, and automatically release this global reference when
+    // `run` returns.
+    static PLATFORM: RefCell<Option<Platform>> = RefCell::new(None);
+}
+
+/// Global flag that tells whether there's an active `Platform` object in `PLATFORM`.
+static PLATFORM_CREATED: AtomicBool = AtomicBool::new(false);
 
 impl Platform {
-    /// Initializes platform-specific application state.
+    /// Initializes the application platform.
     ///
-    /// The platform instance will be tied to this thread (the "main thread").
-    pub fn init() -> &'static Platform {
-        // --- Create the graal context (implying a vulkan instance and device)
+    /// The platform will be tied to this thread (the "main thread").
+    pub fn new() -> anyhow::Result<Platform> {
+        // check that we don't already have an active platform, and acquire the global flag
+        PLATFORM_CREATED
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| anyhow::anyhow!("an application platform has already been created."))?;
 
+        // actually create the platform
+        let platform = Self::new_impl();
+
+        let platform = match platform {
+            Err(e) => {
+                // if creation failed, don't forget to release the global flag
+                PLATFORM_CREATED.store(false, Ordering::Release);
+                return Err(e.context("failed to create application platform"));
+            }
+            Ok(p) => p,
+        };
+
+        PLATFORM.with(|p| p.replace(Some(platform.clone())));
+        Ok(platform)
+    }
+
+    fn new_impl() -> anyhow::Result<Platform> {
+        // --- Application event loop ---
+        let event_loop = EventLoop::new();
+
+        // --- Create the graal context (implying a vulkan instance and device)
         // FIXME technically we need the target surface so we can pick a device that can
         // render to it. However, on most systems, all available devices can render to window surfaces,
         // so skip that for now.
         let gpu_context = graal::Context::new();
+
+        // FIXME technically we need the target surface so we can pick a device that can
+        // render to it. However, on most systems, all available devices can render to window surfaces,
+        // so skip that for now.
+        //let gpu_context = graal::Context::new();
 
         // ---------- DXGI Factory ----------
 
@@ -123,10 +190,15 @@ impl Platform {
             };
 
             use std::os::windows::ffi::OsStringExt;
-            let name = OsString::from_wide(&desc.Description[..]);
-            eprintln!(
-                "DXGI adapter info: name={}, LUID={:08x}{:08x}",
-                name.to_str().unwrap(),
+
+            let name = &desc.Description[..];
+            let name_len = name.iter().take_while(|&&c| c != 0).count();
+            let name = OsString::from_wide(&desc.Description[..name_len])
+                .to_string_lossy()
+                .into_owned();
+            tracing::info!(
+                "DXGI adapter: name={}, LUID={:08x}{:08x}",
+                name,
                 desc.AdapterLuid.HighPart,
                 desc.AdapterLuid.LowPart,
             );
@@ -167,10 +239,9 @@ impl Platform {
                 // ppImmediateContext:
                 &mut _d3d11_device_context,
             )
-            .ok()
-            .expect("D3D11CreateDevice failed");
+            .ok()?;
 
-            dbg!(feature_level);
+            tracing::info!("Direct3D feature level: {}", feature_level.0);
 
             (
                 D3D11Device(d3d11_device.unwrap().cast::<ID3D11Device5>().unwrap()),
@@ -239,10 +310,24 @@ impl Platform {
             D2D1Device(device)
         };
 
+        let d2d_device_context = unsafe {
+            let mut d2d_device_context = None;
+            D2D1DeviceContext(
+                d2d_device
+                    .0
+                    .CreateDeviceContext(
+                        D2D1_DEVICE_CONTEXT_OPTIONS::D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
+                        &mut d2d_device_context,
+                    )
+                    .and_some(d2d_device_context)
+                    .unwrap(),
+            )
+        };
+
         // ---------- Create the Windows Imaging Component (WIC) factory ----------
         let wic_factory = unsafe {
             CoInitialize(ptr::null_mut()).unwrap();
-            let wic : IWICImagingFactory2 = CoCreateInstance(
+            let wic: IWICImagingFactory2 = CoCreateInstance(
                 &CLSID_WICImagingFactory2,
                 None,
                 CLSCTX::CLSCTX_INPROC_SERVER,
@@ -251,35 +336,46 @@ impl Platform {
             WICImagingFactory2(wic)
         };
 
-        PLATFORM
-            .set(Platform {
-                gpu_context: Arc::new(Mutex::new(gpu_context)),
-                //d3d12_device,
-                d3d11_device,
-                //d3d11_device_context,
-                dxgi_factory,
-                dwrite_factory,
-                d2d_factory,
-                d2d_device,
-                wic_factory,
-            })
-            .ok()
-            .unwrap();
+        let platform_impl = PlatformImpl {
+            gpu_context: Arc::new(Mutex::new(gpu_context)),
+            //d3d12_device,
+            d3d11_device,
+            dxgi_factory,
+            dwrite_factory,
+            d2d_factory,
+            d2d_device,
+            d2d_device_context,
+            wic_factory,
+        };
 
-        PLATFORM.get().unwrap()
+        let platform = Platform(Arc::new(platform_impl));
+        Ok(platform)
     }
 
     /// Returns the global application object that was created by a call to `init`.
-    pub fn instance() -> &'static Platform {
-        PLATFORM
-            .get()
-            .expect("the platform instance was not initialized")
+    ///
+    /// # Panics
+    ///
+    /// Panics of no platform is active, or if called outside of the main thread, which is the thread
+    /// that called `Platform::new`.
+    pub fn instance() -> Platform {
+        PLATFORM.with(|p| p.borrow().clone()).expect(
+            "either the platform instance was not initialized, or not calling from the main thread",
+        )
     }
 
-    /// Returns the GPU context.
-    pub fn gpu_context(&self) -> &GpuContext {
-        &self.gpu_context
+    pub fn shutdown() {
+        PLATFORM.with(|p| p.replace(None));
     }
+
+    // issue: this returns different objects before and after `run` is called.
+    // bigger issue: an `&EventLoopWindowTarget` cannot be accessed without a lifetime, so
+    // we cannot call `Platform::event_loop` in a static context after `run` is called,
+    // which consumes the event loop object.
+    // This means that we must pass around the event loop stuff Fuck this shit already.
+    //pub fn event_loop(&self) -> &EventLoopWindowTarget<()> {
+    //    &self.0.event_loop
+    //}
 
     /// Returns the system double click time in milliseconds.
     pub fn double_click_time(&self) -> Duration {
@@ -288,4 +384,15 @@ impl Platform {
             Duration::from_millis(ms as u64)
         }
     }
+
+    /// Returns the GPU context.
+    pub fn gpu_context(&self) -> &GpuContext {
+        &self.0.gpu_context
+    }
+
+   /* pub fn run() {
+        PLATFORM.with(|p| {
+            p.borrow().unwrap().0.event_loop.run()
+        })
+    }*/
 }

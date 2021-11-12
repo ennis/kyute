@@ -1,20 +1,21 @@
 //! Direct2D render target
 use crate::{
+    bindings::Windows::Win32::Direct2D::{
+        ID2D1Bitmap1, ID2D1DeviceContext, ID2D1DrawingStateBlock, ID2D1Factory1, ID2D1Geometry,
+        ID2D1Image, D2D1_ANTIALIAS_MODE, D2D1_COMPOSITE_MODE, D2D1_DRAWING_STATE_DESCRIPTION,
+        D2D1_DRAW_TEXT_OPTIONS, D2D1_INTERPOLATION_MODE, D2D1_ROUNDED_RECT,
+        D2D1_TEXT_ANTIALIAS_MODE,
+    },
     drawing::{
         brush::Brush, mk_color_f, mk_matrix_3x2, mk_point_f, mk_rect_f, Color, PathGeometry, Point,
         Rect, Transform,
     },
+    platform::D2D1DeviceContext,
     text::TextLayout,
 };
 use bitflags::bitflags;
-use std::mem::MaybeUninit;
+use std::{mem::MaybeUninit, sync::MutexGuard};
 use tracing::error;
-use crate::bindings::Windows::Win32::Direct2D::{
-    ID2D1Bitmap1, ID2D1DeviceContext, ID2D1DrawingStateBlock, ID2D1Factory,
-    ID2D1Geometry, ID2D1Image, D2D1_ANTIALIAS_MODE, D2D1_COMPOSITE_MODE,
-    D2D1_DRAWING_STATE_DESCRIPTION, D2D1_DRAW_TEXT_OPTIONS, D2D1_INTERPOLATION_MODE,
-    D2D1_ROUNDED_RECT, D2D1_TEXT_ANTIALIAS_MODE,
-};
 use windows::Interface;
 
 pub struct DrawingState(ID2D1DrawingStateBlock);
@@ -146,7 +147,7 @@ impl CompositeMode {
 
 pub struct DrawContext {
     pub(crate) ctx: ID2D1DeviceContext,
-    pub(crate) factory: ID2D1Factory,
+    pub(crate) factory: ID2D1Factory1,
     save_states: Vec<SaveState>,
     transform: Transform,
 }
@@ -160,8 +161,13 @@ impl Drop for DrawContext {
 impl DrawContext {
     /// Acquires (shared) ownership of the device context.
     /// A target must already be set on the DC with SetTarget.
-    pub unsafe fn from_device_context(
-        factory: ID2D1Factory,
+    ///
+    /// # Safety contract:
+    /// TODO :
+    /// - device context not used on another thread?
+    /// - called on main thread?
+    pub(crate) unsafe fn from_device_context(
+        factory: ID2D1Factory1,
         device_context: ID2D1DeviceContext,
     ) -> DrawContext {
         device_context.BeginDraw();
@@ -267,7 +273,7 @@ impl DrawContext {
     }
 
     pub fn transform(&mut self, transform: &Transform) {
-        self.transform = self.transform.post_transform(transform);
+        self.transform = self.transform.then(transform);
         unsafe {
             self.ctx.SetTransform(&mk_matrix_3x2(&self.transform));
         }

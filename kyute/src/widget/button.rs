@@ -1,143 +1,105 @@
 use crate::{
-    env,
-    event::Event,
-    layout::{align_boxes, Alignment, BoxConstraints, Measurements},
-    renderer::ButtonState,
-    style, theme,
-    visual::Visual,
-    widget::{BoxedWidget, Text, TypedWidget, Widget, WidgetExt},
-    Environment, EventCtx, LayoutCtx, PaintCtx, Point, Rect, SideOffsets, Size,
+    align_boxes, composable,
+    core2::{EventCtx, LayoutCtx, PaintCtx},
+    event::PointerEventKind,
+    widget::Text,
+    Alignment, BoxConstraints, Cache, Environment, Event, Key, LayoutItem, Measurements, Rect,
+    SideOffsets, Size, Widget, WidgetPod,
 };
-use euclid::default::SideOffsets2D;
-use generational_indextree::NodeId;
-use kyute_shell::drawing::{
-    gradient::{ColorInterpolationMode, ExtendMode, GradientStopCollection},
-    Color, DrawContext, IntoBrush,
-};
-use palette::{Blend, LinSrgb, LinSrgba, Srgb};
-use std::any::{Any, TypeId};
+use kyute_shell::drawing::{Brush, Color};
+use std::{cell::Cell, convert::TryFrom, sync::Arc};
+use kyute_shell::skia as sk;
 
-/// Node visual for a button.
-pub struct ButtonVisual {
-    bg_color: Color,
-    border_color: Color,
-    on_click: Option<Box<dyn FnMut(&mut EventCtx)>>,
+
+#[derive(Clone)]
+pub struct Button {
+    label: WidgetPod<Text>,
+    clicked: (bool, Key<bool>),
 }
 
-impl Default for ButtonVisual {
-    fn default() -> Self {
-        ButtonVisual {
-            bg_color: Default::default(),
-            border_color: Default::default(),
-            on_click: None,
-        }
+impl Button {
+    /// Creates a new button with the specified label.
+    #[composable]
+    pub fn new(label: String) -> WidgetPod<Button> {
+        WidgetPod::new(Button {
+            label: Text::new(label),
+            clicked: Cache::state(|| false),
+        })
+    }
+
+    /// Returns whether this button has been clicked.
+    pub fn clicked(&self) -> bool {
+        self.clicked.0
     }
 }
 
-impl Visual for ButtonVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
-        ctx.draw_styled_box("button", style::PaletteIndex(0));
+impl Widget for Button {
+    fn debug_name(&self) -> &str {
+        std::any::type_name::<Self>()
     }
 
-    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
-        false
-    }
-
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
+    fn event(&self, ctx: &mut EventCtx, event: &Event) {
         match event {
-            Event::PointerDown(p) => {
-                if let Some(on_click) = &mut self.on_click {
-                    (on_click)(ctx);
+            Event::Pointer(p) => match p.kind {
+                PointerEventKind::PointerDown => {
+                    tracing::trace!("button clicked");
+                    ctx.set_state(self.clicked.1, true);
+                    ctx.request_focus();
+                    ctx.request_redraw();
+                    ctx.set_handled();
                 }
-                ctx.request_focus();
-                ctx.request_redraw();
-                ctx.set_handled();
-            }
-            Event::PointerOver(p) => ctx.request_redraw(),
-            Event::PointerOut(p) => ctx.request_redraw(),
+                PointerEventKind::PointerOver => {
+                    tracing::trace!("button PointerOver");
+                    ctx.request_redraw();
+                }
+                PointerEventKind::PointerOut => {
+                    tracing::trace!("button PointerOut");
+                    ctx.request_redraw();
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-/// A clickable push button with a text label.
-///
-/// This widget is influenced by the following style variables:
-/// - [`PADDING`](crate::style::PADDING): padding for the label inside the button.
-pub struct Button<'a> {
-    label: BoxedWidget<'a>,
-    on_click: Option<Box<dyn FnMut(&mut EventCtx)>>,
-}
-
-impl<'a> Button<'a> {
-    /// Creates a new button with the given text as the label.
-    pub fn new(label: impl Into<String>) -> Button<'a> {
-        Button {
-            label: Text::new(label).boxed(),
-            on_click: None,
-        }
-    }
-
-    pub fn on_click(mut self, on_click: impl FnMut(&mut EventCtx) + 'static) -> Button<'a> {
-        self.on_click = Some(Box::new(on_click));
-        self
-    }
-}
-
-//-----------------------------------------------------
-// Widget implementation
-impl<'a> TypedWidget for Button<'a> {
-    type Visual = ButtonVisual;
-
     fn layout(
-        self,
-        context: &mut LayoutCtx,
-        previous_visual: Option<Box<ButtonVisual>>,
-        constraints: &BoxConstraints,
-        env: Environment,
-    ) -> (Box<ButtonVisual>, Measurements) {
-        //let on_click = self.on_click;
-        let mut visual = previous_visual.unwrap_or_default();
-        visual.on_click = self.on_click;
-
-        //visual.on_click = on_click;
-        let min_width = env.get(theme::MinButtonWidth);
-        let min_height = env.get(theme::MinButtonHeight);
-
+        &self,
+        ctx: &mut LayoutCtx,
+        constraints: BoxConstraints,
+        env: &Environment,
+    ) -> Measurements {
         // measure the label inside
-        let padding: SideOffsets = env.get(theme::ButtonLabelPadding);
-        let label_constraints = constraints.deflate(&padding);
-        let (label_id, label_measurements) =
-            context.emit_child(self.label, &label_constraints, env, None);
+        let padding = SideOffsets::new_all_same(4.0);
+        let content_constraints = constraints.deflate(&padding);
 
-        // now measure the button itself
-        let mut measurements = Measurements {
-            size: label_measurements.size,
-            baseline: None,
-        };
+        let label_measurements = self.label.layout(ctx, content_constraints, env);
+        let mut measurements = label_measurements;
 
         // add padding on the sides
         measurements.size += Size::new(padding.horizontal(), padding.vertical());
 
         // apply minimum size
-        measurements.size.width = measurements.size.width.max(min_width);
-        measurements.size.height = measurements.size.height.max(min_height);
+        measurements.size.width = measurements.size.width.max(10.0);
+        measurements.size.height = measurements.size.height.max(10.0);
 
         // constrain size
         measurements.size = constraints.constrain(measurements.size);
 
-        // center the label inside the button
-        let label_offset = align_boxes(Alignment::CENTER, &mut measurements, label_measurements);
-        context.set_child_offset(label_id, label_offset);
+        // center the text inside the button
+        let offset = align_boxes(Alignment::CENTER, &mut measurements, label_measurements);
 
-        (visual, measurements)
+        self.label.set_child_offset(offset);
+        measurements
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        tracing::trace!(?bounds, "button paint");
+        let stroke: sk::Paint = sk::Paint::new(sk::Color4f::new(0.100, 0.100, 0.100, 1.0), None);
+        let fill: sk::Paint = sk::Paint::new(sk::Color4f::new(0.800, 0.888, 0.100, 1.0), None);
+        if ctx.is_hovering() {
+            ctx.canvas.draw_rect(bounds, &fill);
+        }
+        ctx.draw_rectangle(bounds, &stroke, 2.0);
+        self.label.paint(ctx, bounds, env);
     }
 }

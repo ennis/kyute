@@ -16,6 +16,7 @@ use winit::{
     event::{DeviceId, ModifiersState},
     window::WindowId,
 };
+use crate::node::NodeId;
 
 /// Global state related to focus and pointer grab.
 pub struct FocusState {

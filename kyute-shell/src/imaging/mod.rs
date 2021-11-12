@@ -2,21 +2,18 @@
 
 use crate::{
     bindings::Windows::Win32::{
+        SystemServices::GENERIC_READ,
         WindowsImagingComponent::{
-            GUID_WICPixelFormat32bppPBGRA,
-            WICBitmapDitherType, WICBitmapPaletteType, WICDecodeOptions,
+            GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherType, WICBitmapPaletteType,
+            WICDecodeOptions,
         },
     },
     drawing::{Bitmap, DrawContext},
     error::Result,
     platform::Platform,
 };
-use std::{
-    path::Path,
-    ptr,
-};
+use std::{path::Path, ptr};
 use windows::Interface;
-use crate::bindings::Windows::Win32::SystemServices::GENERIC_READ;
 
 /*#[derive(Error, Debug)]
 pub enum ImagingError {
@@ -26,7 +23,7 @@ pub enum ImagingError {
 
 fn load_bitmap_from_file_internal(draw_ctx: &DrawContext, path: &Path) -> Result<Bitmap> {
     let platform = Platform::instance();
-    let wic = &platform.wic_factory;
+    let wic = &platform.0.wic_factory;
     unsafe {
         let mut decoder = None;
         let decoder = wic
@@ -69,9 +66,6 @@ fn load_bitmap_from_file_internal(draw_ctx: &DrawContext, path: &Path) -> Result
 }
 
 /// Loads a bitmap from a file for use with the specified draw context.
-pub fn load_bitmap_from_file<P: AsRef<Path>>(
-    draw_ctx: &DrawContext,
-    path: P,
-) -> Result<Bitmap> {
+pub fn load_bitmap_from_file<P: AsRef<Path>>(draw_ctx: &DrawContext, path: P) -> Result<Bitmap> {
     load_bitmap_from_file_internal(draw_ctx, path.as_ref())
 }

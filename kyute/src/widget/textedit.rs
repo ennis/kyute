@@ -1,22 +1,22 @@
 //! Text editor widget.
 use crate::{
-    event::Event,
-    layout::{BoxConstraints, Measurements},
-    style, theme, Environment, EventCtx, LayoutCtx, Offset, PaintCtx, Point, Rect, SideOffsets,
-    Size, TypedWidget, Visual, Widget, WidgetExt,
+    core::Widget,
+    data::Data,
+    env::Environment,
+    event::{Event, Modifiers, PointerEventKind},
+    style::{State, StyleSet},
+    theme, BoxConstraints, CompositionCtx, EnvKey, EventCtx, CallKey, LayoutCtx, Measurements, Offset,
+    PaintCtx, Point, Rect, SideOffsets, Size, WidgetDelegate,
 };
+use keyboard_types::KeyState;
 use kyute_shell::{
-    drawing::{
-        context::{CompositeMode, InterpolationMode},
-        Brush, Color, DrawTextOptions, RectExt,
-    },
+    drawing::{Brush, Color, DrawTextOptions},
     text::{TextFormat, TextFormatBuilder, TextLayout},
+    winit::event::VirtualKeyCode,
 };
-use log::trace;
-use palette::{Srgb, Srgba};
-use std::{any::Any, ops::Range};
+use std::{any::Any, ops::Range, sync::Arc};
+use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
-use winit::event::VirtualKeyCode;
 
 /// Text selection.
 ///
@@ -25,7 +25,7 @@ use winit::event::VirtualKeyCode;
 /// user started the selection gesture from a later point in the text and then went back
 /// (right-to-left in LTR languages). In this case, the cursor will appear at the "beginning"
 /// (i.e. left, for LTR) of the selection.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Selection {
     pub start: usize,
     pub end: usize,
@@ -52,42 +52,6 @@ impl Default for Selection {
     }
 }
 
-// layout strategy:
-// - the text layout is calculated during widget layout, but also when an event causes the text to
-//   change
-// - update the text layout during painting if necessary
-
-pub struct TextEditVisual {
-    /// Formatting information.
-    text_format: TextFormat,
-
-    /// The text displayed to the user.
-    text: String,
-
-    /// The offset to the content area
-    content_offset: Offset,
-
-    /// The size of the content area
-    content_size: Size,
-
-    /// The text layout. None if not yet calculated.
-    ///
-    /// FIXME: due to DirectWrite limitations, the text layout contains a copy of the string.
-    /// in the future, de-duplicate.
-    text_layout: TextLayout,
-
-    /// The currently selected range. If no text is selected, this is a zero-length range
-    /// at the cursor position.
-    selection: Selection,
-
-    /// Flag that indicates that the visual needs to be repainted.
-    /// Q: Could also be a return value of the methods of visual.
-    needs_repaint: bool,
-
-    /// Flag that indicates that the text must be relayout
-    needs_relayout: bool,
-}
-
 pub enum Movement {
     Left,
     Right,
@@ -105,67 +69,151 @@ fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
     c.next_boundary(&text, 0).unwrap()
 }
 
-impl TextEditVisual {
+#[derive(Clone)]
+enum TextEditAction {
+    TextChanged(String),
+    SelectionChanged(Selection),
+}
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+/// Text editor state
+pub struct TextEditState {
+    /// The displayed text.
+    text: String,
+
+    /// The currently selected range. If no text is selected, this is a zero-length range
+    /// at the cursor position.
+    selection: Selection,
+}
+
+impl Data for TextEditState {
+    fn same(&self, other: &Self) -> bool {
+        self.text.same(&other.text) && self.selection == other.selection
+    }
+}
+
+impl TextEditState {
+    /// Creates a new text edit state with the given text, the cursor at the beginning, and nothing selected.
+    pub fn new(text: String) -> TextEditState {
+        TextEditState {
+            text,
+            selection: Default::default(),
+        }
+    }
+
+    /// Sets the text.
+    pub fn set_text(&mut self, text: String) {
+        self.text = text;
+        // TODO: truncate selection if necessary
+    }
+
+    /// Sets the selection (and cursor position).
+    pub fn set_selection(&mut self, selection: Selection) {
+        self.selection = selection;
+    }
+}
+
+pub struct TextEdit {
+    /// Formatting information.
+    text_format: TextFormat,
+
+    /// Text editing state.
+    state: TextEditState,
+
+    /// The offset to the content area
+    content_offset: Offset,
+
+    /// The size of the content area
+    content_size: Size,
+
+    /// The text layout. None if not yet calculated.
+    ///
+    /// FIXME: due to DirectWrite limitations, the text layout contains a copy of the string.
+    /// in the future, de-duplicate.
+    text_layout: Option<TextLayout>,
+}
+
+impl TextEdit {
+    pub fn new(state: TextEditState) -> TextEdit {
+        TextEdit {
+            text_format: TextFormat::builder().size(14.0).build().unwrap(),
+            state,
+            content_offset: Default::default(),
+            content_size: Default::default(),
+            text_layout: None,
+        }
+    }
+
+    pub fn set_state(&mut self, state: TextEditState) {
+        if self.state != state {
+            self.state = state;
+            self.text_layout = None;
+        }
+    }
+
     /// Moves the cursor forward or backward.
+    // TODO move to EditState
     pub fn move_cursor(&mut self, movement: Movement, modify_selection: bool) {
-        let offset =
-            match movement {
-                Movement::Left => prev_grapheme_cluster(&self.text, self.selection.end)
-                    .unwrap_or(self.selection.end),
-                Movement::Right => next_grapheme_cluster(&self.text, self.selection.end)
-                    .unwrap_or(self.selection.end),
-                Movement::LeftWord | Movement::RightWord => {
-                    // TODO word navigation (unicode word segmentation)
-                    unimplemented!()
-                }
-            };
+        let offset = match movement {
+            Movement::Left => prev_grapheme_cluster(&self.state.text, self.state.selection.end)
+                .unwrap_or(self.state.selection.end),
+            Movement::Right => next_grapheme_cluster(&self.state.text, self.state.selection.end)
+                .unwrap_or(self.state.selection.end),
+            Movement::LeftWord | Movement::RightWord => {
+                // TODO word navigation (unicode word segmentation)
+                tracing::warn!("word navigation is unimplemented");
+                self.state.selection.end
+            }
+        };
 
         if modify_selection {
-            self.selection.end = offset;
+            self.state.selection.end = offset;
         } else {
-            self.selection = Selection::empty(offset);
+            self.state.selection = Selection::empty(offset);
         }
-
-        self.needs_repaint = true;
     }
 
     /// Inserts text.
+    // TODO move to EditState
     pub fn insert(&mut self, text: &str) {
-        let min = self.selection.min();
-        let max = self.selection.max();
-        self.text.replace_range(min..max, text);
-        self.selection = Selection::empty(min + text.len());
-        self.needs_relayout = true;
-        self.needs_repaint = true;
+        let min = self.state.selection.min();
+        let max = self.state.selection.max();
+        self.state.text.replace_range(min..max, text);
+        self.state.selection = Selection::empty(min + text.len());
     }
 
     /// Sets cursor position.
+    // TODO move to EditState
     pub fn set_cursor(&mut self, pos: usize) {
-        if self.selection.is_empty() && self.selection.end == pos {
+        if self.state.selection.is_empty() && self.state.selection.end == pos {
             return;
         }
-        self.selection = Selection::empty(pos);
-        self.needs_repaint = true;
+        self.state.selection = Selection::empty(pos);
         // reset blink
     }
 
+    // TODO move to EditState
     pub fn set_selection_end(&mut self, pos: usize) {
-        if self.selection.end == pos {
+        if self.state.selection.end == pos {
             return;
         }
-        self.selection.end = pos;
-        self.needs_repaint = true;
+        self.state.selection.end = pos;
         // reset blink
     }
 
+    // TODO move to EditState
     pub fn select_all(&mut self) {
-        self.selection.start = 0;
-        self.selection.end = self.text.len();
-        self.needs_repaint = true;
+        self.state.selection.start = 0;
+        self.state.selection.end = self.state.text.len();
     }
 
-    fn position_to_text(&mut self, pos: Point) -> usize {
-        let hit = self.text_layout.hit_test_point(pos).unwrap();
+    fn position_to_text(&self, pos: Point) -> usize {
+        let hit = self
+            .text_layout
+            .as_ref()
+            .expect("position_to_text called before layout")
+            .hit_test_point(pos)
+            .unwrap();
         let pos = if hit.is_trailing_hit {
             hit.metrics.text_position + hit.metrics.length
         } else {
@@ -175,72 +223,110 @@ impl TextEditVisual {
     }
 }
 
-impl Visual for TextEditVisual {
-    fn paint(&mut self, ctx: &mut PaintCtx, env: &Environment) {
+impl WidgetDelegate for TextEdit {
+    fn layout(
+        &mut self,
+        _ctx: &mut LayoutCtx,
+        _children: &mut [Widget],
+        constraints: &BoxConstraints,
+        env: &Environment,
+    ) -> Measurements {
+        let padding = env.get(theme::TEXT_EDIT_PADDING).unwrap_or_default();
+        let font_size = self.text_format.font_size() as f64;
+
+        const SELECTION_MAGIC: f64 = 3.0;
+        // why default width == 200?
+        let size = Size::new(
+            constraints.constrain_width(200.0),
+            constraints.constrain_height(font_size + SELECTION_MAGIC + padding.vertical()),
+        );
+
+        let content_size = Size::new(
+            size.width - padding.horizontal(),
+            size.height - padding.vertical(),
+        );
+
+        let text_layout = TextLayout::new(&self.state.text, &self.text_format, content_size)
+            .expect("could not create TextLayout");
+
+        let content_offset = Offset::new(padding.left, padding.top);
+
+        // calculate baseline
+        let baseline = text_layout
+            .line_metrics()
+            .first()
+            .map(|m| content_offset.y + m.baseline as f64);
+
+        self.content_size = content_size;
+        self.content_offset = content_offset;
+        self.text_layout = Some(text_layout);
+        Measurements { size, baseline }
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx,
+        children: &mut [Widget],
+        bounds: Rect,
+        env: &Environment,
+    ) {
         let bounds = ctx.bounds();
+        let text_layout = self
+            .text_layout
+            .as_mut()
+            .expect("paint called before layout");
 
-        // relayout if necessary
-        if self.needs_relayout {
-            trace!("text relayout");
-            self.text_layout = TextLayout::new(
-                ctx.platform(),
-                &self.text,
-                &self.text_format,
-                self.content_size,
-            )
-            .unwrap();
-        }
+        let background_style = env.get(theme::TEXT_EDIT_BACKGROUND_STYLE).unwrap();
+        background_style.draw_box(ctx, &bounds, State::ACTIVE);
 
-        ctx.draw_styled_box("text_box", style::PaletteIndex(0));
+        let text_color = env.get(theme::TEXT_COLOR).unwrap_or_default();
+        let selected_text_color = env.get(theme::SELECTED_TEXT_COLOR).unwrap_or_default();
+        let selected_background_color = env
+            .get(theme::SELECTED_TEXT_BACKGROUND_COLOR)
+            .unwrap_or_default();
 
-        // fetch colors
-        let text_color = env.get(theme::TextColor);
-        let caret_color = env.get(theme::TextEditCaretColor);
-        let selected_bg_color = env.get(theme::SelectedTextBackgroundColor);
-        let selected_text_color = env.get(theme::SelectedTextColor);
-
-        let text_brush = Brush::new_solid_color(ctx, text_color);
-        let caret_brush = Brush::new_solid_color(ctx, caret_color);
-        let selected_bg_brush = Brush::new_solid_color(ctx, selected_bg_color);
-        let selected_text_brush = Brush::new_solid_color(ctx, selected_text_color);
+        let text_brush = Brush::solid_color(ctx, text_color);
+        let selected_bg_brush = Brush::solid_color(ctx, selected_background_color);
+        let selected_text_brush = Brush::solid_color(ctx, selected_text_color);
 
         ctx.save();
         ctx.transform(&self.content_offset.to_transform());
 
         // text color
-        self.text_layout.set_drawing_effect(&text_brush, ..);
-        if !self.selection.is_empty() {
+        text_layout.set_drawing_effect(&text_brush, ..);
+        if !self.state.selection.is_empty() {
             // FIXME slightly changes the layout when the selection straddles a kerning pair?
-            self.text_layout.set_drawing_effect(
+            text_layout.set_drawing_effect(
                 &selected_text_brush,
-                self.selection.min()..self.selection.max(),
+                self.state.selection.min()..self.state.selection.max(),
             );
         }
 
         // selection highlight
-        if !self.selection.is_empty() {
-            let selected_areas = self
-                .text_layout
-                .hit_test_text_range(self.selection.min()..self.selection.max(), &bounds.origin)
+        if !self.state.selection.is_empty() {
+            let selected_areas = text_layout
+                .hit_test_text_range(
+                    self.state.selection.min()..self.state.selection.max(),
+                    &bounds.origin,
+                )
                 .unwrap();
             for sa in selected_areas {
-                ctx.fill_rectangle(dbg!(sa.bounds.round_out()), &selected_bg_brush);
+                ctx.fill_rectangle(sa.bounds.round_out(), &selected_bg_brush);
             }
         }
 
         // text
         ctx.draw_text_layout(
             Point::origin(),
-            &self.text_layout,
+            text_layout,
             &text_brush,
             DrawTextOptions::ENABLE_COLOR_FONT,
         );
 
         // caret
         if ctx.is_focused() {
-            let caret_hit_test = self
-                .text_layout
-                .hit_test_text_position(self.selection.end)
+            let caret_hit_test = text_layout
+                .hit_test_text_position(self.state.selection.end)
                 .unwrap();
 
             //dbg!(caret_hit_test);
@@ -249,209 +335,170 @@ impl Visual for TextEditVisual {
                     caret_hit_test.point.floor(),
                     Size::new(1.0, caret_hit_test.metrics.bounds.size.height),
                 ),
-                &caret_brush,
+                &text_brush,
             );
         }
 
         ctx.restore();
-        self.needs_repaint = false;
     }
 
-    fn hit_test(&mut self, _point: Point, _bounds: Rect) -> bool {
-        false
-    }
-
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
+    fn event(&mut self, ctx: &mut EventCtx, children: &mut [Widget], event: &Event) {
         match event {
-            Event::FocusIn => {
-                trace!("focus in");
+            Event::FocusGained => {
+                trace!("text edit: focus gained");
                 ctx.request_redraw();
             }
-            Event::FocusOut => {
-                trace!("focus out");
-                let pos = self.selection.end;
+            Event::FocusLost => {
+                trace!("text edit: focus lost");
+                let pos = self.state.selection.end;
                 self.set_cursor(pos);
+                ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                ctx.request_redraw();
             }
-            Event::PointerDown(p) => {
-                let pos = self.position_to_text(p.pointer.position);
-                if p.repeat_count == 2 {
-                    // double-click selects all
-                    self.select_all();
-                } else {
-                    self.set_cursor(pos);
-                }
-                ctx.request_focus();
-                ctx.capture_pointer();
-            }
-            Event::PointerMove(p) => {
-                // update selection
-                if ctx.is_capturing_pointer() {
-                    let pos = self.position_to_text(p.position);
-                    self.set_selection_end(pos);
-                    trace!("selection: {:?}", self.selection)
-                }
-            }
-            Event::PointerUp(p) => {
-                // nothing to do (pointer grab automatically ends)
-            }
-            Event::KeyDown(k) => {
-                if let Some(vk) = k.key {
-                    match vk {
-                        VirtualKeyCode::Back => {
-                            if self.selection.is_empty() {
-                                self.move_cursor(Movement::Left, true);
-                            }
-                            self.insert("");
+            Event::Pointer(p) => {
+                match p.kind {
+                    PointerEventKind::PointerDown => {
+                        let pos = self.position_to_text(p.position);
+                        if p.repeat_count == 2 {
+                            // double-click selects all
+                            self.select_all();
+                            ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        } else {
+                            self.set_cursor(pos);
+                            ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
                         }
-                        VirtualKeyCode::Delete => {
-                            if self.selection.is_empty() {
-                                self.move_cursor(Movement::Right, true);
-                            }
-                            self.insert("");
-                        }
-                        VirtualKeyCode::Left => {
-                            self.move_cursor(Movement::Left, k.modifiers.shift());
-                        }
-                        VirtualKeyCode::Right => {
-                            self.move_cursor(Movement::Right, k.modifiers.shift());
-                        }
-                        _ => {}
+                        ctx.request_redraw();
+                        ctx.request_focus();
+                        ctx.capture_pointer();
                     }
+                    PointerEventKind::PointerMove => {
+                        // update selection
+                        if ctx.is_capturing_pointer() {
+                            let pos = self.position_to_text(p.position);
+                            self.set_selection_end(pos);
+                            ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                            ctx.request_redraw();
+                        }
+                    }
+                    PointerEventKind::PointerUp => {
+                        // nothing to do (pointer grab automatically ends)
+                    }
+                    _ => {}
                 }
             }
-            Event::Input(input) => {
-                // reject control characters (handle in KeyDown instead)
-                if !input.character.is_control() {
-                    trace!("insert {:?}", input.character);
-                    let mut buf = [0u8; 4];
-                    self.insert(input.character.encode_utf8(&mut buf[..]));
-                }
-            }
+            Event::Keyboard(k) => match k.state {
+                KeyState::Down => match k.key {
+                    keyboard_types::Key::Backspace => {
+                        trace!("text edit: backspace");
+                        if self.state.selection.is_empty() {
+                            self.move_cursor(Movement::Left, true);
+                        }
+                        self.insert("");
+                        ctx.emit_action(TextEditAction::TextChanged(self.state.text.clone()));
+                        ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        ctx.request_relayout();
+                    }
+                    keyboard_types::Key::Delete => {
+                        trace!("text edit: delete");
+                        if self.state.selection.is_empty() {
+                            self.move_cursor(Movement::Right, true);
+                        }
+                        self.insert("");
+                        ctx.emit_action(TextEditAction::TextChanged(self.state.text.clone()));
+                        ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        ctx.request_relayout();
+                    }
+                    keyboard_types::Key::ArrowLeft => {
+                        self.move_cursor(Movement::Left, k.modifiers.contains(Modifiers::SHIFT));
+                        ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        ctx.request_redraw();
+                    }
+                    keyboard_types::Key::ArrowRight => {
+                        self.move_cursor(Movement::Right, k.modifiers.contains(Modifiers::SHIFT));
+                        ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        ctx.request_redraw();
+                    }
+                    keyboard_types::Key::Character(ref c) => {
+                        // reject control characters (handle in KeyDown instead)
+                        //trace!("insert {:?}", input.character);
+                        trace!("text edit: character {}", c);
+                        self.insert(&c);
+                        ctx.emit_action(TextEditAction::TextChanged(self.state.text.clone()));
+                        ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        ctx.request_relayout();
+                    }
+                    _ => {}
+                },
+                KeyState::Up => {}
+            },
+
+            Event::Composition(input) => {}
             _ => {}
         }
+    }
+}
 
-        if self.needs_repaint {
-            ctx.request_redraw();
-            self.needs_repaint = false;
+/// Describes changes or events that happened on a text edit widget.
+#[derive(Clone)]
+pub struct TextEditResult(Option<TextEditAction>);
+
+impl TextEditResult {
+    /// Calls the specified closure if the edited text has changed.
+    pub fn on_text_changed(self, f: impl FnOnce(&str)) -> Self {
+        match &self.0 {
+            Some(TextEditAction::TextChanged(str)) => f(str),
+            _ => {}
         }
-    }
-
-    fn as_any(&self) -> &dyn Any {
         self
     }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
+
+    /// Calls the specified closure if the current selection has changed.
+    pub fn on_selection_changed(self, f: impl FnOnce(&Selection)) -> Self {
+        match &self.0 {
+            Some(TextEditAction::SelectionChanged(s)) => f(s),
+            _ => {}
+        }
         self
     }
 }
 
-/// Text element.
-pub struct TextEdit {
-    text: String,
+// the main widget is a text_line_edit_state, which shows an EditState value
+// when the text changes, the selection s
+pub fn text_line_edit_state(cx: &mut CompositionCtx, state: &TextEditState) -> TextEditResult {
+    cx.enter(0);
+    let action = cx.emit_node(
+        |cx| TextEdit::new(state.clone()),
+        |cx, text_edit| {
+            text_edit.set_state(state.clone());
+        },
+        |_| {},
+    );
+    cx.exit();
+    TextEditResult(action.cast())
 }
 
-impl TextEdit {
-    pub fn new(text: impl Into<String>) -> TextEdit {
-        TextEdit { text: text.into() }
-    }
-}
-
-// textEdit events:
-// - char event received
-// - character is inserted
-// - updated string is sent to the application
-
-impl TypedWidget for TextEdit {
-    type Visual = TextEditVisual;
-
-    fn layout(
-        self,
-        context: &mut LayoutCtx,
-        previous_visual: Option<Box<TextEditVisual>>,
-        constraints: &BoxConstraints,
-        env: Environment,
-    ) -> (Box<TextEditVisual>, Measurements) {
-        let text = self.text;
-        let platform = context.platform();
-
-        // the only thing that we preserve across relayouts is the selection
-        let selection = previous_visual
-            .as_ref()
-            .map(|v| v.selection)
-            .unwrap_or_default();
-
-        // text format
-        let font_size = env.get(theme::TextEditFontSize);
-        let font_name = env.get(theme::TextEditFontName);
-        let padding: SideOffsets = env.get(theme::TextEditPadding);
-        let text_format = TextFormatBuilder::new(context.platform())
-            .family(font_name)
-            .size(font_size as f32)
-            .build()
-            .expect("could not create text format");
-
-        // take all available space
-        const SELECTION_MAGIC: f64 = 3.0;
-        let size = Size::new(
-            constraints.constrain_width(200.0),
-            constraints.constrain_height(font_size + SELECTION_MAGIC + padding.vertical()),
-        );
-
-        trace!(
-            "TextEdit: constraints={:?}, size={}",
-            constraints,
-            size
-        );
-
-        // calculate the size available to layout the text
-        let content_size = Size::new(
-            size.width - padding.horizontal(),
-            size.height - padding.vertical(),
-        );
-        trace!("TextEdit: content_size={}", content_size);
-
-        // content offset
-        let content_offset = Offset::new(padding.left, padding.top);
-        trace!("TextEdit: content_offset={}", content_offset);
-
-        // determine if we need to relayout the text
-        // we relayout the text if:
-        // - the text has not actually been layout yet
-        // - the text changed
-        // - the size available for layout changed
-        let text_layout = if let Some(visual) = previous_visual {
-            if visual.text == text && visual.content_size == content_size {
-                // recycle
-                Some(visual.text_layout)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let text_layout = text_layout.unwrap_or_else(|| {
-            // layout the text within the content area
-            TextLayout::new(platform, &text, &text_format, content_size).unwrap()
-        });
-
-        // calculate baseline
-        let baseline = text_layout
-            .line_metrics()
-            .first()
-            .map(|m| content_offset.y + m.baseline as f64);
-
-        let measurements = Measurements { size, baseline };
-        let visual = Box::new(TextEditVisual {
-            text_format,
-            text,
-            content_offset,
-            content_size,
-            text_layout,
-            selection,
-            needs_repaint: true,
-            needs_relayout: false,
-        });
-
-        (visual, measurements)
-    }
+/// Displays a single-line text editor widget.
+///
+/// TODO generalities (selection state, cursor, etc.)
+///
+/// The text appearance is controlled by the following environment variables: TODO.
+///
+/// # Arguments
+/// * `text` - the text to display.
+///
+/// # Return value
+/// A [`TextEditResult`] object that describes changes or events that happened on the widget.
+///
+pub fn text_line_edit(cx: &mut CompositionCtx, text: &str) -> TextEditResult {
+    cx.enter(0);
+    let r = cx.with_state(
+        || TextEditState::new(text.to_string()),
+        |cx, state| {
+            state.set_text(text.to_string());
+            text_line_edit_state(cx, state)
+                .on_selection_changed(|selection| state.set_selection(*selection))
+        },
+    );
+    cx.exit();
+    r
 }

@@ -2,31 +2,35 @@
 use crate::{
     bindings::Windows::Win32::{
         Direct2D::{
-            ID2D1Bitmap1, ID2D1DeviceContext, D2D1_ALPHA_MODE, D2D1_BITMAP_OPTIONS,
-            D2D1_BITMAP_PROPERTIES1, D2D1_PIXEL_FORMAT,
+            D2D1_ALPHA_MODE, D2D1_BITMAP_OPTIONS, D2D1_BITMAP_PROPERTIES1,
+            D2D1_DEVICE_CONTEXT_OPTIONS, D2D1_PIXEL_FORMAT,
         },
-        Direct3D11::D3D11_TEXTURE2D_DESC,
         Dxgi::{
-            IDXGIResource1, IDXGISurface, DXGI_FORMAT, DXGI_SAMPLE_DESC, DXGI_SHARED_RESOURCE_READ,
-            DXGI_SHARED_RESOURCE_WRITE,
+            IDXGISurface, IDXGISwapChain1, DXGI_ALPHA_MODE, DXGI_FORMAT, DXGI_SAMPLE_DESC,
+            DXGI_SCALING, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT, DXGI_USAGE_RENDER_TARGET_OUTPUT,
         },
-        SystemServices::HANDLE,
+        SystemServices::HINSTANCE,
+        WindowsAndMessaging::HWND,
     },
-    error::{Error, Result},
+    drawing::{DrawContext, PhysicalSize},
+    error::Error,
     platform::{GpuContext, Platform},
 };
-use graal::{platform::windows::ContextExtWindows, vk};
+use graal::{
+    ash::version::{EntryV1_0, InstanceV1_0},
+    swapchain::Swapchain,
+    vk,
+    vk::Handle,
+};
 use raw_window_handle::HasRawWindowHandle;
-use std::{os::raw::c_void, ptr};
-use tracing::trace;
-
-use crate::bindings::Windows::Win32::{
-    Direct2D::D2D1_DEVICE_CONTEXT_OPTIONS,
-    Direct3D11::{
-        ID3D11Fence, D3D11_BIND_FLAG, D3D11_FENCE_FLAG, D3D11_RESOURCE_MISC_FLAG, D3D11_USAGE,
-    },
-    SystemServices::HINSTANCE,
-    WindowsAndMessaging::HWND,
+use skia_safe as sk;
+use skia_safe::gpu::vk as skia_vk;
+use skia_vk::GetProcOf;
+use std::{
+    mem,
+    ops::{Deref, DerefMut},
+    ptr,
+    sync::MutexGuard,
 };
 use windows::Interface;
 use winit::{
@@ -34,321 +38,151 @@ use winit::{
     platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
     window::{Window, WindowBuilder, WindowId},
 };
-use crate::bindings::Windows::Win32::SystemServices::GENERIC_ALL;
 
-/*#[allow(unused)]
-fn check_win32_last_error(returned: i32, function: &str) {
-    unsafe {
-        if returned == 0 {
-            let err = GetLastError();
-            panic!("{} failed, GetLastError={:08x}", function, err);
+const SWAP_CHAIN_BUFFERS: u32 = 2;
+
+/*/// Context object to draw on a window.
+///
+/// It implicitly derefs to [`DrawContext`], which has methods to draw primitives on the
+/// window surface.
+///
+/// [`DrawContext`]: crate::drawing::context::DrawContext
+pub struct WindowDrawContext<'a> {
+    window: &'a mut PlatformWindow,
+    draw_context: DrawContext,
+}
+
+impl<'a> WindowDrawContext<'a> {
+    /// Creates a new [`WindowDrawContext`] for the specified window, allowing to draw on the window.
+    pub fn new(window: &'a mut PlatformWindow) -> WindowDrawContext<'a> {
+        let platform = Platform::instance();
+        let d2d_device_context = &platform.0.d2d_device_context;
+
+        let swap_chain = &window.swap_chain;
+        let backbuffer = unsafe { swap_chain.GetBuffer::<IDXGISurface>(0).unwrap() };
+        let dpi = 96.0 * window.window.scale_factor() as f32;
+
+        // create target bitmap
+        let mut bitmap = unsafe {
+            let props = D2D1_BITMAP_PROPERTIES1 {
+                pixelFormat: D2D1_PIXEL_FORMAT {
+                    format: DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM,
+                    alphaMode: D2D1_ALPHA_MODE::D2D1_ALPHA_MODE_IGNORE,
+                },
+                dpiX: dpi,
+                dpiY: dpi,
+                bitmapOptions: D2D1_BITMAP_OPTIONS::D2D1_BITMAP_OPTIONS_TARGET
+                    | D2D1_BITMAP_OPTIONS::D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+                colorContext: None,
+            };
+            let mut bitmap = None;
+            d2d_device_context
+                .CreateBitmapFromDxgiSurface(backbuffer, &props, &mut bitmap)
+                .and_some(bitmap)
+                .expect("CreateBitmapFromDxgiSurface failed")
+        };
+
+        // create draw context
+        let draw_context = unsafe {
+            // set the target on the DC
+            d2d_device_context.SetTarget(bitmap);
+            d2d_device_context.SetDpi(dpi, dpi);
+            // the draw context acquires shared ownership of the device context, but that's OK since we borrow the window,
+            // so we can't create another WindowDrawContext that would conflict with it.
+            DrawContext::from_device_context(
+                platform.0.d2d_factory.0.clone(),
+                d2d_device_context.0.clone(),
+            )
+        };
+
+        WindowDrawContext {
+            window,
+            draw_context,
         }
+    }
+
+    /// Returns the [`PlatformWindow`] that is being drawn to.
+    pub fn window(&self) -> &PlatformWindow {
+        self.window
+    }
+}
+
+impl<'a> Drop for WindowDrawContext<'a> {
+    fn drop(&mut self) {
+        // set the target to null to release the borrow of the backbuffer surface
+        // (otherwise it will fail to resize)
+        unsafe {
+            self.ctx.SetTarget(None);
+        }
+    }
+}
+
+impl<'a> Deref for WindowDrawContext<'a> {
+    type Target = DrawContext;
+    fn deref(&self) -> &DrawContext {
+        &self.draw_context
+    }
+}
+
+impl<'a> DerefMut for WindowDrawContext<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.draw_context
     }
 }*/
 
-struct SharedDrawSurface {
-    shared_handle: HANDLE,
-    fence_shared_handle: HANDLE,
-    dxgi_surface: IDXGISurface,
-    d3d_fence: ID3D11Fence,
-    d2d_bitmap: ID2D1Bitmap1,
-    vulkan_image: graal::ImageInfo,
-    vulkan_timeline: vk::Semaphore,
-    dpi: f32,
-}
+fn skia_get_proc_addr(of: skia_vk::GetProcOf) -> skia_vk::GetProcResult {
+    unsafe {
+        let entry = graal::get_vulkan_entry();
+        let instance = graal::get_vulkan_instance();
 
-impl SharedDrawSurface {
-    fn new(
-        d2d_device_context: &ID2D1DeviceContext,
-        size: (u32, u32),
-        scale_factor: f64,
-    ) -> SharedDrawSurface {
-        let platform = Platform::instance();
-        let d3d11_device = &platform.d3d11_device;
-        let mut context = platform.gpu_context.lock().unwrap();
-
-        // ---- NEW
-        let texture_desc = D3D11_TEXTURE2D_DESC {
-            Width: size.0,
-            Height: size.1,
-            MipLevels: 1,
-            ArraySize: 1,
-            Format: DXGI_FORMAT::DXGI_FORMAT_B8G8R8A8_UNORM,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            Usage: D3D11_USAGE::D3D11_USAGE_DEFAULT,
-            BindFlags: (D3D11_BIND_FLAG::D3D11_BIND_RENDER_TARGET.0
-                | D3D11_BIND_FLAG::D3D11_BIND_SHADER_RESOURCE.0) as u32,
-            CPUAccessFlags: 0,
-            MiscFlags: (D3D11_RESOURCE_MISC_FLAG::D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX.0
-                | D3D11_RESOURCE_MISC_FLAG::D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0)
-                as u32,
-        };
-        let d3d_texture = unsafe {
-            let mut d3d_texture = None;
-            d3d11_device
-                .CreateTexture2D(&texture_desc, ptr::null(), &mut d3d_texture)
-                .and_some(d3d_texture)
+        match of {
+            GetProcOf::Instance(instance, name) => entry
+                .get_instance_proc_addr(graal::vk::Instance::from_raw(instance as u64), name)
                 .unwrap()
-        };
-
-        let dxgi_resource = d3d_texture.cast::<IDXGIResource1>().unwrap();
-        let dxgi_surface = d3d_texture.cast::<IDXGISurface>().unwrap();
-
-        let mut shared_handle = HANDLE::INVALID;
-        unsafe {
-            dxgi_resource
-                .CreateSharedHandle(
-                    ptr::null(),
-                    (DXGI_SHARED_RESOURCE_READ as u32) | DXGI_SHARED_RESOURCE_WRITE,
-                    None,
-                    &mut shared_handle,
-                )
-                .unwrap();
-        }
-
-        let vulkan_image = unsafe {
-            context.create_imported_image_win32(
-                "SharedDrawSurface",
-                &graal::ResourceMemoryInfo::DEVICE_LOCAL,
-                &graal::ImageResourceCreateInfo {
-                    image_type: vk::ImageType::TYPE_2D,
-                    usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::TRANSFER_DST
-                        | vk::ImageUsageFlags::TRANSFER_SRC,
-                    format: vk::Format::B8G8R8A8_UNORM, // TODO
-                    extent: vk::Extent3D {
-                        width: size.0,
-                        height: size.1,
-                        depth: 1,
-                    },
-                    mip_levels: 1,
-                    array_layers: 1,
-                    samples: 1,
-                    tiling: vk::ImageTiling::OPTIMAL,
-                },
-                vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE,
-                shared_handle.0 as *mut _,
-                None,
-            )
-        };
-
-        // --- fence
-        let d3d_fence = unsafe {
-            d3d11_device
-                .CreateFence::<ID3D11Fence>(0, D3D11_FENCE_FLAG::D3D11_FENCE_FLAG_SHARED)
-                .unwrap()
-        };
-
-        let mut fence_shared_handle = HANDLE::INVALID;
-        unsafe {
-            d3d_fence
-                .CreateSharedHandle(ptr::null(), GENERIC_ALL, None, &mut fence_shared_handle)
-                .unwrap();
-        }
-
-        // import fence in vulkan as a timeline semaphore
-        let vulkan_timeline = unsafe {
-            context.create_imported_semaphore_win32(
-                vk::SemaphoreImportFlags::TEMPORARY,
-                vk::ExternalSemaphoreHandleTypeFlags::D3D12_FENCE,
-                fence_shared_handle.0 as vk::HANDLE,
-                None,
-            )
-        };
-
-        // ---- OLD
-        /*let (target, target_shared_handle) = unsafe {
-            context.create_exported_image_win32(
-                "SharedDrawSurface",
-                &graal::ResourceMemoryInfo::DEVICE_LOCAL,
-                &graal::ImageResourceCreateInfo {
-                    image_type: vk::ImageType::TYPE_2D,
-                    usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::TRANSFER_DST
-                        | vk::ImageUsageFlags::TRANSFER_SRC,
-                    format: vk::Format::B8G8R8A8_UNORM, // TODO
-                    extent: vk::Extent3D {
-                        width: size.0,
-                        height: size.1,
-                        depth: 1,
-                    },
-                    mip_levels: 1,
-                    array_layers: 1,
-                    samples: 1,
-                    tiling: vk::ImageTiling::OPTIMAL,
-                },
-                vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE,
-                ptr::null(),
-                DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE | GENERIC_ALL,
-                None,
-            )
-        };
-        dbg!(target_shared_handle);
-        // open the shared handle on the D2D side
-        let target_surface = unsafe {
-            let mut ptr: *mut ID3D11Texture2D = ptr::null_mut();
-            check_hr(d3d11_device.OpenSharedResource1(
-                target_shared_handle,
-                &ID3D11Texture2D::uuidof(),
-                &mut ptr as *mut _ as *mut *mut c_void,
-            ))
-            .unwrap();
-            ComPtr::from_raw(ptr)
-        };
-        let target_surface: ComPtr<IDXGISurface> = target_surface.cast().unwrap();*/
-
-        // create the target D2D bitmap
-        let dpi = (96.0 * scale_factor) as f32;
-        let props = D2D1_BITMAP_PROPERTIES1 {
-            pixelFormat: D2D1_PIXEL_FORMAT {
-                format: DXGI_FORMAT::DXGI_FORMAT_B8G8R8A8_UNORM, // TODO
-                alphaMode: D2D1_ALPHA_MODE::D2D1_ALPHA_MODE_IGNORE,
-            },
-            dpiX: dpi,
-            dpiY: dpi,
-            bitmapOptions: D2D1_BITMAP_OPTIONS::D2D1_BITMAP_OPTIONS_TARGET
-                | D2D1_BITMAP_OPTIONS::D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-            colorContext: None,
-        };
-
-        // create target bitmap
-        let d2d_bitmap = unsafe {
-            let mut bitmap = None;
-            d2d_device_context
-                .CreateBitmapFromDxgiSurface(&dxgi_surface, &props, &mut bitmap)
-                .and_some(bitmap)
-                .unwrap()
-        };
-
-        SharedDrawSurface {
-            vulkan_image,
-            shared_handle,
-            fence_shared_handle,
-            dxgi_surface,
-            dpi,
-            d2d_bitmap,
-            d3d_fence,
-            vulkan_timeline
+                as skia_vk::GetProcResult,
+            GetProcOf::Device(device, name) => instance
+                .get_device_proc_addr(graal::vk::Device::from_raw(device as u64), name)
+                .unwrap() as skia_vk::GetProcResult,
         }
     }
 }
 
-impl Drop for SharedDrawSurface {
-    fn drop(&mut self) {
-        let mut context = Platform::instance().gpu_context().lock().unwrap();
-        context.destroy_image(self.vulkan_image.id);
-        // TODO close the shared handle?
-    }
+unsafe fn create_skia_vulkan_backend_context(
+    context: &graal::Context,
+) -> skia_safe::gpu::vk::BackendContext<'static> {
+    let device = context.device();
+    let vk_device = context.vulkan_device().handle();
+    let vk_instance = graal::get_vulkan_instance().handle();
+    let vk_physical_device = device.physical_device();
+    let (vk_queue, vk_queue_family_index) = device.graphics_queue();
+    let instance_extensions = graal::get_instance_extensions();
+
+    let mut ctx = skia_vk::BackendContext::new_with_extensions(
+        vk_instance.as_raw() as *mut _,
+        vk_physical_device.as_raw() as *mut _,
+        vk_device.as_raw() as *mut _,
+        (vk_queue.as_raw() as *mut _, vk_queue_family_index as usize),
+        &skia_get_proc_addr,
+        instance_extensions,
+        &[],
+    );
+
+    ctx.set_max_api_version(skia_vk::Version::new(1, 0, 0));
+    ctx
 }
-
-pub struct DrawSurface {
-    /// Direct2D device context (independent of the surface)
-    d2d_device_context: ID2D1DeviceContext,
-    /// Fence used for synchronizing between D3D11 and vulkan (payload shared with `vk_semaphore`)
-    //d3d11_fence: ID3D11Fence,
-    /// Semaphore for synchronization on the vulkan side, imported from `d3d11_fence`.
-    //vk_semaphore: vk::Semaphore,
-    surface: Option<SharedDrawSurface>,
-}
-
-impl DrawSurface {
-    pub fn new(size: (u32, u32), scale_factor: f64) -> DrawSurface {
-        // create the device context
-        let mut d2d_device_context = None;
-        let d2d_device_context = unsafe {
-            Platform::instance()
-                .d2d_device
-                .CreateDeviceContext(
-                    D2D1_DEVICE_CONTEXT_OPTIONS::D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
-                    &mut d2d_device_context,
-                )
-                .and_some(d2d_device_context)
-                .unwrap()
-        };
-
-        //let d3d_fence
-
-        let surface = SharedDrawSurface::new(&d2d_device_context, size, scale_factor);
-
-        unsafe {
-            // set the target on the DC
-            d2d_device_context.SetTarget(&surface.d2d_bitmap);
-            d2d_device_context.SetDpi(surface.dpi, surface.dpi);
-        }
-
-        DrawSurface {
-            d2d_device_context,
-            surface: Some(surface),
-        }
-    }
-
-    // TODO:
-    // * D2D: flush?
-    // * D3D: wait for fence
-    // * D2D: draw
-    // * D2D: flush
-    // * D2D: fence signal
-    // * Vulkan: fence wait
-    // * Vulkan: copy to swapchain
-    // * Vulkan: fence signal
-    //
-    // Two types:
-    // - Draw2DContext(&'a mut DrawSurface): provides a drawing target
-    //      - need access to the D3D immediate mode context
-    // - Draw3DContext(&graal::Frame, &'a mut DrawSurface): provides access to the underlying vulkan image
-    //
-    // Since both borrow mutably, they can't be alive at the same time
-    // - however, it's a bit too easy to just copy the vulkan ImageInfo
-
-    /*pub fn acquire(&self, frame: &graal::Frame) {
-        let semaphore = self.surface.unwrap().vulkan_timeline;
-        frame.add_graphics_pass("draw surface acquire", |pass| {
-            pass.add_external_semaphore_wait(semaphore, vk::PipelineStageFlags::ALL_COMMANDS);
-        });
-    }*/
-
-    pub fn resize(&mut self, size: (u32, u32), scale_factor: f64) {
-        // release the old surface
-        unsafe {
-            self.d2d_device_context.SetTarget(None);
-        }
-        self.surface = None;
-
-        let new_surface = SharedDrawSurface::new(&self.d2d_device_context, size, scale_factor);
-
-        unsafe {
-            // set the target on the DC
-            self.d2d_device_context.SetTarget(&new_surface.d2d_bitmap);
-            self.d2d_device_context
-                .SetDpi(new_surface.dpi, new_surface.dpi);
-        }
-
-        self.surface = Some(new_surface);
-    }
-
-    pub fn image(&self) -> graal::ImageInfo {
-        self.surface.as_ref().unwrap().vulkan_image
-    }
-}
-
-struct SurfaceDrawContext {}
 
 /// Encapsulates a Win32 window and associated resources for drawing to it.
 pub struct PlatformWindow {
     window: Window,
     hwnd: HWND,
     hinstance: HINSTANCE,
+    //swap_chain: IDXGISwapChain1,
     surface: vk::SurfaceKHR,
-    swap_chain: graal::SwapchainInfo,
+    swap_chain: graal::swapchain::Swapchain,
     swap_chain_width: u32,
     swap_chain_height: u32,
+    skia_backend_context: skia_safe::gpu::vk::BackendContext<'static>,
+    skia_recording_context: skia_safe::gpu::DirectContext,
 }
 
 impl PlatformWindow {
@@ -383,7 +217,7 @@ impl PlatformWindow {
     pub fn resize(&mut self, (width, height): (u32, u32)) {
         let platform = Platform::instance();
 
-        trace!("resizing swap chain: {}x{}", width, height);
+        tracing::trace!("resizing swap chain: {}x{}", width, height);
 
         // resizing to 0x0 will fail, so don't bother
         if width == 0 || height == 0 {
@@ -403,8 +237,8 @@ impl PlatformWindow {
     }
 
     /// Returns the swap chain object for the window.
-    pub fn swap_chain(&self) -> graal::SwapchainInfo {
-        self.swap_chain
+    pub fn swap_chain(&self) -> &graal::swapchain::Swapchain {
+        &self.swap_chain
     }
 
     /// Creates a new window from the options given in the provided [`WindowBuilder`].
@@ -416,7 +250,7 @@ impl PlatformWindow {
         event_loop: &EventLoopWindowTarget<()>,
         mut builder: WindowBuilder,
         parent_window: Option<&PlatformWindow>,
-    ) -> Result<PlatformWindow> {
+    ) -> Result<PlatformWindow, Error> {
         let platform = Platform::instance();
 
         if let Some(parent_window) = parent_window {
@@ -424,16 +258,64 @@ impl PlatformWindow {
         }
         let window = builder.build(event_loop).map_err(Error::Winit)?;
 
+        /*let dxgi_factory = &platform.0.dxgi_factory;
+        let d3d11_device = &platform.0.d3d11_device;
+
+        // create a DXGI swap chain for the window
+        let hinstance = HINSTANCE(window.hinstance() as isize);
+        let hwnd = HWND(window.hwnd() as isize);
+        let (width, height): (u32, u32) = window.inner_size().into();
+
+        // TODO flip effects
+        let swap_effect = DXGI_SWAP_EFFECT::DXGI_SWAP_EFFECT_SEQUENTIAL;
+
+        // create the swap chain
+        let swap_chain = unsafe {
+            let mut swap_chain = None;
+
+            let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
+                Width: width,
+                Height: height,
+                Format: DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM,
+                Stereo: false.into(),
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
+                BufferCount: SWAP_CHAIN_BUFFERS,
+                Scaling: DXGI_SCALING::DXGI_SCALING_STRETCH,
+                SwapEffect: swap_effect,
+                AlphaMode: DXGI_ALPHA_MODE::DXGI_ALPHA_MODE_UNSPECIFIED,
+                Flags: 0,
+            };
+
+            dxgi_factory
+                .CreateSwapChainForHwnd(
+                    d3d11_device.0.clone(),
+                    hwnd,
+                    &swap_chain_desc,
+                    ptr::null(),
+                    None,
+                    &mut swap_chain,
+                )
+                .and_some(swap_chain)
+                .expect("failed to create swap chain")
+        };*/
+
         // create a swap chain for the window
+        let ctx = platform.gpu_context().lock().unwrap();
         let surface = graal::surface::get_vulkan_surface(window.raw_window_handle());
         let swapchain_size = window.inner_size().into();
-        let swap_chain = unsafe {
-            platform
-                .gpu_context()
-                .lock()
-                .unwrap()
-                .create_swapchain(surface, swapchain_size)
-        };
+        let swap_chain = unsafe { Swapchain::new(&ctx, surface, swapchain_size) };
+
+        let skia_backend_context = unsafe { create_skia_vulkan_backend_context(&ctx) };
+        let recording_context_options = skia_safe::gpu::ContextOptions::new();
+        let skia_recording_context = skia_safe::gpu::DirectContext::new_vulkan(
+            &skia_backend_context,
+            &recording_context_options,
+        )
+        .unwrap();
 
         let hinstance = HINSTANCE(window.hinstance() as isize);
         let hwnd = HWND(window.hwnd() as isize);
@@ -446,8 +328,131 @@ impl PlatformWindow {
             swap_chain,
             swap_chain_width: swapchain_size.0,
             swap_chain_height: swapchain_size.1,
+            skia_backend_context,
+            skia_recording_context,
         };
 
         Ok(pw)
     }
+
+    pub fn draw_skia(&mut self, f: impl FnOnce(&mut skia_safe::Canvas)) {
+        let mut context = Platform::instance().gpu_context().lock().unwrap();
+        let swapchain_image = unsafe { self.swap_chain.acquire_next_image(&mut context) };
+
+        // do the dance required to create a skia context on the swapchain image
+        let graphics_queue_family = context.device().graphics_queue().1;
+
+        // start our frame
+        let frame = context.start_frame(Default::default());
+
+        // skia may not support rendering directly to the swapchain image (for example, it doesn't seem to support BGRA8888_SRGB).
+        // so allocate a separate image to use as a render target, then copy.
+        let skia_image_usage_flags = graal::vk::ImageUsageFlags::COLOR_ATTACHMENT
+            | graal::vk::ImageUsageFlags::TRANSFER_SRC
+            | graal::vk::ImageUsageFlags::TRANSFER_DST;
+        let skia_image_format = graal::vk::Format::R16G16B16A16_SFLOAT;
+        let skia_image = frame.create_transient_image(
+            "skia render target",
+            &graal::ResourceMemoryInfo::DEVICE_LOCAL,
+            &graal::ImageResourceCreateInfo {
+                image_type: graal::vk::ImageType::TYPE_2D,
+                usage: skia_image_usage_flags,
+                format: skia_image_format,
+                extent: graal::vk::Extent3D {
+                    width: swapchain_size.0,
+                    height: swapchain_size.1,
+                    depth: 1,
+                },
+                mip_levels: 1,
+                array_layers: 1,
+                samples: 1,
+                tiling: graal::vk::ImageTiling::OPTIMAL,
+            },
+        );
+
+        // create the skia render pass
+        frame.add_graphics_pass("skia render", |pass| {
+            // register access by skia, just assume how it's going to be used
+            pass.register_image_access_2(
+                skia_image.id,
+                graal::vk::AccessFlags::MEMORY_READ | graal::vk::AccessFlags::MEMORY_WRITE,
+                graal::vk::PipelineStageFlags::ALL_COMMANDS,
+                graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            );
+
+            pass.set_queue_commands(move |cctx, _queue| {
+                // now do something with skia or whatever
+                let skia_image_info = skia_vk::ImageInfo {
+                    image: skia_image.handle.as_raw() as *mut _,
+                    alloc: Default::default(),
+                    tiling: skia_vk::ImageTiling::OPTIMAL,
+                    layout: skia_vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    format: unsafe { mem::transmute(skia_image_format.as_raw()) }, // SAFETY: it's a VkFormat, and hopefully skia_vk has a definition with all the latest enumerators...
+                    image_usage_flags: skia_image_usage_flags.as_raw(),
+                    sample_count: 1,
+                    level_count: 1,
+                    current_queue_family: graphics_queue_family,
+                    protected: skia_safe::gpu::Protected::No,
+                    ycbcr_conversion_info: Default::default(),
+                    sharing_mode: skia_vk::SharingMode::EXCLUSIVE,
+                };
+                let render_target = skia_safe::gpu::BackendRenderTarget::new_vulkan(
+                    (self.swap_chain_width as i32, self.swap_chain_height as i32),
+                    1,
+                    &skia_image_info,
+                );
+                let mut surface = skia_safe::Surface::from_backend_render_target(
+                    recording_context,
+                    &render_target,
+                    skia_safe::gpu::SurfaceOrigin::TopLeft,
+                    skia_safe::ColorType::RGBAF16Norm, // ???
+                    sk::ColorSpace::new_srgb_linear(),
+                    Some(&sk::SurfaceProps::new(
+                        Default::default(),
+                        sk::PixelGeometry::RGBH,
+                    )),
+                )
+                .unwrap();
+
+                let canvas = surface.canvas();
+                f(canvas);
+
+                /*canvas.clear(sk::Color4f::new(1.0, 1.0, 1.0, 1.0));
+                let mut font = sk::Font::new(sk::Typeface::default(), Some(13.0));
+                font.set_subpixel(true);
+                font.set_hinting(sk::FontHinting::Full);
+                font.set_edging(sk::font::Edging::SubpixelAntiAlias);
+
+                let text_blob = sk::TextBlob::from_str("Hello world", &font).unwrap();
+                let mut paint = sk::Paint::new(sk::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+                paint.set_anti_alias(true);
+
+                canvas.draw_text_blob(&text_blob, sk::Point::new(10.5, 100.5), &paint);*/
+
+                surface.flush_and_submit();
+            });
+        });
+
+        // copy skia result to swapchain image
+        graal::utils::blit_images(
+            &frame,
+            skia_image,
+            swapchain_image.image_info,
+            (self.swap_chain_width, self.swap_chain_height),
+            graal::vk::ImageAspectFlags::COLOR,
+        );
+
+        // present
+        frame.present("present", &swapchain_image);
+        frame.finish();
+    }
+
+    /*pub fn present(&mut self) {
+        unsafe {
+            if let Err(err) = self.swap_chain.Present(1, 0).ok() {
+                tracing::error!("IDXGISwapChain::Present failed: {}", err)
+            }
+        }
+    }*/
 }

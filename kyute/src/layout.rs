@@ -1,15 +1,11 @@
 //! Types and functions used for layouting widgets.
-
-use crate::{
-    application::AppCtx, node::NodeArena, widget::Baseline, Offset, Point, SideOffsets, Size,
-};
-use generational_indextree::NodeId;
-use kyute_shell::platform::Platform;
+use crate::{Data, Offset, Point, SideOffsets, Size};
+use kyute_shell::drawing::Rect;
 use std::{
     fmt,
-    fmt::Formatter,
+    hash::{Hash, Hasher},
     ops::{Bound, RangeBounds},
-    rc::Rc,
+    sync::Arc,
 };
 
 /// Box constraints.
@@ -17,6 +13,24 @@ use std::{
 pub struct BoxConstraints {
     pub min: Size,
     pub max: Size,
+}
+
+impl Data for BoxConstraints {
+    fn same(&self, other: &Self) -> bool {
+        self.min.width.to_bits() == other.min.width.to_bits()
+            && self.min.height.to_bits() == other.min.height.to_bits()
+            && self.max.width.to_bits() == other.max.width.to_bits()
+            && self.max.height.to_bits() == other.max.height.to_bits()
+    }
+}
+
+impl Hash for BoxConstraints {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.min.width.to_bits().hash(state);
+        self.min.height.to_bits().hash(state);
+        self.max.width.to_bits().hash(state);
+        self.max.height.to_bits().hash(state);
+    }
 }
 
 impl BoxConstraints {
@@ -145,7 +159,7 @@ impl BoxConstraints {
 
 impl fmt::Debug for BoxConstraints {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{} => {}]", self.min, self.max)
+        write!(f, "[{:?} => {:?}]", self.min, self.max)
     }
 }
 
@@ -185,13 +199,24 @@ pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measu
 }
 
 /// Layout information for a visual node, relative to a parent node.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Measurements {
     /// Size of this node.
     pub size: Size,
     /// Baseline offset relative to *this* node.
     /// The baseline relative to the parent node is `offset.y + baseline`.
     pub baseline: Option<f64>,
+    /// True if the widget is a separate window, in which case it takes no space in its parent.
+    pub is_window: bool,
+}
+
+impl Hash for Measurements {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.size.width.to_bits().hash(state);
+        self.size.height.to_bits().hash(state);
+        self.baseline.map(|x| x.to_bits()).hash(state);
+        self.is_window.hash(state);
+    }
 }
 
 impl Default for Measurements {
@@ -199,6 +224,7 @@ impl Default for Measurements {
         Measurements {
             size: (0.0, 0.0).into(),
             baseline: None,
+            is_window: false,
         }
     }
 }
@@ -209,6 +235,7 @@ impl Measurements {
         Measurements {
             size,
             baseline: None,
+            is_window: false,
         }
     }
 
@@ -234,5 +261,71 @@ impl Measurements {
 impl From<Size> for Measurements {
     fn from(s: Size) -> Self {
         Measurements::new(s)
+    }
+}
+
+#[derive(Clone)]
+struct LayoutItemImpl {
+    measurements: Measurements,
+    children: Vec<(Offset, LayoutItem)>,
+}
+
+/// Represents the visual layout of a widget subtree.
+#[derive(Clone)]
+pub struct LayoutItem(Arc<LayoutItemImpl>);
+
+impl fmt::Debug for LayoutItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{:?}", self.0.measurements)
+    }
+}
+
+impl LayoutItem {
+    pub fn new(measurements: Measurements) -> LayoutItem {
+        LayoutItem(Arc::new(LayoutItemImpl {
+            measurements,
+            children: vec![],
+        }))
+    }
+
+    pub fn with_children(
+        measurements: Measurements,
+        children: Vec<(Offset, LayoutItem)>,
+    ) -> LayoutItem {
+        LayoutItem(Arc::new(LayoutItemImpl {
+            measurements,
+            children,
+        }))
+    }
+
+    pub fn add_child(&mut self, offset: Offset, item: LayoutItem) {
+        Arc::make_mut(&mut self.0).children.push((offset, item));
+    }
+
+    pub fn size(&self) -> Size {
+        self.0.measurements.size
+    }
+
+    pub fn measurements(&self) -> Measurements {
+        self.0.measurements
+    }
+
+    pub fn baseline(&self) -> Option<f64> {
+        self.0.measurements.baseline
+    }
+
+    pub fn bounds(&self) -> Rect {
+        Rect::new(Point::origin(), self.0.measurements.size)
+    }
+
+    pub fn children(&self) -> &[(Offset, LayoutItem)] {
+        &self.0.children
+    }
+
+    pub fn child(&self, at: usize) -> Option<LayoutItem> {
+        self.0
+            .children
+            .get(at)
+            .map(|(offset, layout)| layout.clone())
     }
 }

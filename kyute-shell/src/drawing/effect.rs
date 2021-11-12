@@ -1,4 +1,3 @@
-
 /*unsafe fn get_output_image(effect: &ComPtr<ID2D1Effect>) -> ComPtr<ID2D1Image> {
     let mut output_image = ptr::null_mut();
     effect.GetOutput(&mut output_image);
