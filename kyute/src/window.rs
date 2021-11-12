@@ -12,7 +12,7 @@ use keyboard_types::KeyState;
 use kyute_shell::{
     drawing::Color,
     platform::Platform,
-    window::{PlatformWindow, WindowDrawContext},
+    window::PlatformWindow,
     winit,
     winit::{
         event::{DeviceId, VirtualKeyCode, WindowEvent},
@@ -366,7 +366,7 @@ impl WindowState {
             }
             WindowEvent::Resized(size) => {
                 if let Some(window) = self.window.as_mut() {
-                    window.resize(PhysicalSize::new(size.width as f64, size.height as f64));
+                    window.resize((size.width, size.height));
                     relayout_contents = true;
                 } else {
                     tracing::warn!("Resized event received but window has not been created");
@@ -652,16 +652,23 @@ impl Widget for Window {
                     let mut invalid = Region::new();
                     invalid.add_rect(window_bounds);
 
+                    let focus = window_state.focus;
+                    let pointer_grab = window_state.pointer_grab;
+                    let hot = window_state.hot;
+                    let inputs = &window_state.inputs;
+                    let scale_factor = window_state.scale_factor;
+                    let id = ctx.widget_id();
+
                     window.draw_skia(move |canvas| {
                         let mut paint_ctx = PaintCtx {
                             canvas,
-                            id: ctx.widget_id(),
+                            id,
                             window_bounds,
-                            focus: window_state.focus,
-                            pointer_grab: window_state.pointer_grab,
-                            hot: window_state.hot,
-                            inputs: &window_state.inputs,
-                            scale_factor: window_state.scale_factor,
+                            focus,
+                            pointer_grab,
+                            hot,
+                            inputs,
+                            scale_factor,
                             invalid: &invalid,
                             hover: false,
                         };

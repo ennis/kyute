@@ -6,7 +6,7 @@ use crate::{
     Alignment, BoxConstraints, Cache, Environment, Event, Key, LayoutItem, Measurements, Rect,
     SideOffsets, Size, Widget, WidgetPod,
 };
-use kyute_shell::drawing::{Brush, Color};
+use kyute_shell::drawing::{Color, ToSkia};
 use std::{cell::Cell, convert::TryFrom, sync::Arc};
 use kyute_shell::skia as sk;
 
@@ -97,9 +97,9 @@ impl Widget for Button {
         let stroke: sk::Paint = sk::Paint::new(sk::Color4f::new(0.100, 0.100, 0.100, 1.0), None);
         let fill: sk::Paint = sk::Paint::new(sk::Color4f::new(0.800, 0.888, 0.100, 1.0), None);
         if ctx.is_hovering() {
-            ctx.canvas.draw_rect(bounds, &fill);
+            ctx.canvas.draw_rect(bounds.to_skia(), &fill);
         }
-        ctx.draw_rectangle(bounds, &stroke, 2.0);
+        ctx.canvas.draw_rect(bounds.to_skia(), &stroke);
         self.label.paint(ctx, bounds, env);
     }
 }

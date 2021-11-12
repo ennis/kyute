@@ -1,13 +1,13 @@
 //! Text elements
 use crate::{
-    composable, env::Environment, event::Event, BoxConstraints, EventCtx, LayoutCtx, LayoutItem,
+    composable, env::Environment, event::Event, BoxConstraints, EventCtx, LayoutCtx,
     Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetPod,
 };
 use kyute_shell::{
-    skia as sk,
-    text::{TextFormatBuilder, TextLayout},
+    skia as sk
 };
 use std::cell::RefCell;
+use kyute_shell::drawing::ToSkia;
 
 #[derive(Clone)]
 pub struct Text {
@@ -39,7 +39,7 @@ impl Widget for Text {
         _env: &Environment,
     ) -> Measurements {
         //let font_name = "Consolas";
-        let font_size = 12;
+        let font_size = 12.0;
 
         let mut font: sk::Font = sk::Font::new(sk::Typeface::default(), Some(font_size));
         font.set_subpixel(true);
@@ -48,10 +48,7 @@ impl Widget for Text {
         let text_blob = sk::TextBlob::from_str(&self.text, &font).unwrap();
         let paint: sk::Paint = sk::Paint::new(sk::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
         let (_, bounds) = font.measure_str(&self.text, Some(&paint));
-        let bounds = Rect {
-            origin: Point::new(bounds.left, bounds.top),
-            size: Size::new(bounds.right - bounds.left, bounds.bottom - bounds.top),
-        };
+        let bounds = Rect::from_skia(bounds);
 
         // round size to nearest device pixel
         let size = bounds.size.ceil();

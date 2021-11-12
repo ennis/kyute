@@ -134,7 +134,7 @@ impl Widget for Flex {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        ctx.clear(Color::new(0.1, 0.1, 0.3, 1.0));
+        ctx.canvas.clear(kyute_shell::skia::Color4f::new(0.1, 0.1, 0.3, 1.0));
         for item in self.items.iter() {
             item.paint(ctx, bounds, env);
         }

@@ -17,7 +17,6 @@
 use std::{ptr, rc::Rc, sync::Arc};
 use kyute_shell::drawing::Color;
 use crate::SideOffsets;
-use kyute_shell::text::{TextFormat, TextLayout};
 //use crate::style::StyleSet;
 
 pub trait Data: Clone + 'static {
@@ -271,7 +270,7 @@ impl<T: Data, const N: usize> Data for [T; N] {
     }
 }
 
-impl Data for TextFormat {
+/*impl Data for TextFormat {
     fn same(&self, other: &Self) -> bool {
         self.as_raw().eq(other.as_raw())
     }
@@ -281,7 +280,7 @@ impl Data for TextLayout {
     fn same(&self, other: &Self) -> bool {
         self.as_raw().eq(other.as_raw())
     }
-}
+}*/
 
 /*
 #[cfg(test)]

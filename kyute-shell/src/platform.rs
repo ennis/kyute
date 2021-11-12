@@ -386,8 +386,8 @@ impl Platform {
     }
 
     /// Returns the GPU context.
-    pub fn gpu_context(&self) -> &GpuContext {
-        &self.0.gpu_context
+    pub fn gpu_context(&self) -> GpuContext {
+        self.0.gpu_context.clone()
     }
 
    /* pub fn run() {

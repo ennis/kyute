@@ -34,10 +34,10 @@ pub const DIP: DipLength = DipLength::new(1.0);
 /// One device pixel.
 pub const PX: DipLength = DipLength::new(1.0);
 
-/// Numeric types that can be converted to a size in DIPs.
+/*/// Numeric types that can be converted to a size in DIPs.
 pub trait IntoDip {
     fn into_dip(self, ctx: &DrawContext) -> DipLength;
-}
+}*/
 
 /// Common graphics types
 pub type Size = euclid::Size2D<f64, Dip>;
@@ -57,6 +57,50 @@ pub trait RectExt {
 impl RectExt for Rect {
     fn stroke_inset(self, width: f64) -> Self {
         self.inflate(-width * 0.5, -width * 0.5)
+    }
+}
+
+pub trait ToSkia {
+    type Target;
+    fn to_skia(&self) -> Self::Target;
+    fn from_skia(value: Self::Target) -> Self;
+}
+
+impl ToSkia for Rect {
+    type Target = skia_safe::Rect;
+
+    fn to_skia(&self) -> Self::Target {
+        skia_safe::Rect {
+            left: self.origin.x as f32,
+            top: self.origin.y as f32,
+            right: (self.origin.x + self.size.width) as f32,
+            bottom: (self.origin.y + self.size.height) as f32,
+        }
+    }
+
+    fn from_skia(value: Self::Target) -> Self {
+        Rect {
+            origin: Point::new(value.left as f64, value.top as f64),
+            size: Size::new(
+                (value.right - value.left) as f64,
+                (value.bottom - value.top) as f64,
+            ),
+        }
+    }
+}
+
+impl ToSkia for Point {
+    type Target = skia_safe::Point;
+
+    fn to_skia(&self) -> Self::Target {
+        skia_safe::Point {
+            x: self.x as f32,
+            y: self.y as f32,
+        }
+    }
+
+    fn from_skia(value: Self::Target) -> Self {
+        Point::new(value.x as f64, value.y as f64)
     }
 }
 

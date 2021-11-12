@@ -1,27 +1,13 @@
 //! Platform-specific window creation
 use crate::{
     bindings::Windows::Win32::{
-        Direct2D::{
-            D2D1_ALPHA_MODE, D2D1_BITMAP_OPTIONS, D2D1_BITMAP_PROPERTIES1,
-            D2D1_DEVICE_CONTEXT_OPTIONS, D2D1_PIXEL_FORMAT,
-        },
-        Dxgi::{
-            IDXGISurface, IDXGISwapChain1, DXGI_ALPHA_MODE, DXGI_FORMAT, DXGI_SAMPLE_DESC,
-            DXGI_SCALING, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT, DXGI_USAGE_RENDER_TARGET_OUTPUT,
-        },
         SystemServices::HINSTANCE,
         WindowsAndMessaging::HWND,
     },
-    drawing::{DrawContext, PhysicalSize},
     error::Error,
     platform::{GpuContext, Platform},
 };
-use graal::{
-    ash::version::{EntryV1_0, InstanceV1_0},
-    swapchain::Swapchain,
-    vk,
-    vk::Handle,
-};
+use graal::{MemoryLocation, swapchain::Swapchain, vk, vk::Handle};
 use raw_window_handle::HasRawWindowHandle;
 use skia_safe as sk;
 use skia_safe::gpu::vk as skia_vk;
@@ -202,8 +188,8 @@ impl PlatformWindow {
     }
 
     /// Returns the rendering context associated to this window.
-    pub fn gpu_context(&self) -> &GpuContext {
-        Platform::instance().gpu_context()
+    pub fn gpu_context(&self) -> GpuContext {
+        Platform::instance().gpu_context().clone()
     }
 
     /// Returns the current swap chain size in physical pixels.
@@ -225,11 +211,9 @@ impl PlatformWindow {
         }
 
         unsafe {
-            platform
-                .gpu_context()
-                .lock()
-                .unwrap()
-                .resize_swapchain(self.swap_chain.id, (width, height));
+            let context = platform.gpu_context();
+            let context = context.lock().unwrap();
+            self.swap_chain.resize(&context, (width, height));
         }
 
         self.swap_chain_width = width;
@@ -304,7 +288,8 @@ impl PlatformWindow {
         };*/
 
         // create a swap chain for the window
-        let ctx = platform.gpu_context().lock().unwrap();
+        let ctx = platform.gpu_context();
+        let ctx = ctx.lock().unwrap();
         let surface = graal::surface::get_vulkan_surface(window.raw_window_handle());
         let swapchain_size = window.inner_size().into();
         let swap_chain = unsafe { Swapchain::new(&ctx, surface, swapchain_size) };
@@ -336,8 +321,14 @@ impl PlatformWindow {
     }
 
     pub fn draw_skia(&mut self, f: impl FnOnce(&mut skia_safe::Canvas)) {
-        let mut context = Platform::instance().gpu_context().lock().unwrap();
+        let context = Platform::instance().gpu_context();
+        let mut context = context.lock().unwrap();
         let swapchain_image = unsafe { self.swap_chain.acquire_next_image(&mut context) };
+
+        let swap_chain_width = self.swap_chain_width;
+        let swap_chain_height = self.swap_chain_height;
+
+
 
         // do the dance required to create a skia context on the swapchain image
         let graphics_queue_family = context.device().graphics_queue().1;
@@ -351,16 +342,17 @@ impl PlatformWindow {
             | graal::vk::ImageUsageFlags::TRANSFER_SRC
             | graal::vk::ImageUsageFlags::TRANSFER_DST;
         let skia_image_format = graal::vk::Format::R16G16B16A16_SFLOAT;
-        let skia_image = frame.create_transient_image(
+
+        let skia_image = frame.context().create_image(
             "skia render target",
-            &graal::ResourceMemoryInfo::DEVICE_LOCAL,
+            MemoryLocation::GpuOnly,
             &graal::ImageResourceCreateInfo {
                 image_type: graal::vk::ImageType::TYPE_2D,
                 usage: skia_image_usage_flags,
                 format: skia_image_format,
                 extent: graal::vk::Extent3D {
-                    width: swapchain_size.0,
-                    height: swapchain_size.1,
+                    width: swap_chain_width,
+                    height: swap_chain_height,
                     depth: 1,
                 },
                 mip_levels: 1,
@@ -370,10 +362,12 @@ impl PlatformWindow {
             },
         );
 
+        let skia_recording_context = &mut self.skia_recording_context;
+
         // create the skia render pass
         frame.add_graphics_pass("skia render", |pass| {
             // register access by skia, just assume how it's going to be used
-            pass.register_image_access_2(
+            pass.register_image_access(
                 skia_image.id,
                 graal::vk::AccessFlags::MEMORY_READ | graal::vk::AccessFlags::MEMORY_WRITE,
                 graal::vk::PipelineStageFlags::ALL_COMMANDS,
@@ -398,12 +392,12 @@ impl PlatformWindow {
                     sharing_mode: skia_vk::SharingMode::EXCLUSIVE,
                 };
                 let render_target = skia_safe::gpu::BackendRenderTarget::new_vulkan(
-                    (self.swap_chain_width as i32, self.swap_chain_height as i32),
+                    (swap_chain_width as i32, swap_chain_height as i32),
                     1,
                     &skia_image_info,
                 );
                 let mut surface = skia_safe::Surface::from_backend_render_target(
-                    recording_context,
+                    skia_recording_context,
                     &render_target,
                     skia_safe::gpu::SurfaceOrigin::TopLeft,
                     skia_safe::ColorType::RGBAF16Norm, // ???

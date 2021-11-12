@@ -11,7 +11,7 @@ use crate::{
 };
 use kyute_macros::composable;
 use kyute_shell::{
-    drawing::DrawContext,
+    skia::Matrix,
     winit::{event_loop::EventLoopWindowTarget, window::WindowId},
 };
 use std::{
@@ -78,21 +78,6 @@ impl<'a> PaintCtx<'a> {
     pub fn is_capturing_pointer(&self) -> bool {
         self.pointer_grab == Some(self.node_id)
     }*/
-}
-
-// PaintCtx auto-derefs to a DrawContext
-impl<'a> Deref for PaintCtx<'a> {
-    type Target = DrawContext;
-
-    fn deref(&self) -> &Self::Target {
-        self.draw_ctx
-    }
-}
-
-impl<'a> DerefMut for PaintCtx<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.draw_ctx
-    }
 }
 
 pub struct EventCtx<'a> {
@@ -397,12 +382,17 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
         ).entered();*/
         // trace!(?ctx.scale_factor, ?ctx.inputs.pointers, ?window_bounds, "paint");
 
-        let hover = ctx.inputs.pointers.iter().any(|(_, state)| {
-            window_bounds.contains(state.position)
-        });
+        let hover = ctx
+            .inputs
+            .pointers
+            .iter()
+            .any(|(_, state)| window_bounds.contains(state.position));
 
-        ctx.draw_ctx.save();
-        ctx.draw_ctx.transform(&offset.to_transform());
+        ctx.canvas.save();
+        ctx.canvas.translate(kyute_shell::skia::Vector::new(
+            offset.x as f32,
+            offset.y as f32,
+        ));
 
         {
             let mut child_ctx = PaintCtx {
@@ -422,7 +412,7 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
                 .paint(&mut child_ctx, Rect::new(Point::origin(), size), env);
         }
 
-        ctx.draw_ctx.restore();
+        ctx.canvas.restore();
     }
 
     pub(crate) fn compute_child_filter(&self, parent_ctx: &mut EventCtx) -> Bloom<WidgetId> {

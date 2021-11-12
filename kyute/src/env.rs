@@ -1,7 +1,6 @@
 use crate::{data::Data, SideOffsets, WidgetPod};
 use kyute_shell::{
-    drawing::Color,
-    text::{TextFormat, TextLayout},
+    drawing::Color
 };
 use std::{
     any::{Any, TypeId},
@@ -67,8 +66,6 @@ impl_env_value!(f64);
 impl_env_value!(Color);
 impl_env_value!(String);
 impl_env_value!(SideOffsets);
-impl_env_value!(TextFormat);
-impl_env_value!(TextLayout);
 
 impl<T: Any> EnvValue for Arc<T> {
     fn as_any(&self) -> &dyn Any {
