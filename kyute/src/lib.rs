@@ -25,13 +25,16 @@ mod window;
 //mod style;
 
 pub use cache::{Cache, CacheError, Key};
-pub use core2::{EventCtx, LayoutCtx, PaintCtx, Widget, WidgetPod, WidgetId};
+pub use core2::{EventCtx, LayoutCtx, PaintCtx, Widget, WidgetPod, WidgetId, GpuCtx};
 pub use data::Data;
 pub use env::{EnvKey, EnvValue, Environment};
 pub use event::{Event, InternalEvent};
 pub use kyute_macros::{composable, Data};
 pub use layout::{align_boxes, Alignment, BoxConstraints, LayoutItem, Measurements};
 pub use window::Window;
+// re-export graal
+pub use kyute_shell::graal;
+pub use kyute_shell as shell;
 
 pub type Dip = kyute_shell::drawing::Dip;
 pub type Px = kyute_shell::drawing::Px;

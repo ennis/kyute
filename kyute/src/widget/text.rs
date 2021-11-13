@@ -1,13 +1,10 @@
 //! Text elements
 use crate::{
-    composable, env::Environment, event::Event, BoxConstraints, EventCtx, LayoutCtx,
-    Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetPod,
+    composable, env::Environment, event::Event, BoxConstraints, EventCtx, LayoutCtx, Measurements,
+    PaintCtx, Point, Rect, Size, Widget, WidgetPod,
 };
-use kyute_shell::{
-    skia as sk
-};
+use kyute_shell::{drawing::ToSkia, skia as sk};
 use std::cell::RefCell;
-use kyute_shell::drawing::ToSkia;
 
 #[derive(Clone)]
 pub struct Text {
@@ -30,7 +27,7 @@ impl Widget for Text {
         std::any::type_name::<Self>()
     }
 
-    fn event(&self, _ctx: &mut EventCtx, _event: &Event) {}
+    fn event(&self, _ctx: &mut EventCtx, _event: &mut Event) {}
 
     fn layout(
         &self,
@@ -38,8 +35,8 @@ impl Widget for Text {
         constraints: BoxConstraints,
         _env: &Environment,
     ) -> Measurements {
-        //let font_name = "Consolas";
-        let font_size = 12.0;
+        let font_name = "Consolas";
+        let font_size = 14.0;
 
         let mut font: sk::Font = sk::Font::new(sk::Typeface::default(), Some(font_size));
         font.set_subpixel(true);
@@ -48,21 +45,16 @@ impl Widget for Text {
         let text_blob = sk::TextBlob::from_str(&self.text, &font).unwrap();
         let paint: sk::Paint = sk::Paint::new(sk::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
         let (_, bounds) = font.measure_str(&self.text, Some(&paint));
-        let bounds = Rect::from_skia(bounds);
+        let bounds = dbg!(Rect::from_skia(bounds));
 
         // round size to nearest device pixel
         let size = bounds.size.ceil();
-
-        // TODO baseline
-        /*let baseline = text_layout
-        .line_metrics()
-        .first()
-        .map(|m| m.baseline as f64);*/
+        let baseline = -bounds.origin.y;
 
         self.text_blob.replace(Some(text_blob));
         Measurements {
             size,
-            baseline: None, // TODO
+            baseline: Some(baseline), // TODO
             is_window: false,
         }
     }
@@ -73,9 +65,11 @@ impl Widget for Text {
         if let Some(ref text_blob) = &*text_blob {
             let mut paint: sk::Paint = sk::Paint::new(sk::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
             paint.set_anti_alias(true);
-            ctx.canvas
-                .draw_text_blob(&text_blob, sk::Point::new(0.0, 0.0), &paint);
-            ctx.canvas.clear(sk::Color4f::new(0.1, 0.2, 0.7, 1.0));
+            ctx.canvas.draw_text_blob(
+                &text_blob,
+                sk::Point::new(0.0, ctx.measurements().baseline.unwrap_or(0.0) as f32),
+                &paint,
+            );
         } else {
             tracing::warn!("text layout wasn't calculated before paint")
         }

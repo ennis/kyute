@@ -26,6 +26,7 @@ use std::{
     time::Instant,
 };
 use tracing::trace_span;
+use crate::core2::WindowInfo;
 
 fn key_code_from_winit(
     input: &winit::event::KeyboardInput,
@@ -328,17 +329,14 @@ struct WindowState {
 
 impl WindowState {
     /// Window event processing.
-    ///
-    /// Returns whether we should relayout and redraw the contents.
     fn process_window_event(
         &mut self,
-        event_ctx: &mut EventCtx,
+        parent_ctx: &mut EventCtx,
         content_widget: &WidgetPod,
         window_event: &winit::event::WindowEvent,
-    ) -> bool {
+    )
+    {
         //let _span = trace_span!("process_window_event", ?window_event).entered();
-
-        let mut relayout_contents = false;
 
         // ---------------------------------------
         // Default window event processing: update scale factor, input states (pointer pos, keyboard mods).
@@ -360,14 +358,13 @@ impl WindowState {
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.scale_factor = *scale_factor;
-                relayout_contents = true;
-                // TODO
+                //content_widget.invalidate_layout();
+                // TODO maybe we should relayout in this case?
                 None
             }
             WindowEvent::Resized(size) => {
                 if let Some(window) = self.window.as_mut() {
                     window.resize((size.width, size.height));
-                    relayout_contents = true;
                 } else {
                     tracing::warn!("Resized event received but window has not been created");
                 }
@@ -523,7 +520,8 @@ impl WindowState {
             _ => None,
         };
 
-        if let Some(event) = event {
+        let mut content_ctx = parent_ctx.with_window_info(WindowInfo { scale_factor: self.scale_factor });
+        if let Some(mut event) = event {
             //------------------------------------------------
             // force release pointer grab on pointer up
             match event {
@@ -539,6 +537,8 @@ impl WindowState {
 
             //------------------------------------------------
             // Send event
+
+
             match event {
                 Event::Pointer(ref pointer_event) => {
                     // Pointer events are delivered to the node that is currently grabbing the pointer.
@@ -546,16 +546,15 @@ impl WindowState {
                     // that passes the hit-test
                     if let Some(id) = self.pointer_grab {
                         content_widget.event(
-                            event_ctx,
-                            &Event::Internal(InternalEvent::RouteEvent {
+                            &mut content_ctx,
+                            &mut Event::Internal(InternalEvent::RouteEvent {
                                 target: id,
-                                event: Box::new(event.clone()),
+                                event: Box::new(event),
                             }),
                         );
                     } else {
                         // just forward to content, will do a hit-test
-                        // FIXME: we shouldn't be using the same EventCtx
-                        content_widget.event(event_ctx, &event);
+                        content_widget.event(&mut content_ctx, &mut event);
                     };
                 }
                 Event::Keyboard(ref k) => {
@@ -563,10 +562,10 @@ impl WindowState {
                     // if no widget has focus, the event is dropped.
                     if let Some(focus) = self.focus {
                         content_widget.event(
-                            event_ctx,
-                            &Event::Internal(InternalEvent::RouteEvent {
+                            &mut content_ctx,
+                            &mut Event::Internal(InternalEvent::RouteEvent {
                                 target: focus,
-                                event: Box::new(event.clone()),
+                                event: Box::new(event),
                             }),
                         );
                     }
@@ -576,8 +575,6 @@ impl WindowState {
                 }
             };
         }
-
-        relayout_contents
     }
 }
 
@@ -612,6 +609,66 @@ impl Window {
             contents,
         })
     }
+
+
+    /*fn do_redraw(&self) {
+
+        //
+
+        let mut window_state = self.window_state.borrow_mut();
+        let window_state = &mut *window_state;
+        if let Some(ref mut window) = window_state.window {
+
+            // --- contents GPU pass ---
+            /*let context = Platform::instance().gpu_context();
+            let mut context = context.lock().unwrap();
+            let frame = context.start_frame(create_info);
+            let resource_accesses = self.contents.graphics(&mut frame);*/
+
+
+
+
+            let scale_factor = window.window().scale_factor();
+            let window_size = window.window().inner_size().to_logical(scale_factor);
+            let window_bounds = Rect::new(
+                Point::origin(),
+                Size::new(window_size.width, window_size.height),
+            );
+            let mut invalid = Region::new();
+            invalid.add_rect(window_bounds);
+
+            let focus = window_state.focus;
+            let pointer_grab = window_state.pointer_grab;
+            let hot = window_state.hot;
+            let inputs = &window_state.inputs;
+            let scale_factor = window_state.scale_factor;
+            let id = ctx.widget_id();
+
+            // --- skia setup
+
+            window.draw_skia(move |canvas| {
+                let mut paint_ctx = PaintCtx {
+                    canvas,
+                    id,
+                    window_bounds,
+                    focus,
+                    pointer_grab,
+                    hot,
+                    inputs,
+                    scale_factor,
+                    invalid: &invalid,
+                    hover: false,
+                    measurements: Default::default()
+                };
+                // TODO environment
+                tracing::trace!("window redraw");
+                self.contents
+                    .paint(&mut paint_ctx, window_bounds, &Environment::new());
+            });
+        } else {
+            tracing::warn!("WindowRedrawRequest: window has not yet been created");
+        }
+    }*/
 }
 
 impl Widget for Window {
@@ -619,7 +676,7 @@ impl Widget for Window {
         std::any::type_name::<Self>()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &Event) {
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event) {
         match event {
             Event::Initialize => {
                 // create the window
@@ -671,6 +728,7 @@ impl Widget for Window {
                             scale_factor,
                             invalid: &invalid,
                             hover: false,
+                            measurements: Default::default()
                         };
                         // TODO environment
                         tracing::trace!("window redraw");
@@ -681,24 +739,30 @@ impl Widget for Window {
                     tracing::warn!("WindowRedrawRequest: window has not yet been created");
                 }
             }
-            _ => self.contents.event(ctx, event),
+            _ => {
+                let mut window_state = self.window_state.borrow_mut();
+                let mut content_ctx = ctx.with_window_info(WindowInfo { scale_factor: window_state.scale_factor });
+                self.contents.event(&mut content_ctx, event);
+                // don't propagate, but TODO check for redraw and such
+            },
         }
 
         let mut window_state = self.window_state.borrow_mut();
         if let Some(ref mut window) = window_state.window {
             let (width, height): (f64, f64) = window.window().inner_size().into();
+
             let mut m_window = Measurements::new(Size::new(width, height));
             let (m_content, layout_changed) = self.contents.relayout(
                 BoxConstraints::new(0.0..width, 0.0..height),
                 &Environment::new(),
             );
-            let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content);
-            self.contents.set_child_offset(offset);
-            // layout_changed can be true because:
-            // - the root constraints have changed (i.e. the size of the window), and the layouts had to be recalculated
-            // - a widget had no layout, either because it was just created, or because it was invalidated (by `EventCtx::request_relayout`, which propagates upward).
-            if layout_changed | ctx.redraw {
-                window.window().request_redraw();
+            if layout_changed {
+                let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content);
+                self.contents.set_child_offset(offset);
+            }
+
+            if self.contents.invalidated() {
+                window.window().request_redraw()
             }
         }
     }

@@ -7,7 +7,7 @@ use crate::{
     error::Error,
     platform::{GpuContext, Platform},
 };
-use graal::{MemoryLocation, swapchain::Swapchain, vk, vk::Handle};
+use graal::{FrameCreateInfo, GpuFuture, MemoryLocation, swapchain::Swapchain, vk, vk::Handle};
 use raw_window_handle::HasRawWindowHandle;
 use skia_safe as sk;
 use skia_safe::gpu::vk as skia_vk;
@@ -320,6 +320,19 @@ impl PlatformWindow {
         Ok(pw)
     }
 
+    pub fn run_frame(&mut self, create_info: FrameCreateInfo, f: impl FnOnce(&mut graal::Frame)) -> GpuFuture {
+        /*let context = Platform::instance().gpu_context();
+        let mut context = context.lock().unwrap();
+
+        let mut frame = context.start_frame(create_info);
+        f(frame);
+        frame.finish()*/
+        todo!()
+
+
+
+    }
+
     pub fn draw_skia(&mut self, f: impl FnOnce(&mut skia_safe::Canvas)) {
         let context = Platform::instance().gpu_context();
         let mut context = context.lock().unwrap();
@@ -327,7 +340,6 @@ impl PlatformWindow {
 
         let swap_chain_width = self.swap_chain_width;
         let swap_chain_height = self.swap_chain_height;
-
 
 
         // do the dance required to create a skia context on the swapchain image
@@ -411,19 +423,6 @@ impl PlatformWindow {
 
                 let canvas = surface.canvas();
                 f(canvas);
-
-                /*canvas.clear(sk::Color4f::new(1.0, 1.0, 1.0, 1.0));
-                let mut font = sk::Font::new(sk::Typeface::default(), Some(13.0));
-                font.set_subpixel(true);
-                font.set_hinting(sk::FontHinting::Full);
-                font.set_edging(sk::font::Edging::SubpixelAntiAlias);
-
-                let text_blob = sk::TextBlob::from_str("Hello world", &font).unwrap();
-                let mut paint = sk::Paint::new(sk::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
-                paint.set_anti_alias(true);
-
-                canvas.draw_text_blob(&text_blob, sk::Point::new(10.5, 100.5), &paint);*/
-
                 surface.flush_and_submit();
             });
         });

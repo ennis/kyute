@@ -11,3 +11,5 @@ pub mod window;
 pub use winit;
 // Re-export skia
 pub use skia_safe as skia;
+// Re-export graal
+pub use graal;

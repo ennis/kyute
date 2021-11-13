@@ -3,6 +3,7 @@ mod button;
 //mod container;
 mod flex;
 mod text;
+mod graphics;
 //mod grid;
 //mod slider;
 //mod text;

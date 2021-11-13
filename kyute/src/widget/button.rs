@@ -38,7 +38,7 @@ impl Widget for Button {
         std::any::type_name::<Self>()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &Event) {
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event) {
         match event {
             Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerDown => {
@@ -94,10 +94,14 @@ impl Widget for Button {
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         tracing::trace!(?bounds, "button paint");
-        let stroke: sk::Paint = sk::Paint::new(sk::Color4f::new(0.100, 0.100, 0.100, 1.0), None);
+
+        let mut stroke: sk::Paint = sk::Paint::new(sk::Color4f::new(0.100, 0.100, 0.100, 1.0), None);
+        stroke.set_stroke(true);
+        stroke.set_stroke_width(2.0);
+
         let fill: sk::Paint = sk::Paint::new(sk::Color4f::new(0.800, 0.888, 0.100, 1.0), None);
         if ctx.is_hovering() {
-            ctx.canvas.draw_rect(bounds.to_skia(), &fill);
+            ctx.canvas.draw_rect(bounds.to_skia(), &stroke);
         }
         ctx.canvas.draw_rect(bounds.to_skia(), &stroke);
         self.label.paint(ctx, bounds, env);

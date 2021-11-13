@@ -25,7 +25,7 @@ use std::{
 };
 
 #[derive(Copy, Clone)]
-pub(crate) struct Bloom<T> {
+pub struct Bloom<T> {
     bits: u64,
     _phantom: PhantomData<*const T>,
 }

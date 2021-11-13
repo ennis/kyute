@@ -1,21 +1,11 @@
-use kyute::{application, composable, widget::{Axis, Button, Flex, Text}, BoxConstraints, Cache, Data, Environment, Event, LayoutCtx, Measurements, PaintCtx, Rect, Widget, WidgetPod, Window, EventCtx};
+use kyute::{
+    application, composable,
+    widget::{Axis, Button, Flex, Text},
+    BoxConstraints, Cache, Data, Environment, Event, EventCtx, GpuCtx, LayoutCtx, Measurements,
+    PaintCtx, Rect, Widget, WidgetPod, Window,
+};
 use kyute_shell::{platform::Platform, winit::window::WindowBuilder};
 use std::sync::Arc;
-
-#[composable(uncached)]
-fn root() -> WidgetPod<Window> {
-    window()
-}
-
-#[composable(uncached)]
-fn window() -> WidgetPod<Window> {
-    todo!()
-}
-
-#[composable(uncached)]
-fn vbox() -> WidgetPod<Flex> {
-    todo!()
-}
 
 #[derive(Clone, Data)]
 struct AppState {
@@ -29,6 +19,47 @@ impl Default for AppState {
             items: Arc::new(vec![]),
             value: 0.0,
         }
+    }
+}
+
+pub struct GraphicsView;
+
+impl GraphicsView {
+    #[composable]
+    pub fn new() -> WidgetPod<GraphicsView> {
+        WidgetPod::new(GraphicsView)
+    }
+}
+
+impl Widget for GraphicsView {
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event) {
+        match event {
+            Event::Initialize => {
+
+            }
+            _ => {}
+        }
+    }
+
+    fn layout(
+        &self,
+        ctx: &mut LayoutCtx,
+        constraints: BoxConstraints,
+        env: &Environment,
+    ) -> Measurements {
+        todo!()
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        todo!()
+    }
+
+    fn gpu_frame(&self, ctx: &mut GpuCtx) {
+        let frame = ctx.frame();
+
+        // if first time or bounds changed, then create target with correct bounds
+
+        // draw stuff here
     }
 }
 
@@ -49,7 +80,7 @@ fn ui_function() -> WidgetPod {
             // List of items
             let mut item_list = vec![];
             for item in app_state.items.iter() {
-                Cache::scoped(*item as usize,  || {
+                Cache::scoped(*item as usize, || {
                     item_list.push(Text::new(format!("{}", item)).into());
                 });
             }

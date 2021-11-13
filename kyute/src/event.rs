@@ -1,10 +1,13 @@
 //! [`Events`](Event) sent to widgets, and related types.
+use std::cell::{Cell, RefCell};
 use crate::{Point, WidgetId};
 use std::collections::HashMap;
 use winit::event::DeviceId;
 
 pub use keyboard_types::{CompositionEvent, KeyboardEvent, Modifiers};
-use kyute_shell::winit;
+use kyute_shell::{graal, winit};
+use crate::bloom::Bloom;
+use crate::core2::GpuResourceAccesses;
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -123,11 +126,11 @@ pub enum MoveFocusDirection {
 #[derive(Clone, Debug)]
 pub enum LifecycleEvent {}
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum InternalEvent {
+#[derive(Debug)]
+pub enum InternalEvent<'a> {
     RouteEvent {
         target: WidgetId,
-        event: Box<Event>,
+        event: Box<Event<'a>>,
     },
     /*RouteHitTestEvent {
         position: Point,
@@ -139,12 +142,18 @@ pub enum InternalEvent {
     },
     RouteRedrawRequest(WidgetId),
     RouteInitialize,
-    UpdateChildFilter,
+    UpdateChildFilter {
+        filter: &'a mut Bloom<WidgetId>,
+    },
+    GpuFrame {
+        frame: &'a graal::Frame<'a>,
+        accesses: &'a mut GpuResourceAccesses
+    }
 }
 
 /// Events.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Event {
+#[derive(Debug)]
+pub enum Event<'a> {
     Initialize,
     FocusGained,
     FocusLost,
@@ -156,10 +165,10 @@ pub enum Event {
     Composition(CompositionEvent),
     WindowEvent(winit::event::WindowEvent<'static>),
     WindowRedrawRequest,
-    Internal(InternalEvent),
+    Internal(InternalEvent<'a>),
 }
 
-impl Event {
+impl<'a> Event<'a> {
     pub fn pointer_event(&self) -> Option<&PointerEvent> {
         match self {
             Event::Pointer(p) => Some(p),

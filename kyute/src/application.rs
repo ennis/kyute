@@ -36,7 +36,7 @@ pub struct AppCtx {
     pub(crate) cache: Cache,
     pub(crate) should_relayout: bool,
     pub(crate) should_redraw: bool,
-    pub(crate) pending_events: Vec<Event>,
+    pub(crate) pending_events: Vec<Event<'static>>,
 }
 
 impl AppCtx {
@@ -70,7 +70,7 @@ impl AppCtx {
         self.cache.set_state(key, value);
     }
 
-    pub fn post_event(&mut self, event: Event) {
+    pub fn post_event(&mut self, event: Event<'static>) {
         //tracing::trace!("post_event {:?}", &event);
         self.pending_events.push(event);
     }
@@ -79,7 +79,7 @@ impl AppCtx {
         &mut self,
         root_widget: &mut WidgetPod,
         event_loop: &EventLoopWindowTarget<()>,
-        event: Event
+        event: Event<'static>
     ) {
         self.post_event(event);
         self.flush_pending_events(root_widget, event_loop);
@@ -92,8 +92,8 @@ impl AppCtx {
     ) {
         while !self.pending_events.is_empty() {
             let events = mem::take(&mut self.pending_events);
-            for event in events {
-                root_widget.send_root_event(self, event_loop, &event)
+            for mut event in events {
+                root_widget.send_root_event(self, event_loop, &mut event)
             }
         }
     }
@@ -132,7 +132,7 @@ pub fn run(ui: fn() -> WidgetPod) {
                     root_widget.send_root_event(
                         &mut app_ctx,
                         elwt,
-                        &Event::Internal(InternalEvent::RouteRedrawRequest(target)),
+                        &mut Event::Internal(InternalEvent::RouteRedrawRequest(target)),
                     )
                 } else {
                     tracing::warn!("unregistered window id: {:?}", window_id);

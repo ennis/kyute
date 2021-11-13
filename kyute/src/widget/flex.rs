@@ -78,7 +78,7 @@ impl Widget for Flex {
         std::any::type_name::<Self>()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &Event) {
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event) {
         for item in self.items.iter() {
             item.event(ctx, event);
         }
@@ -134,7 +134,7 @@ impl Widget for Flex {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        ctx.canvas.clear(kyute_shell::skia::Color4f::new(0.1, 0.1, 0.3, 1.0));
+        ctx.canvas.clear(kyute_shell::skia::Color4f::new(0.55, 0.55, 0.55, 1.0));
         for item in self.items.iter() {
             item.paint(ctx, bounds, env);
         }
