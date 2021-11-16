@@ -7,7 +7,7 @@ use winit::event::DeviceId;
 pub use keyboard_types::{CompositionEvent, KeyboardEvent, Modifiers};
 use kyute_shell::{graal, winit};
 use crate::bloom::Bloom;
-use crate::core2::GpuResourceAccesses;
+use crate::core2::GpuResourceReferences;
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -146,8 +146,9 @@ pub enum InternalEvent<'a> {
         filter: &'a mut Bloom<WidgetId>,
     },
     GpuFrame {
-        frame: &'a graal::Frame<'a>,
-        accesses: &'a mut GpuResourceAccesses
+        context: &'a mut graal::Context,
+        /// List of GPU resources that will be referenced during painting.
+        references: &'a mut GpuResourceReferences
     }
 }
 
@@ -208,6 +209,7 @@ impl Default for PointerState {
 }
 
 /// Last known state of various input devices.
+#[derive(Clone)]
 pub struct InputState {
     /// Current state of keyboard modifiers.
     pub modifiers: Modifiers,

@@ -220,9 +220,17 @@ impl PlatformWindow {
         self.swap_chain_height = height;
     }
 
-    /// Returns the swap chain object for the window.
+    /// Returns the swap chain of this window.
     pub fn swap_chain(&self) -> &graal::swapchain::Swapchain {
         &self.swap_chain
+    }
+
+    pub fn skia_backend_context(&self) -> &skia_safe::gpu::vk::BackendContext<'static> {
+        &self.skia_backend_context
+    }
+
+    pub fn skia_recording_context(&self) -> &skia_safe::gpu::DirectContext {
+        &self.skia_recording_context
     }
 
     /// Creates a new window from the options given in the provided [`WindowBuilder`].
@@ -320,33 +328,20 @@ impl PlatformWindow {
         Ok(pw)
     }
 
-    pub fn run_frame(&mut self, create_info: FrameCreateInfo, f: impl FnOnce(&mut graal::Frame)) -> GpuFuture {
-        /*let context = Platform::instance().gpu_context();
-        let mut context = context.lock().unwrap();
-
-        let mut frame = context.start_frame(create_info);
-        f(frame);
-        frame.finish()*/
-        todo!()
-
-
-
-    }
-
-    pub fn draw_skia(&mut self, f: impl FnOnce(&mut skia_safe::Canvas)) {
+    /*pub fn draw_skia(&mut self, f: impl FnOnce(&mut skia_safe::Canvas)) {
         let context = Platform::instance().gpu_context();
         let mut context = context.lock().unwrap();
+
         let swapchain_image = unsafe { self.swap_chain.acquire_next_image(&mut context) };
 
         let swap_chain_width = self.swap_chain_width;
         let swap_chain_height = self.swap_chain_height;
 
-
         // do the dance required to create a skia context on the swapchain image
         let graphics_queue_family = context.device().graphics_queue().1;
 
         // start our frame
-        let frame = context.start_frame(Default::default());
+        context.start_frame(Default::default());
 
         // skia may not support rendering directly to the swapchain image (for example, it doesn't seem to support BGRA8888_SRGB).
         // so allocate a separate image to use as a render target, then copy.
@@ -355,7 +350,7 @@ impl PlatformWindow {
             | graal::vk::ImageUsageFlags::TRANSFER_DST;
         let skia_image_format = graal::vk::Format::R16G16B16A16_SFLOAT;
 
-        let skia_image = frame.context().create_image(
+        let skia_image = .context().create_image(
             "skia render target",
             MemoryLocation::GpuOnly,
             &graal::ImageResourceCreateInfo {
@@ -439,7 +434,7 @@ impl PlatformWindow {
         // present
         frame.present("present", &swapchain_image);
         frame.finish();
-    }
+    }*/
 
     /*pub fn present(&mut self) {
         unsafe {

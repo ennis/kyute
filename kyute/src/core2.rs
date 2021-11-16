@@ -12,7 +12,7 @@ use crate::{
 use kyute_macros::composable;
 use kyute_shell::{
     graal,
-    graal::{ash::vk, BufferId, Frame, ImageId},
+    graal::{ash::vk, BufferId, ImageId},
     skia::Matrix,
     winit::{event_loop::EventLoopWindowTarget, window::WindowId},
 };
@@ -89,11 +89,21 @@ impl<'a> PaintCtx<'a> {
     }*/
 }
 
-#[derive(Debug)]
-pub struct GpuResourceAccesses {
+#[derive(Debug, Default)]
+pub struct GpuResourceReferences {
     pub images: Vec<ImageAccess>,
     pub buffers: Vec<BufferAccess>,
 }
+
+impl GpuResourceReferences {
+    pub fn new() -> GpuResourceReferences {
+        GpuResourceReferences {
+            images: vec![],
+            buffers: vec![]
+        }
+    }
+}
+
 
 #[derive(Copy, Clone, Debug)]
 pub struct EventResult {
@@ -242,16 +252,17 @@ pub struct BufferAccess {
 }
 
 pub struct GpuCtx<'a> {
-    frame: &'a graal::Frame<'a>,
-    resource_accesses: &'a mut GpuResourceAccesses,
+    /// graal context in frame recording state.
+    context: &'a mut graal::Context,
+    resource_references: &'a mut GpuResourceReferences,
     measurements: Measurements,
     scale_factor: f64,
 }
 
 impl<'a> GpuCtx<'a> {
     /// Returns a ref to the frame.
-    pub fn frame(&self) -> &'a graal::Frame<'a> {
-        self.frame
+    pub fn context(&mut self) -> &mut graal::Context {
+        self.context
     }
 
     pub fn measurements(&self) -> Measurements {
@@ -259,7 +270,7 @@ impl<'a> GpuCtx<'a> {
     }
 
     /// Registers an image that will be accessed during paint.
-    pub fn register_paint_image_access(
+    pub fn reference_paint_image(
         &mut self,
         id: ImageId,
         access_mask: vk::AccessFlags,
@@ -267,7 +278,7 @@ impl<'a> GpuCtx<'a> {
         initial_layout: vk::ImageLayout,
         final_layout: vk::ImageLayout,
     ) {
-        self.resource_accesses.images.push(ImageAccess {
+        self.resource_references.images.push(ImageAccess {
             id,
             initial_layout,
             final_layout,
@@ -277,13 +288,13 @@ impl<'a> GpuCtx<'a> {
     }
 
     /// Registers a buffer that will be accessed during paint.
-    pub fn register_paint_buffer_access(
+    pub fn reference_paint_buffer(
         &mut self,
         id: BufferId,
         access_mask: vk::AccessFlags,
         stage_mask: vk::PipelineStageFlags,
     ) {
-        self.resource_accesses.buffers.push(BufferAccess {
+        self.resource_references.buffers.push(BufferAccess {
             id,
             access_mask,
             stage_mask,
@@ -364,12 +375,6 @@ struct WidgetPodInner<T: ?Sized> {
     /// FIXME: handle multiple pointers?
     pointer_over: Cell<bool>,
     widget: T,
-}
-
-fn compute_child_filter<T: Widget>(widget: &T) -> Bloom<WidgetId> {
-    // TODO the widget needs to cooperate but there are no suitable functions in the trait
-    // (`event` needs an `EventCtx`, which needs an `AppCtx`).
-    Default::default()
 }
 
 /// Represents a widget.
@@ -499,7 +504,7 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
         let measurements = if let Some(layout_result) = self.0.layout_result.get() {
             layout_result.measurements
         } else {
-            tracing::warn!("`paint` called with invalid layout");
+            tracing::warn!(id=?self.0.id, "`paint` called with invalid layout");
             return;
         };
         let size = measurements.size;
@@ -608,7 +613,7 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
         }
 
         // propagate results to parent
-        parent_ctx.relayout = true;
+        parent_ctx.relayout |= ctx.relayout;
         parent_ctx.redraw |= ctx.redraw;
         parent_ctx.handled = ctx.handled;
     }
@@ -657,7 +662,7 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
                     return;
                 }
             }
-            Event::Internal(InternalEvent::GpuFrame { frame, accesses }) => {
+            Event::Internal(InternalEvent::GpuFrame { context, references }) => {
                 let measurements = if let Some(layout_result) = self.0.layout_result.get() {
                     layout_result.measurements
                 } else {
@@ -665,9 +670,9 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
                     Measurements::default()
                 };
                 let mut gpu_ctx = GpuCtx {
-                    frame,
+                    context,
                     scale_factor: parent_ctx.scale_factor,
-                    resource_accesses: accesses,
+                    resource_references: references,
                     measurements,
                 };
                 self.0.widget.gpu_frame(&mut gpu_ctx);

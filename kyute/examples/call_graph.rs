@@ -55,10 +55,7 @@ impl Widget for GraphicsView {
     }
 
     fn gpu_frame(&self, ctx: &mut GpuCtx) {
-        let frame = ctx.frame();
-
         // if first time or bounds changed, then create target with correct bounds
-
         // draw stuff here
     }
 }
