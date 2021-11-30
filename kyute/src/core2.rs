@@ -327,7 +327,7 @@ pub trait Widget {
     fn window_paint(&self, _ctx: &mut WindowPaintCtx) {}
 
     /// Called for custom GPU operations
-    fn gpu_frame(&self, ctx: &mut GpuCtx) {}
+    fn gpu_frame<'a>(&'a self, ctx: &mut GpuCtx<'a>) {}
 }
 
 /// ID of a node in the tree.
