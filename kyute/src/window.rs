@@ -30,6 +30,7 @@ use std::{
     time::Instant,
 };
 use tracing::trace_span;
+use kyute::GpuFrameCtx;
 
 fn key_code_from_winit(
     input: &winit::event::KeyboardInput,
@@ -258,8 +259,8 @@ fn key_code_from_winit(
             VirtualKeyCode::Colon => Key::Unidentified,
             VirtualKeyCode::Comma => Key::Unidentified,
             VirtualKeyCode::Convert => Key::Convert,
-            VirtualKeyCode::Decimal => Key::Unidentified,
-            VirtualKeyCode::Divide => Key::Unidentified,
+            //VirtualKeyCode::Decimal => Key::Unidentified,
+            //VirtualKeyCode::Divide => Key::Unidentified,
             VirtualKeyCode::Equals => Key::Unidentified,
             VirtualKeyCode::Grave => Key::Unidentified,
             VirtualKeyCode::Kana => Key::KanaMode,
@@ -273,7 +274,7 @@ fn key_code_from_winit(
             VirtualKeyCode::MediaSelect => Key::Unidentified,
             VirtualKeyCode::MediaStop => Key::MediaStop,
             VirtualKeyCode::Minus => Key::Unidentified,
-            VirtualKeyCode::Multiply => Key::Unidentified,
+            //VirtualKeyCode::Multiply => Key::Unidentified,
             VirtualKeyCode::Mute => Key::AudioVolumeMute,
             VirtualKeyCode::MyComputer => Key::Unidentified,
             VirtualKeyCode::NavigateForward => Key::BrowserForward,
@@ -624,30 +625,39 @@ impl Window {
                 scale_factor: window_state.scale_factor,
             });
 
+            // collect all child widgets
+            let mut widgets = Vec::new();
+            self.contents.event(&mut content_ctx, &mut Event::Internal(InternalEvent::Traverse { widgets: &mut widgets }));
+
             // get and lock GPU context for frame submission
-            let context = Platform::instance().gpu_context();
-            let mut context = context.lock().unwrap();
+            let platform = Platform::instance();
+            let device = platform.gpu_device().clone();
+            let mut context = platform.lock_gpu_context();
 
             // start GPU context frame
-            context.start_frame(graal::FrameCreateInfo::default());
+            let image_ready = context.create_semaphore();
+            let mut frame = context.start_frame(graal::FrameCreateInfo::default());
 
             //---------------------------------------------------------------------------
             // propagate GpuFrame event to child widgets, allowing them to push rendering passes
             // at the same time, collect resources that will be referenced during the UI painting pass.
-            let mut resource_references = GpuResourceReferences::new();
-            self.contents.event(
-                &mut content_ctx,
-                &mut Event::Internal(InternalEvent::GpuFrame {
-                    context: &mut context,
-                    references: &mut resource_references,
-                }),
-            );
+            // TODO move this in core
+            let mut gpu_ctx = GpuFrameCtx {
+                frame: &mut frame,
+                resource_references: GpuResourceReferences::new(),
+                measurements: Default::default(),
+                scale_factor: window_state.scale_factor
+            };
+            for widget in widgets.iter() {
+                widget.gpu_frame(&mut gpu_ctx);
+            }
+            let resource_references = gpu_ctx.resource_references;
 
             //---------------------------------------------------------------------------
             // setup skia for rendering to a GPU image
             let (swap_chain_width, swap_chain_height) = window.swap_chain_size();
             // get the family of the graphics queue used by the context; needed by skia
-            let graphics_queue_family = context.device().graphics_queue().1;
+            let graphics_queue_family = device.graphics_queue().1;
 
             // skia may not support rendering directly to the swapchain image (for example, it doesn't seem to support BGRA8888_SRGB).
             // so allocate a separate image to use as a render target, then copy.
@@ -656,7 +666,7 @@ impl Window {
                 | graal::vk::ImageUsageFlags::TRANSFER_DST;
             // TODO: allow the user to choose
             let skia_image_format = graal::vk::Format::R16G16B16A16_SFLOAT;
-            let skia_image = context.create_image(
+            let skia_image = device.create_image(
                 "skia render target",
                 MemoryLocation::GpuOnly,
                 &graal::ImageResourceCreateInfo {
@@ -696,10 +706,11 @@ impl Window {
             let contents = self.contents.clone();
 
             // create the skia render pass
-            context.add_graphics_pass("skia render", |pass| {
-                // reference the render target;
+            {
+                let mut ui_render_pass = frame.start_graphics_pass("UI render");
+
                 // FIXME we just assume how it's going to be used by skia
-                pass.reference_image(
+                ui_render_pass.add_image_dependency(
                     skia_image.id,
                     graal::vk::AccessFlags::MEMORY_READ | graal::vk::AccessFlags::MEMORY_WRITE,
                     graal::vk::PipelineStageFlags::ALL_COMMANDS,
@@ -709,10 +720,10 @@ impl Window {
 
                 // add references collected during the GpuFrame pass
                 for buf in resource_references.buffers {
-                    pass.reference_buffer(buf.id, buf.access_mask, buf.stage_mask)
+                    ui_render_pass.add_buffer_dependency(buf.id, buf.access_mask, buf.stage_mask)
                 }
                 for img in resource_references.images {
-                    pass.reference_image(
+                    ui_render_pass.add_image_dependency(
                         img.id,
                         img.access_mask,
                         img.stage_mask,
@@ -721,7 +732,7 @@ impl Window {
                     )
                 }
 
-                pass.set_queue_commands(move |cctx, _queue| {
+                ui_render_pass.set_submit_callback(move |cctx, _, _queue| {
                     // create skia BackendRenderTarget and Surface
                     let skia_image_info = skia_vk::ImageInfo {
                         image: skia_image.handle.as_raw() as *mut _,
@@ -779,14 +790,14 @@ impl Window {
                     contents.paint(&mut paint_ctx, window_bounds, &Environment::new());
                     surface.flush_and_submit();
                 });
-            });
+            }
 
             //---------------------------------------------------------------------------
             // acquire next image in window swap chain for painting, and copy skia result to swapchain image
             let swap_chain = window.swap_chain();
-            let swap_chain_image = unsafe { swap_chain.acquire_next_image(&mut context) };
+            let swap_chain_image = unsafe { swap_chain.acquire_next_image(&device, image_ready) };
             graal::utils::blit_images(
-                &mut *context,
+                &mut frame,
                 skia_image,
                 swap_chain_image.image_info,
                 (swap_chain_width, swap_chain_height),
@@ -794,8 +805,8 @@ impl Window {
             );
 
             // present
-            context.present("present", &swap_chain_image);
-            context.end_frame();
+            frame.present("present", &swap_chain_image);
+            frame.finish(&mut ());
 
         } else {
             tracing::warn!("WindowRedrawRequest: window has not yet been created");
@@ -828,9 +839,7 @@ impl Widget for Window {
                 let mut window_state = self.window_state.borrow_mut();
                 window_state.process_window_event(ctx, &self.contents, window_event);
             }
-            Event::WindowRedrawRequest => {
-                self.do_redraw(ctx)
-            }
+            Event::WindowRedrawRequest => self.do_redraw(ctx),
             _ => {
                 let mut window_state = self.window_state.borrow_mut();
                 let mut content_ctx = ctx.with_window_info(WindowInfo {

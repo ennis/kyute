@@ -1,7 +1,7 @@
 use kyute::{
     application, composable,
     widget::{Axis, Button, Flex, Text},
-    BoxConstraints, Cache, Data, Environment, Event, EventCtx, GpuCtx, LayoutCtx, Measurements,
+    BoxConstraints, Cache, Data, Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx, Measurements,
     PaintCtx, Rect, Widget, WidgetPod, Window,
 };
 use kyute_shell::{platform::Platform, winit::window::WindowBuilder};
@@ -54,7 +54,7 @@ impl Widget for GraphicsView {
         todo!()
     }
 
-    fn gpu_frame(&self, ctx: &mut GpuCtx) {
+    fn gpu_frame(&self, ctx: &mut GpuFrameCtx) {
         // if first time or bounds changed, then create target with correct bounds
         // draw stuff here
     }

@@ -1,13 +1,14 @@
 //! [`Events`](Event) sent to widgets, and related types.
-use std::cell::{Cell, RefCell};
-use crate::{Point, WidgetId};
-use std::collections::HashMap;
+use crate::{Point, WidgetId, WidgetPod};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+};
 use winit::event::DeviceId;
 
+use crate::{bloom::Bloom, core2::GpuResourceReferences};
 pub use keyboard_types::{CompositionEvent, KeyboardEvent, Modifiers};
 use kyute_shell::{graal, winit};
-use crate::bloom::Bloom;
-use crate::core2::GpuResourceReferences;
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -145,11 +146,10 @@ pub enum InternalEvent<'a> {
     UpdateChildFilter {
         filter: &'a mut Bloom<WidgetId>,
     },
-    GpuFrame {
-        context: &'a mut graal::Context,
-        /// List of GPU resources that will be referenced during painting.
-        references: &'a mut GpuResourceReferences
-    }
+    /// Used to get a list of all widgets in depth-first traversal order.
+    Traverse {
+        widgets: &'a mut Vec<WidgetPod>,
+    },
 }
 
 /// Events.

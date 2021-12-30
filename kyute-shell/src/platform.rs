@@ -31,7 +31,7 @@ use std::{
     ptr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard,
     },
     time::Duration,
 };
@@ -95,7 +95,8 @@ send_com_ptr_wrapper! { D2D1DeviceContext(ID2D1DeviceContext) }
 ///
 // all of this must be either directly Sync, or wrapped in a mutex, or wrapped in a main-thread-only wrapper.
 pub(crate) struct PlatformImpl {
-    pub(crate) gpu_context: GpuContext,
+    pub(crate) gpu_device: Arc<graal::Device>,
+    pub(crate) gpu_context: Mutex<graal::Context>,
     pub(crate) d3d11_device: D3D11Device, // thread safe
     //pub(crate) d3d12_device: D3D12Device,  // thread safe
     //pub(crate) d3d11_device_context: Mutex<ComPtr<ID3D11DeviceContext>>,   // not thread safe (should be thread-local)
@@ -159,7 +160,10 @@ impl Platform {
         // FIXME technically we need the target surface so we can pick a device that can
         // render to it. However, on most systems, all available devices can render to window surfaces,
         // so skip that for now.
-        let gpu_context = graal::Context::new();
+        let (gpu_device, gpu_context) = unsafe {
+            // SAFETY: we don't pass a surface handle
+            graal::create_device_and_context(None)
+        };
 
         // FIXME technically we need the target surface so we can pick a device that can
         // render to it. However, on most systems, all available devices can render to window surfaces,
@@ -337,7 +341,8 @@ impl Platform {
         };
 
         let platform_impl = PlatformImpl {
-            gpu_context: Arc::new(Mutex::new(gpu_context)),
+            gpu_device,
+            gpu_context: Mutex::new(gpu_context),
             //d3d12_device,
             d3d11_device,
             dxgi_factory,
@@ -369,9 +374,8 @@ impl Platform {
     }
 
     // issue: this returns different objects before and after `run` is called.
-    // bigger issue: an `&EventLoopWindowTarget` cannot be accessed without a lifetime, so
-    // we cannot call `Platform::event_loop` in a static context after `run` is called,
-    // which consumes the event loop object.
+    // bigger issue: an `&EventLoopWindowTarget` can only be retrieved from the event loop callback,
+    // once the main event loop object is consumed in `run`.
     // This means that we must pass around the event loop stuff Fuck this shit already.
     //pub fn event_loop(&self) -> &EventLoopWindowTarget<()> {
     //    &self.0.event_loop
@@ -385,12 +389,17 @@ impl Platform {
         }
     }
 
-    /// Returns the GPU context.
-    pub fn gpu_context(&self) -> GpuContext {
-        self.0.gpu_context.clone()
+    /// Returns the `graal::Device` instance.
+    pub fn gpu_device(&self) -> &Arc<graal::Device> {
+        &self.0.gpu_device
     }
 
-   /* pub fn run() {
+    /// Locks the GPU context.
+    pub fn lock_gpu_context(&self) -> MutexGuard<graal::Context> {
+        self.0.gpu_context.lock().unwrap()
+    }
+
+    /* pub fn run() {
         PLATFORM.with(|p| {
             p.borrow().unwrap().0.event_loop.run()
         })

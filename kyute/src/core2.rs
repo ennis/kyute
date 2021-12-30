@@ -99,11 +99,10 @@ impl GpuResourceReferences {
     pub fn new() -> GpuResourceReferences {
         GpuResourceReferences {
             images: vec![],
-            buffers: vec![]
+            buffers: vec![],
         }
     }
 }
-
 
 #[derive(Copy, Clone, Debug)]
 pub struct EventResult {
@@ -119,7 +118,7 @@ pub struct EventResult {
 
 #[derive(Copy, Clone, Debug)]
 pub struct WindowInfo {
-    pub scale_factor: f64
+    pub scale_factor: f64,
 }
 
 pub struct EventCtx<'a> {
@@ -151,7 +150,10 @@ impl<'a> EventCtx<'a> {
         }
     }
 
-    pub fn with_window_info<'b>(&'b mut self, window_info: WindowInfo) -> EventCtx<'b> where 'a: 'b {
+    pub fn with_window_info<'b>(&'b mut self, window_info: WindowInfo) -> EventCtx<'b>
+    where
+        'a: 'b,
+    {
         EventCtx {
             app_ctx: self.app_ctx,
             event_loop: self.event_loop,
@@ -161,7 +163,7 @@ impl<'a> EventCtx<'a> {
             id: self.id,
             handled: false,
             relayout: false,
-            redraw: false
+            redraw: false,
         }
     }
 
@@ -251,18 +253,18 @@ pub struct BufferAccess {
     pub stage_mask: vk::PipelineStageFlags,
 }
 
-pub struct GpuCtx<'a> {
+pub struct GpuFrameCtx<'a, 'b> {
     /// graal context in frame recording state.
-    context: &'a mut graal::Context,
-    resource_references: &'a mut GpuResourceReferences,
-    measurements: Measurements,
-    scale_factor: f64,
+    pub(crate) frame: &'b mut graal::Frame<'a, ()>,
+    pub(crate) resource_references: GpuResourceReferences,
+    pub(crate) measurements: Measurements,
+    pub(crate) scale_factor: f64,
 }
 
-impl<'a> GpuCtx<'a> {
+impl<'a, 'b> GpuFrameCtx<'a, 'b> {
     /// Returns a ref to the frame.
-    pub fn context(&mut self) -> &mut graal::Context {
-        self.context
+    pub fn frame(&mut self) -> &mut graal::Frame<'a, ()> {
+        self.frame
     }
 
     pub fn measurements(&self) -> Measurements {
@@ -327,7 +329,7 @@ pub trait Widget {
     fn window_paint(&self, _ctx: &mut WindowPaintCtx) {}
 
     /// Called for custom GPU operations
-    fn gpu_frame<'a>(&'a self, ctx: &mut GpuCtx<'a>) {}
+    fn gpu_frame<'a, 'b>(&'a self, ctx: &mut GpuFrameCtx<'a, 'b>) {}
 }
 
 /// ID of a node in the tree.
@@ -355,7 +357,6 @@ struct LayoutResult {
 
 struct WidgetPodInner<T: ?Sized> {
     // TODO add a flag for paint invalidation?
-
     /// Unique ID of the widget.
     id: WidgetId,
     /// Position of this widget relative to its parent. Set by `WidgetPod::set_child_offset`.
@@ -379,6 +380,13 @@ struct WidgetPodInner<T: ?Sized> {
 
 /// Represents a widget.
 pub struct WidgetPod<T: ?Sized = dyn Widget>(Arc<WidgetPodInner<T>>);
+
+impl fmt::Debug for WidgetPod {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // TODO
+        f.debug_tuple("WidgetPod").finish()
+    }
+}
 
 impl<T: Widget> WidgetPod<T> {
     /// Creates a new `WidgetPod` wrapping the specified widget.
@@ -439,12 +447,20 @@ impl<T: Widget + 'static> From<WidgetPod<T>> for WidgetPod {
     }
 }
 
+
 impl<T: ?Sized + Widget> WidgetPod<T> {
     /// Returns a reference to the wrapped widget.
     pub fn widget(&self) -> &T {
         &self.0.widget
     }
 
+    pub fn set_child_offset(&self, offset: Offset) {
+        self.0.offset.set(offset);
+        self.0.paint_invalid.set(true);
+    }
+}
+
+impl WidgetPod {
     /// Returns whether the widget should be repainted.
     pub fn invalidated(&self) -> bool {
         self.0.paint_invalid.get()
@@ -487,14 +503,9 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
         measurements
     }
 
-    pub fn set_child_offset(&self, offset: Offset) {
-        self.0.offset.set(offset);
-        self.0.paint_invalid.set(true);
-    }
 
     /// Paints the widget.
     pub fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-
         /*if !self.0.paint_invalid.get() {
             // no need to repaint
             return;
@@ -662,21 +673,27 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
                     return;
                 }
             }
-            Event::Internal(InternalEvent::GpuFrame { context, references }) => {
+            Event::Internal(InternalEvent::Traverse { widgets }) => {
+                // T: ?Sized
+                widgets.push(WidgetPod(self.0.clone()));
+            }
+            /*Event::Internal(InternalEvent::GpuFrame { frame, references }) => {
                 let measurements = if let Some(layout_result) = self.0.layout_result.get() {
                     layout_result.measurements
                 } else {
-                    tracing::warn!("GpuFrame event received before layout - proceeding with zero size");
+                    tracing::warn!(
+                        "GpuFrame event received before layout - proceeding with zero size"
+                    );
                     Measurements::default()
                 };
                 let mut gpu_ctx = GpuCtx {
-                    context,
+                    frame,
                     scale_factor: parent_ctx.scale_factor,
                     resource_references: references,
                     measurements,
                 };
                 self.0.widget.gpu_frame(&mut gpu_ctx);
-            }
+            }*/
             Event::Internal(InternalEvent::RouteRedrawRequest(target)) => {
                 if *target == self.0.id {
                     self.do_event(parent_ctx, &mut Event::WindowRedrawRequest);

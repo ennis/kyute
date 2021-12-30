@@ -134,10 +134,9 @@ fn skia_get_proc_addr(of: skia_vk::GetProcOf) -> skia_vk::GetProcResult {
 }
 
 unsafe fn create_skia_vulkan_backend_context(
-    context: &graal::Context,
+    device: &graal::Device,
 ) -> skia_safe::gpu::vk::BackendContext<'static> {
-    let device = context.device();
-    let vk_device = context.vulkan_device().handle();
+    let vk_device = device.device.handle();
     let vk_instance = graal::get_vulkan_instance().handle();
     let vk_physical_device = device.physical_device();
     let (vk_queue, vk_queue_family_index) = device.graphics_queue();
@@ -187,11 +186,6 @@ impl PlatformWindow {
         self.window.id()
     }
 
-    /// Returns the rendering context associated to this window.
-    pub fn gpu_context(&self) -> GpuContext {
-        Platform::instance().gpu_context().clone()
-    }
-
     /// Returns the current swap chain size in physical pixels.
     pub fn swap_chain_size(&self) -> (u32, u32) {
         (self.swap_chain_width, self.swap_chain_height)
@@ -211,9 +205,8 @@ impl PlatformWindow {
         }
 
         unsafe {
-            let context = platform.gpu_context();
-            let context = context.lock().unwrap();
-            self.swap_chain.resize(&context, (width, height));
+            let device = platform.gpu_device();
+            self.swap_chain.resize(device, (width, height));
         }
 
         self.swap_chain_width = width;
@@ -296,13 +289,12 @@ impl PlatformWindow {
         };*/
 
         // create a swap chain for the window
-        let ctx = platform.gpu_context();
-        let ctx = ctx.lock().unwrap();
+        let device = platform.gpu_device();
         let surface = graal::surface::get_vulkan_surface(window.raw_window_handle());
         let swapchain_size = window.inner_size().into();
-        let swap_chain = unsafe { Swapchain::new(&ctx, surface, swapchain_size) };
+        let swap_chain = unsafe { Swapchain::new(device, surface, swapchain_size) };
 
-        let skia_backend_context = unsafe { create_skia_vulkan_backend_context(&ctx) };
+        let skia_backend_context = unsafe { create_skia_vulkan_backend_context(device) };
         let recording_context_options = skia_safe::gpu::ContextOptions::new();
         let skia_recording_context = skia_safe::gpu::DirectContext::new_vulkan(
             &skia_backend_context,

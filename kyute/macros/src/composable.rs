@@ -58,7 +58,7 @@ pub fn generate_composable(
             .iter()
             .map(|arg| match arg {
                 FnArg::Receiver(r) => {
-                    // FIXME, tbh, methods could be cached composables, we just need `self` to be any+clone
+                    // FIXME, methods could be cached composables, we just need `self` to be any+clone
                     syn::Error::new(r.span(), "methods cannot be cached `composable` functions: consider using `composable(uncached)`")
                         .to_compile_error()
                 }
