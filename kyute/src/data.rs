@@ -14,9 +14,9 @@
 
 //! Traits for handling value types.
 
-use std::{ptr, rc::Rc, sync::Arc};
-use kyute_shell::drawing::Color;
 use crate::SideOffsets;
+use kyute_shell::drawing::Color;
+use std::{ptr, rc::Rc, sync::Arc};
 //use crate::style::StyleSet;
 
 pub trait Data: Clone + 'static {
@@ -267,6 +267,48 @@ impl<T: Data> Data for std::ops::Bound<T> {
 impl<T: Data, const N: usize> Data for [T; N] {
     fn same(&self, other: &Self) -> bool {
         self.iter().zip(other.iter()).all(|(a, b)| a.same(b))
+    }
+}
+
+// Taken from druid
+#[cfg(feature = "imbl")]
+impl<A: Data> Data for imbl::Vector<A> {
+    fn same(&self, other: &Self) -> bool {
+        // if a vec is small enough that it doesn't require an allocation
+        // it is 'inline'; in this case a pointer comparison is meaningless.
+        if self.is_inline() {
+            self.len() == other.len() && self.iter().zip(other.iter()).all(|(a, b)| a.same(b))
+        } else {
+            self.ptr_eq(other)
+        }
+    }
+}
+
+#[cfg(feature = "imbl")]
+impl<K: Clone + 'static, V: Data, S: 'static> Data for imbl::HashMap<K, V, S> {
+    fn same(&self, other: &Self) -> bool {
+        self.ptr_eq(&other)
+    }
+}
+
+#[cfg(feature = "imbl")]
+impl<A: Data, S: 'static> Data for imbl::HashSet<A, S> {
+    fn same(&self, other: &Self) -> bool {
+        self.ptr_eq(&other)
+    }
+}
+
+#[cfg(feature = "imbl")]
+impl<K: Clone + 'static, V: Data> Data for imbl::OrdMap<K, V> {
+    fn same(&self, other: &Self) -> bool {
+        self.ptr_eq(&other)
+    }
+}
+
+#[cfg(feature = "imbl")]
+impl<A: Data> Data for imbl::OrdSet<A> {
+    fn same(&self, other: &Self) -> bool {
+        self.ptr_eq(&other)
     }
 }
 

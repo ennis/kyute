@@ -55,6 +55,20 @@ impl StateEntry {
             .downcast_mut::<T>()
             .ok_or(CacheError::TypeMismatch)
     }
+
+    pub fn take_value<T: 'static>(&mut self) -> Result<T, CacheError> {
+        if let Some(v) = self.value.take() {
+            if v.is::<T>() {
+                Ok(*v.downcast().unwrap())
+            } else {
+                // put back value
+                self.value = Some(v);
+                Err(CacheError::TypeMismatch)
+            }
+        } else {
+            Err(CacheError::VacantEntry)
+        }
+    }
 }
 
 /// A slot in the slot table.
@@ -385,6 +399,11 @@ impl CacheWriter {
         for slot in self.cache.slots.drain(self.pos..group_end_pos) {
             match slot {
                 Slot::StartGroup { key, .. } => {
+                    eprintln!("removing cache entry {:?}", key);
+                    self.cache.entries.remove(key);
+                }
+                Slot::Value { key, .. } => {
+                    eprintln!("removing cache entry {:?}", key);
                     self.cache.entries.remove(key);
                 }
                 _ => {}
@@ -447,12 +466,15 @@ impl CacheWriter {
         Key::from_entry_key(key)
     }
 
-    fn set_value<T: 'static>(&mut self, cache_key: Key<T>, new_value: T) {
+    fn set_value<T: 'static>(&mut self, cache_key: Key<T>, new_value: T, invalidate: bool) {
         let value = &mut self.cache.entries[cache_key.key].value;
         if let Some(v) = value {
             *v.downcast_mut::<T>().expect("type mismatch") = new_value;
         } else {
             *value = Some(Box::new(new_value));
+        }
+        if invalidate {
+            self.cache.invalidate_entry_recursive(cache_key.key);
         }
     }
 
@@ -477,6 +499,24 @@ impl CacheWriter {
         result
     }
 
+    /// If the next entry is a value of type T, extracts the value, and leaves a vacant entry.
+    fn extract_value<T: 'static>(&mut self, call_key: CallId) -> (Option<T>, Key<T>) {
+        let result = if self.sync(call_key) {
+            match self.cache.slots[self.pos] {
+                Slot::Value { key: entry_key, .. } => {
+                    let value = self.cache.entries[entry_key].take_value().unwrap();
+                    (Some(value), Key::from_entry_key(entry_key))
+                }
+                _ => panic!("unexpected entry type"),
+            }
+        } else {
+            let k = self.insert_value(call_key, None);
+            (None, k)
+        };
+        self.pos += 1;
+        result
+    }
+
     /// If the next entry is a value of type T, returns a clone of the value, otherwise inserts a
     /// new value entry with `init` and returns a clone of this value.
     fn state<T: Clone + 'static>(
@@ -489,11 +529,21 @@ impl CacheWriter {
             Some(v) => v,
             None => {
                 let v = init();
-                self.set_value(k, v.clone());
+                self.set_value(k, v.clone(), false);
                 v
             }
         };
         (v, k)
+    }
+
+    /// TODO documentation
+    fn extract_state<T: 'static>(
+        &mut self,
+        call_key: CallId,
+        init: impl FnOnce() -> T,
+    ) -> (T, Key<T>) {
+        let (v, k) = self.extract_value(call_key);
+        (v.unwrap_or_else(init), k)
     }
 
     ///
@@ -502,7 +552,7 @@ impl CacheWriter {
         match v {
             Some(v) if v.same(&new_value) => false,
             _ => {
-                self.set_value(k, new_value);
+                self.set_value(k, new_value, false);
                 true
             }
         }
@@ -519,6 +569,9 @@ thread_local! {
     // to all functions.
     // A less hack-ish solution would be to rewrite composable function calls, but we need
     // more than a proc macro to be able to do that (must resolve function paths and rewrite call sites)
+    //
+    // TODO: actually, it might be possible if we're able to rewrite all function calls into a specific
+    // form
     static CURRENT_CACHE_CONTEXT: RefCell<Option<CacheContext>> = RefCell::new(None);
 }
 
@@ -648,8 +701,23 @@ impl Cache {
         })
     }
 
-    pub fn set_value<T: Clone + 'static>(key: Key<T>, value: T) {
-        Self::with_cx(move |cx| cx.writer.set_value(key, value))
+    /// TODO document.
+    /// Same as `state` but for non-cloneable data. Leaves a vacant cache entry instead: put a value back with `set_value`.
+    #[track_caller]
+    pub fn extract_state<T: 'static>(init: impl FnOnce() -> T) -> (T, Key<T>) {
+        let location = Location::caller();
+        Self::with_cx(move |cx| {
+            cx.key_stack.enter(location, 0);
+            let key = cx.key_stack.current();
+            let (value, cache_key) = cx.writer.extract_state(key, init);
+            cx.key_stack.exit();
+            (value, cache_key)
+        })
+    }
+
+    /// TODO document
+    pub fn set_value<T: 'static>(key: Key<T>, value: T, invalidate: bool) {
+        Self::with_cx(move |cx| cx.writer.set_value(key, value, invalidate))
     }
 
     #[track_caller]
@@ -673,6 +741,7 @@ impl Cache {
         })
     }
 
+    /// Memoizes the result of a function at this call site.
     #[track_caller]
     pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T) -> T {
         Self::group(move |dirty| {
@@ -683,7 +752,7 @@ impl Cache {
                 value.expect("memoize: no changes in arguments but no value calculated")
             } else {
                 let value = f();
-                Self::set_value(entry_key, value.clone());
+                Self::set_value(entry_key, value.clone(), false);
                 value
             }
         })
@@ -708,8 +777,8 @@ impl Cache {
 
         // if the state has changed, TODO
         if initial || !old_value.same(&value) {
-            Self::set_value(slot, value);
-            // TODO: re-run update?
+            // TODO: re-run update? Invalidate?
+            Self::set_value(slot, value, false);
         }
 
         r
@@ -777,7 +846,7 @@ mod tests {
                 writer.skip_until_end_of_group();
             } else {
                 writer.compare_and_update_value(CallId(102), "hello world".to_string());
-                writer.set_value(slot, 0.0);
+                writer.set_value(slot, 0.0, false);
             }
 
             writer.end_group();

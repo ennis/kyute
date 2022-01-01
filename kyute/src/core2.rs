@@ -22,9 +22,10 @@ use std::{
     fmt::Formatter,
     hash::{Hash, Hasher},
     num::NonZeroU64,
-    ops::{Deref, DerefMut},
+    ops::{CoerceUnsized, Deref, DerefMut},
     sync::{Arc, Mutex, Weak},
 };
+use std::marker::Unsize;
 
 /// Context passed to widgets during the layout pass.
 ///
@@ -381,6 +382,9 @@ struct WidgetPodInner<T: ?Sized> {
 /// Represents a widget.
 pub struct WidgetPod<T: ?Sized = dyn Widget>(Arc<WidgetPodInner<T>>);
 
+// Unsized coercions
+impl<T, U> CoerceUnsized<WidgetPod<U>> for WidgetPod<T> where T: Unsize<U> + ?Sized, U: ?Sized {}
+
 impl fmt::Debug for WidgetPod {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // TODO
@@ -447,7 +451,6 @@ impl<T: Widget + 'static> From<WidgetPod<T>> for WidgetPod {
     }
 }
 
-
 impl<T: ?Sized + Widget> WidgetPod<T> {
     /// Returns a reference to the wrapped widget.
     pub fn widget(&self) -> &T {
@@ -502,7 +505,6 @@ impl WidgetPod {
         ctx.changed = true;
         measurements
     }
-
 
     /// Paints the widget.
     pub fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {

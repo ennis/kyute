@@ -1,3 +1,5 @@
+#![feature(coerce_unsized)]
+#![feature(unsize)]
 extern crate self as kyute;
 
 #[macro_use]

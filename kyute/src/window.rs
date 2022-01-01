@@ -790,6 +790,8 @@ impl Window {
                     contents.paint(&mut paint_ctx, window_bounds, &Environment::new());
                     surface.flush_and_submit();
                 });
+
+                ui_render_pass.finish();
             }
 
             //---------------------------------------------------------------------------

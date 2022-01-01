@@ -1,8 +1,8 @@
 use kyute::{
     application, composable,
     widget::{Axis, Button, Flex, Text},
-    BoxConstraints, Cache, Data, Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx, Measurements,
-    PaintCtx, Rect, Widget, WidgetPod, Window,
+    BoxConstraints, Cache, Data, Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx,
+    Measurements, PaintCtx, Rect, Widget, WidgetPod, Window,
 };
 use kyute_shell::{platform::Platform, winit::window::WindowBuilder};
 use std::sync::Arc;
@@ -34,9 +34,7 @@ impl GraphicsView {
 impl Widget for GraphicsView {
     fn event(&self, ctx: &mut EventCtx, event: &mut Event) {
         match event {
-            Event::Initialize => {
-
-            }
+            Event::Initialize => {}
             _ => {}
         }
     }
@@ -75,17 +73,17 @@ fn ui_function() -> WidgetPod {
             }
 
             // List of items
-            let mut item_list = vec![];
+            let mut item_list: Vec<WidgetPod> = vec![];
             for item in app_state.items.iter() {
                 Cache::scoped(*item as usize, || {
-                    item_list.push(Text::new(format!("{}", item)).into());
+                    item_list.push(Text::new(format!("{}", item)));
                 });
             }
-            item_list.push(add_item_button.into());
-            let flex = Flex::new(Axis::Vertical, item_list).into();
+            item_list.push(add_item_button);
+            let flex = Flex::new(Axis::Vertical, item_list);
 
             // enclosing window
-            Window::new(WindowBuilder::new().with_title("hello"), flex).into()
+            Window::new(WindowBuilder::new().with_title("hello"), flex)
         },
     )
 }

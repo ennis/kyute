@@ -33,16 +33,16 @@ pub fn generate_composable(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     // works only on trait declarations
-    let fn_item: syn::ItemFn = syn::parse_macro_input!(item as syn::ItemFn);
+    let mut fn_item: syn::ItemFn = syn::parse_macro_input!(item as syn::ItemFn);
     let attr_args: ComposableArgs = syn::parse_macro_input!(attr as ComposableArgs);
 
     let vis = &fn_item.vis;
     let attrs = &fn_item.attrs;
-    let sig = &fn_item.sig;
     let orig_block = &fn_item.block;
-    let return_type = &fn_item.sig.output;
 
     let altered_fn = if attr_args.uncached {
+        let sig = &fn_item.sig;
+        let return_type = &fn_item.sig.output;
         quote! {
             #[track_caller]
             #(#attrs)* #vis #sig {
@@ -53,24 +53,32 @@ pub fn generate_composable(
         }
     } else {
         // convert fn args to tuple
-        let args: Vec<_> = sig
+        let args: Vec<_> = fn_item.sig
             .inputs
-            .iter()
-            .map(|arg| match arg {
+            .iter_mut()
+            .filter_map(|arg| match arg {
                 FnArg::Receiver(r) => {
                     // FIXME, methods could be cached composables, we just need `self` to be any+clone
-                    syn::Error::new(r.span(), "methods cannot be cached `composable` functions: consider using `composable(uncached)`")
-                        .to_compile_error()
+                    Some(syn::Error::new(r.span(), "methods cannot be cached `composable` functions: consider using `composable(uncached)`")
+                        .to_compile_error())
                 }
                 FnArg::Typed(arg) => {
-                    let pat = &arg.pat;
-                    quote! {
-                        #pat.clone()
+                    if let Some(pos) = arg.attrs.iter().position(|attr| attr.path.is_ident("uncached")) {
+                        // skip uncached argument
+                        arg.attrs.remove(pos);
+                        return None
                     }
+                    let pat = &arg.pat;
+                    let val = quote! {
+                        #pat.clone()
+                    };
+                    Some(val)
                 },
             })
             .collect();
 
+        let sig = &fn_item.sig;
+        let return_type = &fn_item.sig.output;
         quote! {
             #[track_caller]
             #(#attrs)* #vis #sig {
