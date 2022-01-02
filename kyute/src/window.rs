@@ -12,6 +12,7 @@ use crate::{
     WidgetPod,
 };
 use keyboard_types::KeyState;
+use kyute::GpuFrameCtx;
 use kyute_shell::{
     drawing::Color,
     platform::Platform,
@@ -24,13 +25,12 @@ use kyute_shell::{
 };
 use std::{
     cell::RefCell,
-    mem,
+    env, mem,
     ops::DerefMut,
     sync::{Arc, Mutex},
     time::Instant,
 };
 use tracing::trace_span;
-use kyute::GpuFrameCtx;
 
 fn key_code_from_winit(
     input: &winit::event::KeyboardInput,
@@ -627,7 +627,12 @@ impl Window {
 
             // collect all child widgets
             let mut widgets = Vec::new();
-            self.contents.event(&mut content_ctx, &mut Event::Internal(InternalEvent::Traverse { widgets: &mut widgets }));
+            self.contents.event(
+                &mut content_ctx,
+                &mut Event::Internal(InternalEvent::Traverse {
+                    widgets: &mut widgets,
+                }),
+            );
 
             // get and lock GPU context for frame submission
             let platform = Platform::instance();
@@ -646,7 +651,7 @@ impl Window {
                 frame: &mut frame,
                 resource_references: GpuResourceReferences::new(),
                 measurements: Default::default(),
-                scale_factor: window_state.scale_factor
+                scale_factor: window_state.scale_factor,
             };
             for widget in widgets.iter() {
                 widget.gpu_frame(&mut gpu_ctx);
@@ -806,10 +811,17 @@ impl Window {
                 graal::vk::ImageAspectFlags::COLOR,
             );
 
+            // dump frame if requested
+            match env::var("KYUTE_DUMP_GPU_FRAMES") {
+                Ok(v) if v.parse() == Ok(true) => {
+                    frame.dump(Some("kyute_gpu_frame"));
+                }
+                _ => {}
+            }
+
             // present
             frame.present("present", &swap_chain_image);
             frame.finish(&mut ());
-
         } else {
             tracing::warn!("WindowRedrawRequest: window has not yet been created");
         }

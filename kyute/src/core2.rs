@@ -21,11 +21,11 @@ use std::{
     fmt,
     fmt::Formatter,
     hash::{Hash, Hasher},
+    marker::Unsize,
     num::NonZeroU64,
     ops::{CoerceUnsized, Deref, DerefMut},
     sync::{Arc, Mutex, Weak},
 };
-use std::marker::Unsize;
 
 /// Context passed to widgets during the layout pass.
 ///
@@ -383,7 +383,12 @@ struct WidgetPodInner<T: ?Sized> {
 pub struct WidgetPod<T: ?Sized = dyn Widget>(Arc<WidgetPodInner<T>>);
 
 // Unsized coercions
-impl<T, U> CoerceUnsized<WidgetPod<U>> for WidgetPod<T> where T: Unsize<U> + ?Sized, U: ?Sized {}
+impl<T, U> CoerceUnsized<WidgetPod<U>> for WidgetPod<T>
+where
+    T: Unsize<U> + ?Sized,
+    U: ?Sized,
+{
+}
 
 impl fmt::Debug for WidgetPod {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -457,6 +462,18 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
         &self.0.widget
     }
 
+    /// Returns the widget id.
+    pub fn id(&self) -> WidgetId {
+        self.0.id
+    }
+
+    /// Returns previously set child offset. See `set_child_offset`.
+    pub fn child_offset(&self) -> Offset {
+        self.0.offset.get()
+    }
+
+    /// TODO documentation
+    /// Sets the offset of this widget relative to its parent. Should be called during widget layout.
     pub fn set_child_offset(&self, offset: Offset) {
         self.0.offset.set(offset);
         self.0.paint_invalid.set(true);

@@ -45,7 +45,7 @@ impl Widget for Text {
         let text_blob = sk::TextBlob::from_str(&self.text, &font).unwrap();
         let paint: sk::Paint = sk::Paint::new(sk::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
         let (_, bounds) = font.measure_str(&self.text, Some(&paint));
-        let bounds = dbg!(Rect::from_skia(bounds));
+        let bounds = Rect::from_skia(bounds);
 
         // round size to nearest device pixel
         let size = bounds.size.ceil();

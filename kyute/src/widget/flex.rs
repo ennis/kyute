@@ -115,6 +115,7 @@ impl Widget for Flex {
         let spacing = 1.0;
 
         for i in 0..self.items.len() {
+            //eprintln!("flex {:?} item pos {}", self.axis, d);
             let len = axis.main_len(item_measures[i].size());
             let offset = match axis {
                 Axis::Vertical => Offset::new(0.0, d),
@@ -134,8 +135,9 @@ impl Widget for Flex {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        ctx.canvas.clear(kyute_shell::skia::Color4f::new(0.55, 0.55, 0.55, 1.0));
+        //ctx.canvas.clear(kyute_shell::skia::Color4f::new(0.55, 0.55, 0.55, 1.0));
         for item in self.items.iter() {
+            // eprintln!("flex {:?} paint item {:?}", self.axis, item.child_offset());
             item.paint(ctx, bounds, env);
         }
     }

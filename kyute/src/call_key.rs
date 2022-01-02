@@ -1,10 +1,14 @@
 use std::{
-    collections::hash_map::DefaultHasher,
+    collections::{hash_map::DefaultHasher, HashMap},
     fmt,
     fmt::Formatter,
     hash::{Hash, Hasher},
+    io,
+    io::Write,
     panic::Location,
 };
+use std::rc::Rc;
+use typed_arena::Arena;
 
 /// Identifies a particular call site in a call tree.
 ///
@@ -21,30 +25,91 @@ impl CallId {
 
 impl fmt::Debug for CallId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        /*#[cfg(debug_assertions)]
+        {
+            if f.alternate() {
+                writeln!("CallKey({:016X})", self.id);
+                let mut info = Some(&self.info);
+                let mut depth = 0;
+                while let Some(current_location) = location {
+                    writeln!(f, "\t[{:2}]: {}", depth, current_location.location)?;
+                    depth += 1;
+                    location = current_location.parent;
+                }
+                Ok(())
+            } else {
+                f.debug_tuple("CallKey")
+                    .field(&format_args!("{:016X}", self.0))
+                    .finish()
+            }
+        }
+
+        #[cfg(not(debug_assertions))]*/
+
         f.debug_tuple("CallKey")
             .field(&format_args!("{:016X}", self.0))
             .finish()
     }
 }
 
+#[derive(Clone)]
+pub struct CallNode {
+    id: CallId,
+    parent: Option<Rc<CallNode>>,
+    location: &'static Location<'static>,
+    index: usize, // or `iteration`, `count`
+    //debug_name: Option<&'static str>,
+}
 
-pub(crate) struct CallIdStack(Vec<u64>);
+impl fmt::Debug for CallNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if f.alternate() {
+            writeln!(f, "CallNode({:016X})", self.id.0);
+            let mut node = Some(self);
+            let mut depth = 0;
+            while let Some(current_node) = node {
+                writeln!(
+                    f,
+                    "\t --> {} (index {})",
+                    current_node.location, current_node.index
+                )?;
+                depth += 1;
+                node = current_node.parent.as_deref();
+            }
+            Ok(())
+        } else {
+            f.debug_tuple("CallNode")
+                .field(&format_args!("{:016X}", self.id.0))
+                .finish()
+        }
+    }
+}
+
+pub(crate) struct CallIdStack {
+    id_stack: Vec<u64>,
+    nodes: HashMap<CallId, Rc<CallNode>>,
+    current_node: Option<Rc<CallNode>>,
+}
 
 impl CallIdStack {
     /// Creates a new empty CallIdStack.
     pub fn new() -> CallIdStack {
-        CallIdStack(vec![])
+        CallIdStack {
+            id_stack: vec![],
+            nodes: Default::default(),
+            current_node: None,
+        }
     }
 
     fn chain_hash<H: Hash>(&self, s: &H) -> u64 {
-        let stacklen = self.0.len();
+        let stacklen = self.id_stack.len();
         let key1 = if stacklen >= 2 {
-            self.0[stacklen - 2]
+            self.id_stack[stacklen - 2]
         } else {
             0
         };
         let key0 = if stacklen >= 1 {
-            self.0[stacklen - 1]
+            self.id_stack[stacklen - 1]
         } else {
             0
         };
@@ -56,26 +121,46 @@ impl CallIdStack {
     }
 
     /// Enters a scope in the call graph.
-    pub fn enter(&mut self, location: &Location, index: usize) -> CallId {
+    pub fn enter(&mut self, location: &'static Location<'static>, index: usize) -> CallId {
         let id = self.chain_hash(&(location, index));
-        self.0.push(id);
-        CallId(id)
+        self.id_stack.push(id);
+        let id = CallId(id);
+        let node = Rc::new(CallNode {
+            id,
+            parent: self.current_node.clone(),
+            location,
+            index,
+        });
+        self.nodes.insert(id, node.clone());
+        self.current_node = Some(node);
+        id
     }
 
     /// Exits a scope previously entered with `enter`.
     pub fn exit(&mut self) {
-        self.0.pop();
+        self.id_stack.pop();
+        self.current_node = self.current_node.take().unwrap().parent.clone();
     }
 
     /// Returns the `CallId` of the current scope.
     pub fn current(&self) -> CallId {
-        CallId(*self.0.last().unwrap())
+        CallId(*self.id_stack.last().unwrap())
+    }
+
+    /// Returns the current node in the call tree.
+    pub fn current_call_node(&self) -> Option<Rc<CallNode>> {
+        self.current_node.clone()
+    }
+
+    /// Returns the call node corresponding to the specified CallId.
+    pub fn call_node(&self, id: CallId) -> Option<Rc<CallNode>> {
+        self.nodes.get(&id).cloned()
     }
 
     /// Returns whether the stack is empty.
     ///
     /// The stack is empty just after creation, and when `enter` and `exit` calls are balanced.
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.id_stack.is_empty()
     }
 }

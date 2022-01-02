@@ -6,10 +6,11 @@ use crate::{
     Alignment, BoxConstraints, Cache, Environment, Event, Key, LayoutItem, Measurements, Rect,
     SideOffsets, Size, Widget, WidgetPod,
 };
-use kyute_shell::drawing::{Color, ToSkia};
+use kyute_shell::{
+    drawing::{Color, ToSkia},
+    skia as sk,
+};
 use std::{cell::Cell, convert::TryFrom, sync::Arc};
-use kyute_shell::skia as sk;
-
 
 #[derive(Clone)]
 pub struct Button {
@@ -21,9 +22,14 @@ impl Button {
     /// Creates a new button with the specified label.
     #[composable]
     pub fn new(label: String) -> WidgetPod<Button> {
+        let (clicked, key) = Cache::state(|| false);
+        if clicked {
+            // reset click
+            Cache::replace_state(key, false);
+        }
         WidgetPod::new(Button {
             label: Text::new(label),
-            clicked: Cache::state(|| false),
+            clicked: (clicked, key),
         })
     }
 
@@ -95,7 +101,8 @@ impl Widget for Button {
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         tracing::trace!(?bounds, "button paint");
 
-        let mut stroke: sk::Paint = sk::Paint::new(sk::Color4f::new(0.100, 0.100, 0.100, 1.0), None);
+        let mut stroke: sk::Paint =
+            sk::Paint::new(sk::Color4f::new(0.100, 0.100, 0.100, 1.0), None);
         stroke.set_stroke(true);
         stroke.set_stroke_width(2.0);
 

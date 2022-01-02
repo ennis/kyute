@@ -43,6 +43,7 @@ pub fn generate_composable(
     let altered_fn = if attr_args.uncached {
         let sig = &fn_item.sig;
         let return_type = &fn_item.sig.output;
+        //let debug_name = format!("scope for `{}`", fn_item.sig.ident);
         quote! {
             #[track_caller]
             #(#attrs)* #vis #sig {
@@ -79,6 +80,8 @@ pub fn generate_composable(
 
         let sig = &fn_item.sig;
         let return_type = &fn_item.sig.output;
+        //let debug_name = format!("memoization wrapper for `{}`", fn_item.sig.ident);
+
         quote! {
             #[track_caller]
             #(#attrs)* #vis #sig {
