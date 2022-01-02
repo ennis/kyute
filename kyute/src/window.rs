@@ -15,8 +15,7 @@ use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
 use kyute_shell::{
     drawing::Color,
-    platform::Platform,
-    window::PlatformWindow,
+    application::Application,
     winit,
     winit::{
         event::{DeviceId, VirtualKeyCode, WindowEvent},
@@ -30,6 +29,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Instant,
 };
+use palette::white_point::A;
 use tracing::trace_span;
 
 fn key_code_from_winit(
@@ -320,7 +320,7 @@ struct LastClick {
 }
 
 struct WindowState {
-    window: Option<PlatformWindow>,
+    window: Option<kyute_shell::window::Window>,
     window_builder: Option<WindowBuilder>,
     focus: Option<WidgetId>,
     pointer_grab: Option<WidgetId>,
@@ -468,7 +468,7 @@ impl WindowState {
                             && last.button == button
                             && last.position == pointer_state.position
                             && (click_time - last.time)
-                                < Platform::instance().double_click_time() =>
+                                < Application::instance().double_click_time() =>
                     {
                         // same device, button, position, and within the platform specified double-click time
                         match state {
@@ -635,9 +635,9 @@ impl Window {
             );
 
             // get and lock GPU context for frame submission
-            let platform = Platform::instance();
-            let device = platform.gpu_device().clone();
-            let mut context = platform.lock_gpu_context();
+            let app = Application::instance();
+            let device = app.gpu_device().clone();
+            let mut context = app.lock_gpu_context();
 
             // start GPU context frame
             let image_ready = context.create_semaphore();
@@ -839,7 +839,7 @@ impl Widget for Window {
                 // create the window
                 tracing::trace!("creating window");
                 let mut window_state = self.window_state.borrow_mut();
-                let window = PlatformWindow::new(
+                let window = kyute_shell::window::Window::new(
                     ctx.event_loop,
                     window_state.window_builder.take().unwrap(),
                     None,

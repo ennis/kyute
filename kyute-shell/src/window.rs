@@ -1,13 +1,9 @@
 //! Platform-specific window creation
 use crate::{
-    bindings::Windows::Win32::{
-        SystemServices::HINSTANCE,
-        WindowsAndMessaging::HWND,
-    },
+    application::{Application, GpuContext},
     error::Error,
-    platform::{GpuContext, Platform},
 };
-use graal::{FrameCreateInfo, GpuFuture, MemoryLocation, swapchain::Swapchain, vk, vk::Handle};
+use graal::{swapchain::Swapchain, vk, vk::Handle, FrameCreateInfo, GpuFuture, MemoryLocation};
 use raw_window_handle::HasRawWindowHandle;
 use skia_safe as sk;
 use skia_safe::gpu::vk as skia_vk;
@@ -18,11 +14,14 @@ use std::{
     ptr,
     sync::MutexGuard,
 };
-use windows::Interface;
+use windows::{
+    core::Interface,
+    Win32::Foundation::{HINSTANCE, HWND},
+};
 use winit::{
     event_loop::EventLoopWindowTarget,
     platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
-    window::{Window, WindowBuilder, WindowId},
+    window::{WindowBuilder, WindowId},
 };
 
 const SWAP_CHAIN_BUFFERS: u32 = 2;
@@ -157,8 +156,8 @@ unsafe fn create_skia_vulkan_backend_context(
 }
 
 /// Encapsulates a Win32 window and associated resources for drawing to it.
-pub struct PlatformWindow {
-    window: Window,
+pub struct Window {
+    window: winit::window::Window,
     hwnd: HWND,
     hinstance: HINSTANCE,
     //swap_chain: IDXGISwapChain1,
@@ -170,11 +169,11 @@ pub struct PlatformWindow {
     skia_recording_context: skia_safe::gpu::DirectContext,
 }
 
-impl PlatformWindow {
+impl Window {
     /// Returns the underlying winit [`Window`].
     ///
     /// [`Window`]: winit::Window
-    pub fn window(&self) -> &Window {
+    pub fn window(&self) -> &winit::window::Window {
         &self.window
     }
 
@@ -195,7 +194,7 @@ impl PlatformWindow {
     ///
     /// Must be called whenever winit sends a resize message.
     pub fn resize(&mut self, (width, height): (u32, u32)) {
-        let platform = Platform::instance();
+        let app = Application::instance();
 
         tracing::trace!("resizing swap chain: {}x{}", width, height);
 
@@ -205,7 +204,7 @@ impl PlatformWindow {
         }
 
         unsafe {
-            let device = platform.gpu_device();
+            let device = app.gpu_device();
             self.swap_chain.resize(device, (width, height));
         }
 
@@ -234,12 +233,12 @@ impl PlatformWindow {
     pub fn new(
         event_loop: &EventLoopWindowTarget<()>,
         mut builder: WindowBuilder,
-        parent_window: Option<&PlatformWindow>,
-    ) -> Result<PlatformWindow, Error> {
-        let platform = Platform::instance();
+        parent_window: Option<&Window>,
+    ) -> Result<Window, Error> {
+        let app = Application::instance();
 
         if let Some(parent_window) = parent_window {
-            builder = builder.with_parent_window(parent_window.hwnd.0 as *mut _);
+            builder = builder.with_parent_window(parent_window.hwnd as *mut _);
         }
         let window = builder.build(event_loop).map_err(Error::Winit)?;
 
@@ -289,7 +288,7 @@ impl PlatformWindow {
         };*/
 
         // create a swap chain for the window
-        let device = platform.gpu_device();
+        let device = app.gpu_device();
         let surface = graal::surface::get_vulkan_surface(window.raw_window_handle());
         let swapchain_size = window.inner_size().into();
         let swap_chain = unsafe { Swapchain::new(device, surface, swapchain_size) };
@@ -302,10 +301,10 @@ impl PlatformWindow {
         )
         .unwrap();
 
-        let hinstance = HINSTANCE(window.hinstance() as isize);
-        let hwnd = HWND(window.hwnd() as isize);
+        let hinstance = window.hinstance() as HINSTANCE;
+        let hwnd = window.hwnd() as HWND;
 
-        let pw = PlatformWindow {
+        let pw = Window {
             window,
             hwnd,
             hinstance,

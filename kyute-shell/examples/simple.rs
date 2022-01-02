@@ -2,7 +2,7 @@ use kyute_shell::{
     drawing::{Brush, Color, DrawContext, DrawTextOptions, Point, Size},
     platform::Platform,
     text::{TextFormat, TextLayout},
-    window::{PlatformWindow, WindowDrawContext},
+    window::{Window, WindowDrawContext},
     winit::{
         event::{Event, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
@@ -18,7 +18,7 @@ fn main() {
     let event_loop = EventLoop::new();
 
     let mut window_builder = WindowBuilder::new();
-    let mut window = PlatformWindow::new(&event_loop, window_builder, None).unwrap();
+    let mut window = Window::new(&event_loop, window_builder, None).unwrap();
 
     event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;

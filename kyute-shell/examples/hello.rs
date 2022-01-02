@@ -2,7 +2,7 @@ use kyute_shell::{
     drawing::{Brush, Color, DrawContext, DrawTextOptions, Point, Size},
     platform::Platform,
     text::{TextFormat, TextLayout},
-    window::{DrawSurface, PlatformWindow},
+    window::{DrawSurface, Window},
     winit::{
         event::{Event, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
@@ -18,7 +18,7 @@ fn main() {
     let platform = unsafe { Platform::init() };
 
     let mut window_builder = WindowBuilder::new();
-    let mut window = PlatformWindow::new(&event_loop, window_builder, None).unwrap();
+    let mut window = Window::new(&event_loop, window_builder, None).unwrap();
     let mut draw_surface =
         DrawSurface::new(window.swap_chain_size(), window.window().scale_factor());
 

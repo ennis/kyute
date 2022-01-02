@@ -3,7 +3,7 @@ use std::{error, fmt};
 /// Errors emitted.
 pub enum Error {
     /// HRESULT error type during execution of a command.
-    WindowsApiError(windows::Error),
+    WindowsApiError(windows::core::Error),
     /// Winit-issued error
     Winit(winit::error::OsError),
 }
@@ -25,8 +25,8 @@ impl fmt::Display for Error {
 
 impl error::Error for Error {}
 
-impl From<windows::Error> for Error {
-    fn from(err: windows::Error) -> Self {
+impl From<windows::core::Error> for Error {
+    fn from(err: windows::core::Error) -> Self {
         Error::WindowsApiError(err)
     }
 }

@@ -1,11 +1,11 @@
 //! Windowing and drawing base for kyute.
-mod bindings;
 pub mod drawing;
 //pub mod text;
 //pub mod imaging;
 pub mod error;
-pub mod platform;
+pub mod application;
 pub mod window;
+mod platform;
 
 // Re-export winit for WindowBuilder and stuff
 pub use winit;

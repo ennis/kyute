@@ -9,7 +9,7 @@ use crate::{
 };
 use keyboard_types::KeyState;
 use kyute_shell::{
-    platform::Platform,
+    application::Application,
     winit,
     winit::{
         event::{DeviceId, ElementState, VirtualKeyCode},
