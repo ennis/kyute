@@ -7,15 +7,16 @@ use crate::{
     graal,
     graal::{vk::Handle, MemoryLocation},
     region::Region,
-    Alignment, BoxConstraints, Cache, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
+    widget::Menu,
+    Alignment, BoxConstraints, Cache, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
     LayoutItem, Measurements, Offset, PaintCtx, PhysicalSize, Point, Rect, Size, Widget, WidgetId,
     WidgetPod,
 };
 use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
 use kyute_shell::{
-    drawing::Color,
     application::Application,
+    drawing::Color,
     winit,
     winit::{
         event::{DeviceId, VirtualKeyCode, WindowEvent},
@@ -29,7 +30,6 @@ use std::{
     sync::{Arc, Mutex},
     time::Instant,
 };
-use palette::white_point::A;
 use tracing::trace_span;
 
 fn key_code_from_winit(
@@ -325,6 +325,7 @@ struct WindowState {
     focus: Option<WidgetId>,
     pointer_grab: Option<WidgetId>,
     hot: Option<WidgetId>,
+    menu: Option<Menu>,
     inputs: InputState,
     last_click: Option<LastClick>,
     scale_factor: f64,
@@ -580,6 +581,18 @@ impl WindowState {
             };
         }
     }
+
+    /// Updates the window menu if the window is created.
+    fn update_menu(&mut self) {
+        if let Some(ref mut window) = self.window {
+            if let Some(ref menu) = self.menu {
+                let m = menu.to_shell_menu();
+                window.set_menu(Some(m));
+            } else {
+                window.set_menu(None);
+            }
+        }
+    }
 }
 
 /// A window managed by kyute.
@@ -593,7 +606,13 @@ impl Window {
     ///
     /// TODO: explain subtleties
     #[composable(uncached)]
-    pub fn new(window_builder: WindowBuilder, contents: WidgetPod) -> WidgetPod<Window> {
+    pub fn new(
+        window_builder: WindowBuilder,
+        contents: WidgetPod,
+        menu: Option<Menu>,
+    ) -> WidgetPod<Window> {
+        // create the initial window state
+        // we don't want to recreate it every time, so it only depends on the call ID.
         let window_state = Cache::memoize((), move || {
             Arc::new(RefCell::new(WindowState {
                 window: None,
@@ -601,12 +620,25 @@ impl Window {
                 focus: None,
                 pointer_grab: None,
                 hot: None,
+                menu: None,
                 inputs: Default::default(),
                 last_click: None,
                 scale_factor: 1.0, // initialized during window creation
                 invalid: Default::default(),
             }))
         });
+
+        // update window states:
+        // menu bar ...
+        {
+            let mut window_state = window_state.borrow_mut();
+            if !window_state.menu.same(&menu) {
+                tracing::trace!("updating window menu: {:#?}", menu);
+                window_state.menu = menu;
+                window_state.update_menu();
+            }
+        }
+        // TODO update title, size, position, etc.
 
         WidgetPod::new(Window {
             window_state,
@@ -848,6 +880,7 @@ impl Widget for Window {
                 ctx.register_window(window.id());
                 window_state.scale_factor = window.window().scale_factor();
                 window_state.window = Some(window);
+                window_state.update_menu();
             }
             Event::WindowEvent(window_event) => {
                 let mut window_state = self.window_state.borrow_mut();

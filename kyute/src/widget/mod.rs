@@ -4,6 +4,7 @@ mod button;
 mod flex;
 mod text;
 mod graphics;
+mod menu;
 //mod grid;
 //mod slider;
 //mod text;
@@ -13,6 +14,7 @@ mod graphics;
 pub use flex::{Axis, CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
 pub use text::Text;
 pub use button::Button;
+pub use menu::{MenuItem, Menu, Action};
 
 /*pub use button::{button, ButtonResult};
 pub use container::container;

@@ -2,6 +2,7 @@
 use crate::{
     application::{Application, GpuContext},
     error::Error,
+    Menu,
 };
 use graal::{swapchain::Swapchain, vk, vk::Handle, FrameCreateInfo, GpuFuture, MemoryLocation};
 use raw_window_handle::HasRawWindowHandle;
@@ -16,7 +17,10 @@ use std::{
 };
 use windows::{
     core::Interface,
-    Win32::Foundation::{HINSTANCE, HWND},
+    Win32::{
+        Foundation::{HINSTANCE, HWND},
+        UI::WindowsAndMessaging::{DestroyMenu, SetMenu, HMENU},
+    },
 };
 use winit::{
     event_loop::EventLoopWindowTarget,
@@ -162,6 +166,7 @@ pub struct Window {
     hinstance: HINSTANCE,
     //swap_chain: IDXGISwapChain1,
     surface: vk::SurfaceKHR,
+    menu: Option<HMENU>,
     swap_chain: graal::swapchain::Swapchain,
     swap_chain_width: u32,
     swap_chain_height: u32,
@@ -183,6 +188,22 @@ impl Window {
     /// [`WindowId`]: winit::WindowId
     pub fn id(&self) -> WindowId {
         self.window.id()
+    }
+
+    /// Sets this window's main menu bar.
+    pub fn set_menu(&mut self, new_menu: Option<Menu>) {
+        unsafe {
+            // SAFETY: TODO
+            if let Some(current_menu) = self.menu.take() {
+                SetMenu(self.hwnd, None);
+                DestroyMenu(current_menu);
+            }
+            if let Some(menu) = new_menu {
+                let hmenu = menu.into_hmenu();
+                SetMenu(self.hwnd, hmenu);
+                self.menu = Some(hmenu);
+            }
+        }
     }
 
     /// Returns the current swap chain size in physical pixels.
@@ -309,6 +330,8 @@ impl Window {
             hwnd,
             hinstance,
             surface,
+            // TODO menu initializer
+            menu: None,
             swap_chain,
             swap_chain_width: swapchain_size.0,
             swap_chain_height: swapchain_size.1,

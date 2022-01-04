@@ -25,6 +25,7 @@ impl Button {
         let (clicked, key) = Cache::state(|| false);
         if clicked {
             // reset click
+            // TODO some kind of autoreset flag in `cache`? or somewhere else?
             Cache::replace_state(key, false);
         }
         WidgetPod::new(Button {
