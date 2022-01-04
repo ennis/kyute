@@ -16,6 +16,7 @@ impl Data for Action {
     }
 }
 
+// FIXME: WM_COMMAND menu ids are 16-bit, so we can exhaust IDs quickly if we keep creating new actions
 static ACTION_ID_COUNTER: Counter = Counter::new();
 
 impl Action {

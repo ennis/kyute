@@ -382,6 +382,11 @@ impl WindowState {
                 // TODO
                 None
             }
+            WindowEvent::Command(id) => {
+                // command from a menu
+                tracing::trace!("received WM_COMMAND {}", id);
+                None
+            }
             WindowEvent::KeyboardInput {
                 device_id,
                 input,

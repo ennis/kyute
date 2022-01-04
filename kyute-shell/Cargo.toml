@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 # windowing
 anyhow = "1.0.43"
-winit = "0.26.0"
+winit = { path = "../ext/winit" }
 euclid = "0.22"   # basic 2D geometric types
 svgtypes = "0.5.0"  # SVG path parser and path segment definitions
 palette = "0.5.0"   # colors
