@@ -1,4 +1,7 @@
-use crate::backend::windows::str_to_wstr;
+use crate::{
+    backend::windows::util::ToWide,
+    Shortcut,
+};
 use std::mem;
 use windows::Win32::{
     Foundation::PWSTR,
@@ -7,7 +10,8 @@ use windows::Win32::{
         Shell::{FileOpenDialog, IFileDialog, FOS_ALLOWMULTISELECT},
         WindowsAndMessaging::{
             AppendMenuW, CreateMenu, DestroyMenu, InsertMenuItemW, SetMenu, HMENU, MENUITEMINFOW,
-            MFT_STRING, MF_POPUP, MF_SEPARATOR, MF_STRING, MIIM_FTYPE, MIIM_STRING,
+            MFT_STRING, MF_CHECKED, MF_DISABLED, MF_POPUP, MF_SEPARATOR, MF_STRING, MIIM_FTYPE,
+            MIIM_STRING,
         },
     },
 };
@@ -20,6 +24,7 @@ use winit::{
 
 pub struct Menu {
     hmenu: HMENU,
+    accels: Vec<(usize, Shortcut)>,
 }
 
 impl Drop for Menu {
@@ -38,7 +43,10 @@ impl Menu {
             // SAFETY: no particular requirements
             CreateMenu()
         };
-        Menu { hmenu }
+        Menu {
+            hmenu,
+            accels: vec![],
+        }
     }
 
     pub(crate) fn into_hmenu(self) -> HMENU {
@@ -47,30 +55,48 @@ impl Menu {
         hmenu
     }
 
-    pub fn add_item(&mut self, text: &str, id: usize, checked: bool, disabled: bool) {
+    pub fn add_item(
+        &mut self,
+        text: &str,
+        id: usize,
+        shortcut: Option<&Shortcut>,
+        checked: bool,
+        disabled: bool,
+    ) {
         // TODO: checked, disabled
-        let w_text = str_to_wstr(text);
+        let text = if let Some(shortcut) = shortcut {
+            format!("{}\t{}", text, shortcut.to_string())
+        } else {
+            text.to_string()
+        };
+
         unsafe {
+            let mut flags = MF_STRING;
+            if checked {
+                flags |= MF_CHECKED;
+            }
+            if disabled {
+                flags |= MF_DISABLED;
+            }
             // SAFETY: TODO
             AppendMenuW(
                 self.hmenu,
-                MF_STRING,
+                flags,
                 id,
-                PWSTR(w_text.as_ptr() as *mut u16),
-            )
+                PWSTR(text.to_wide().as_ptr() as *mut u16),
+            );
         };
     }
 
     pub fn add_submenu(&mut self, text: &str, submenu: Menu) {
         let sub_hmenu = submenu.into_hmenu();
-        let w_text = str_to_wstr(text);
         unsafe {
             // SAFETY: TODO
             AppendMenuW(
                 self.hmenu,
                 MF_POPUP,
                 sub_hmenu as usize,
-                PWSTR(w_text.as_ptr() as *mut u16),
+                PWSTR(text.to_wide().as_ptr() as *mut u16),
             );
         }
     }

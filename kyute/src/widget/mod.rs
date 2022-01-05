@@ -14,7 +14,7 @@ mod menu;
 pub use flex::{Axis, CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
 pub use text::Text;
 pub use button::Button;
-pub use menu::{MenuItem, Menu, Action};
+pub use menu::{MenuItem, Menu, Action, Shortcut};
 
 /*pub use button::{button, ButtonResult};
 pub use container::container;

@@ -7,7 +7,8 @@ use std::{
 use winit::event::DeviceId;
 
 use crate::{bloom::Bloom, core2::GpuResourceReferences};
-pub use keyboard_types::{CompositionEvent, KeyboardEvent, Modifiers};
+// FIXME: reexport/import from kyute-shell?
+pub use keyboard_types::{CompositionEvent, KeyboardEvent, Modifiers, Key};
 use kyute_shell::{graal, winit};
 
 /// Represents the type of pointer.

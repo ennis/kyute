@@ -1,19 +1,42 @@
 use crate::{composable, util::Counter, Cache, Data, Key};
-use std::{convert::TryInto, sync::Arc};
+use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
-#[derive(Clone, Debug)]
-pub struct Action {
-    id: u32,
-    triggered: (bool, Key<bool>),
-    // TODO keyboard shortcut(s)
+/// Keyboard shortcut.
+// This is a newtype so that we can impl Data on it.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Shortcut(kyute_shell::Shortcut);
+
+impl Shortcut {
+    pub fn new(modifiers: keyboard_types::Modifiers, key: keyboard_types::Key) -> Shortcut {
+        Shortcut(kyute_shell::Shortcut::new(modifiers, key))
+    }
+
+    pub fn modifiers(&self) -> keyboard_types::Modifiers {
+        self.0.modifiers
+    }
+
+    pub fn key(&self) -> &keyboard_types::Key {
+        &self.0.key
+    }
+
+    pub fn to_string(&self) -> String {
+        self.0.to_string()
+    }
 }
 
-impl Data for Action {
+impl Data for Shortcut {
     fn same(&self, other: &Self) -> bool {
-        // same actions if same ID
-        // ignore "triggered" which is transient state
-        self.id == other.id
+        self.0 == other.0
     }
+}
+
+#[derive(Clone, Debug, Data)]
+pub struct Action {
+    id: u32,
+    pub(crate) shortcut: Option<Shortcut>,
+    // ignore "triggered" which is transient state
+    #[data(ignore)]
+    pub(crate) triggered: (bool, Key<bool>),
 }
 
 // FIXME: WM_COMMAND menu ids are 16-bit, so we can exhaust IDs quickly if we keep creating new actions
@@ -21,14 +44,30 @@ static ACTION_ID_COUNTER: Counter = Counter::new();
 
 impl Action {
     /// Creates a new action.
+    // FIXME does this need to be cached? it's cheap to create
     #[composable]
     pub fn new() -> Action {
+        Self::new_inner(None)
+    }
+
+    /// Creates a new action with the specified keyboard shortcut.
+    #[composable]
+    pub fn with_shortcut(shortcut: Shortcut) -> Action {
+        Self::new_inner(Some(shortcut))
+    }
+
+    #[composable(uncached)]
+    fn new_inner(shortcut: Option<Shortcut>) -> Action {
         let id: u32 = Cache::memoize((), || ACTION_ID_COUNTER.next().try_into().unwrap());
         let triggered = Cache::state(|| false);
         if triggered.0 {
             Cache::replace_state(triggered.1, false);
         }
-        Action { id, triggered }
+        Action {
+            id,
+            triggered,
+            shortcut,
+        }
     }
 
     /// Returns whether the action was triggered.
@@ -93,7 +132,13 @@ impl Menu {
         for item in self.items.iter() {
             match item {
                 MenuItem::Action { action, text } => {
-                    menu.add_item(text, action.id as usize, false, false);
+                    menu.add_item(
+                        text,
+                        action.id as usize,
+                        action.shortcut.as_ref().map(|s| &s.0),
+                        false,
+                        false,
+                    );
                 }
                 MenuItem::Separator => {
                     menu.add_separator();
@@ -107,5 +152,19 @@ impl Menu {
             }
         }
         menu
+    }
+
+    pub(crate) fn build_action_map(&self, actions_by_id: &mut HashMap<u32, Action>) {
+        for item in self.items.iter() {
+            match item {
+                MenuItem::Action { action, .. } => {
+                    actions_by_id.insert(action.id, action.clone());
+                }
+                MenuItem::Submenu { menu, .. } => {
+                    menu.build_action_map(actions_by_id);
+                }
+                MenuItem::Separator => {}
+            }
+        }
     }
 }

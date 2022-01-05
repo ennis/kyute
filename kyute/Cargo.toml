@@ -9,7 +9,7 @@ kyute-macros = { path="macros" }
 kyute-shell = { path="../kyute-shell" }
 tracing = { version = "0.1.25", features = ["attributes"] }
 euclid = "0.22"
-keyboard-types = "0.6.1"
+keyboard-types = "0.6"
 fnv = "1.0.7"
 unicode-segmentation = "1.8.0"
 palette = "0.6.0"

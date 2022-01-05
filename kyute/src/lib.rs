@@ -8,7 +8,7 @@ mod data;
 mod bloom;
 //mod composition;
 //mod core;
-mod event;
+pub mod event;
 //mod key;
 mod layout;
 //mod style;

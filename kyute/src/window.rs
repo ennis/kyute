@@ -7,7 +7,7 @@ use crate::{
     graal,
     graal::{vk::Handle, MemoryLocation},
     region::Region,
-    widget::Menu,
+    widget::{Action, Menu},
     Alignment, BoxConstraints, Cache, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
     LayoutItem, Measurements, Offset, PaintCtx, PhysicalSize, Point, Rect, Size, Widget, WidgetId,
     WidgetPod,
@@ -25,6 +25,7 @@ use kyute_shell::{
 };
 use std::{
     cell::RefCell,
+    collections::HashMap,
     env, mem,
     ops::DerefMut,
     sync::{Arc, Mutex},
@@ -326,6 +327,7 @@ struct WindowState {
     pointer_grab: Option<WidgetId>,
     hot: Option<WidgetId>,
     menu: Option<Menu>,
+    menu_actions: HashMap<u32, Action>,
     inputs: InputState,
     last_click: Option<LastClick>,
     scale_factor: f64,
@@ -385,6 +387,10 @@ impl WindowState {
             WindowEvent::Command(id) => {
                 // command from a menu
                 tracing::trace!("received WM_COMMAND {}", id);
+                // find matching action and trigger it
+                if let Some(action) = self.menu_actions.get(&(*id as u32)) {
+                    parent_ctx.set_state(action.triggered.1, true);
+                }
                 None
             }
             WindowEvent::KeyboardInput {
@@ -409,6 +415,7 @@ impl WindowState {
             WindowEvent::ModifiersChanged(mods) => {
                 // TODO
                 //window_info.inputs.modifiers = mods;
+
                 None
             }
             WindowEvent::CursorMoved {
@@ -593,8 +600,12 @@ impl WindowState {
             if let Some(ref menu) = self.menu {
                 let m = menu.to_shell_menu();
                 window.set_menu(Some(m));
+                // build action map
+                self.menu_actions.clear();
+                menu.build_action_map(&mut self.menu_actions);
             } else {
                 window.set_menu(None);
+                self.menu_actions.clear();
             }
         }
     }
@@ -626,6 +637,7 @@ impl Window {
                 pointer_grab: None,
                 hot: None,
                 menu: None,
+                menu_actions: Default::default(),
                 inputs: Default::default(),
                 last_click: None,
                 scale_factor: 1.0, // initialized during window creation
