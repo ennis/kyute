@@ -1,14 +1,10 @@
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     fmt,
-    fmt::Formatter,
     hash::{Hash, Hasher},
-    io,
-    io::Write,
     panic::Location,
 };
 use std::rc::Rc;
-use typed_arena::Arena;
 
 /// Identifies a particular call site in a call tree.
 ///

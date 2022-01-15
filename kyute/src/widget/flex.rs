@@ -1,11 +1,9 @@
 use crate::{
     composable,
     core2::{LayoutCtx, PaintCtx},
-    BoxConstraints, Environment, Event, EventCtx, LayoutItem, Measurements, Offset, Rect, Size,
-    Widget, WidgetPod,
+    theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Rect, Size, Widget,
+    WidgetPod,
 };
-use kyute_shell::drawing::Color;
-use tracing::trace;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Axis {
@@ -78,9 +76,9 @@ impl Widget for Flex {
         std::any::type_name::<Self>()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event) {
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         for item in self.items.iter() {
-            item.event(ctx, event);
+            item.event(ctx, event, env);
         }
     }
 
@@ -136,6 +134,10 @@ impl Widget for Flex {
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         //ctx.canvas.clear(kyute_shell::skia::Color4f::new(0.55, 0.55, 0.55, 1.0));
+
+        use crate::styling::*;
+        ctx.draw_styled_box(bounds, rectangle().with(fill(theme::FRAME_BG_NORMAL_COLOR)), env);
+
         for item in self.items.iter() {
             // eprintln!("flex {:?} paint item {:?}", self.axis, item.child_offset());
             item.paint(ctx, bounds, env);

@@ -1,22 +1,12 @@
 //! Text editor widget.
-use crate::{
-    core::Widget,
-    data::Data,
-    env::Environment,
-    event::{Event, Modifiers, PointerEventKind},
-    style::{State, StyleSet},
-    theme, BoxConstraints, CompositionCtx, EnvKey, EventCtx, CallKey, LayoutCtx, Measurements, Offset,
-    PaintCtx, Point, Rect, SideOffsets, Size, WidgetDelegate,
-};
+use crate::{core2::Widget, Data, env::Environment, event::{Event, Modifiers, PointerEventKind}, theme, BoxConstraints, EnvKey, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect, SideOffsets, Size, WidgetPod, Key, Cache};
 use keyboard_types::KeyState;
-use kyute_shell::{
-    drawing::{Brush, Color, DrawTextOptions},
-    text::{TextFormat, TextFormatBuilder, TextLayout},
-    winit::event::VirtualKeyCode,
-};
+use kyute_shell::winit::event::VirtualKeyCode;
 use std::{any::Any, ops::Range, sync::Arc};
+use std::cell::Cell;
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
+use crate::composable;
 
 /// Text selection.
 ///
@@ -69,53 +59,89 @@ fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
     c.next_boundary(&text, 0).unwrap()
 }
 
-#[derive(Clone)]
-enum TextEditAction {
-    TextChanged(String),
-    SelectionChanged(Selection),
+/*#[derive(Copy,Clone,Debug,Eq,PartialEq,Ord,PartialOrd,Hash)]
+pub struct TextRange {
+    /// Byte offset to the start of the text range.
+    pub start: usize,
+    /// Byte offset to the end of the text range.
+    pub end: usize,
+}*/
+
+struct TextFormatInner {
+    font_family: String,
+    font_size: f64,
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
-/// Text editor state
-pub struct TextEditState {
+#[derive(Clone,Data)]
+pub struct TextFormat(Arc<TextFormatInner>);
+
+impl TextFormat {
+    pub fn new() -> TextFormat {
+        TextFormat (Arc::new(TextFormatInner {
+            font_family: "monospace".to_string(),
+            font_size: 14.0
+        }))
+    }
+
+    pub fn set_font_size(&mut self, size: f64) {
+        Arc::make_mut(&mut self.0).font_size = size;
+    }
+
+    pub fn set_font_family(&mut self, family: &str) {
+        Arc::make_mut(&mut self.0).font_family = family.to_string();
+    }
+}
+
+impl Default for TextFormat {
+    fn default() -> Self {
+        TextFormat::new()
+    }
+}
+
+struct TextEditStateInner {
     /// The displayed text.
     text: String,
 
     /// The currently selected range. If no text is selected, this is a zero-length range
     /// at the cursor position.
     selection: Selection,
+
+    /// Text format
+    format: TextFormat
 }
 
-impl Data for TextEditState {
-    fn same(&self, other: &Self) -> bool {
-        self.text.same(&other.text) && self.selection == other.selection
-    }
-}
+/// Text editor state.
+/// TODO rename to `TextDocument`?
+#[derive(Clone, Data)]
+pub struct TextEditState(Arc<TextEditStateInner>);
 
 impl TextEditState {
-    /// Creates a new text edit state with the given text, the cursor at the beginning, and nothing selected.
-    pub fn new(text: String) -> TextEditState {
-        TextEditState {
-            text,
+
+    #[composable(uncached)]
+    pub fn new(text: &str) -> TextEditState {
+        TextEditState(Arc::new(TextEditStateInner {
+            text: text.to_string(),
             selection: Default::default(),
-        }
+            format: TextFormat::default()
+        }))
     }
 
-    /// Sets the text.
-    pub fn set_text(&mut self, text: String) {
-        self.text = text;
-        // TODO: truncate selection if necessary
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        Arc::make_mut(&mut self.0).text = text.into();
     }
 
-    /// Sets the selection (and cursor position).
     pub fn set_selection(&mut self, selection: Selection) {
-        self.selection = selection;
+        Arc::make_mut(&mut self.0).selection = selection;
+    }
+
+    pub fn set_format(&mut self, format: TextFormat) {
+        Arc::make_mut(&mut self.0).format = format;
     }
 }
 
+
+
 pub struct TextEdit {
-    /// Formatting information.
-    text_format: TextFormat,
 
     /// Text editing state.
     state: TextEditState,
@@ -126,6 +152,10 @@ pub struct TextEdit {
     /// The size of the content area
     content_size: Size,
 
+    editing_finished: Key<bool>,
+    text_changed: Key<bool>,
+
+
     /// The text layout. None if not yet calculated.
     ///
     /// FIXME: due to DirectWrite limitations, the text layout contains a copy of the string.
@@ -133,23 +163,45 @@ pub struct TextEdit {
     text_layout: Option<TextLayout>,
 }
 
+// text edit behavior in the new system:
+// - create text edit, pass the string as state, and optionally the selection
+
+// TextEdit can change the text, and the selection
+
 impl TextEdit {
-    pub fn new(state: TextEditState) -> TextEdit {
-        TextEdit {
-            text_format: TextFormat::builder().size(14.0).build().unwrap(),
+
+    #[composable]
+    pub fn new(state: TextEditState) -> WidgetPod<TextEdit> {
+
+        //let editing_finished = Cache::state(|| false);
+        //let
+
+        WidgetPod::new(TextEdit {
             state,
             content_offset: Default::default(),
             content_size: Default::default(),
+            editing_finished: Cell::new(None),
+            text_changed: Cell::new(None),
             text_layout: None,
+        })
+    }
+
+    /// Returns whether TODO.
+    #[composable(uncached)]
+    pub fn editing_finished(&self) -> bool {
+        if let Some((v, k)) = self.editing_finished.get() {
+            v
+        } else {
+            let (v,k) = Cache::state(|| false);
+            self.editing_finished.set(Some((v,k)));
+            v
         }
     }
 
-    pub fn set_state(&mut self, state: TextEditState) {
-        if self.state != state {
-            self.state = state;
-            self.text_layout = None;
-        }
-    }
+    /*/// Returns whether the text has changed.
+    pub fn text_changed(&self) -> bool {
+
+    }*/
 
     /// Moves the cursor forward or backward.
     // TODO move to EditState
@@ -162,14 +214,20 @@ impl TextEdit {
             Movement::LeftWord | Movement::RightWord => {
                 // TODO word navigation (unicode word segmentation)
                 tracing::warn!("word navigation is unimplemented");
-                self.state.selection.end
+                self.state.0.selection.end
             }
         };
 
         if modify_selection {
-            self.state.selection.end = offset;
+            self.state.0.selection.end = offset;
         } else {
-            self.state.selection = Selection::empty(offset);
+            self.state.0.selection = Selection::empty(offset);
+        }
+    }
+
+    fn on_editing_finished(&self, ctx: &EventCtx) {
+        if let Some((_, k)) = self.editing_finished.get() {
+            ctx.set_state(k, true);
         }
     }
 
@@ -223,16 +281,12 @@ impl TextEdit {
     }
 }
 
-impl WidgetDelegate for TextEdit {
-    fn layout(
-        &mut self,
-        _ctx: &mut LayoutCtx,
-        _children: &mut [Widget],
-        constraints: &BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+impl Widget for TextEdit {
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+
         let padding = env.get(theme::TEXT_EDIT_PADDING).unwrap_or_default();
-        let font_size = self.text_format.font_size() as f64;
+        let font_size = 14.0;
 
         const SELECTION_MAGIC: f64 = 3.0;
         // why default width == 200?
@@ -263,7 +317,9 @@ impl WidgetDelegate for TextEdit {
         Measurements { size, baseline }
     }
 
-    fn paint(
+
+
+    /*fn paint(
         &mut self,
         ctx: &mut PaintCtx,
         children: &mut [Widget],
@@ -340,9 +396,10 @@ impl WidgetDelegate for TextEdit {
         }
 
         ctx.restore();
-    }
+    }*/
 
-    fn event(&mut self, ctx: &mut EventCtx, children: &mut [Widget], event: &Event) {
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment)
+    {
         match event {
             Event::FocusGained => {
                 trace!("text edit: focus gained");
@@ -352,7 +409,7 @@ impl WidgetDelegate for TextEdit {
                 trace!("text edit: focus lost");
                 let pos = self.state.selection.end;
                 self.set_cursor(pos);
-                ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
                 ctx.request_redraw();
             }
             Event::Pointer(p) => {
@@ -362,10 +419,10 @@ impl WidgetDelegate for TextEdit {
                         if p.repeat_count == 2 {
                             // double-click selects all
                             self.select_all();
-                            ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                            //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
                         } else {
                             self.set_cursor(pos);
-                            ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                            //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
                         }
                         ctx.request_redraw();
                         ctx.request_focus();
@@ -375,8 +432,8 @@ impl WidgetDelegate for TextEdit {
                         // update selection
                         if ctx.is_capturing_pointer() {
                             let pos = self.position_to_text(p.position);
-                            self.set_selection_end(pos);
-                            ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                           // self.set_selection_end(pos);
+                           // ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
                             ctx.request_redraw();
                         }
                     }
@@ -435,6 +492,10 @@ impl WidgetDelegate for TextEdit {
             Event::Composition(input) => {}
             _ => {}
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        todo!()
     }
 }
 

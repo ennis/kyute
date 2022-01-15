@@ -1,25 +1,11 @@
-use crate::{
-    backend::windows::util::ToWide,
-    Shortcut,
-};
+use crate::{backend::windows::util::ToWide, Shortcut};
 use std::mem;
 use windows::Win32::{
     Foundation::PWSTR,
-    System::Com::{CoCreateInstance, CoInitialize, CLSCTX_INPROC_SERVER},
-    UI::{
-        Shell::{FileOpenDialog, IFileDialog, FOS_ALLOWMULTISELECT},
-        WindowsAndMessaging::{
-            AppendMenuW, CreateMenu, DestroyMenu, InsertMenuItemW, SetMenu, HMENU, MENUITEMINFOW,
-            MFT_STRING, MF_CHECKED, MF_DISABLED, MF_POPUP, MF_SEPARATOR, MF_STRING, MIIM_FTYPE,
-            MIIM_STRING,
-        },
+    UI::WindowsAndMessaging::{
+        AppendMenuW, CreateMenu, DestroyMenu, HMENU, MF_CHECKED, MF_DISABLED, MF_POPUP,
+        MF_SEPARATOR, MF_STRING,
     },
-};
-use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    platform::windows::WindowExtWindows,
-    window::WindowBuilder,
 };
 
 pub struct Menu {

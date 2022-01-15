@@ -1,30 +1,22 @@
 //! winit-based application wrapper.
 //!
 //! Provides the `run_application` function that opens the main window and translates the incoming
-//! events from winit into the events expected by a kyute [`NodeTree`](crate::node::NodeTree).
-
+//! events from winit into the events expected by kyute.
 use crate::{
-    cache::Key, core2::WidgetId, BoxConstraints, Cache, Event, InternalEvent, LayoutItem, Point,
-    WidgetPod,
+    cache::Key, core2::WidgetId, theme, Cache, Environment, Event, InternalEvent, WidgetPod,
 };
-use keyboard_types::KeyState;
 use kyute_shell::{
-    application::Application,
     winit,
     winit::{
-        event::{DeviceId, ElementState, VirtualKeyCode},
         event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
         window::WindowId,
     },
 };
 use std::{
-    any::Any,
-    cell::RefCell,
     collections::{hash_map::Entry, HashMap},
     mem,
-    time::Instant,
 };
-use tracing::{trace_span, warn};
+use tracing::warn;
 
 /// Global application context. Contains stuff passed to all widget contexts (Event,Layout,Paint...)
 pub struct AppCtx {
@@ -79,33 +71,47 @@ impl AppCtx {
         &mut self,
         root_widget: &mut WidgetPod,
         event_loop: &EventLoopWindowTarget<()>,
-        event: Event<'static>
+        event: Event<'static>,
+        root_env: &Environment,
     ) {
         self.post_event(event);
-        self.flush_pending_events(root_widget, event_loop);
+        self.flush_pending_events(root_widget, event_loop, root_env);
     }
 
     fn flush_pending_events(
         &mut self,
         root_widget: &mut WidgetPod,
         event_loop: &EventLoopWindowTarget<()>,
+        root_env: &Environment,
     ) {
         while !self.pending_events.is_empty() {
             let events = mem::take(&mut self.pending_events);
             for mut event in events {
-                root_widget.send_root_event(self, event_loop, &mut event)
+                root_widget.send_root_event(self, event_loop, &mut event, root_env)
             }
         }
     }
 }
 
+fn eval_root_widget(
+    app_ctx: &mut AppCtx,
+    event_loop: &EventLoopWindowTarget<()>,
+    root_env: &Environment,
+    f: fn() -> WidgetPod,
+) -> WidgetPod {
+    let root_widget: WidgetPod = app_ctx.cache.run(f);
+    // ensures that all widgets have received the `Initialize` event.
+    root_widget.initialize(app_ctx, event_loop, root_env);
+    root_widget
+}
+
 pub fn run(ui: fn() -> WidgetPod) {
     let mut event_loop = EventLoop::new();
     let mut app_ctx = AppCtx::new();
+    let root_env = theme::get_default_application_style();
 
     // initial evaluation of the root widget in the main UI cache.
-    let mut root_widget: WidgetPod = app_ctx.cache.run(ui);
-    root_widget.ensure_initialized(&mut app_ctx, &event_loop);
+    let mut root_widget = eval_root_widget(&mut app_ctx, &event_loop, &root_env, ui);
 
     // run event loop
     event_loop.run(move |event, elwt, control_flow| {
@@ -121,6 +127,7 @@ pub fn run(ui: fn() -> WidgetPod) {
                             &mut root_widget,
                             elwt,
                             Event::Internal(InternalEvent::RouteWindowEvent { target, event }),
+                            &root_env,
                         );
                     }
                 } else {
@@ -128,11 +135,12 @@ pub fn run(ui: fn() -> WidgetPod) {
                 }
             }
             winit::event::Event::RedrawRequested(window_id) => {
-                if let Some(&target) = app_ctx.windows.get(&window_id)  {
+                if let Some(&target) = app_ctx.windows.get(&window_id) {
                     root_widget.send_root_event(
                         &mut app_ctx,
                         elwt,
                         &mut Event::Internal(InternalEvent::RouteRedrawRequest(target)),
+                        &root_env,
                     )
                 } else {
                     tracing::warn!("unregistered window id: {:?}", window_id);
@@ -145,7 +153,6 @@ pub fn run(ui: fn() -> WidgetPod) {
         // Re-evaluate the root widget.
         // If no state variable in the cache has changed (because of an event), then it will simply
         // return the same root widget.
-        root_widget = app_ctx.cache.run(ui);
-        root_widget.ensure_initialized(&mut app_ctx, elwt);
+        root_widget = eval_root_widget(&mut app_ctx, elwt, &root_env, ui);
     })
 }

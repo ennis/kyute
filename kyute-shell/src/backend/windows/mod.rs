@@ -1,5 +1,3 @@
-use std::iter;
-
 mod menu;
 mod util;
 

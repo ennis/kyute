@@ -1,5 +1,6 @@
 #![feature(coerce_unsized)]
 #![feature(unsize)]
+#![feature(arc_new_cyclic)]
 extern crate self as kyute;
 
 #[macro_use]
@@ -11,7 +12,6 @@ mod bloom;
 pub mod event;
 //mod key;
 mod layout;
-//mod style;
 mod util;
 //pub mod widget;
 //mod window;
@@ -24,6 +24,8 @@ pub mod call_key;
 mod core2;
 pub mod widget;
 mod window;
+pub mod styling;
+pub mod theme;
 //mod style;
 
 pub use cache::{Cache, CacheError, Key};

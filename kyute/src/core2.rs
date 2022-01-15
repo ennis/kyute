@@ -3,29 +3,18 @@ use crate::{
     bloom::Bloom,
     cache::{Cache, Key},
     call_key::CallId,
-    event::{InputState, PointerEvent, PointerEventKind, PointerEventKind::PointerOut},
-    layout::LayoutItem,
+    event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
     BoxConstraints, Data, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect,
-    Size,
 };
 use kyute_macros::composable;
 use kyute_shell::{
     graal,
     graal::{ash::vk, BufferId, ImageId},
-    skia::Matrix,
     winit::{event_loop::EventLoopWindowTarget, window::WindowId},
 };
-use std::{
-    cell::{Cell, RefCell},
-    fmt,
-    fmt::Formatter,
-    hash::{Hash, Hasher},
-    marker::Unsize,
-    num::NonZeroU64,
-    ops::{CoerceUnsized, Deref, DerefMut},
-    sync::{Arc, Mutex, Weak},
-};
+use std::{cell::Cell, fmt, hash::Hash, marker::Unsize, ops::{CoerceUnsized, Deref}, sync::{Arc, Weak}};
+use tracing::{trace, warn};
 
 /// Context passed to widgets during the layout pass.
 ///
@@ -112,19 +101,33 @@ pub struct EventResult {
     pub redraw: bool,
 }
 
-// ISSUE: some events have "results", like UpdateChildFilter, which computes a child filter, and GpuFrame, which collects
-// a list of resource accesses. They also have custom parameters.
-// One option would be to stuff the result/parameters into the event itself, but then the event wouldn't be clonable anymore.
-// Also, we'd need to pass a &mut Event.
-
 #[derive(Copy, Clone, Debug)]
 pub struct WindowInfo {
     pub scale_factor: f64,
 }
 
+/// Global state related to focus and pointer grab.
+#[derive(Clone, Debug, Default)]
+pub struct FocusState {
+    pub(crate) focus: Option<WidgetId>,
+    pub(crate) pointer_grab: Option<WidgetId>,
+    pub(crate) hot: Option<WidgetId>,
+}
+
+impl FocusState {
+    pub fn new() -> FocusState {
+        FocusState {
+            focus: None,
+            pointer_grab: None,
+            hot: None,
+        }
+    }
+}
+
 pub struct EventCtx<'a> {
     pub(crate) app_ctx: &'a mut AppCtx,
     pub(crate) event_loop: &'a EventLoopWindowTarget<()>,
+    pub(crate) focus_state: &'a mut FocusState,
     pub(crate) window_position: Point,
     pub(crate) scale_factor: f64,
     pub(crate) id: WidgetId,
@@ -134,14 +137,17 @@ pub struct EventCtx<'a> {
 }
 
 impl<'a> EventCtx<'a> {
+    /// Creates the root `EventCtx`
     fn new(
         app_ctx: &'a mut AppCtx,
+        focus_state: &'a mut FocusState,
         event_loop: &'a EventLoopWindowTarget<()>,
         id: WidgetId,
     ) -> EventCtx<'a> {
         EventCtx {
             app_ctx,
             event_loop,
+            focus_state,
             window_position: Default::default(),
             scale_factor: 1.0,
             id,
@@ -151,17 +157,23 @@ impl<'a> EventCtx<'a> {
         }
     }
 
-    pub fn with_window_info<'b>(&'b mut self, window_info: WindowInfo) -> EventCtx<'b>
+    /// Creates a new `EventCtx` to propagate events in a subwindow.
+    pub(crate) fn new_subwindow<'b>(
+        parent: &'b mut EventCtx,
+        scale_factor: f64,
+        focus_state: &'b mut FocusState,
+    ) -> EventCtx<'b>
     where
         'a: 'b,
     {
         EventCtx {
-            app_ctx: self.app_ctx,
-            event_loop: self.event_loop,
+            app_ctx: parent.app_ctx,
+            event_loop: parent.event_loop,
+            focus_state,
             // reset window pos because we're entering a child window
             window_position: Point::origin(),
-            scale_factor: window_info.scale_factor,
-            id: self.id,
+            scale_factor,
+            id: parent.id,
             handled: false,
             relayout: false,
             redraw: false,
@@ -202,27 +214,32 @@ impl<'a> EventCtx<'a> {
 
     /// Requests that the current node grabs all pointer events in the parent window.
     pub fn capture_pointer(&mut self) {
-        todo!()
+        self.focus_state.pointer_grab = Some(self.id);
     }
 
     /// Returns whether the current node is capturing the pointer.
     pub fn is_capturing_pointer(&self) -> bool {
-        todo!()
+        self.focus_state.pointer_grab == Some(self.id)
     }
 
     /// Releases the pointer grab, if the current node is holding it.
     pub fn release_pointer(&mut self) {
-        todo!()
+        if self.focus_state.pointer_grab == Some(self.id) {
+            trace!("releasing pointer grab");
+        } else {
+            warn!("pointer capture release requested but the current widget isn't capturing the pointer");
+        }
     }
 
     /// Acquires the focus.
     pub fn request_focus(&mut self) {
-        //todo!()
+        trace!("acquiring focus");
+        self.focus_state.focus = Some(self.id);
     }
 
     /// Returns whether the current node has the focus.
     pub fn has_focus(&self) -> bool {
-        todo!()
+        self.focus_state.focus == Some(self.id)
     }
 
     /// Signals that the passed event was handled and should not bubble up further.
@@ -313,7 +330,7 @@ pub trait Widget {
     }
 
     /// Propagates an event through the widget hierarchy.
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event);
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
 
     /// Measures this widget and layouts the children of this widget.
     fn layout(
@@ -330,7 +347,7 @@ pub trait Widget {
     fn window_paint(&self, _ctx: &mut WindowPaintCtx) {}
 
     /// Called for custom GPU operations
-    fn gpu_frame<'a, 'b>(&'a self, ctx: &mut GpuFrameCtx<'a, 'b>) {}
+    fn gpu_frame<'a, 'b>(&'a self, _ctx: &mut GpuFrameCtx<'a, 'b>) {}
 }
 
 /// ID of a node in the tree.
@@ -350,13 +367,26 @@ impl fmt::Debug for WidgetId {
     }
 }
 
+// It would be good to have a visual tree (or quadtree) so that we can do optimized hit-tests and
+// event delivery.
+struct VisualNode {
+    widget: WidgetPod,
+    measurements: Measurements,
+    children: Vec<Arc<VisualNode>>,
+}
+
+// 1. Use visual tree to determine target ID
+// 2. Build propagation path to target ID (Vec<WidgetPod>)
+
 #[derive(Copy, Clone, Debug, Hash)]
 struct LayoutResult {
     constraints: BoxConstraints,
     measurements: Measurements,
 }
 
-struct WidgetPodInner<T: ?Sized> {
+struct WidgetPodState {
+    /// Weak ref to self as a `dyn Widget`, used to collect widgets in `InternalEvent::Traverse`
+    this: Weak<WidgetPodInner<dyn Widget>>,
     // TODO add a flag for paint invalidation?
     /// Unique ID of the widget.
     id: WidgetId,
@@ -376,172 +406,136 @@ struct WidgetPodInner<T: ?Sized> {
     /// Any pointer hovering this widget
     /// FIXME: handle multiple pointers?
     pointer_over: Cell<bool>,
+}
+
+impl WidgetPodState {
+    /// Sets the offset of this widget relative to its parent.
+    pub fn set_child_offset(&self, offset: Offset) {
+        self.offset.set(offset);
+        self.paint_invalid.set(true);
+    }
+}
+
+struct WidgetPodInner<T: ?Sized> {
+    state: WidgetPodState,
     widget: T,
 }
 
-/// Represents a widget.
-pub struct WidgetPod<T: ?Sized = dyn Widget>(Arc<WidgetPodInner<T>>);
-
-// Unsized coercions
-impl<T, U> CoerceUnsized<WidgetPod<U>> for WidgetPod<T>
-where
-    T: Unsize<U> + ?Sized,
-    U: ?Sized,
-{
-}
-
-impl fmt::Debug for WidgetPod {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // TODO
-        f.debug_tuple("WidgetPod").finish()
+impl<T: Widget + ?Sized> WidgetPodInner<T> {
+    fn compute_child_filter(
+        &self,
+        parent_ctx: &mut EventCtx,
+        env: &Environment,
+    ) -> Bloom<WidgetId> {
+        if let Some(filter) = self.state.child_filter.get() {
+            // already computed
+            filter
+        } else {
+            //tracing::trace!("computing child filter");
+            let mut filter = Default::default();
+            self.do_event(
+                parent_ctx,
+                &mut Event::Internal(InternalEvent::UpdateChildFilter {
+                    filter: &mut filter,
+                }),
+                env,
+            );
+            self.state.child_filter.set(Some(filter));
+            filter
+        }
     }
-}
 
-impl<T: Widget> WidgetPod<T> {
-    /// Creates a new `WidgetPod` wrapping the specified widget.
-    #[composable(uncached)]
-    pub fn new(widget: T) -> WidgetPod<T> {
-        let id = WidgetId::from_call_id(Cache::current_call_id());
+    /// Returns whether this widget may contain the specified widget as a child (direct or not).
+    fn may_contain(&self, widget: WidgetId) -> bool {
+        if let Some(filter) = self.state.child_filter.get() {
+            filter.may_contain(&widget)
+        } else {
+            tracing::warn!("`may_contain` called but child filter not initialized");
+            true
+        }
+    }
 
-        // HACK: returns false on first call, true on following calls, so we can use that
-        // to determine whether the widget has been initialized.
-        let initialized = !Cache::changed(()); // false on first call, true on following calls
-
-        tracing::trace!(
-            "WidgetPod::new[{}-{:?}]: initialized={}",
-            widget.debug_name(),
-            id,
-            initialized
-        );
-        let inner = WidgetPodInner {
-            id,
-            offset: Cell::new(Offset::zero()),
-            layout_result: Cell::new(None),
-            paint_invalid: Cell::new(true),
-            child_filter: Cell::new(None),
-            widget,
-            initialized: Cell::new(initialized),
-            // we don't know if all children have been initialized
-            children_initialized: Cell::new(false),
-            pointer_over: Cell::new(false),
+    /// Used internally by `event`. In charge of calling the `event` method on the widget with
+    /// the child `EventCtx`, and handling its result.
+    fn do_event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        let offset = self.state.offset.get();
+        let window_position = parent_ctx.window_position + offset;
+        let mut ctx = EventCtx {
+            app_ctx: parent_ctx.app_ctx,
+            event_loop: parent_ctx.event_loop,
+            focus_state: parent_ctx.focus_state,
+            window_position,
+            scale_factor: parent_ctx.scale_factor,
+            id: self.state.id,
+            handled: false,
+            relayout: false,
+            redraw: false,
         };
-        WidgetPod(Arc::new(inner))
-    }
-}
+        self.widget.event(&mut ctx, event, env);
+        if ctx.relayout {
+            //tracing::trace!(widget_id = ?self.state.id, "requested relayout");
+            // relayout requested by the widget: invalidate cached measurements and offset
+            self.state.layout_result.set(None);
+            self.state.offset.set(Offset::zero());
+            self.state.paint_invalid.set(true);
+        } else if ctx.redraw {
+            //tracing::trace!(widget_id = ?self.state.id, "requested redraw");
+            self.state.paint_invalid.set(true);
+        }
 
-impl<T: Widget + ?Sized> Deref for WidgetPod<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0.widget
-    }
-}
-
-impl<T: ?Sized> Clone for WidgetPod<T> {
-    fn clone(&self) -> Self {
-        WidgetPod(self.0.clone())
-    }
-}
-
-impl<T: ?Sized + 'static> Data for WidgetPod<T> {
-    fn same(&self, other: &Self) -> bool {
-        self.0.same(&other.0)
-    }
-}
-
-// TODO remove this once we have unsized coercions
-impl<T: Widget + 'static> From<WidgetPod<T>> for WidgetPod {
-    fn from(other: WidgetPod<T>) -> Self {
-        WidgetPod(other.0)
-    }
-}
-
-impl<T: ?Sized + Widget> WidgetPod<T> {
-    /// Returns a reference to the wrapped widget.
-    pub fn widget(&self) -> &T {
-        &self.0.widget
+        // propagate results to parent
+        parent_ctx.relayout |= ctx.relayout;
+        parent_ctx.redraw |= ctx.redraw;
+        parent_ctx.handled = ctx.handled;
     }
 
-    /// Returns the widget id.
-    pub fn id(&self) -> WidgetId {
-        self.0.id
-    }
-
-    /// Returns previously set child offset. See `set_child_offset`.
-    pub fn child_offset(&self) -> Offset {
-        self.0.offset.get()
-    }
-
-    /// TODO documentation
-    /// Sets the offset of this widget relative to its parent. Should be called during widget layout.
-    pub fn set_child_offset(&self, offset: Offset) {
-        self.0.offset.set(offset);
-        self.0.paint_invalid.set(true);
-    }
-}
-
-impl WidgetPod {
-    /// Returns whether the widget should be repainted.
-    pub fn invalidated(&self) -> bool {
-        self.0.paint_invalid.get()
-    }
-
-    /// Computes the layout of this widget and its children. Returns the measurements, and whether
-    /// the measurements have changed since last layout.
-    pub fn relayout(&self, constraints: BoxConstraints, env: &Environment) -> (Measurements, bool) {
-        let mut ctx = LayoutCtx { changed: false };
-        let measurements = self.layout(&mut ctx, constraints, env);
-        (measurements, ctx.changed)
-    }
-
-    /// Called to measure this widget and layout the children of this widget.
-    pub fn layout(
+    fn layout(
         &self,
         ctx: &mut LayoutCtx,
         constraints: BoxConstraints,
         env: &Environment,
     ) -> Measurements {
-        if let Some(layout_result) = self.0.layout_result.get() {
+        // FIXME also compare env
+        if let Some(layout_result) = self.state.layout_result.get() {
             if layout_result.constraints.same(&constraints) {
                 return layout_result.measurements;
             }
         }
 
-        let measurements = self.0.widget.layout(ctx, constraints, env);
-        tracing::trace!(
+        let measurements = self.widget.layout(ctx, constraints, env);
+        /*tracing::trace!(
             "layout[{}-{:?}]: {:?}",
-            self.0.widget.debug_name(),
-            self.0.id,
+            self.widget.debug_name(),
+            self.state.id,
             measurements
-        );
-        self.0.layout_result.set(Some(LayoutResult {
+        );*/
+        self.state.layout_result.set(Some(LayoutResult {
             constraints,
             measurements,
         }));
-        self.0.paint_invalid.set(true);
+        self.state.paint_invalid.set(true);
         ctx.changed = true;
         measurements
     }
 
-    /// Paints the widget.
-    pub fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         /*if !self.0.paint_invalid.get() {
             // no need to repaint
             return;
         }*/
 
-        let offset = self.0.offset.get();
-        let measurements = if let Some(layout_result) = self.0.layout_result.get() {
+        let offset = self.state.offset.get();
+        let measurements = if let Some(layout_result) = self.state.layout_result.get() {
             layout_result.measurements
         } else {
-            tracing::warn!(id=?self.0.id, "`paint` called with invalid layout");
+            tracing::warn!(id=?self.state.id, "`paint` called with invalid layout");
             return;
         };
         let size = measurements.size;
         // bounds of this widget in window space
         let window_bounds = Rect::new(ctx.window_bounds.origin + offset, size);
         if !ctx.invalid.intersects(window_bounds) {
-            tracing::trace!("not repainting valid region");
+            //tracing::trace!("not repainting valid region");
             // not invalidated, no need to redraw
             return;
         }
@@ -575,173 +569,96 @@ impl WidgetPod {
                 hot: ctx.hot,
                 inputs: ctx.inputs,
                 scale_factor: ctx.scale_factor,
-                id: self.0.id,
+                id: self.state.id,
                 hover,
                 invalid: &ctx.invalid,
                 measurements,
             };
-            self.0
-                .widget
+            self.widget
                 .paint(&mut child_ctx, Rect::new(Point::origin(), size), env);
         }
 
         ctx.canvas.restore();
-        self.0.paint_invalid.set(false);
+        self.state.paint_invalid.set(false);
     }
 
-    pub(crate) fn compute_child_filter(&self, parent_ctx: &mut EventCtx) -> Bloom<WidgetId> {
-        if let Some(filter) = self.0.child_filter.get() {
-            // already computed
-            filter
-        } else {
-            tracing::trace!("computing child filter");
-            let mut filter = Default::default();
-            self.do_event(
-                parent_ctx,
-                &mut Event::Internal(InternalEvent::UpdateChildFilter {
-                    filter: &mut filter,
-                }),
-            );
-            self.0.child_filter.set(Some(filter));
-            filter
-        }
-    }
+    /*fn propagate_event(&self, parent_ctx: &mut EventCtx, path: &[WidgetId], event: &mut Event, env: &Environment) {
 
-    /// Returns whether this widget may contain the specified widget as a child (direct or not).
-    fn may_contain(&self, widget: WidgetId) -> bool {
-        if let Some(filter) = self.0.child_filter.get() {
-            filter.may_contain(&widget)
-        } else {
-            tracing::warn!("`may_contain` called but child filter not initialized");
-            true
-        }
-    }
-
-    fn do_event(&self, parent_ctx: &mut EventCtx, event: &mut Event) {
-        let offset = self.0.offset.get();
-        let window_position = parent_ctx.window_position + offset;
-        let mut ctx = EventCtx {
-            app_ctx: parent_ctx.app_ctx,
-            event_loop: parent_ctx.event_loop,
-            window_position,
-            scale_factor: parent_ctx.scale_factor,
-            id: self.0.id,
-            handled: false,
-            relayout: false,
-            redraw: false,
-        };
-        self.0.widget.event(&mut ctx, event);
-        if ctx.relayout {
-            tracing::trace!(widget_id = ?self.0.id, "requested relayout");
-            // relayout requested by the widget: invalidate cached measurements and offset
-            self.0.layout_result.set(None);
-            self.0.offset.set(Offset::zero());
-            self.0.paint_invalid.set(true);
-        } else if ctx.redraw {
-            tracing::trace!(widget_id = ?self.0.id, "requested redraw");
-            self.0.paint_invalid.set(true);
-        }
-
-        // propagate results to parent
-        parent_ctx.relayout |= ctx.relayout;
-        parent_ctx.redraw |= ctx.redraw;
-        parent_ctx.handled = ctx.handled;
-    }
-
-    /*/// Same as `event`, but use if you want a need a new `EventCtx`.
-    pub fn root_event(
-        &self,
-        app_ctx: &mut AppCtx,
-        event_loop: &EventLoopWindowTarget<()>,
-        window_scale_factor: f64,
-        event: &mut Event,
-    ) -> EventResult {
-        let mut ctx = EventCtx {
-            app_ctx,
-            event_loop,
-            window_position: Point::origin(),
-            scale_factor: window_scale_factor,
-            id: self.0.id,
-            handled: false,
-            relayout: false,
-            redraw: false,
-        };
-        self.event(&mut ctx, event);
-        EventResult {
-            handled: ctx.handled,
-            relayout: ctx.relayout,
-            redraw: ctx.redraw,
-        }
     }*/
 
     /// Propagates an event to the wrapped widget.
-    pub fn event(&self, parent_ctx: &mut EventCtx, event: &mut Event) {
+    fn event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         if parent_ctx.handled {
             tracing::warn!("event already handled");
             return;
         }
 
+        // first, ensure that the child filter has been computed and the child widgets are initialized
+        self.compute_child_filter(parent_ctx, env);
+
         // ---- Handle internal events (routing mostly) ----
-        match event {
-            Event::Internal(InternalEvent::RouteWindowEvent { target, event }) => {
-                if *target == self.0.id {
-                    self.do_event(parent_ctx, &mut Event::WindowEvent(event.clone()));
+        match *event {
+            Event::Internal(InternalEvent::RouteWindowEvent {
+                target,
+                ref mut event,
+            }) => {
+                // routing of `winit::WindowEvent`s to the corresponding window widget.
+                if target == self.state.id {
+                    self.do_event(parent_ctx, &mut Event::WindowEvent(event.clone()), env);
                     return;
                 }
-                if !self.may_contain(*target) {
+                if !self.may_contain(target) {
                     return;
                 }
             }
-            Event::Internal(InternalEvent::Traverse { widgets }) => {
+            Event::Internal(InternalEvent::RouteEvent {
+                target,
+                ref mut event
+            }) => {
+                if target == self.state.id {
+                    self.event(parent_ctx, event, env);
+                    return;
+                }
+                if !self.may_contain(target) {
+                    return;
+                }
+                // otherwise, recurse
+            }
+            Event::Internal(InternalEvent::Traverse { ref mut widgets }) => {
                 // T: ?Sized
-                widgets.push(WidgetPod(self.0.clone()));
+                // This is problematic: it must clone self, and thus we must either have T == dyn Widget or T:Sized
+                widgets.push(WidgetPod(self.state.this.upgrade().unwrap()));
             }
-            /*Event::Internal(InternalEvent::GpuFrame { frame, references }) => {
-                let measurements = if let Some(layout_result) = self.0.layout_result.get() {
-                    layout_result.measurements
-                } else {
-                    tracing::warn!(
-                        "GpuFrame event received before layout - proceeding with zero size"
-                    );
-                    Measurements::default()
-                };
-                let mut gpu_ctx = GpuCtx {
-                    frame,
-                    scale_factor: parent_ctx.scale_factor,
-                    resource_references: references,
-                    measurements,
-                };
-                self.0.widget.gpu_frame(&mut gpu_ctx);
-            }*/
             Event::Internal(InternalEvent::RouteRedrawRequest(target)) => {
-                if *target == self.0.id {
-                    self.do_event(parent_ctx, &mut Event::WindowRedrawRequest);
+                if target == self.state.id {
+                    self.do_event(parent_ctx, &mut Event::WindowRedrawRequest, env);
                     return;
                 }
-                if !self.may_contain(*target) {
+                if !self.may_contain(target) {
                     return;
                 }
             }
-            Event::Internal(InternalEvent::UpdateChildFilter { filter }) => {
-                filter.add(&self.0.id);
-                let child_filter = self.compute_child_filter(parent_ctx);
+            Event::Internal(InternalEvent::UpdateChildFilter { ref mut filter }) => {
+                filter.add(&self.state.id);
+                let child_filter = self.compute_child_filter(parent_ctx, env);
                 filter.extend(&child_filter);
                 return;
             }
             Event::Internal(InternalEvent::RouteInitialize) | Event::Initialize => {
                 // TODO explain the logic here
-                let init = self.0.initialized.get();
-                let child_init = self.0.children_initialized.get();
+                let init = self.state.initialized.get();
+                let child_init = self.state.children_initialized.get();
                 match (init, child_init) {
-                    (false, _) => self.do_event(parent_ctx, &mut Event::Initialize),
+                    (false, _) => self.do_event(parent_ctx, &mut Event::Initialize, env),
                     (true, false) => self.do_event(
                         parent_ctx,
                         &mut Event::Internal(InternalEvent::RouteInitialize),
+                        env,
                     ),
                     _ => {}
                 }
-                self.0.initialized.set(true);
-                self.0.children_initialized.set(true);
+                self.state.initialized.set(true);
+                self.state.children_initialized.set(true);
                 return;
             }
             _ => {}
@@ -749,8 +666,8 @@ impl WidgetPod {
 
         // ---- Handle pointer events, for which we must do hit-test ----
         let mut position_adjusted_event;
-        let offset = self.0.offset.get();
-        let measurements = if let Some(layout_result) = self.0.layout_result.get() {
+        let offset = self.state.offset.get();
+        let measurements = if let Some(layout_result) = self.state.layout_result.get() {
             layout_result.measurements
         } else {
             tracing::warn!("`event` called before layout ({:?})", event);
@@ -767,30 +684,37 @@ impl WidgetPod {
                 };
                 position_adjusted_event = Event::Pointer(adjusted_pointer_event);
 
-                if !bounds.contains(pointer_event.window_position) {
+                // TODO (?): perform hit-test before sending the pointer event instead of
+                // doing it "on-the-fly" when propagating the pointer event?
+                // this would make the code cleaner, at the cost of two traversals instead of one.
+
+                // pass hit test if we have pointer capture
+                if !bounds.contains(pointer_event.window_position) && parent_ctx.focus_state.pointer_grab != Some(self.state.id) {
                     // pointer hit-test fail; if we were hovering the widget, send pointerout
-                    if self.0.pointer_over.get() {
-                        self.0.pointer_over.set(false);
+                    if self.state.pointer_over.get() {
+                        self.state.pointer_over.set(false);
                         self.do_event(
                             parent_ctx,
                             &mut Event::Pointer(PointerEvent {
                                 kind: PointerEventKind::PointerOut,
                                 ..adjusted_pointer_event
                             }),
+                            env,
                         );
                     }
                     // pointer hit-test fail, don't recurse
                     return;
                 } else {
                     // pointer hit-test pass; send pointerover
-                    if !self.0.pointer_over.get() {
-                        self.0.pointer_over.set(true);
+                    if !self.state.pointer_over.get() {
+                        self.state.pointer_over.set(true);
                         self.do_event(
                             parent_ctx,
                             &mut Event::Pointer(PointerEvent {
                                 kind: PointerEventKind::PointerOver,
                                 ..adjusted_pointer_event
                             }),
+                            env,
                         );
                     }
                     // pointer event is modified
@@ -802,7 +726,144 @@ impl WidgetPod {
         };
 
         // --- propagate to the widget inside ---
-        self.do_event(parent_ctx, modified_event);
+        self.do_event(parent_ctx, modified_event, env);
+    }
+}
+
+/// Represents a widget.
+pub struct WidgetPod<T: ?Sized = dyn Widget>(Arc<WidgetPodInner<T>>);
+
+// Unsized coercions
+impl<T, U> CoerceUnsized<WidgetPod<U>> for WidgetPod<T>
+where
+    T: Unsize<U> + ?Sized,
+    U: ?Sized,
+{
+}
+
+impl fmt::Debug for WidgetPod {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // TODO
+        f.debug_tuple("WidgetPod").finish()
+    }
+}
+
+impl<T: Widget + 'static> WidgetPod<T> {
+    /// Creates a new `WidgetPod` wrapping the specified widget.
+    #[composable(uncached)]
+    pub fn new(widget: T) -> WidgetPod<T> {
+        let id = WidgetId::from_call_id(Cache::current_call_id());
+
+        // HACK: returns false on first call, true on following calls, so we can use that
+        // to determine whether the widget has been initialized.
+        let initialized = !Cache::changed(()); // false on first call, true on following calls
+
+        tracing::trace!(
+            "WidgetPod::new[{}-{:?}]: initialized={}",
+            widget.debug_name(),
+            id,
+            initialized
+        );
+        WidgetPod(Arc::new_cyclic(|this: &Weak<WidgetPodInner<T>>| {
+            WidgetPodInner {
+                state: WidgetPodState {
+                    this: this.clone(),
+                    id,
+                    offset: Cell::new(Offset::zero()),
+                    layout_result: Cell::new(None),
+                    paint_invalid: Cell::new(true),
+                    child_filter: Cell::new(None),
+                    initialized: Cell::new(initialized),
+                    // we don't know if all children have been initialized
+                    children_initialized: Cell::new(false),
+                    pointer_over: Cell::new(false),
+                },
+                widget,
+            }
+        }))
+    }
+}
+
+impl<T: Widget + ?Sized> Deref for WidgetPod<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0.widget
+    }
+}
+
+impl<T: ?Sized> Clone for WidgetPod<T> {
+    fn clone(&self) -> Self {
+        WidgetPod(self.0.clone())
+    }
+}
+
+impl<T: ?Sized + 'static> Data for WidgetPod<T> {
+    fn same(&self, other: &Self) -> bool {
+        self.0.same(&other.0)
+    }
+}
+
+/*// TODO remove this once we have unsized coercions
+impl<T: Widget + 'static> From<WidgetPod<T>> for WidgetPod {
+    fn from(other: WidgetPod<T>) -> Self {
+        WidgetPod(other.0)
+    }
+}*/
+
+impl<T: ?Sized + Widget> WidgetPod<T> {
+    /// Returns a reference to the wrapped widget.
+    pub fn widget(&self) -> &T {
+        &self.0.widget
+    }
+
+    /// Returns the widget id.
+    pub fn id(&self) -> WidgetId {
+        self.0.state.id
+    }
+
+    /// Returns previously set child offset. See `set_child_offset`.
+    pub fn child_offset(&self) -> Offset {
+        self.0.state.offset.get()
+    }
+
+    /// TODO documentation
+    /// Sets the offset of this widget relative to its parent. Should be called during widget layout.
+    pub fn set_child_offset(&self, offset: Offset) {
+        self.0.state.set_child_offset(offset);
+    }
+
+    /// Returns whether the widget should be repainted.
+    pub fn invalidated(&self) -> bool {
+        self.0.state.paint_invalid.get()
+    }
+
+    /// Computes the layout of this widget and its children. Returns the measurements, and whether
+    /// the measurements have changed since last layout.
+    pub fn relayout(&self, constraints: BoxConstraints, env: &Environment) -> (Measurements, bool) {
+        let mut ctx = LayoutCtx { changed: false };
+        let measurements = self.layout(&mut ctx, constraints, env);
+        (measurements, ctx.changed)
+    }
+
+    /// Called to measure this widget and layout the children of this widget.
+    pub fn layout(
+        &self,
+        ctx: &mut LayoutCtx,
+        constraints: BoxConstraints,
+        env: &Environment,
+    ) -> Measurements {
+        self.0.layout(ctx, constraints, env)
+    }
+
+    /// Paints the widget.
+    pub fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        self.0.paint(ctx, bounds, env)
+    }
+
+    /// Propagates an event to the wrapped widget.
+    pub fn event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.0.event(parent_ctx, event, env)
     }
 
     /// Prepares the root `EventCtx` and calls `self.event()`.
@@ -811,39 +872,49 @@ impl WidgetPod {
         app_ctx: &mut AppCtx,
         event_loop: &EventLoopWindowTarget<()>,
         event: &mut Event,
+        env: &Environment,
     ) {
         // FIXME callId?
-        let mut event_ctx = EventCtx::new(app_ctx, event_loop, WidgetId::from_call_id(CallId(0)));
+
+        // The dummy `FocusState` for the root `EventCtx`. It is eventually replaced with the `FocusState`
+        // managed by `Window` widgets.
+        let mut dummy_focus_state = FocusState::default();
+        let mut event_ctx = EventCtx::new(
+            app_ctx,
+            &mut dummy_focus_state,
+            event_loop,
+            WidgetId::from_call_id(CallId(0)),
+        );
         //tracing::trace!("event={:?}", event);
-        self.event(&mut event_ctx, event);
+        self.event(&mut event_ctx, event, env);
     }
 
-    pub(crate) fn ensure_initialized(
+    /// Initializes and layouts the widget if necessary (propagates the `Initialize` event and
+    /// calls `root_layout`.
+    pub(crate) fn initialize(
         &self,
         app_ctx: &mut AppCtx,
         event_loop: &EventLoopWindowTarget<()>,
+        env: &Environment,
     ) {
-        let mut event_ctx = EventCtx::new(app_ctx, event_loop, WidgetId::from_call_id(CallId(0)));
-        self.compute_child_filter(&mut event_ctx);
         self.send_root_event(
             app_ctx,
             event_loop,
             &mut Event::Internal(InternalEvent::RouteInitialize),
+            env,
         );
-        self.root_layout(app_ctx);
     }
 
-    pub(crate) fn root_layout(&self, app_ctx: &mut AppCtx) -> bool {
+    /*pub(crate) fn root_layout(&self, app_ctx: &mut AppCtx, env: &Environment) -> bool {
         let mut ctx = LayoutCtx { changed: false };
-        let env = Environment::new();
         self.layout(
             &mut ctx,
             BoxConstraints {
                 min: Size::new(0.0, 0.0),
                 max: Size::new(f64::INFINITY, f64::INFINITY),
             },
-            &env,
+            env,
         );
         ctx.changed
-    }
+    }*/
 }

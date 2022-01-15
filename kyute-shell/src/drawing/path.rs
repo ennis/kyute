@@ -1,107 +1,184 @@
-use crate::{
-    bindings::Windows::Win32::Direct2D::{
-        ID2D1PathGeometry1, D2D1_FIGURE_BEGIN, D2D1_FIGURE_END, D2D_POINT_2F,
-    },
-    platform::Platform,
-};
-pub use svgtypes::{Path, PathParser, PathSegment};
-use thiserror::Error;
-use windows::Interface;
+use crate::drawing::{Point, ToSkia};
+//use skia_safe as sk;
+use skia_safe::{path::ArcSize, scalar, PathDirection};
+use svgtypes::PathCommand;
 
-pub struct PathGeometry(pub(crate) ID2D1PathGeometry1);
+pub type Path = svgtypes::Path;
+pub type PathSegment = svgtypes::PathSegment;
 
-#[derive(Debug, Error)]
-pub enum PathError {
-    #[error("invalid path syntax")]
-    SyntaxError(#[from] svgtypes::Error),
-    #[error("could not create path")]
-    Other(#[from] crate::error::Error),
-}
+impl ToSkia for Path {
+    type Target = skia_safe::Path;
 
-impl PathGeometry {
-    pub fn try_from_svg_path(path_str: &str) -> Result<PathGeometry, PathError> {
-        let platform = Platform::instance();
+    fn to_skia(&self) -> Self::Target {
+        let mut sk_path = skia_safe::Path::new();
 
-        // parse the path string
-        let mut path: Path = path_str.parse().map_err(|e| PathError::SyntaxError(e))?;
-        path.conv_to_absolute();
+        //let mut points = Vec::with_capacity(3.0*self.0.len());
+        //let mut verbs = Vec::with_capacity(self.0.len());
 
-        // build geometry
-        unsafe {
-            let factory = &platform.0.d2d_factory;
-            let mut path_geometry = None;
-            let path_geometry = factory
-                .CreatePathGeometry(&mut path_geometry)
-                .and_some(path_geometry)
-                .unwrap()
-                .cast::<ID2D1PathGeometry1>()
-                .unwrap();
-            let mut geometry_sink = None;
-            let geometry_sink = path_geometry
-                .Open(&mut geometry_sink)
-                .and_some(geometry_sink)
-                .unwrap();
+        let mut last_cp = Point::origin();
+        let mut last_p = Point::origin();
+        let mut last_verb = PathCommand::MoveTo;
 
-            let mut in_figure = false;
-            let (mut init_x, mut init_y) = (0.0, 0.0);
-
-            for seg in path.0 {
-                // begin figure
-                if !in_figure {
-                    match &seg {
-                        PathSegment::MoveTo { x, y, .. } => {
-                            init_x = *x;
-                            init_y = *y;
-                            continue;
-                        }
-                        PathSegment::ClosePath { .. } => {}
-                        PathSegment::LineTo { .. }
-                        | PathSegment::HorizontalLineTo { .. }
-                        | PathSegment::VerticalLineTo { .. }
-                        | PathSegment::CurveTo { .. }
-                        | PathSegment::SmoothCurveTo { .. }
-                        | PathSegment::Quadratic { .. }
-                        | PathSegment::SmoothQuadratic { .. }
-                        | PathSegment::EllipticalArc { .. } => {
-                            geometry_sink.BeginFigure(
-                                D2D_POINT_2F {
-                                    x: init_x as f32,
-                                    y: init_y as f32,
-                                },
-                                D2D1_FIGURE_BEGIN::D2D1_FIGURE_BEGIN_FILLED,
-                            );
-                            in_figure = true;
-                        }
+        for &segment in self.0.iter() {
+            match segment {
+                PathSegment::MoveTo { abs, x, y } => {
+                    if abs {
+                        sk_path.move_to((x as scalar, y as scalar));
+                    } else {
+                        sk_path.r_move_to((x as scalar, y as scalar));
                     }
+                    last_p = (x, y).into();
+                    last_verb = PathCommand::MoveTo;
                 }
-
-                match seg {
-                    PathSegment::MoveTo { x, y, .. } => {
-                        geometry_sink.EndFigure(D2D1_FIGURE_END::D2D1_FIGURE_END_OPEN);
-                        init_x = x;
-                        init_y = y;
+                PathSegment::LineTo { abs, x, y } => {
+                    if abs {
+                        sk_path.line_to((x as scalar, y as scalar));
+                    } else {
+                        sk_path.r_line_to((x as scalar, y as scalar));
                     }
-                    PathSegment::LineTo { x, y, .. } => geometry_sink.AddLine(D2D_POINT_2F {
-                        x: x as f32,
-                        y: y as f32,
-                    }),
-                    PathSegment::HorizontalLineTo { .. } => unimplemented!(),
-                    PathSegment::VerticalLineTo { .. } => unimplemented!(),
-                    PathSegment::CurveTo { .. } => unimplemented!(),
-                    PathSegment::SmoothCurveTo { .. } => unimplemented!(),
-                    PathSegment::Quadratic { .. } => unimplemented!(),
-                    PathSegment::SmoothQuadratic { .. } => unimplemented!(),
-                    PathSegment::EllipticalArc { .. } => unimplemented!(),
-                    PathSegment::ClosePath { .. } => {
-                        assert!(in_figure);
-                        geometry_sink.EndFigure(D2D1_FIGURE_END::D2D1_FIGURE_END_CLOSED);
-                        in_figure = false;
-                    }
+                    last_p = (x, y).into();
+                    last_verb = PathCommand::LineTo;
                 }
+                PathSegment::HorizontalLineTo { abs, x } => {
+                    unimplemented!()
+                }
+                PathSegment::VerticalLineTo { abs, y } => {
+                    unimplemented!()
+                }
+                PathSegment::CurveTo {
+                    abs,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x,
+                    y,
+                } => {
+                    if abs {
+                        sk_path.cubic_to(
+                            (x1 as scalar, y1 as scalar),
+                            (x2 as scalar, y2 as scalar),
+                            (x as scalar, y as scalar),
+                        );
+                    } else {
+                        sk_path.r_cubic_to(
+                            (x1 as scalar, y1 as scalar),
+                            (x2 as scalar, y2 as scalar),
+                            (x as scalar, y as scalar),
+                        );
+                    }
+                    last_cp = (x2, y2).into();
+                    last_p = (x, y).into();
+                    last_verb = PathCommand::CurveTo;
+                }
+                PathSegment::SmoothCurveTo { abs, x2, y2, x, y } => {
+                    let cp1 = match last_verb {
+                        PathCommand::CurveTo | PathCommand::SmoothCurveTo => {
+                            if abs {
+                                last_p - (last_cp - last_p)
+                            } else {
+                                Point::origin() - (last_cp - last_p)
+                            }
+                        }
+                        _ => last_p,
+                    };
+
+                    if abs {
+                        sk_path.cubic_to(
+                            cp1.to_skia(),
+                            (x2 as scalar, y2 as scalar),
+                            (x as scalar, y as scalar),
+                        );
+                    } else {
+                        sk_path.r_cubic_to(
+                            cp1.to_skia(),
+                            (x2 as scalar, y2 as scalar),
+                            (x as scalar, y as scalar),
+                        );
+                    }
+                    last_cp = (x2, y2).into();
+                    last_p = (x, y).into();
+                    last_verb = PathCommand::SmoothCurveTo;
+                }
+                PathSegment::Quadratic { abs, x1, y1, x, y } => {
+                    if abs {
+                        sk_path.quad_to((x1 as scalar, y1 as scalar), (x as scalar, y as scalar));
+                    } else {
+                        sk_path.r_quad_to((x1 as scalar, y1 as scalar), (x as scalar, y as scalar));
+                    }
+                    last_cp = (x1, y1).into();
+                    last_p = (x, y).into();
+                    last_verb = PathCommand::Quadratic;
+                }
+                PathSegment::SmoothQuadratic { abs, x, y } => {
+                    let cp = match last_verb {
+                        PathCommand::Quadratic | PathCommand::SmoothQuadratic => {
+                            if abs {
+                                last_p - (last_cp - last_p)
+                            } else {
+                                Point::origin() - (last_cp - last_p)
+                            }
+                        }
+                        _ => last_p,
+                    };
+
+                    if abs {
+                        sk_path.quad_to(cp.to_skia(), (x as scalar, y as scalar));
+                    } else {
+                        sk_path.r_quad_to(cp.to_skia(), (x as scalar, y as scalar));
+                    }
+                    last_cp = cp.into();
+                    last_p = (x, y).into();
+                    last_verb = PathCommand::SmoothQuadratic;
+                }
+                PathSegment::EllipticalArc {
+                    abs,
+                    rx,
+                    ry,
+                    x_axis_rotation,
+                    large_arc,
+                    sweep,
+                    x,
+                    y,
+                } => {
+                    let large_arc = if large_arc {
+                        ArcSize::Large
+                    } else {
+                        ArcSize::Small
+                    };
+                    let direction = if sweep {
+                        PathDirection::CCW
+                    } else {
+                        PathDirection::CW
+                    };
+
+                    if abs {
+                        sk_path.arc_to_rotated(
+                            (rx as scalar, ry as scalar),
+                            x_axis_rotation as scalar,
+                            large_arc,
+                            direction,
+                            (x as scalar, y as scalar),
+                        );
+                    } else {
+                        sk_path.r_arc_to_rotated(
+                            (rx as scalar, ry as scalar),
+                            x_axis_rotation as scalar,
+                            large_arc,
+                            direction,
+                            (x as scalar, y as scalar),
+                        );
+                    }
+
+                    last_p = (x, y).into();
+                    last_verb = PathCommand::EllipticalArc;
+                }
+                PathSegment::ClosePath { abs: _ } => {
+                    sk_path.close();
+                },
             }
-
-            geometry_sink.Close().ok().unwrap();
-            Ok(PathGeometry(path_geometry))
         }
+
+        sk_path
     }
 }

@@ -1,3 +1,5 @@
+#![feature(const_fn_floating_point_arithmetic)]
+
 //! Windowing and drawing base for kyute.
 //!
 //! For now, it's win32 only.

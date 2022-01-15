@@ -1,5 +1,5 @@
 use crate::{composable, util::Counter, Cache, Data, Key};
-use std::{collections::HashMap, convert::TryInto, sync::Arc};
+use std::{collections::HashMap, convert::TryInto};
 
 /// Keyboard shortcut.
 // This is a newtype so that we can impl Data on it.
@@ -51,6 +51,7 @@ impl Action {
     }
 
     /// Creates a new action with the specified keyboard shortcut.
+    // TODO remove, replace with a function that mutates an existing action: `Action::new().shortcut(...)`
     #[composable]
     pub fn with_shortcut(shortcut: Shortcut) -> Action {
         Self::new_inner(Some(shortcut))

@@ -1,15 +1,12 @@
-use crate::{data::Data, SideOffsets, WidgetPod};
+use crate::{data::Data, SideOffsets};
 use kyute_shell::{
     drawing::Color
 };
 use std::{
-    any::{Any, TypeId},
-    borrow::Borrow,
+    any::Any,
     collections::HashMap,
-    fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
-    rc::Rc,
     sync::Arc,
 };
 //use crate::style::StyleSet;
@@ -47,7 +44,7 @@ impl<T> EnvKey<T> {
 }
 
 /// Trait implemented by values that can be stored in an environment.
-pub trait EnvValue: Sized + Any + Data {
+pub trait EnvValue: Sized + Any + Clone {
     fn as_any(&self) -> &dyn Any;
 }
 

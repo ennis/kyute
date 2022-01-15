@@ -1,22 +1,14 @@
 //! Platform-specific window creation
 use crate::{
-    application::{Application, GpuContext},
+    application::Application,
     error::Error,
     Menu,
 };
-use graal::{swapchain::Swapchain, vk, vk::Handle, FrameCreateInfo, GpuFuture, MemoryLocation};
+use graal::{swapchain::Swapchain, vk, vk::Handle};
 use raw_window_handle::HasRawWindowHandle;
-use skia_safe as sk;
 use skia_safe::gpu::vk as skia_vk;
 use skia_vk::GetProcOf;
-use std::{
-    mem,
-    ops::{Deref, DerefMut},
-    ptr,
-    sync::MutexGuard,
-};
 use windows::{
-    core::Interface,
     Win32::{
         Foundation::{HINSTANCE, HWND},
         UI::WindowsAndMessaging::{DestroyMenu, SetMenu, HMENU},
@@ -28,7 +20,7 @@ use winit::{
     window::{WindowBuilder, WindowId},
 };
 
-const SWAP_CHAIN_BUFFERS: u32 = 2;
+//const SWAP_CHAIN_BUFFERS: u32 = 2;
 
 /*/// Context object to draw on a window.
 ///
@@ -312,6 +304,11 @@ impl Window {
         let device = app.gpu_device();
         let surface = graal::surface::get_vulkan_surface(window.raw_window_handle());
         let swapchain_size = window.inner_size().into();
+        // ensure that the surface can be drawn to with the device that we created. must be called to
+        // avoid validation errors.
+        unsafe {
+            assert!(device.is_compatible_for_presentation(surface));
+        }
         let swap_chain = unsafe { Swapchain::new(device, surface, swapchain_size) };
 
         let skia_backend_context = unsafe { create_skia_vulkan_backend_context(device) };
@@ -458,3 +455,4 @@ impl Window {
         }
     }*/
 }
+

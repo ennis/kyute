@@ -1,15 +1,10 @@
 //! [`Events`](Event) sent to widgets, and related types.
-use crate::{Point, WidgetId, WidgetPod};
-use std::{
-    cell::{Cell, RefCell},
-    collections::HashMap,
-};
+use crate::{bloom::Bloom, Point, WidgetId, WidgetPod};
+use std::collections::HashMap;
 use winit::event::DeviceId;
-
-use crate::{bloom::Bloom, core2::GpuResourceReferences};
 // FIXME: reexport/import from kyute-shell?
-pub use keyboard_types::{CompositionEvent, KeyboardEvent, Modifiers, Key};
-use kyute_shell::{graal, winit};
+pub use keyboard_types::{CompositionEvent, Key, KeyboardEvent, Modifiers};
+use kyute_shell::winit;
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -134,10 +129,6 @@ pub enum InternalEvent<'a> {
         target: WidgetId,
         event: Box<Event<'a>>,
     },
-    /*RouteHitTestEvent {
-        position: Point,
-        event: Box<Event>,
-    },*/
     RouteWindowEvent {
         target: WidgetId,
         event: winit::event::WindowEvent<'static>,

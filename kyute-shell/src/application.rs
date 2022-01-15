@@ -1,40 +1,42 @@
 //! Windows-specific UI stuff.
-use once_cell::sync::OnceCell;
 use palette::encoding::pixel::RawPixel;
-use std::{cell::RefCell, ffi, ffi::OsString, mem::MaybeUninit, ops::Deref, os::raw::c_void, ptr, sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex, MutexGuard,
-}, time::Duration};
+use std::{
+    cell::RefCell,
+    ffi::OsString,
+    ops::Deref,
+    ptr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, MutexGuard,
+    },
+    time::Duration,
+};
 use windows::{
     core::Interface,
     Win32::{
         Graphics::{
             Direct2D::{
                 D2D1CreateFactory, ID2D1Device, ID2D1DeviceContext, ID2D1Factory1,
-                D2D1_DEBUG_LEVEL, D2D1_DEBUG_LEVEL_WARNING, D2D1_DEVICE_CONTEXT_OPTIONS,
-                D2D1_FACTORY_OPTIONS, D2D1_FACTORY_TYPE, D2D1_FACTORY_TYPE_MULTI_THREADED,
+                D2D1_DEBUG_LEVEL_WARNING, D2D1_FACTORY_OPTIONS, D2D1_FACTORY_TYPE_MULTI_THREADED,
             },
             Direct3D::{D3D_FEATURE_LEVEL, D3D_FEATURE_LEVEL_11_1},
             Direct3D11::{
                 D3D11CreateDevice, ID3D11Device5, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                D3D11_CREATE_DEVICE_DEBUG, D3D11_CREATE_DEVICE_FLAG, D3D11_SDK_VERSION,
+                D3D11_CREATE_DEVICE_DEBUG, D3D11_SDK_VERSION,
             },
-            DirectWrite::{DWriteCreateFactory, IDWriteFactory, DWRITE_FACTORY_TYPE},
-            Dxgi::{
-                CreateDXGIFactory2, IDXGIDevice, IDXGIFactory3, DXGI_ADAPTER_DESC1,
-                DXGI_ERROR_NOT_FOUND,
-            },
+            DirectWrite::{DWriteCreateFactory, IDWriteFactory},
+            Dxgi::{CreateDXGIFactory2, IDXGIDevice, IDXGIFactory3},
             Imaging::{CLSID_WICImagingFactory2, D2D::IWICImagingFactory2},
         },
-        System::Com::{CoCreateInstance, CoInitialize, CLSCTX, CLSCTX_INPROC_SERVER},
+        System::Com::{CoCreateInstance, CoInitialize, CLSCTX_INPROC_SERVER},
         UI::Input::KeyboardAndMouse::GetDoubleClickTime,
     },
 };
-use windows::core::IUnknown;
-use windows::Win32::Graphics::Direct2D::D2D1_DEVICE_CONTEXT_OPTIONS_NONE;
-use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
-use windows::Win32::Graphics::DirectWrite::DWRITE_FACTORY_TYPE_SHARED;
-use winit::event_loop::{EventLoop, EventLoopWindowTarget};
+//use windows::core::IUnknown;
+use windows::Win32::Graphics::{
+    Direct2D::D2D1_DEVICE_CONTEXT_OPTIONS_NONE, Direct3D::D3D_DRIVER_TYPE_HARDWARE,
+    DirectWrite::DWRITE_FACTORY_TYPE_SHARED,
+};
 
 /// Mutex-protected and ref-counted alias to `graal::Context`.
 pub type GpuContext = Arc<Mutex<graal::Context>>;
@@ -153,9 +155,6 @@ impl Application {
     }
 
     fn new_impl() -> anyhow::Result<Application> {
-        // --- Application event loop ---
-        let event_loop = EventLoop::new();
-
         // --- Create the graal context (implying a vulkan instance and device)
         // FIXME technically we need the target surface so we can pick a device that can
         // render to it. However, on most systems, all available devices can render to window surfaces,
@@ -186,9 +185,7 @@ impl Application {
         };
 
         for adapter in adapters.iter() {
-            let desc = unsafe {
-                adapter.GetDesc1().unwrap()
-            };
+            let desc = unsafe { adapter.GetDesc1().unwrap() };
 
             use std::os::windows::ffi::OsStringExt;
 
@@ -270,12 +267,10 @@ impl Application {
 
         // ---------- Direct2D,DirectWrite factories ----------
         let dwrite_factory = unsafe {
-            let dwrite = DWriteCreateFactory(
-                DWRITE_FACTORY_TYPE_SHARED,
-                &IDWriteFactory::IID,
-            ).unwrap()
-            .cast::<IDWriteFactory>()
-            .unwrap();
+            let dwrite = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, &IDWriteFactory::IID)
+                .unwrap()
+                .cast::<IDWriteFactory>()
+                .unwrap();
             DWriteFactory(dwrite)
         };
 
@@ -287,17 +282,16 @@ impl Application {
                 &D2D1_FACTORY_OPTIONS {
                     debugLevel: D2D1_DEBUG_LEVEL_WARNING,
                 },
-                &mut result as *mut _ as *mut *mut _
-            ).map(|()| result.unwrap())?;
+                &mut result as *mut _ as *mut *mut _,
+            )
+            .map(|()| result.unwrap())?;
             D2D1Factory1(d2d)
         };
 
         // ---------- Create the D2D Device and Context ----------
         let d2d_device = unsafe {
             let dxgi_device = d3d11_device.cast::<IDXGIDevice>().unwrap();
-            let device = d2d_factory
-                .CreateDevice(&dxgi_device)
-                .unwrap();
+            let device = d2d_factory.CreateDevice(&dxgi_device).unwrap();
             D2D1Device(device)
         };
 
@@ -306,7 +300,7 @@ impl Application {
                 d2d_device
                     .0
                     .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)
-                    .unwrap()
+                    .unwrap(),
             )
         };
 

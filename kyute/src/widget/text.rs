@@ -1,10 +1,11 @@
 //! Text elements
 use crate::{
     composable, env::Environment, event::Event, BoxConstraints, EventCtx, LayoutCtx, Measurements,
-    PaintCtx, Point, Rect, Size, Widget, WidgetPod,
+    PaintCtx, Rect, Widget, WidgetPod,
 };
 use kyute_shell::{drawing::ToSkia, skia as sk};
 use std::cell::RefCell;
+use kyute_shell::drawing::FromSkia;
 
 #[derive(Clone)]
 pub struct Text {
@@ -27,7 +28,7 @@ impl Widget for Text {
         std::any::type_name::<Self>()
     }
 
-    fn event(&self, _ctx: &mut EventCtx, _event: &mut Event) {}
+    fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
     fn layout(
         &self,
@@ -36,7 +37,7 @@ impl Widget for Text {
         _env: &Environment,
     ) -> Measurements {
         let font_name = "Consolas";
-        let font_size = 14.0;
+        let font_size = 18.0;
 
         let mut font: sk::Font = sk::Font::new(sk::Typeface::default(), Some(font_size));
         font.set_subpixel(true);

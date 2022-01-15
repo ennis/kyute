@@ -15,7 +15,6 @@
 //! Traits for handling value types.
 
 use crate::SideOffsets;
-use kyute_shell::drawing::Color;
 use std::{ptr, rc::Rc, sync::Arc};
 //use crate::style::StyleSet;
 
@@ -75,7 +74,7 @@ impl_data_simple!(std::net::SocketAddrV6);
 impl_data_simple!(std::net::IpAddr);
 impl_data_simple!(std::net::SocketAddr);
 impl_data_simple!(std::ops::RangeFull);
-impl_data_simple!(Color);
+//impl_data_simple!(Color);
 impl_data_simple!(SideOffsets);
 
 //TODO: remove me!?

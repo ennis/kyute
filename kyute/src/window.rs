@@ -1,37 +1,27 @@
 use crate::{
-    align_boxes,
-    application::AppCtx,
-    composable,
-    core2::{GpuResourceReferences, WindowInfo},
+    align_boxes, composable,
+    core2::{FocusState, GpuResourceReferences, WindowInfo},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind},
     graal,
     graal::{vk::Handle, MemoryLocation},
     region::Region,
+    theme,
     widget::{Action, Menu},
     Alignment, BoxConstraints, Cache, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
-    LayoutItem, Measurements, Offset, PaintCtx, PhysicalSize, Point, Rect, Size, Widget, WidgetId,
-    WidgetPod,
+    Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetId, WidgetPod,
 };
 use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
 use kyute_shell::{
     application::Application,
-    drawing::Color,
     winit,
     winit::{
         event::{DeviceId, VirtualKeyCode, WindowEvent},
         window::WindowBuilder,
     },
 };
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    env, mem,
-    ops::DerefMut,
-    sync::{Arc, Mutex},
-    time::Instant,
-};
-use tracing::trace_span;
+use std::{cell::RefCell, collections::HashMap, env, mem, sync::Arc, time::Instant};
+use tracing::trace;
 
 fn key_code_from_winit(
     input: &winit::event::KeyboardInput,
@@ -320,12 +310,10 @@ struct LastClick {
     repeat_count: u32,
 }
 
-struct WindowState {
+pub(crate) struct WindowState {
     window: Option<kyute_shell::window::Window>,
     window_builder: Option<WindowBuilder>,
-    focus: Option<WidgetId>,
-    pointer_grab: Option<WidgetId>,
-    hot: Option<WidgetId>,
+    focus_state: FocusState,
     menu: Option<Menu>,
     menu_actions: HashMap<u32, Action>,
     inputs: InputState,
@@ -341,6 +329,7 @@ impl WindowState {
         parent_ctx: &mut EventCtx,
         content_widget: &WidgetPod,
         window_event: &winit::event::WindowEvent,
+        env: &Environment,
     ) {
         //let _span = trace_span!("process_window_event", ?window_event).entered();
 
@@ -536,9 +525,6 @@ impl WindowState {
             _ => None,
         };
 
-        let mut content_ctx = parent_ctx.with_window_info(WindowInfo {
-            scale_factor: self.scale_factor,
-        });
         if let Some(mut event) = event {
             //------------------------------------------------
             // force release pointer grab on pointer up
@@ -547,8 +533,8 @@ impl WindowState {
                     kind: PointerEventKind::PointerUp,
                     ..
                 }) => {
-                    tracing::trace!("forcing release of pointer grab");
-                    self.pointer_grab = None;
+                    //trace!("forcing release of pointer grab");
+                    self.focus_state.pointer_grab = None;
                 }
                 _ => {}
             }
@@ -561,36 +547,60 @@ impl WindowState {
                     // Pointer events are delivered to the node that is currently grabbing the pointer.
                     // If nothing is grabbing the pointer, the pointer event is delivered to a widget
                     // that passes the hit-test
-                    if let Some(id) = self.pointer_grab {
+                    if let Some(pointer_grab) = self.focus_state.pointer_grab {
+                        let mut content_ctx = EventCtx::new_subwindow(
+                            parent_ctx,
+                            self.scale_factor,
+                            &mut self.focus_state,
+                        );
+                        trace!(
+                            "routing pointer event to pointer-capturing widget {:?}",
+                            pointer_grab
+                        );
+
                         content_widget.event(
                             &mut content_ctx,
                             &mut Event::Internal(InternalEvent::RouteEvent {
-                                target: id,
+                                target: pointer_grab,
                                 event: Box::new(event),
                             }),
+                            env,
                         );
                     } else {
+                        let mut content_ctx = EventCtx::new_subwindow(
+                            parent_ctx,
+                            self.scale_factor,
+                            &mut self.focus_state,
+                        );
                         // just forward to content, will do a hit-test
-                        content_widget.event(&mut content_ctx, &mut event);
+                        content_widget.event(&mut content_ctx, &mut event, env);
                     };
                 }
                 Event::Keyboard(ref k) => {
                     // keyboard events are delivered to the widget that has the focus.
                     // if no widget has focus, the event is dropped.
-                    if let Some(focus) = self.focus {
+                    if let Some(focus) = self.focus_state.focus {
+                        let mut content_ctx = EventCtx::new_subwindow(
+                            parent_ctx,
+                            self.scale_factor,
+                            &mut self.focus_state,
+                        );
                         content_widget.event(
-                            &mut content_ctx,
+                            parent_ctx,
                             &mut Event::Internal(InternalEvent::RouteEvent {
                                 target: focus,
                                 event: Box::new(event),
                             }),
+                            env,
                         );
                     }
                 }
                 _ => {
-                    // TODO
+                    tracing::warn!("unhandled processed window event {:?}", event)
                 }
             };
+
+            // TODO handle focus gained/lost
         }
     }
 
@@ -633,9 +643,7 @@ impl Window {
             Arc::new(RefCell::new(WindowState {
                 window: None,
                 window_builder: Some(window_builder),
-                focus: None,
-                pointer_grab: None,
-                hot: None,
+                focus_state: FocusState::default(),
                 menu: None,
                 menu_actions: Default::default(),
                 inputs: Default::default(),
@@ -664,24 +672,29 @@ impl Window {
     }
 
     /// Hot mess responsible for rendering the contents of the window with vulkan and skia.
-    fn do_redraw(&self, parent_ctx: &mut EventCtx) {
+    fn do_redraw(&self, parent_ctx: &mut EventCtx, env: &Environment) {
         use kyute_shell::{skia, skia::gpu::vk as skia_vk};
 
         let mut window_state = self.window_state.borrow_mut();
         let window_state = &mut *window_state;
         if let Some(ref mut window) = window_state.window {
-            let mut content_ctx = parent_ctx.with_window_info(WindowInfo {
-                scale_factor: window_state.scale_factor,
-            });
-
             // collect all child widgets
-            let mut widgets = Vec::new();
-            self.contents.event(
-                &mut content_ctx,
-                &mut Event::Internal(InternalEvent::Traverse {
-                    widgets: &mut widgets,
-                }),
-            );
+            let widgets = {
+                let mut content_ctx = EventCtx::new_subwindow(
+                    parent_ctx,
+                    window_state.scale_factor,
+                    &mut window_state.focus_state,
+                );
+                let mut widgets = Vec::new();
+                self.contents.event(
+                    &mut content_ctx,
+                    &mut Event::Internal(InternalEvent::Traverse {
+                        widgets: &mut widgets,
+                    }),
+                    env,
+                );
+                widgets
+            };
 
             // get and lock GPU context for frame submission
             let app = Application::instance();
@@ -749,13 +762,13 @@ impl Window {
                 Point::origin(),
                 Size::new(logical_size.width, logical_size.height),
             );
-            let focus = window_state.focus;
-            let pointer_grab = window_state.pointer_grab;
-            let hot = window_state.hot;
+            let focus = window_state.focus_state.focus;
+            let pointer_grab = window_state.focus_state.pointer_grab;
+            let hot = window_state.focus_state.hot;
             // FIXME we must clone here because the lambda is 'static, and this might be expensive. Use Arc instead?
             let inputs = window_state.inputs.clone();
             let scale_factor = window_state.scale_factor;
-            let id = content_ctx.widget_id();
+            let id = parent_ctx.widget_id();
             let mut recording_context = window.skia_recording_context().clone();
             let contents = self.contents.clone();
 
@@ -797,7 +810,7 @@ impl Window {
                         image_usage_flags: skia_image_usage_flags.as_raw(),
                         sample_count: 1,
                         level_count: 1,
-                        current_queue_family: graphics_queue_family,
+                        current_queue_family: skia_vk::QUEUE_FAMILY_IGNORED,
                         protected: skia::gpu::Protected::No,
                         ycbcr_conversion_info: Default::default(),
                         sharing_mode: skia_vk::SharingMode::EXCLUSIVE,
@@ -840,8 +853,9 @@ impl Window {
                     };
 
                     // TODO environment
-                    tracing::trace!("window redraw");
-                    contents.paint(&mut paint_ctx, window_bounds, &Environment::new());
+                    //tracing::trace!("window redraw");
+                    let env = theme::get_default_application_style();
+                    contents.paint(&mut paint_ctx, window_bounds, &env);
                     surface.flush_and_submit();
                 });
 
@@ -859,6 +873,8 @@ impl Window {
                 (swap_chain_width, swap_chain_height),
                 graal::vk::ImageAspectFlags::COLOR,
             );
+
+            device.destroy_image(skia_image.id);
 
             // dump frame if requested
             match env::var("KYUTE_DUMP_GPU_FRAMES") {
@@ -882,7 +898,7 @@ impl Widget for Window {
         std::any::type_name::<Self>()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event) {
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         match event {
             Event::Initialize => {
                 // create the window
@@ -894,22 +910,36 @@ impl Widget for Window {
                     None,
                 )
                 .expect("failed to create window");
+
+                // register it to the AppCtx, necessary so that the event loop can route window events
+                // to this widget
                 ctx.register_window(window.id());
+
+                // perform initial layout of contents
+                let (width, height): (f64, f64) = window.window().inner_size().into();
+                self.contents
+                    .relayout(BoxConstraints::new(0.0..width, 0.0..height), env);
+
+                // update window state
                 window_state.scale_factor = window.window().scale_factor();
                 window_state.window = Some(window);
+
+                // create the window menu
                 window_state.update_menu();
             }
             Event::WindowEvent(window_event) => {
                 let mut window_state = self.window_state.borrow_mut();
-                window_state.process_window_event(ctx, &self.contents, window_event);
+                window_state.process_window_event(ctx, &self.contents, window_event, env);
             }
-            Event::WindowRedrawRequest => self.do_redraw(ctx),
+            Event::WindowRedrawRequest => self.do_redraw(ctx, env),
             _ => {
                 let mut window_state = self.window_state.borrow_mut();
-                let mut content_ctx = ctx.with_window_info(WindowInfo {
-                    scale_factor: window_state.scale_factor,
-                });
-                self.contents.event(&mut content_ctx, event);
+                let mut content_ctx = EventCtx::new_subwindow(
+                    ctx,
+                    window_state.scale_factor,
+                    &mut window_state.focus_state,
+                );
+                self.contents.event(&mut content_ctx, event, env);
                 // don't propagate, but TODO check for redraw and such
             }
         }
@@ -919,10 +949,9 @@ impl Widget for Window {
             let (width, height): (f64, f64) = window.window().inner_size().into();
 
             let mut m_window = Measurements::new(Size::new(width, height));
-            let (m_content, layout_changed) = self.contents.relayout(
-                BoxConstraints::new(0.0..width, 0.0..height),
-                &Environment::new(),
-            );
+            let (m_content, layout_changed) = self
+                .contents
+                .relayout(BoxConstraints::new(0.0..width, 0.0..height), &env);
             if layout_changed {
                 let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content);
                 self.contents.set_child_offset(offset);

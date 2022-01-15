@@ -4,24 +4,16 @@ use crate::{
 };
 use slotmap::SlotMap;
 use std::{
-    any::{Any, TypeId},
+    any::Any,
     cell::{Cell, RefCell},
-    collections::{
-        hash_map::{DefaultHasher, Entry},
-        HashMap,
-    },
     convert::TryInto,
     fmt,
-    fmt::Formatter,
-    hash::{Hash, Hasher},
+    hash::Hash,
     marker::PhantomData,
-    mem,
-    mem::ManuallyDrop,
-    num::NonZeroU64,
     panic::Location,
     rc::Rc,
-    sync::Arc,
 };
+use imbl::HashSet;
 use thiserror::Error;
 use tracing::trace;
 
@@ -42,26 +34,33 @@ pub enum CacheError {
     TypeMismatch,
 }
 
+// refactor:
+// 1. groups don't emit state entries
+// 2. track parent state entry in context
+// 3. State entries store a vec of dependents
+
 // TODO rename to `CacheEntry`?
+/// Entry representing a group or
 struct StateEntry {
     call_id: CallId,
     /// For debugging purposes.
     call_node: Option<Rc<CallNode>>,
-    parent: Option<CacheEntryKey>,
-    dirty: bool,
+    /// Whether the value has been invalidated because a dependency has changed.
+    dirty: Cell<bool>,
+    dependents: HashSet<CacheEntryKey>,
     value: Option<Box<dyn Any>>,
 }
 
 impl StateEntry {
-    pub fn value_mut<T: 'static>(&mut self) -> Result<&mut T, CacheError> {
+    /*pub fn value_mut<T: 'static>(&mut self) -> Result<&mut T, CacheError> {
         self.value
             .as_mut()
             .ok_or(CacheError::VacantEntry)?
             .downcast_mut::<T>()
             .ok_or(CacheError::TypeMismatch)
-    }
+    }*/
 
-    pub fn take_value<T: 'static>(&mut self) -> Result<T, CacheError> {
+    /*pub fn take_value<T: 'static>(&mut self) -> Result<T, CacheError> {
         if let Some(v) = self.value.take() {
             if v.is::<T>() {
                 Ok(*v.downcast().unwrap())
@@ -73,7 +72,7 @@ impl StateEntry {
         } else {
             Err(CacheError::VacantEntry)
         }
-    }
+    }*/
 }
 
 /// A slot in the slot table.
@@ -82,7 +81,6 @@ enum Slot {
     /// Contains the length of the group including this slot and the `GroupEnd` marker.
     StartGroup {
         call_id: CallId,
-        key: CacheEntryKey,
         len: u32,
     },
     /// Marks the end of a scope.
@@ -137,51 +135,50 @@ struct CacheInner {
 
 impl CacheInner {
     pub fn new() -> CacheInner {
-        let mut entries = SlotMap::with_key();
-        let root_group_key = entries.insert(StateEntry {
-            call_id: CallId(0),
-            call_node: None,
-            parent: None,
-            dirty: false,
-            value: None,
-        });
         CacheInner {
             slots: vec![
                 Slot::StartGroup {
                     call_id: CallId(0),
-                    key: root_group_key,
                     len: 2,
                 },
                 Slot::EndGroup,
             ],
-
             revision: 0,
-            entries,
+            entries: SlotMap::with_key(),
         }
     }
 
     /// Sets the value of a state entry and invalidates all dependent entries.
     pub fn set_state<T: 'static>(&mut self, key: Key<T>, new_value: T) -> Result<(), CacheError> {
-        let mut value = self.entries[key.key]
+        let value = self.entries[key.key]
             .value
             .as_mut()
             .ok_or(CacheError::VacantEntry)?
             .downcast_mut::<T>()
             .ok_or(CacheError::TypeMismatch)?;
         *value = new_value;
-        self.invalidate_entry_recursive(key.key);
+        self.invalidate_dependents(key.key);
         Ok(())
     }
 
-    fn invalidate_entry_recursive(&mut self, key: CacheEntryKey) {
-        if !self.entries.contains_key(key) {
-            tracing::warn!("invalidate_group: no such group");
-            return;
+    fn invalidate_dependents(&self, entry_key: CacheEntryKey) {
+        for &d in self.entries[entry_key].dependents.iter() {
+            self.invalidate_dependents_recursive(d);
         }
-        let group = &mut self.entries[key];
-        group.dirty = true;
-        if let Some(parent) = group.parent {
-            self.invalidate_entry_recursive(parent);
+    }
+
+    fn invalidate_dependents_recursive(&self, entry_key: CacheEntryKey) {
+        assert!(self.entries.contains_key(entry_key), "invalidate_dependents_recursive: no such entry");
+        /*if !self.entries.contains_key(entry) {
+            tracing::warn!("invalidate_dependents_recursive: no such entry");
+            return;
+        }*/
+        let entry = &self.entries[entry_key];
+        //trace!("invalidate_entry_recursive: {:?} node={:#?}", entry_key, entry.call_node);
+        if !entry.dirty.replace(true) {
+            for &d in entry.dependents.iter() {
+                self.invalidate_dependents_recursive(d);
+            }
         }
     }
 
@@ -193,24 +190,27 @@ impl CacheInner {
                 eprint!("  ");
             }
             match s {
-                Slot::StartGroup { call_id, len, key } => {
-                    let entry = &self.entries[*key];
+                Slot::StartGroup { call_id, len } => {
                     eprintln!(
-                        "{:3} StartGroup call_id={:?} len={} (end={}) key={:?} parent={:?} dirty={}",
+                        "{:3} StartGroup call_id={:?} len={} (end={})",
                         i,
                         call_id,
                         *len,
                         i + *len as usize - 1,
-                        key,
-                        entry.parent,
-                        entry.dirty,
                     )
                 }
                 Slot::EndGroup => {
                     eprintln!("{:3} EndGroup", i)
                 }
                 Slot::Value { call_id, key } => {
-                    eprintln!("{:3} Value      call_id={:?} key={:?}", i, call_id, key)
+                    let entry = &self.entries[*key];
+                    eprintln!(
+                        "{:3} Value      call_id={:?} key={:?} dirty={:?}",
+                        i,
+                        call_id,
+                        key,
+                        entry.dirty.get()
+                    )
                 }
             }
         }
@@ -226,6 +226,8 @@ struct CacheWriter {
     /// Stack of group start positions.
     /// The top element is the start of the current group.
     group_stack: Vec<usize>,
+    /// Stack of state entries.
+    state_stack: Vec<CacheEntryKey>,
 }
 
 impl CacheWriter {
@@ -234,12 +236,13 @@ impl CacheWriter {
             cache,
             pos: 0,
             group_stack: vec![],
+            state_stack: vec![],
         };
-        writer.start_group(CallId(0), None);
+        writer.start_group(CallId(0));
         writer
     }
 
-    fn parent_entry_key(&self) -> Option<CacheEntryKey> {
+    /*fn parent_entry_key(&self) -> Option<CacheEntryKey> {
         if let Some(&group_start) = self.group_stack.last() {
             match self.cache.slots[group_start] {
                 Slot::StartGroup { key: group_key, .. } => Some(group_key),
@@ -248,6 +251,15 @@ impl CacheWriter {
         } else {
             None
         }
+    }*/
+
+    fn start_state<T>(&mut self, key: Key<T>) {
+        self.state_stack.push(key.key);
+        self.cache.entries[key.key].dirty.set(false);
+    }
+
+    fn end_state(&mut self) {
+        self.state_stack.pop().expect("unbalanced state scopes");
     }
 
     /// Finishes writing to the cache, returns the updated cache object.
@@ -341,42 +353,32 @@ impl CacheWriter {
         }
     }*/
 
-    pub fn start_group(&mut self, call_id: CallId, call_node: Option<Rc<CallNode>>) -> bool {
-        let parent = self.parent_entry_key();
-        let dirty = if self.sync(call_id) {
-            match self.cache.slots[self.pos] {
-                Slot::StartGroup { key, .. } => {
+    pub fn start_group(&mut self, call_id: CallId) {
+        //let parent = self.parent_entry_key();
+        if self.sync(call_id) {
+            /*match self.cache.slots[self.pos] {
+                Slot::StartGroup { .. } => {
                     // reset the dirty flag now:
                     // if something sets it again when inside the group, it means we should run the group again
-                    mem::replace(&mut self.cache.entries[key].dirty, false)
+                    //mem::replace(&mut self.cache.entries[key].dirty, false)
                 }
                 _ => panic!("unexpected slot type"),
-            }
+            }*/
         } else {
             // insert new group - start and end markers
-            let key = self.cache.entries.insert(StateEntry {
-                call_id,
-                call_node,
-                parent,
-                dirty: false,
-                value: None,
-            });
             self.cache.slots.insert(
                 self.pos,
                 Slot::StartGroup {
                     call_id,
-                    key,
                     len: 2, // 2 = initial length of group (start+end slots)
                 },
             );
             self.cache.slots.insert(self.pos + 1, Slot::EndGroup);
-            false
         };
 
         // enter group
         self.group_stack.push(self.pos);
         self.pos += 1;
-        dirty
     }
 
     fn dump(&self) {
@@ -410,9 +412,9 @@ impl CacheWriter {
         // remove the extra slots, and associated entries
         for slot in self.cache.slots.drain(self.pos..group_end_pos) {
             match slot {
-                Slot::StartGroup { key, .. } | Slot::Value { key, .. } => {
+                Slot::Value { key, .. } => {
                     let entry = self.cache.entries.get(key).expect("cache entry not found");
-                    tracing::trace!("removing cache entry cache_key={:?} parent={:?} call_id={:?}, call_node={:#?}", key, entry.parent, entry.call_id, entry.call_node);
+                    tracing::trace!("removing cache entry cache_key={:?} depends={:?} call_id={:?}, call_node={:#?}", key, entry.dependents, entry.call_id, entry.call_node);
                     self.cache.entries.remove(key).unwrap();
                 }
                 _ => {}
@@ -424,10 +426,7 @@ impl CacheWriter {
         // update group length
         let group_start_pos = self.group_stack.pop().expect("unbalanced groups");
         match self.cache.slots[group_start_pos] {
-            Slot::StartGroup {
-                ref mut len, key, ..
-            } => {
-                //self.cache.entries[key].dirty = false;
+            Slot::StartGroup { ref mut len, .. } => {
                 *len = (self.pos - group_start_pos).try_into().unwrap();
             }
             _ => {
@@ -458,18 +457,18 @@ impl CacheWriter {
     }
 
     /// Inserts a new state entry.
-    fn insert_value<T: 'static>(
+    ///
+    fn insert_entry<T: 'static>(
         &mut self,
         call_id: CallId,
         value: Option<T>,
         call_node: Option<Rc<CallNode>>,
     ) -> Key<T> {
-        let parent = self.parent_entry_key();
         let key = self.cache.entries.insert(StateEntry {
             call_id,
             call_node,
-            parent,
-            dirty: false,
+            dependents: HashSet::new(),
+            dirty: Cell::new(false),
             value: if let Some(value) = value {
                 Some(Box::new(value))
             } else {
@@ -482,9 +481,10 @@ impl CacheWriter {
         Key::from_entry_key(key)
     }
 
-    /// Sets the value of a cache entry. The entry can be vacant.
+    /// Sets the value of a cache entry. The entry can be vacant. Resets the dirty flag.
     fn set_value<T: 'static>(&mut self, cache_key: Key<T>, new_value: T) {
-        let value = &mut self.cache.entries[cache_key.key].value;
+        let entry = &mut self.cache.entries[cache_key.key];
+        let value = &mut entry.value;
         if let Some(v) = value {
             *v.downcast_mut::<T>().expect("type mismatch") = new_value;
         } else {
@@ -492,36 +492,84 @@ impl CacheWriter {
         }
     }
 
-    fn invalidate_cache_entry<T: 'static>(&mut self, cache_key: Key<T>) {
-        self.cache.invalidate_entry_recursive(cache_key.key);
+    fn invalidate_dependents<T: 'static>(&mut self, cache_key: Key<T>) {
+        self.cache.invalidate_dependents(cache_key.key);
     }
 
-    /// If the next entry is a value of type T, returns a clone of the value, otherwise inserts a vacant entry.
-    fn get_value<T: Clone + 'static>(
+    fn get_or_insert_entry<T: 'static>(
         &mut self,
-        call_key: CallId,
+        call_id: CallId,
         call_node: Option<Rc<CallNode>>,
-    ) -> (Option<T>, Key<T>) {
-        let result = if self.sync(call_key) {
+    ) -> (Key<T>, bool) {
+        let result = if self.sync(call_id) {
             match self.cache.slots[self.pos] {
                 Slot::Value { key: entry_key, .. } => {
-                    let value = self.cache.entries[entry_key]
-                        .value_mut::<T>()
-                        .unwrap()
-                        .clone();
-                    (Some(value), Key::from_entry_key(entry_key))
+                    let dirty = self.cache.entries[entry_key].dirty.get();
+                    (Key::from_entry_key(entry_key), dirty)
                 }
                 _ => panic!("unexpected entry type"),
             }
         } else {
-            let k = self.insert_value(call_key, None, call_node);
-            (None, k)
+            let k = self.insert_entry(call_id, None, call_node);
+            (k, false)
         };
         self.pos += 1;
         result
     }
 
-    /// Same as `expect_value`, but instead of returning a clone of the value, takes the value and leaves a vacant entry.
+    fn get_value<T: Clone + 'static>(&mut self, key: Key<T>) -> Option<T> {
+        let entry = &mut self.cache.entries[key.key];
+        if let Some(parent_state) = self.state_stack.last().cloned() {
+            entry.dependents.insert(parent_state);
+        }
+
+        if let Some(ref v) = entry.value {
+            Some(v.downcast_ref::<T>().expect("unexpected type").clone())
+        } else {
+            None
+        }
+    }
+
+    fn take_value<T: 'static>(&mut self, key: Key<T>) -> Option<T> {
+        let entry = &mut self.cache.entries[key.key];
+        if let Some(parent_state) = self.state_stack.last().cloned() {
+            entry.dependents.insert(parent_state);
+        }
+        if let Some(v) = entry.value.take() {
+            Some(*v.downcast::<T>().expect("unexpected type"))
+        } else {
+            None
+        }
+    }
+
+    /*/// If the next entry is a value of type T, returns a clone of the value, otherwise inserts a vacant entry.
+    /// Automatically makes the parent state entry a dependency of this state entry.
+    fn get_value<T: Clone + 'static>(
+        &mut self,
+        call_key: CallId,
+        call_node: Option<Rc<CallNode>>,
+    ) -> (Option<T>, Key<T>, bool) {
+        let result = if self.sync(call_key) {
+            match self.cache.slots[self.pos] {
+                Slot::Value { key: entry_key, .. } => {
+                    let dirty = self.cache.entries[entry_key].dirty.get();
+                    let value = self.cache.entries[entry_key]
+                        .value_mut::<T>()
+                        .unwrap()
+                        .clone();
+                    (Some(value), Key::from_entry_key(entry_key), dirty)
+                }
+                _ => panic!("unexpected entry type"),
+            }
+        } else {
+            let k = self.insert_value(call_key, None, call_node);
+            (None, k, false)
+        };
+        self.pos += 1;
+        result
+    }*/
+
+    /*/// Same as `expect_value`, but instead of returning a clone of the value, takes the value and leaves a vacant entry.
     fn take_value<T: 'static>(
         &mut self,
         call_key: CallId,
@@ -542,40 +590,40 @@ impl CacheWriter {
         };
         self.pos += 1;
         result
-    }
+    }*/
 
     /// If the next entry is a value of type T, returns a clone of the value, otherwise inserts a
     /// new value entry with `init` and returns a clone of this value.
     fn get_or_insert_value<T: Clone + 'static>(
         &mut self,
-        call_key: CallId,
-        call_node: Option<Rc<CallNode>>,
+        key: Key<T>,
         init: impl FnOnce() -> T,
     ) -> (T, Key<T>) {
-        let (v, k) = self.get_value(call_key, call_node);
-        let v = match v {
+        let value = self.get_value(key);
+        let v = match value {
             Some(v) => v,
             None => {
                 let v = init();
-                self.set_value(k, v.clone());
+                self.set_value(key, v.clone());
                 v
             }
         };
-        (v, k)
+        (v, key)
     }
 
     ///
     fn compare_and_update_value<T: Data>(
         &mut self,
-        call_key: CallId,
+        call_id: CallId,
         new_value: T,
         call_node: Option<Rc<CallNode>>,
     ) -> bool {
-        let (v, k) = self.get_value::<T>(call_key, call_node);
-        match v {
+        let (key, _) = self.get_or_insert_entry::<T>(call_id, call_node);
+        let value = self.get_value(key);
+        match value {
             Some(v) if v.same(&new_value) => false,
             _ => {
-                self.set_value(k, new_value);
+                self.set_value(key, new_value);
                 true
             }
         }
@@ -583,7 +631,7 @@ impl CacheWriter {
 }
 
 struct CacheContext {
-    key_stack: CallIdStack,
+    id_stack: CallIdStack,
     writer: CacheWriter,
 }
 
@@ -625,7 +673,7 @@ impl Cache {
             // initialize the TLS cache context (which contains the cache table writer and the call key stack that maintains
             // unique IDs for each cached function call).
             let cx = CacheContext {
-                key_stack: CallIdStack::new(),
+                id_stack: CallIdStack::new(),
                 writer,
             };
             cx_cell.borrow_mut().replace(cx);
@@ -636,7 +684,7 @@ impl Cache {
             // finish writing to the cache
             let cx = cx_cell.borrow_mut().take().unwrap();
             // check that calls to CallKeyStack::enter and exit are balanced
-            assert!(cx.key_stack.is_empty(), "unbalanced CallKeyStack");
+            assert!(cx.id_stack.is_empty(), "unbalanced CallKeyStack");
 
             // finalize cache writer and put the internals back
             self.inner.replace(cx.writer.finish());
@@ -662,19 +710,19 @@ impl Cache {
 
     /// Returns the current call identifier.
     pub fn current_call_id() -> CallId {
-        Self::with_cx(|cx| cx.key_stack.current())
+        Self::with_cx(|cx| cx.id_stack.current())
     }
 
     /// Must be called inside `Cache::run`.
     #[track_caller]
     fn enter(index: usize) {
         let location = Location::caller();
-        Self::with_cx(move |cx| cx.key_stack.enter(location, index));
+        Self::with_cx(move |cx| cx.id_stack.enter(location, index));
     }
 
     /// Must be called inside `Cache::run`.
     fn exit() {
-        Self::with_cx(move |cx| cx.key_stack.exit());
+        Self::with_cx(move |cx| cx.id_stack.exit());
     }
 
     /// Enters a
@@ -691,25 +739,26 @@ impl Cache {
     pub fn changed<T: Data>(value: T) -> bool {
         let location = Location::caller();
         Self::with_cx(move |cx| {
-            cx.key_stack.enter(location, 0);
-            let key = cx.key_stack.current();
-            let node = cx.key_stack.current_call_node();
+            cx.id_stack.enter(location, 0);
+            let key = cx.id_stack.current();
+            let node = cx.id_stack.current_call_node();
             let changed = cx.writer.compare_and_update_value(key, value, node);
-            cx.key_stack.exit();
+            cx.id_stack.exit();
             changed
         })
     }
 
     #[track_caller]
-    fn get_value<T: Clone + 'static>() -> (Option<T>, Key<T>) {
+    fn get_value<T: Clone + 'static>() -> (Option<T>, Key<T>, bool) {
         let location = Location::caller();
         Self::with_cx(|cx| {
-            cx.key_stack.enter(location, 0);
-            let key = cx.key_stack.current();
-            let node = cx.key_stack.current_call_node();
-            let (value, entry_key) = cx.writer.get_value::<T>(key, node);
-            cx.key_stack.exit();
-            (value, entry_key)
+            cx.id_stack.enter(location, 0);
+            let call_id = cx.id_stack.current();
+            let node = cx.id_stack.current_call_node();
+            let (key, dirty) = cx.writer.get_or_insert_entry::<T>(call_id, node);
+            let value = cx.writer.get_value(key);
+            cx.id_stack.exit();
+            (value, key, dirty)
         })
     }
 
@@ -718,11 +767,12 @@ impl Cache {
     pub fn state<T: Clone + 'static>(init: impl FnOnce() -> T) -> (T, Key<T>) {
         let location = Location::caller();
         Self::with_cx(move |cx| {
-            cx.key_stack.enter(location, 0);
-            let key = cx.key_stack.current();
-            let node = cx.key_stack.current_call_node();
-            let (value, cache_key) = cx.writer.get_or_insert_value(key, node, init);
-            cx.key_stack.exit();
+            cx.id_stack.enter(location, 0);
+            let call_id = cx.id_stack.current();
+            let node = cx.id_stack.current_call_node();
+            let (key, dirty) = cx.writer.get_or_insert_entry::<T>(call_id, node);
+            let (value, cache_key) = cx.writer.get_or_insert_value(key, init);
+            cx.id_stack.exit();
             (value, cache_key)
         })
     }
@@ -733,12 +783,13 @@ impl Cache {
     pub fn take_state<T: 'static>() -> (Option<T>, Key<T>) {
         let location = Location::caller();
         Self::with_cx(move |cx| {
-            cx.key_stack.enter(location, 0);
-            let key = cx.key_stack.current();
-            let node = cx.key_stack.current_call_node();
-            let (value, cache_key) = cx.writer.take_value(key, node);
-            cx.key_stack.exit();
-            (value, cache_key)
+            cx.id_stack.enter(location, 0);
+            let call_id = cx.id_stack.current();
+            let node = cx.id_stack.current_call_node();
+            let (key, _) = cx.writer.get_or_insert_entry::<T>(call_id, node);
+            let value = cx.writer.take_value(key);
+            cx.id_stack.exit();
+            (value, key)
         })
     }
 
@@ -746,7 +797,7 @@ impl Cache {
     pub fn replace_state<T: 'static>(key: Key<T>, new_value: T) {
         Self::with_cx(move |cx| {
             cx.writer.set_value(key, new_value);
-            cx.writer.invalidate_cache_entry(key);
+            cx.writer.invalidate_dependents(key);
         })
     }
 
@@ -754,6 +805,12 @@ impl Cache {
     pub fn replace_state_without_invalidation<T: 'static>(key: Key<T>, new_value: T) {
         Self::with_cx(move |cx| cx.writer.set_value(key, new_value))
     }
+
+    // enter state scope
+    // -> widget sets its own state
+    // -> but parent sees the old state
+    // exit state scope
+    // -> scope must be run again
 
     /*///
     #[track_caller]
@@ -778,23 +835,21 @@ impl Cache {
     }*/
 
     /// TODO document
-    pub fn set_value<T: 'static>(key: Key<T>, value: T) {
+    fn set_value<T: 'static>(key: Key<T>, value: T) {
         Self::with_cx(move |cx| cx.writer.set_value(key, value))
     }
 
     #[track_caller]
-    pub fn group<R>(f: impl FnOnce(bool) -> R) -> R {
+    pub fn group<R>(f: impl FnOnce() -> R) -> R {
         let location = Location::caller();
-        let dirty = Self::with_cx(|cx| {
-            cx.key_stack
-                .enter(location, 0);
-            cx.writer
-                .start_group(cx.key_stack.current(), cx.key_stack.current_call_node())
+        Self::with_cx(|cx| {
+            cx.id_stack.enter(location, 0);
+            cx.writer.start_group(cx.id_stack.current())
         });
-        let r = f(dirty);
+        let r = f();
         Self::with_cx(|cx| {
             cx.writer.end_group();
-            cx.key_stack.exit();
+            cx.id_stack.exit();
         });
         r
     }
@@ -805,22 +860,31 @@ impl Cache {
         })
     }
 
+    fn state_scope<T: Clone + 'static, R>(state_key: Key<T>, f: impl FnOnce() -> R) -> R {
+        Self::with_cx(|cx| {
+            cx.writer.start_state(state_key);
+        });
+        let r = f();
+        Self::with_cx(|cx| {
+            cx.writer.end_state();
+        });
+        r
+    }
+
     /// Memoizes the result of a function at this call site.
     #[track_caller]
-    pub fn memoize<Args: Data, T: Clone + 'static>(
-        args: Args,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        Self::group(move |dirty| {
-            let changed = dirty | Self::changed(args);
-            let (value, entry_key) = Self::get_value::<T>();
-            if !changed {
-                Self::skip_to_end_of_group();
-                value.expect("memoize: no changes in arguments but no value calculated")
-            } else {
-                let value = f();
+    pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T) -> T {
+        Self::group(move || {
+            let changed = Self::changed(args);
+            let (value, entry_key, dirty) = Self::get_value::<T>();
+            if changed || dirty {
+                // state update
+                let value = Self::state_scope(entry_key, f);
                 Self::set_value(entry_key, value.clone());
                 value
+            } else {
+                Self::skip_to_end_of_group();
+                value.expect("memoize: no changes in arguments but no value calculated")
             }
         })
     }
@@ -828,7 +892,7 @@ impl Cache {
     #[track_caller]
     pub fn with_state<T: Data, R>(init: impl FnOnce() -> T, update: impl Fn(&mut T) -> R) -> R {
         // load the state from the cache, or reserve a slot if it's the first time we run
-        let (mut value, slot) = Self::get_value::<T>();
+        let (mut value, key, _) = Self::get_value::<T>();
         let initial = value.is_none();
 
         let mut value = if let Some(value) = value {
@@ -838,14 +902,13 @@ impl Cache {
             // create the initial value of the state
             init()
         };
-        let mut old_value = value.clone();
-
-        let r = update(&mut value);
+        let old_value = value.clone();
+        let r = Self::state_scope(key, || update(&mut value));
 
         // if the state has changed, TODO
         if initial || !old_value.same(&value) {
             // TODO: re-run update? Invalidate?
-            Self::set_value(slot, value);
+            Self::set_value(key, value);
         }
 
         r
@@ -863,7 +926,7 @@ mod tests {
 
         for _ in 0..3 {
             let mut writer = CacheWriter::new(cache);
-            writer.start_group(CallId(99), None);
+            writer.start_group(CallId(99));
             writer.compare_and_update_value(CallId(1), 0, None);
             writer.compare_and_update_value(CallId(2), "hello world".to_string(), None);
             writer.end_group();
@@ -887,7 +950,7 @@ mod tests {
                     " ==== Iteration {} - item {} =========================",
                     i, item
                 );
-                writer.start_group(CallId(item), None);
+                writer.start_group(CallId(item));
                 writer.compare_and_update_value(CallId(100), i, None);
                 writer.end_group();
                 writer.dump();
@@ -904,16 +967,17 @@ mod tests {
 
         for _ in 0..3 {
             let mut writer = CacheWriter::new(cache);
-            writer.start_group(CallId(99), None);
+            writer.start_group(CallId(99));
             let changed = writer.compare_and_update_value(CallId(100), 0, None);
-            let (value, slot) = writer.get_value::<f64>(CallId(101), None);
+            let (key, dirty) = writer.get_or_insert_entry::<f64>(CallId(101), None);
+            let value = writer.get_value(key);
 
             if !changed {
                 assert!(value.is_some());
                 writer.skip_until_end_of_group();
             } else {
                 writer.compare_and_update_value(CallId(102), "hello world".to_string(), None);
-                writer.set_value(slot, 0.0);
+                writer.set_value(key, 0.0);
             }
 
             writer.end_group();

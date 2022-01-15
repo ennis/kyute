@@ -1,19 +1,9 @@
-//pub mod brush;
-//pub mod context;
-//pub mod effect;
-//pub mod gradient;
-//pub mod path;
+mod color;
+mod path;
 
-//use crate::bindings::Windows::{
-//    Foundation::Numerics::Matrix3x2,
-//    Win32::Direct2D::{D2D1_COLOR_F, D2D_POINT_2F, D2D_RECT_F},
-//};
-//pub use brush::{Brush, IntoBrush};
-//pub use context::{
-//    Bitmap, CompositeMode, DrawContext, DrawTextOptions, InterpolationMode, PrimitiveBlend,
-//};
-//pub use gradient::{ColorInterpolationMode, ExtendMode, GradientStopCollection};
-//pub use path::PathGeometry;
+use float_cmp::ApproxEqUlps;
+pub use color::Color;
+pub use path::{Path, PathSegment};
 
 /// The DIP (device-independent pixel) unit.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -47,23 +37,72 @@ pub type Offset = euclid::Vector2D<f64, Dip>;
 pub type Point = euclid::Point2D<f64, Dip>;
 pub type PhysicalPoint = euclid::Point2D<f64, Px>;
 pub type Transform = euclid::Transform2D<f64, Dip, Dip>;
-pub type Color = palette::Srgba;
 pub type Length = DipLength;
 
 pub trait RectExt {
     fn stroke_inset(self, width: f64) -> Self;
+    fn top_left(&self) -> Point;
+    fn top_right(&self) -> Point;
+    fn bottom_left(&self) -> Point;
+    fn bottom_right(&self) -> Point;
 }
 
 impl RectExt for Rect {
     fn stroke_inset(self, width: f64) -> Self {
         self.inflate(-width * 0.5, -width * 0.5)
     }
+    fn top_left(&self) -> Point {
+        Point::new(self.origin.x, self.origin.y)
+    }
+    fn top_right(&self) -> Point {
+        Point::new(self.origin.x + self.size.width, self.origin.y)
+    }
+    fn bottom_left(&self) -> Point {
+        Point::new(self.origin.x, self.origin.y + self.size.height)
+    }
+    fn bottom_right(&self) -> Point {
+        Point::new(
+            self.origin.x + self.size.width,
+            self.origin.y + self.size.height,
+        )
+    }
 }
+
+/*pub trait FuzzyEq<Rhs: ?Sized = Self> {
+    fn fuzzy_eq(&self, other: &Rhs) -> bool;
+
+    #[inline]
+    fn fuzzy_ne(&self, other: &Rhs) -> bool {
+        !self.fuzzy_eq(other)
+    }
+}
+
+
+pub trait FuzzyZero {
+    fn is_fuzzy_zero(self) -> bool;
+}
+
+impl FuzzyZero for f32 {
+    fn is_fuzzy_zero(self) -> bool {
+        self.approx_eq_ulps(&0.0, 2)
+    }
+}
+
+impl FuzzyZero for f64 {
+    fn is_fuzzy_zero(self) -> bool {
+        self.approx_eq_ulps(&0.0, 2)
+    }
+}*/
 
 pub trait ToSkia {
     type Target;
     fn to_skia(&self) -> Self::Target;
-    fn from_skia(value: Self::Target) -> Self;
+
+}
+
+pub trait FromSkia {
+    type Source;
+    fn from_skia(value: Self::Source) -> Self;
 }
 
 impl ToSkia for Rect {
@@ -78,7 +117,12 @@ impl ToSkia for Rect {
         }
     }
 
-    fn from_skia(value: Self::Target) -> Self {
+}
+
+impl FromSkia for Rect {
+    type Source = skia_safe::Rect;
+
+    fn from_skia(value: Self::Source) -> Self {
         Rect {
             origin: Point::new(value.left as f64, value.top as f64),
             size: Size::new(
@@ -98,8 +142,12 @@ impl ToSkia for Point {
             y: self.y as f32,
         }
     }
+}
 
-    fn from_skia(value: Self::Target) -> Self {
+impl FromSkia for Point {
+    type Source = skia_safe::Point;
+
+    fn from_skia(value: Self::Source) -> Self {
         Point::new(value.x as f64, value.y as f64)
     }
 }
@@ -135,5 +183,4 @@ pub(crate) fn mk_matrix_3x2(t: &Transform) -> Matrix3x2 {
         M31: t.m31 as f32,
         M32: t.m32 as f32,
     }
-}
-*/
+}*/
