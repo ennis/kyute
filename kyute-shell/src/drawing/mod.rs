@@ -144,6 +144,17 @@ impl ToSkia for Point {
     }
 }
 
+impl ToSkia for Offset {
+    type Target = skia_safe::Vector;
+
+    fn to_skia(&self) -> Self::Target {
+        skia_safe::Vector {
+            x: self.x as f32,
+            y: self.y as f32,
+        }
+    }
+}
+
 impl FromSkia for Point {
     type Source = skia_safe::Point;
 

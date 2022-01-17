@@ -1,38 +1,34 @@
 use tracing::trace;
-use crate::{
-    align_boxes, composable,
-    core2::{EventCtx, LayoutCtx, PaintCtx},
-    event::PointerEventKind,
-    widget::Text,
-    Alignment, BoxConstraints, Cache, Environment, Event, Key, Measurements, Rect,
-    SideOffsets, Size, Widget, WidgetPod,
-};
+use crate::{align_boxes, composable, core2::{EventCtx, LayoutCtx, PaintCtx}, event::PointerEventKind, widget::Text, Alignment, BoxConstraints, Cache, Environment, Event, Key, Measurements, Rect, SideOffsets, Size, Widget, WidgetPod, cache};
 
 #[derive(Clone)]
 pub struct Button {
     label: WidgetPod<Text>,
-    clicked: (bool, Key<bool>),
+    clicked: bool,
+    clicked_state: Key<bool>,
 }
 
 impl Button {
     /// Creates a new button with the specified label.
     #[composable]
     pub fn new(label: String) -> WidgetPod<Button> {
-        let (clicked, key) = Cache::state(|| false);
+        let clicked_state = cache::state(|| false);
+        let clicked = clicked_state.get();
         if clicked {
             // reset click
             // TODO some kind of autoreset flag in `cache`? or somewhere else?
-            Cache::replace_state(key, false);
+            clicked_state.set(false);
         }
         WidgetPod::new(Button {
             label: Text::new(label),
-            clicked: (clicked, key),
+            clicked,
+            clicked_state,
         })
     }
 
     /// Returns whether this button has been clicked.
     pub fn clicked(&self) -> bool {
-        self.clicked.0
+        self.clicked
     }
 }
 
@@ -46,7 +42,7 @@ impl Widget for Button {
             Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerDown => {
                     //trace!("button clicked");
-                    ctx.set_state(self.clicked.1, true);
+                    ctx.set_state(self.clicked_state, true);
                     ctx.request_focus();
                     ctx.request_redraw();
                     ctx.set_handled();

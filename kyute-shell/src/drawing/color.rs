@@ -2,7 +2,7 @@ use crate::drawing::{FromSkia, ToSkia};
 use std::{error::Error, fmt, marker::PhantomData};
 
 /// Color spec.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Color(palette::Srgba);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

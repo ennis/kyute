@@ -47,7 +47,7 @@ pub fn generate_composable(
         quote! {
             #[track_caller]
             #(#attrs)* #vis #sig {
-                ::#CRATE::Cache::scoped(0, move || #return_type {
+                ::#CRATE::cache::scoped(0, move || #return_type {
                     #orig_block
                 })
             }
@@ -85,7 +85,7 @@ pub fn generate_composable(
         quote! {
             #[track_caller]
             #(#attrs)* #vis #sig {
-                ::#CRATE::Cache::memoize((#(#args,)*), move || #return_type {
+                ::#CRATE::cache::memoize((#(#args,)*), move || #return_type {
                     #orig_block
                 })
             }

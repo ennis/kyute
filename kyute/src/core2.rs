@@ -1,12 +1,4 @@
-use crate::{
-    application::AppCtx,
-    bloom::Bloom,
-    cache::{Cache, Key},
-    call_key::CallId,
-    event::{InputState, PointerEvent, PointerEventKind},
-    region::Region,
-    BoxConstraints, Data, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect,
-};
+use crate::{application::AppCtx, bloom::Bloom, cache::{Cache, Key}, call_key::CallId, event::{InputState, PointerEvent, PointerEventKind}, region::Region, BoxConstraints, Data, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, cache};
 use kyute_macros::composable;
 use kyute_shell::{
     graal,
@@ -185,7 +177,7 @@ impl<'a> EventCtx<'a> {
     }
 
     pub fn set_state<T: 'static>(&mut self, key: Key<T>, value: T) {
-        self.app_ctx.cache.set_state(key, value).unwrap()
+        self.app_ctx.cache.set_state(key, value)
     }
 
     pub fn register_window(&mut self, window_id: WindowId) {
@@ -752,11 +744,11 @@ impl<T: Widget + 'static> WidgetPod<T> {
     /// Creates a new `WidgetPod` wrapping the specified widget.
     #[composable(uncached)]
     pub fn new(widget: T) -> WidgetPod<T> {
-        let id = WidgetId::from_call_id(Cache::current_call_id());
+        let id = WidgetId::from_call_id(cache::current_call_id());
 
         // HACK: returns false on first call, true on following calls, so we can use that
         // to determine whether the widget has been initialized.
-        let initialized = !Cache::changed(()); // false on first call, true on following calls
+        let initialized = !cache::changed(()); // false on first call, true on following calls
 
         tracing::trace!(
             "WidgetPod::new[{}-{:?}]: initialized={}",

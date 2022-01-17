@@ -1,15 +1,4 @@
-use crate::{
-    align_boxes, composable,
-    core2::{FocusState, GpuResourceReferences, WindowInfo},
-    event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind},
-    graal,
-    graal::{vk::Handle, MemoryLocation},
-    region::Region,
-    theme,
-    widget::{Action, Menu},
-    Alignment, BoxConstraints, Cache, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
-    Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetId, WidgetPod,
-};
+use crate::{align_boxes, composable, core2::{FocusState, GpuResourceReferences, WindowInfo}, event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind}, graal, graal::{vk::Handle, MemoryLocation}, region::Region, theme, widget::{Action, Menu}, Alignment, BoxConstraints, Cache, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetId, WidgetPod, cache};
 use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
 use kyute_shell::{
@@ -378,7 +367,7 @@ impl WindowState {
                 tracing::trace!("received WM_COMMAND {}", id);
                 // find matching action and trigger it
                 if let Some(action) = self.menu_actions.get(&(*id as u32)) {
-                    parent_ctx.set_state(action.triggered.1, true);
+                    parent_ctx.set_state(action.triggered_state, true);
                 }
                 None
             }
@@ -639,7 +628,7 @@ impl Window {
     ) -> WidgetPod<Window> {
         // create the initial window state
         // we don't want to recreate it every time, so it only depends on the call ID.
-        let window_state = Cache::memoize((), move || {
+        let window_state = cache::once(move || {
             Arc::new(RefCell::new(WindowState {
                 window: None,
                 window_builder: Some(window_builder),

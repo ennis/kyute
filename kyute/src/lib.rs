@@ -26,6 +26,7 @@ pub mod widget;
 mod window;
 pub mod styling;
 pub mod theme;
+pub mod text;
 //mod style;
 
 pub use cache::{Cache, CacheError, Key};

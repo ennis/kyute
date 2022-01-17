@@ -1,4 +1,4 @@
-use crate::{composable, util::Counter, Cache, Data, Key};
+use crate::{cache, composable, util::Counter, Cache, Data, Key};
 use std::{collections::HashMap, convert::TryInto};
 
 /// Keyboard shortcut.
@@ -36,7 +36,9 @@ pub struct Action {
     pub(crate) shortcut: Option<Shortcut>,
     // ignore "triggered" which is transient state
     #[data(ignore)]
-    pub(crate) triggered: (bool, Key<bool>),
+    pub(crate) triggered: bool,
+    #[data(ignore)]
+    pub(crate) triggered_state: Key<bool>,
 }
 
 // FIXME: WM_COMMAND menu ids are 16-bit, so we can exhaust IDs quickly if we keep creating new actions
@@ -59,21 +61,23 @@ impl Action {
 
     #[composable(uncached)]
     fn new_inner(shortcut: Option<Shortcut>) -> Action {
-        let id: u32 = Cache::memoize((), || ACTION_ID_COUNTER.next().try_into().unwrap());
-        let triggered = Cache::state(|| false);
-        if triggered.0 {
-            Cache::replace_state(triggered.1, false);
+        let id: u32 = cache::once(|| ACTION_ID_COUNTER.next().try_into().unwrap());
+        let triggered_state = cache::state(|| false);
+        let triggered = triggered_state.get();
+        if triggered {
+            triggered_state.set(false);
         }
         Action {
             id,
             triggered,
             shortcut,
+            triggered_state,
         }
     }
 
     /// Returns whether the action was triggered.
     pub fn triggered(&self) -> bool {
-        self.triggered.0
+        self.triggered
     }
 }
 

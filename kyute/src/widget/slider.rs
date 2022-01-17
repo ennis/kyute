@@ -1,13 +1,6 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
-use crate::{
-    composable,
-    core2::{Widget, WindowPaintCtx},
-    event::{Event, PointerEventKind},
-    styling::PaintCtxExt,
-    theme, BoxConstraints, Cache, Environment, EventCtx, GpuFrameCtx, Key, LayoutCtx, Measurements,
-    PaintCtx, Point, Rect, SideOffsets, Size, WidgetPod,
-};
+use crate::{composable, core2::{Widget, WindowPaintCtx}, event::{Event, PointerEventKind}, styling::PaintCtxExt, theme, BoxConstraints, Cache, Environment, EventCtx, GpuFrameCtx, Key, LayoutCtx, Measurements, PaintCtx, Point, Rect, SideOffsets, Size, WidgetPod, cache};
 use kyute_shell::drawing::Path;
 use std::{any::Any, cell::Cell, str::FromStr};
 use tracing::trace;
@@ -93,7 +86,8 @@ impl Slider {
     #[composable]
     pub fn new(min: f64, max: f64, initial_value: f64) -> WidgetPod<Slider> {
         let initial_value = initial_value.clamp(min, max);
-        let (value, value_key) = Cache::state(|| initial_value);
+        let value_key = cache::state(|| initial_value);
+        let value = value_key.get();
         WidgetPod::new(Slider {
             // endpoints calculated during layout
             track: Default::default(),

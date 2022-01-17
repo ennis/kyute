@@ -7,7 +7,7 @@ mod graphics;
 mod menu;
 mod baseline;
 mod slider;
-//mod textedit;
+mod textedit;
 //mod grid;
 //mod slider;
 //mod text;
@@ -20,6 +20,7 @@ pub use button::Button;
 pub use menu::{MenuItem, Menu, Action, Shortcut};
 pub use baseline::Baseline;
 pub use slider::Slider;
+pub use textedit::TextEdit;
 
 /*pub use button::{button, ButtonResult};
 pub use container::container;
