@@ -10,7 +10,7 @@ pub struct Baseline {
 }
 
 impl Baseline {
-    #[composable]
+    #[composable(uncached)]
     pub fn new(baseline: f64, inner: WidgetPod) -> WidgetPod<Baseline> {
         WidgetPod::new(Baseline { inner, baseline })
     }

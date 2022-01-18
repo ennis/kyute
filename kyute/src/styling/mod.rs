@@ -394,7 +394,6 @@ impl Modifier for Fill {
                 ctx.canvas.restore();
             }
             Shape::RoundedRect { radii } => {
-                let bounds = ctx.bounds();
                 let rrect = RRect::new_rect_radii(bounds.to_skia(), &radii_to_skia(ctx, radii));
                 ctx.canvas.draw_rrect(rrect, &paint);
             }

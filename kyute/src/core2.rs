@@ -750,12 +750,12 @@ impl<T: Widget + 'static> WidgetPod<T> {
         // to determine whether the widget has been initialized.
         let initialized = !cache::changed(()); // false on first call, true on following calls
 
-        tracing::trace!(
+        /*tracing::trace!(
             "WidgetPod::new[{}-{:?}]: initialized={}",
             widget.debug_name(),
             id,
             initialized
-        );
+        );*/
         WidgetPod(Arc::new_cyclic(|this: &Weak<WidgetPodInner<T>>| {
             WidgetPodInner {
                 state: WidgetPodState {

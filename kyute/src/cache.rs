@@ -115,6 +115,19 @@ impl<T> fmt::Debug for Key<T> {
     }
 }
 
+impl<T: Data + 'static> Key<T> {
+    /// Returns the value of the cache entry and replaces it by the default value.
+    pub fn update(&self, new_value: T) -> T {
+        with_cache_cx(|cx| {
+            let prev_value = cx.writer.replace_value(*self, new_value.clone());
+            if !prev_value.same(&new_value) {
+                cx.writer.invalidate_dependents(*self);
+            }
+            prev_value
+        })
+    }
+}
+
 impl<T: 'static> Key<T> {
     ///
     fn from_entry_key(key: CacheEntryKey) -> Key<T> {
@@ -125,10 +138,10 @@ impl<T: 'static> Key<T> {
     }
 
     /// Returns the value of the cache entry and replaces it by the default value.
+    /// Always invalidates.
     pub fn replace(&self, new_value: T) -> T {
         with_cache_cx(|cx| {
             let prev_value = cx.writer.replace_value(*self, new_value);
-            // TODO invalidate only if changed?
             cx.writer.invalidate_dependents(*self);
             prev_value
         })
@@ -216,11 +229,12 @@ impl CacheInner {
         }*/
         let entry = &self.entries[entry_key];
         //trace!("invalidate_dependents_recursive: {:?} node={:#?}", entry_key, entry.call_node);
-        if !entry.dirty.replace(true) {
+        //if !entry.dirty.replace(true) {
+            entry.dirty.set(true);
             for &d in entry.dependents.iter() {
                 self.invalidate_dependents_recursive(d);
             }
-        }
+        //}
     }
 
     pub fn dump(&self, current_position: usize) {
@@ -564,6 +578,7 @@ impl CacheWriter {
     fn get_value<T: Clone + 'static>(&mut self, key: Key<T>) -> T {
         let entry = &mut self.cache.entries[key.key];
         if let Some(parent_state) = self.state_stack.last().cloned() {
+            //trace!("{:?} made dependent of {:?}", parent_state, key.key);
             entry.dependents.insert(parent_state);
         }
         entry
@@ -576,6 +591,7 @@ impl CacheWriter {
     fn replace_value<T: 'static>(&mut self, key: Key<T>, new_value: T) -> T {
         let entry = &mut self.cache.entries[key.key];
         if let Some(parent_state) = self.state_stack.last().cloned() {
+            //trace!("{:?} made dependent of {:?}", parent_state, key.key);
             entry.dependents.insert(parent_state);
         }
         mem::replace(
@@ -920,7 +936,14 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
                 .writer
                 .compare_and_update_value(call_id, args, call_node.clone());
             let CacheEntryInsertResult { key, dirty, .. } =
-                cx.writer.get_or_insert_entry(call_id, call_node.clone(), || None);
+                cx.writer
+                    .get_or_insert_entry(call_id, call_node.clone(), || None);
+           /* if args_changed {
+                trace!("memoize: recomputing because arguments have changed {:#?}", call_node);
+            }
+            if dirty {
+                trace!("memoize: recomputing because state entry is dirty {:#?}", call_node);
+            }*/
             (key, args_changed || dirty)
         });
 
@@ -939,9 +962,7 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
 
         // it's important to call `get()` in all circumstances to make the parent state entry
         // dependent on this value.
-        result_entry
-            .get()
-            .expect("memoize: no value calculated")
+        result_entry.get().expect("memoize: no value calculated")
     })
 }
 

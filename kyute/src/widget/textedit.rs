@@ -5,10 +5,12 @@ use crate::{
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
     styling::PaintCtxExt,
+    text::{FormattedText, FormattedTextParagraph, ParagraphStyle, TextAffinity},
     theme, BoxConstraints, Cache, Data, EnvKey, EventCtx, Key, LayoutCtx, Measurements, Offset,
     PaintCtx, Point, Rect, SideOffsets, Size, WidgetPod,
 };
 use keyboard_types::KeyState;
+use kyute::text::TextPosition;
 use kyute_shell::{
     drawing::{Color, FromSkia, ToSkia},
     skia as sk,
@@ -22,7 +24,6 @@ use std::{
 };
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
-use crate::text::{FormattedTextParagraph, FormattedText, ParagraphStyle};
 
 /// Text selection.
 ///
@@ -31,7 +32,7 @@ use crate::text::{FormattedTextParagraph, FormattedText, ParagraphStyle};
 /// user started the selection gesture from a later point in the text and then went back
 /// (right-to-left in LTR languages). In this case, the cursor will appear at the "beginning"
 /// (i.e. left, for LTR) of the selection.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Data)]
 pub struct Selection {
     pub start: usize,
     pub end: usize,
@@ -75,13 +76,13 @@ fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
     c.next_boundary(&text, 0).unwrap()
 }
 
-
-
-
 /// Text editor widget.
 pub struct TextEdit {
     /// Input formatted text.
     formatted_text: FormattedText,
+
+    /// Current selection.
+    selection: Selection,
 
     /// The offset to the content area
     content_offset: Offset,
@@ -89,8 +90,9 @@ pub struct TextEdit {
     /// The size of the content area
     content_size: Size,
 
-    editing_finished: Key<bool>,
-    text_changed: Key<bool>,
+    editing_finished: Key<Option<FormattedText>>,
+    text_changed: Key<Option<FormattedText>>,
+    selection_changed: Key<Option<Selection>>,
 
     /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
     paragraph: RefCell<Option<FormattedTextParagraph>>,
@@ -99,56 +101,95 @@ pub struct TextEdit {
 impl TextEdit {
     /// Creates a new `TextEdit` widget displaying the specified `FormattedText`.
     #[composable(uncached)]
-    pub fn new(
+    pub fn with_selection(
         formatted_text: impl Into<FormattedText>,
+        selection: Selection,
     ) -> WidgetPod<TextEdit> {
-        let editing_finished = cache::state(|| false);
-        let text_changed = cache::state(|| false);
+        let editing_finished = cache::state(|| None);
+        let text_changed = cache::state(|| None);
+        let selection_changed = cache::state(|| None);
+        let formatted_text = formatted_text.into();
+
+        trace!(
+            "TextEdit::with_selection: {:?}, {:?}",
+            formatted_text.plain_text,
+            selection
+        );
 
         WidgetPod::new(TextEdit {
-            formatted_text: formatted_text.into(),
+            formatted_text,
+            selection,
             content_offset: Default::default(),
             content_size: Default::default(),
+            selection_changed,
             editing_finished,
             text_changed,
             paragraph: RefCell::new(None),
         })
     }
 
+    /// Use if you don't care about the selection.
+    #[composable(uncached)]
+    pub fn new(formatted_text: impl Into<FormattedText>) -> WidgetPod<TextEdit> {
+        let selection = cache::state(|| Selection::empty(0));
+        let text_edit = Self::with_selection(formatted_text, selection.get());
+
+        // dependents of selection_changed: the parent state entry
+        // selection_changed will always invalidate the parent state entry
+
+        if let Some(s) = text_edit.selection_changed() {
+            eprintln!("received selection change");
+            selection.set(s);
+        }
+        text_edit
+    }
+
     /// Returns whether TODO.
     #[composable(uncached)]
-    pub fn editing_finished(&self) -> bool {
-        self.editing_finished.get()
+    pub fn editing_finished(&self) -> Option<FormattedText> {
+        self.editing_finished.update(None)
     }
 
     /// Returns whether the text has changed.
-    pub fn text_changed(&self) -> bool {
-        self.text_changed.get()
+    #[composable(uncached)]
+    pub fn text_changed(&self) -> Option<FormattedText> {
+        self.text_changed.update(None)
     }
 
-    /*/// Moves the cursor forward or backward.
-    // TODO move to EditState
-    pub fn move_cursor(&mut self, movement: Movement, modify_selection: bool) {
+    #[composable(uncached)]
+    pub fn selection_changed(&self) -> Option<Selection> {
+        self.selection_changed.update(None)
+    }
+
+    /// Moves the cursor forward or backward. Returns the new selection.
+    fn move_cursor(&self, movement: Movement, modify_selection: bool) -> Selection {
         let offset = match movement {
-            Movement::Left => prev_grapheme_cluster(&self.state.text, self.state.selection.end)
-                .unwrap_or(self.state.selection.end),
-            Movement::Right => next_grapheme_cluster(&self.state.text, self.state.selection.end)
-                .unwrap_or(self.state.selection.end),
+            Movement::Left => {
+                prev_grapheme_cluster(&self.formatted_text.plain_text, self.selection.end)
+                    .unwrap_or(self.selection.end)
+            }
+            Movement::Right => {
+                next_grapheme_cluster(&self.formatted_text.plain_text, self.selection.end)
+                    .unwrap_or(self.selection.end)
+            }
             Movement::LeftWord | Movement::RightWord => {
                 // TODO word navigation (unicode word segmentation)
                 tracing::warn!("word navigation is unimplemented");
-                self.state.0.selection.end
+                self.selection.end
             }
         };
 
         if modify_selection {
-            self.state.0.selection.end = offset;
+            Selection {
+                start: self.selection.start,
+                end: offset,
+            }
         } else {
-            self.state.0.selection = Selection::empty(offset);
+            Selection::empty(offset)
         }
-    }*/
+    }
 
-    /*/// Inserts text.
+    /*//// Inserts text.
     // TODO move to EditState
     pub fn insert(&mut self, text: &str) {
         let min = self.state.selection.min();
@@ -182,31 +223,32 @@ impl TextEdit {
         self.state.selection.end = self.state.text.len();
     }*/
 
-    /*fn position_to_text(&self, pos: Point) -> usize {
-        let hit = self
-            .text_layout
+    fn text_position(&self, pos: Point) -> TextPosition {
+        self.paragraph
+            .borrow()
             .as_ref()
             .expect("position_to_text called before layout")
-            .hit_test_point(pos)
-            .unwrap();
-        let pos = if hit.is_trailing_hit {
-            hit.metrics.text_position + hit.metrics.length
-        } else {
-            hit.metrics.text_position
-        };
-        pos
-    }*/
-}
+            .glyph_text_position(pos)
+    }
 
-// Given a FormattedText, create a new one by appending new format ranges.
-// FormattedText: immutable?
-// -> cheaply clonable
-// -> mutable, but with Arc::make_mut under the hood
-//  -> provide `with_*` functions
-// -> text = ArcStr
-//
-// 1. rename FormattedText? It's not "formatted" yet. => RichText?
-// 2. FormattedText produce a `TextLayout` object, which contains a formatted SkParagraph
+    fn notify_selection_changed(&self, ctx: &mut EventCtx, new_selection: Selection) {
+        if new_selection != self.selection {
+            eprintln!(
+                "notify selection changed {:?}->{:?}",
+                self.selection, new_selection
+            );
+            ctx.set_state(self.selection_changed, Some(new_selection));
+        }
+    }
+
+    fn notify_text_changed(&self, ctx: &mut EventCtx, new_text: FormattedText) {
+        ctx.set_state(self.text_changed, Some(new_text));
+    }
+
+    fn notify_editing_finished(&self, ctx: &mut EventCtx, new_text: FormattedText) {
+        ctx.set_state(self.editing_finished, Some(new_text));
+    }
+}
 
 impl Widget for TextEdit {
     fn layout(
@@ -234,18 +276,17 @@ impl Widget for TextEdit {
         //trace!("TextEdit: paragraph style: {:#?}", style2.0);
 
         // create the paragraph & layout in content width
-        let mut paragraph = self.formatted_text.format();
-        paragraph.0.layout(text_available_width as sk::scalar);
+        let mut paragraph = self.formatted_text.format(text_available_width);
 
-        trace!("TextEdit: layout result: {:#?}", paragraph.0);
+        //trace!("TextEdit: layout result: {:#?}", paragraph.0);
 
         // measure the paragraph
         let text_height = paragraph.0.height() as f64;
         let baseline = paragraph.0.alphabetic_baseline() as f64 + padding.top;
-        let size = dbg!(Size::new(
+        let size = Size::new(
             available_width,
             constraints.constrain_height(text_height + padding.vertical()),
-        ));
+        );
 
         // stash the laid out paragraph for rendering
         self.paragraph.replace(Some(paragraph));
@@ -278,6 +319,16 @@ impl Widget for TextEdit {
             .paint(&mut ctx.canvas, Point::origin().to_skia());
         ctx.canvas.restore();
 
+        // draw selection
+        let selection_boxes = paragraph.rects_for_range(self.selection.min()..self.selection.max());
+        for tb in selection_boxes {
+            ctx.draw_styled_box(
+                tb.rect,
+                rectangle().with(fill(Color::new(0.0, 0.1, 0.8, 0.5))),
+                env
+            );
+        }
+
         // TODO selection highlight, caret
         // -> move to helper function (format_text_edit): applies the format ranges, splits the text into blocks, returns a SkParagraph
     }
@@ -298,16 +349,25 @@ impl Widget for TextEdit {
             Event::Pointer(p) => {
                 match p.kind {
                     PointerEventKind::PointerDown => {
-                        //let pos = self.position_to_text(p.position);
                         if p.repeat_count == 2 {
                             trace!("text edit: select all");
                             // double-click selects all
-                            //self.select_all();
-                            //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                            self.notify_selection_changed(
+                                ctx,
+                                Selection {
+                                    start: 0,
+                                    end: self.formatted_text.plain_text.len(),
+                                },
+                            );
                         } else {
+                            let text_pos = self.text_position(p.position);
                             trace!("text edit: move cursor");
-                            //self.set_cursor(pos);
-                            //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                            if self.selection != Selection::empty(text_pos.position) {
+                                self.notify_selection_changed(
+                                    ctx,
+                                    Selection::empty(text_pos.position),
+                                );
+                            }
                         }
                         ctx.request_redraw();
                         ctx.request_focus();
@@ -317,9 +377,16 @@ impl Widget for TextEdit {
                         // update selection
                         if ctx.is_capturing_pointer() {
                             trace!("text edit: move cursor");
-                            //let pos = self.position_to_text(p.position);
-                            // self.set_selection_end(pos);
-                            // ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                            let text_pos = self.text_position(p.position);
+                            if self.selection.end != text_pos.position {
+                                self.notify_selection_changed(
+                                    ctx,
+                                    Selection {
+                                        start: self.selection.start,
+                                        end: text_pos.position,
+                                    },
+                                )
+                            }
                             ctx.request_redraw();
                         }
                     }
@@ -352,13 +419,11 @@ impl Widget for TextEdit {
                         ctx.request_relayout();
                     }
                     keyboard_types::Key::ArrowLeft => {
-                        //self.move_cursor(Movement::Left, k.modifiers.contains(Modifiers::SHIFT));
-                        //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        self.move_cursor(Movement::Left, k.modifiers.contains(Modifiers::SHIFT));
                         ctx.request_redraw();
                     }
                     keyboard_types::Key::ArrowRight => {
-                        // self.move_cursor(Movement::Right, k.modifiers.contains(Modifiers::SHIFT));
-                        //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        self.move_cursor(Movement::Right, k.modifiers.contains(Modifiers::SHIFT));
                         ctx.request_redraw();
                     }
                     keyboard_types::Key::Character(ref c) => {
@@ -367,7 +432,7 @@ impl Widget for TextEdit {
                         //trace!("text edit: character {}", c);
                         //self.insert(&c);
                         //ctx.emit_action(TextEditAction::TextChanged(self.state.text.clone()));
-                        // ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
                         ctx.request_relayout();
                     }
                     _ => {}

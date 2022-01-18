@@ -1,6 +1,6 @@
-use crate::Data;
+use crate::{Data, Point, Rect};
 use kyute_shell::{
-    drawing::{Color, ToSkia},
+    drawing::{Color, FromSkia, ToSkia},
     skia as sk,
 };
 use std::{
@@ -282,7 +282,7 @@ impl TextRuns {
 /// Text with formatting information.
 #[derive(Clone, Data)]
 pub struct FormattedText {
-    plain_text: Arc<str>,
+    pub plain_text: Arc<str>,
     runs: Arc<TextRuns>,
     // FIXME: multiple paragraphs?
     // FIXME: Data impl blocked on skia_safe issue
@@ -338,7 +338,7 @@ impl FormattedText {
         self.paragraph_style = style;
     }
 
-    pub fn format(&self) -> FormattedTextParagraph {
+    pub fn format(&self, width: f64) -> FormattedTextParagraph {
         let mut default_font_manager = sk::FontMgr::default();
         let mut font_collection = sk::textlayout::FontCollection::new();
         font_collection.set_default_font_manager(default_font_manager, "Consolas");
@@ -383,7 +383,9 @@ impl FormattedText {
             builder.pop();
         }
 
-        let paragraph = builder.build();
+        let mut paragraph = builder.build();
+        // layout the paragraph
+        paragraph.layout(width as sk::scalar);
         FormattedTextParagraph(paragraph)
     }
 }
@@ -411,8 +413,64 @@ impl TextStyle {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct TextBox {
+    pub rect: Rect,
+    pub direction: sk::textlayout::TextDirection,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Data)]
+pub enum TextAffinity {
+    Upstream,
+    Downstream,
+}
+
+impl FromSkia for TextAffinity {
+    type Source = sk::textlayout::Affinity;
+
+    fn from_skia(value: Self::Source) -> Self {
+        match value {
+            sk::textlayout::Affinity::Upstream => TextAffinity::Upstream,
+            sk::textlayout::Affinity::Downstream => TextAffinity::Downstream,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct TextPosition {
+    pub position: usize,
+    pub affinity: TextAffinity,
+}
+
 // FIXME: this is useless since it's not guaranteed to be laid out
 pub struct FormattedTextParagraph(pub(crate) sk::textlayout::Paragraph);
+
+impl FormattedTextParagraph {
+    /// Returns a list of enclosing rects for the specified text range.
+    pub fn rects_for_range(&self, range: Range<usize>) -> Vec<TextBox> {
+        let boxes = self.0.get_rects_for_range(
+            range,
+            sk::textlayout::RectHeightStyle::IncludeLineSpacingMiddle,
+            sk::textlayout::RectWidthStyle::Tight,
+        );
+        boxes
+            .iter()
+            .map(|tb| TextBox {
+                rect: Rect::from_skia(tb.rect),
+                direction: tb.direct,
+            })
+            .collect()
+    }
+
+    /// Returns the text position closest to the given point.
+    pub fn glyph_text_position(&self, point: Point) -> TextPosition {
+        let tp = self.0.get_glyph_position_at_coordinate(point.to_skia());
+        TextPosition {
+            position: tp.position as usize,
+            affinity: TextAffinity::from_skia(tp.affinity),
+        }
+    }
+}
 
 // FIXME: Data impl blocked on skia-safe issue
 #[derive(Clone, Debug, Default)]
