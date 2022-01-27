@@ -3,8 +3,9 @@ use std::mem;
 use windows::Win32::{
     Foundation::PWSTR,
     UI::WindowsAndMessaging::{
-        AppendMenuW, CreateMenu, DestroyMenu, HMENU, MF_CHECKED, MF_DISABLED, MF_POPUP,
-        MF_SEPARATOR, MF_STRING,
+        AppendMenuW, CreateMenu, CreatePopupMenu, DestroyMenu, GetMenuInfo, SetMenuInfo, HMENU,
+        MENUINFO, MF_CHECKED, MF_DISABLED, MF_POPUP, MF_SEPARATOR, MF_STRING, MIM_STYLE,
+        MNS_NOTIFYBYPOS,
     },
 };
 
@@ -29,6 +30,25 @@ impl Menu {
             // SAFETY: no particular requirements
             CreateMenu()
         };
+        Menu {
+            hmenu,
+            accels: vec![],
+        }
+    }
+
+    /// Creates a new menu.
+    pub fn new_popup() -> Menu {
+        let hmenu = unsafe {
+            // SAFETY: no particular requirements
+            let hmenu = CreatePopupMenu();
+            let mut menu_info = MENUINFO::default();
+            menu_info.fMask = MIM_STYLE;
+            GetMenuInfo(hmenu, &mut menu_info);
+            menu_info.dwStyle |= MNS_NOTIFYBYPOS;
+            SetMenuInfo(hmenu, &menu_info);
+            hmenu
+        };
+
         Menu {
             hmenu,
             accels: vec![],

@@ -1,11 +1,27 @@
-use crate::{application::AppCtx, bloom::Bloom, cache::{Cache, Key}, call_key::CallId, event::{InputState, PointerEvent, PointerEventKind}, region::Region, BoxConstraints, Data, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, cache};
+use crate::{
+    application::AppCtx,
+    bloom::Bloom,
+    cache,
+    cache::{Cache, Key},
+    call_key::CallId,
+    event::{InputState, PointerEvent, PointerEventKind},
+    region::Region,
+    BoxConstraints, Data, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect,
+};
 use kyute_macros::composable;
 use kyute_shell::{
     graal,
     graal::{ash::vk, BufferId, ImageId},
     winit::{event_loop::EventLoopWindowTarget, window::WindowId},
 };
-use std::{cell::Cell, fmt, hash::Hash, marker::Unsize, ops::{CoerceUnsized, Deref}, sync::{Arc, Weak}};
+use std::{
+    cell::Cell,
+    fmt,
+    hash::Hash,
+    marker::Unsize,
+    ops::{CoerceUnsized, Deref},
+    sync::{Arc, Weak},
+};
 use tracing::{trace, warn};
 
 /// Context passed to widgets during the layout pass.
@@ -104,6 +120,8 @@ pub struct FocusState {
     pub(crate) focus: Option<WidgetId>,
     pub(crate) pointer_grab: Option<WidgetId>,
     pub(crate) hot: Option<WidgetId>,
+    /// Target of popup menu events
+    pub(crate) popup_target: Option<WidgetId>,
 }
 
 impl FocusState {
@@ -112,6 +130,7 @@ impl FocusState {
             focus: None,
             pointer_grab: None,
             hot: None,
+            popup_target: None,
         }
     }
 }
@@ -119,6 +138,7 @@ impl FocusState {
 pub struct EventCtx<'a> {
     pub(crate) app_ctx: &'a mut AppCtx,
     pub(crate) event_loop: &'a EventLoopWindowTarget<()>,
+    pub(crate) parent_window: Option<&'a mut kyute_shell::window::Window>,
     pub(crate) focus_state: &'a mut FocusState,
     pub(crate) window_position: Point,
     pub(crate) scale_factor: f64,
@@ -139,6 +159,7 @@ impl<'a> EventCtx<'a> {
         EventCtx {
             app_ctx,
             event_loop,
+            parent_window: None,
             focus_state,
             window_position: Default::default(),
             scale_factor: 1.0,
@@ -153,6 +174,7 @@ impl<'a> EventCtx<'a> {
     pub(crate) fn new_subwindow<'b>(
         parent: &'b mut EventCtx,
         scale_factor: f64,
+        window: &'b mut kyute_shell::window::Window,
         focus_state: &'b mut FocusState,
     ) -> EventCtx<'b>
     where
@@ -161,6 +183,7 @@ impl<'a> EventCtx<'a> {
         EventCtx {
             app_ctx: parent.app_ctx,
             event_loop: parent.event_loop,
+            parent_window: Some(window),
             focus_state,
             // reset window pos because we're entering a child window
             window_position: Point::origin(),
@@ -227,6 +250,14 @@ impl<'a> EventCtx<'a> {
     pub fn request_focus(&mut self) {
         trace!("acquiring focus");
         self.focus_state.focus = Some(self.id);
+    }
+
+    pub fn track_popup_menu(&mut self, menu: kyute_shell::Menu, at: Point) {
+        self.focus_state.popup_target = Some(self.id);
+        self.parent_window
+            .as_mut()
+            .expect("EventCtx::track_popup_menu called without a parent window")
+            .show_context_menu(menu, at);
     }
 
     /// Returns whether the current node has the focus.
@@ -455,6 +486,7 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
         let mut ctx = EventCtx {
             app_ctx: parent_ctx.app_ctx,
             event_loop: parent_ctx.event_loop,
+            parent_window: parent_ctx.parent_window.as_deref_mut(),
             focus_state: parent_ctx.focus_state,
             window_position,
             scale_factor: parent_ctx.scale_factor,
@@ -605,7 +637,7 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
             }
             Event::Internal(InternalEvent::RouteEvent {
                 target,
-                ref mut event
+                ref mut event,
             }) => {
                 if target == self.state.id {
                     self.event(parent_ctx, event, env);
@@ -681,7 +713,9 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
                 // this would make the code cleaner, at the cost of two traversals instead of one.
 
                 // pass hit test if we have pointer capture
-                if !bounds.contains(pointer_event.window_position) && parent_ctx.focus_state.pointer_grab != Some(self.state.id) {
+                if !bounds.contains(pointer_event.window_position)
+                    && parent_ctx.focus_state.pointer_grab != Some(self.state.id)
+                {
                     // pointer hit-test fail; if we were hovering the widget, send pointerout
                     if self.state.pointer_over.get() {
                         self.state.pointer_over.set(false);
@@ -741,6 +775,7 @@ impl fmt::Debug for WidgetPod {
 }
 
 impl<T: Widget + 'static> WidgetPod<T> {
+
     /// Creates a new `WidgetPod` wrapping the specified widget.
     #[composable(uncached)]
     pub fn new(widget: T) -> WidgetPod<T> {
@@ -749,6 +784,10 @@ impl<T: Widget + 'static> WidgetPod<T> {
         // HACK: returns false on first call, true on following calls, so we can use that
         // to determine whether the widget has been initialized.
         let initialized = !cache::changed(()); // false on first call, true on following calls
+
+        let state = cache::state(|| {
+
+        });
 
         /*tracing::trace!(
             "WidgetPod::new[{}-{:?}]: initialized={}",

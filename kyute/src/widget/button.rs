@@ -1,5 +1,12 @@
+use crate::{
+    align_boxes, cache, composable,
+    core2::{EventCtx, LayoutCtx, PaintCtx},
+    event::PointerEventKind,
+    widget::Text,
+    Alignment, BoxConstraints, Cache, Environment, Event, Key, Measurements, Rect, SideOffsets,
+    Size, Widget, WidgetPod,
+};
 use tracing::trace;
-use crate::{align_boxes, composable, core2::{EventCtx, LayoutCtx, PaintCtx}, event::PointerEventKind, widget::Text, Alignment, BoxConstraints, Cache, Environment, Event, Key, Measurements, Rect, SideOffsets, Size, Widget, WidgetPod, cache};
 
 #[derive(Clone)]
 pub struct Button {
@@ -8,6 +15,15 @@ pub struct Button {
     clicked_state: Key<bool>,
 }
 
+// if Button::new returns a Button, then Button must impl Data so that
+// WidgetPod::new(widget) can be cached on the widget.
+// -> actually, it might not be necessary:
+// -> WidgetPod::new:
+//      -> get state from the positional cache
+//      -> update the button (replace with new instance)
+//
+
+
 impl Button {
     /// Creates a new button with the specified label.
     #[composable]
@@ -15,8 +31,6 @@ impl Button {
         let clicked_state = cache::state(|| false);
         let clicked = clicked_state.get();
         if clicked {
-            // reset click
-            // TODO some kind of autoreset flag in `cache`? or somewhere else?
             clicked_state.set(false);
         }
         WidgetPod::new(Button {
@@ -86,7 +100,6 @@ impl Widget for Button {
         // constrain size
         measurements.size = constraints.constrain(measurements.size);
 
-
         //trace!("button_measurements={:?}", measurements);
 
         // center the text inside the button
@@ -98,16 +111,14 @@ impl Widget for Button {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        use kyute::styling::*;
-        use kyute::theme::*;
+        use kyute::{styling::*, theme::*};
 
         //tracing::trace!(?bounds, "button paint");
 
-        let background_gradient =
-            linear_gradient()
-                .angle(90.0.degrees())
-                .stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
-                .stop(BUTTON_BACKGROUND_TOP_COLOR, 1.0);
+        let background_gradient = linear_gradient()
+            .angle(90.0.degrees())
+            .stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
+            .stop(BUTTON_BACKGROUND_TOP_COLOR, 1.0);
 
         ctx.draw_styled_box(
             bounds,
@@ -119,7 +130,8 @@ impl Widget for Button {
                             .angle(90.0.degrees())
                             .stop(BUTTON_BACKGROUND_BOTTOM_COLOR_HOVER, 0.0)
                             .stop(BUTTON_BACKGROUND_TOP_COLOR_HOVER, 1.0),
-                    ).enabled(ctx.hover)
+                    )
+                    .enabled(ctx.hover),
                 )
                 .with(
                     border(1.0)
@@ -154,7 +166,6 @@ impl Widget for Button {
         // Fix this somehow:
         // - Remove deref impl: no, affects the user-facing API
         // - rename the methods on WidgetPod (propagate_event, propagate_paint): easy to misuse
-
 
         self.label.paint(ctx, bounds, env);
     }

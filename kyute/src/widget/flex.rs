@@ -1,9 +1,4 @@
-use crate::{
-    composable,
-    core2::{LayoutCtx, PaintCtx},
-    theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Rect, Size, Widget,
-    WidgetPod,
-};
+use crate::{composable, core2::{LayoutCtx, PaintCtx}, theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Rect, Size, Widget, WidgetPod, Point};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Axis {
@@ -69,6 +64,8 @@ impl Flex {
     pub fn new(axis: Axis, items: Vec<WidgetPod>) -> WidgetPod<Flex> {
         WidgetPod::new(Flex { axis, items })
     }
+
+
 }
 
 impl Widget for Flex {
@@ -129,7 +126,7 @@ impl Widget for Flex {
             Axis::Horizontal => Size::new(constraints.constrain_width(d), cross_axis_len),
         };
 
-        Measurements::new(size)
+        Measurements::new(Rect::new(Point::origin(), size))
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {

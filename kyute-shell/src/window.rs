@@ -1,19 +1,20 @@
 //! Platform-specific window creation
-use crate::{
-    application::Application,
-    error::Error,
-    Menu,
+use std::ptr;
+use crate::{application::Application, drawing::Point, error::Error, Menu};
+use graal::{
+    swapchain::Swapchain,
+    vk,
+    vk::Handle,
 };
-use graal::{swapchain::Swapchain, vk, vk::Handle};
 use raw_window_handle::HasRawWindowHandle;
 use skia_safe::gpu::vk as skia_vk;
 use skia_vk::GetProcOf;
-use windows::{
-    Win32::{
-        Foundation::{HINSTANCE, HWND},
-        UI::WindowsAndMessaging::{DestroyMenu, SetMenu, HMENU},
-    },
+use windows::Win32::{
+    Foundation::{HINSTANCE, HWND, POINT},
+    Graphics::Gdi::ClientToScreen,
+    UI::WindowsAndMessaging::{DestroyMenu, SetMenu, TrackPopupMenu, HMENU, TPM_LEFTALIGN},
 };
+use windows::Win32::Foundation::BOOL;
 use winit::{
     event_loop::EventLoopWindowTarget,
     platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
@@ -194,6 +195,28 @@ impl Window {
                 let hmenu = menu.into_hmenu();
                 SetMenu(self.hwnd, hmenu);
                 self.menu = Some(hmenu);
+            }
+        }
+    }
+
+    /// Shows a context menu.
+    pub fn show_context_menu(&self, menu: Menu, at: Point) {
+        unsafe {
+            let hmenu = menu.into_hmenu();
+            let scale_factor = self.window.scale_factor();
+            let x = at.x * scale_factor;
+            let y = at.y * scale_factor;
+            unsafe {
+                let mut point = POINT {
+                    x: x as i32,
+                    y: y as i32,
+                };
+                ClientToScreen(self.hwnd, &mut point);
+                if TrackPopupMenu(hmenu, TPM_LEFTALIGN, point.x, point.y, 0, self.hwnd, ptr::null())
+                    == BOOL::from(false)
+                {
+                    tracing::warn!("failed to track popup menu");
+                }
             }
         }
     }
@@ -455,4 +478,3 @@ impl Window {
         }
     }*/
 }
-

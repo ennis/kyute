@@ -1,4 +1,15 @@
-use crate::{align_boxes, composable, core2::{FocusState, GpuResourceReferences, WindowInfo}, event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind}, graal, graal::{vk::Handle, MemoryLocation}, region::Region, theme, widget::{Action, Menu}, Alignment, BoxConstraints, Cache, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetId, WidgetPod, cache};
+use crate::{
+    align_boxes, cache, composable,
+    core2::{FocusState, GpuResourceReferences, WindowInfo},
+    event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind},
+    graal,
+    graal::{vk::Handle, MemoryLocation},
+    region::Region,
+    theme,
+    widget::{Action, Menu},
+    Alignment, BoxConstraints, Cache, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
+    Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetId, WidgetPod,
+};
 use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
 use kyute_shell::{
@@ -321,6 +332,10 @@ impl WindowState {
         env: &Environment,
     ) {
         //let _span = trace_span!("process_window_event", ?window_event).entered();
+        let window = self
+            .window
+            .as_mut()
+            .expect("process_window_event received but window not initialized");
 
         // ---------------------------------------
         // Default window event processing: update scale factor, input states (pointer pos, keyboard mods).
@@ -347,11 +362,7 @@ impl WindowState {
                 None
             }
             WindowEvent::Resized(size) => {
-                if let Some(window) = self.window.as_mut() {
-                    window.resize((size.width, size.height));
-                } else {
-                    tracing::warn!("Resized event received but window has not been created");
-                }
+                window.resize((size.width, size.height));
                 None
             }
             WindowEvent::Focused(true) => {
@@ -365,9 +376,29 @@ impl WindowState {
             WindowEvent::Command(id) => {
                 // command from a menu
                 tracing::trace!("received WM_COMMAND {}", id);
-                // find matching action and trigger it
-                if let Some(action) = self.menu_actions.get(&(*id as u32)) {
-                    parent_ctx.set_state(action.triggered_state, true);
+
+                // send to popup menu target if any
+                if let Some(target) = self.focus_state.popup_target.take() {
+                    let mut content_ctx = EventCtx::new_subwindow(
+                        parent_ctx,
+                        self.scale_factor,
+                        window,
+                        &mut self.focus_state,
+                    );
+                    content_widget.event(
+                        &mut content_ctx,
+                        &mut Event::Internal(InternalEvent::RouteEvent {
+                            target,
+                            event: Box::new(Event::MenuCommand(*id)),
+                        }),
+                        env,
+                    );
+                } else {
+                    // command from the window menu
+                    // find matching action and trigger it
+                    if let Some(action) = self.menu_actions.get(&(*id as u32)) {
+                        parent_ctx.set_state(action.triggered_state, true);
+                    }
                 }
                 None
             }
@@ -540,6 +571,7 @@ impl WindowState {
                         let mut content_ctx = EventCtx::new_subwindow(
                             parent_ctx,
                             self.scale_factor,
+                            window,
                             &mut self.focus_state,
                         );
                         trace!(
@@ -559,6 +591,7 @@ impl WindowState {
                         let mut content_ctx = EventCtx::new_subwindow(
                             parent_ctx,
                             self.scale_factor,
+                            window,
                             &mut self.focus_state,
                         );
                         // just forward to content, will do a hit-test
@@ -572,6 +605,7 @@ impl WindowState {
                         let mut content_ctx = EventCtx::new_subwindow(
                             parent_ctx,
                             self.scale_factor,
+                            window,
                             &mut self.focus_state,
                         );
                         content_widget.event(
@@ -672,6 +706,7 @@ impl Window {
                 let mut content_ctx = EventCtx::new_subwindow(
                     parent_ctx,
                     window_state.scale_factor,
+                    window,
                     &mut window_state.focus_state,
                 );
                 let mut widgets = Vec::new();
@@ -923,12 +958,20 @@ impl Widget for Window {
             Event::WindowRedrawRequest => self.do_redraw(ctx, env),
             _ => {
                 let mut window_state = self.window_state.borrow_mut();
-                let mut content_ctx = EventCtx::new_subwindow(
-                    ctx,
-                    window_state.scale_factor,
-                    &mut window_state.focus_state,
-                );
-                self.contents.event(&mut content_ctx, event, env);
+                let mut window_state = &mut *window_state; // hrmpf...
+
+                if let Some(window) = window_state.window.as_mut() {
+                    let mut content_ctx = EventCtx::new_subwindow(
+                        ctx,
+                        window_state.scale_factor,
+                        window,
+                        &mut window_state.focus_state,
+                    );
+                    self.contents.event(&mut content_ctx, event, env);
+                } else {
+                    tracing::warn!("received window event before initialization: {:?}", event);
+                    self.contents.event(ctx, event, env);
+                }
                 // don't propagate, but TODO check for redraw and such
             }
         }

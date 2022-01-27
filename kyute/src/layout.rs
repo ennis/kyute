@@ -7,6 +7,7 @@ use std::{
     ops::{Bound, RangeBounds},
     sync::Arc,
 };
+use kyute_shell::skia::rrect::Type::Rect;
 
 /// Box constraints.
 #[derive(Copy, Clone)]
@@ -201,8 +202,8 @@ pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measu
 /// Layout information for a visual node, relative to a parent node.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Measurements {
-    /// Size of this node.
-    pub size: Size,
+    /// Bounds of this node relative to the parent node origin.
+    pub bounds: Rect,
     /// Baseline offset relative to *this* node.
     /// The baseline relative to the parent node is `offset.y + baseline`.
     pub baseline: Option<f64>,
@@ -222,7 +223,7 @@ impl Hash for Measurements {
 impl Default for Measurements {
     fn default() -> Self {
         Measurements {
-            size: (0.0, 0.0).into(),
+            bounds: Rect::zero(),
             baseline: None,
             is_window: false,
         }
@@ -231,9 +232,9 @@ impl Default for Measurements {
 
 impl Measurements {
     /// Creates a new [`Layout`] with the given size, with no offset relative to its parent.
-    pub fn new(size: Size) -> Measurements {
+    pub fn new(bounds: Rect) -> Measurements {
         Measurements {
-            size,
+            bounds,
             baseline: None,
             is_window: false,
         }
@@ -246,21 +247,21 @@ impl Measurements {
     }
 
     pub fn size(&self) -> Size {
-        self.size
+        self.bounds.size
     }
 
     pub fn width(&self) -> f64 {
-        self.size.width
+        self.bounds.size.width
     }
 
     pub fn height(&self) -> f64 {
-        self.size.height
+        self.bounds.size.height
     }
 }
 
-impl From<Size> for Measurements {
-    fn from(s: Size) -> Self {
-        Measurements::new(s)
+impl From<Rect> for Measurements {
+    fn from(bounds: Rect) -> Self {
+        Measurements::new(bounds)
     }
 }
 

@@ -8,6 +8,8 @@ mod menu;
 mod baseline;
 mod slider;
 mod textedit;
+mod drop_down;
+mod align;
 //mod grid;
 //mod slider;
 //mod text;
@@ -21,6 +23,7 @@ pub use menu::{MenuItem, Menu, Action, Shortcut};
 pub use baseline::Baseline;
 pub use slider::Slider;
 pub use textedit::TextEdit;
+pub use drop_down::DropDown;
 
 /*pub use button::{button, ButtonResult};
 pub use container::container;

@@ -42,6 +42,8 @@ pub struct Action {
 }
 
 // FIXME: WM_COMMAND menu ids are 16-bit, so we can exhaust IDs quickly if we keep creating new actions
+// This is not a problem for window menus, which are not expected to change, but for context menus
+// associated to a particular item in a list this could be a problem.
 static ACTION_ID_COUNTER: Counter = Counter::new();
 
 impl Action {

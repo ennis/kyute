@@ -4,14 +4,14 @@ use crate::{BoxConstraints, Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx
 use crate::core2::WindowPaintCtx;
 
 /// A widget that aligns its child according to a fixed baseline.
-pub struct Baseline {
-    inner: WidgetPod,
+pub struct Baseline<Inner> {
+    inner: Inner,
     baseline: f64,
 }
 
 impl Baseline {
     #[composable(uncached)]
-    pub fn new(baseline: f64, inner: WidgetPod) -> WidgetPod<Baseline> {
+    pub fn new(baseline: f64, inner: WidgetPod<Inner>) -> WidgetPod<Baseline> {
         WidgetPod::new(Baseline { inner, baseline })
     }
 }

@@ -150,6 +150,7 @@ pub enum Event<'a> {
     Initialize,
     FocusGained,
     FocusLost,
+    MenuCommand(usize),
     Pointer(PointerEvent),
     Wheel(WheelEvent),
     /// A keyboard event.
