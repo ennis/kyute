@@ -1,4 +1,10 @@
-use crate::{composable, core2::{LayoutCtx, PaintCtx}, theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Rect, Size, Widget, WidgetPod, Point};
+use kyute_shell::drawing::{RectExt, RoundToPixel};
+use crate::{
+    composable,
+    core2::{LayoutCtx, PaintCtx},
+    theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Point, Rect, Size,
+    Widget, WidgetPod,
+};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Axis {
@@ -54,18 +60,36 @@ pub enum MainAxisSize {
     Max,
 }
 
+#[derive(Clone)]
 pub struct Flex {
     axis: Axis,
     items: Vec<WidgetPod>,
 }
 
 impl Flex {
-    #[composable(uncached)]
-    pub fn new(axis: Axis, items: Vec<WidgetPod>) -> WidgetPod<Flex> {
-        WidgetPod::new(Flex { axis, items })
+    pub fn new(axis: Axis) -> Flex {
+        Flex {
+            axis,
+            items: vec![],
+        }
     }
 
+    #[composable(uncached)]
+    pub fn with(mut self, widget: impl Widget + 'static) -> Self {
+        self.append(widget);
+        self
+    }
 
+    #[composable(uncached)]
+    pub fn append(&mut self, widget: impl Widget + 'static) {
+        self.items.push(WidgetPod::new(widget));
+    }
+
+    // TODO remove this, genericize the append method
+    #[composable(uncached)]
+    pub fn append_pod(&mut self, widget: WidgetPod) {
+        self.items.push(widget);
+    }
 }
 
 impl Widget for Flex {
@@ -95,7 +119,7 @@ impl Widget for Flex {
 
         let max_cross_axis_len = item_measures
             .iter()
-            .map(|l| axis.cross_len(l.size()))
+            .map(|m| axis.cross_len(m.size()))
             .fold(0.0, f64::max);
 
         // preferred size of this flex: max size in axis direction, max elem width in cross-axis direction
@@ -111,7 +135,7 @@ impl Widget for Flex {
 
         for i in 0..self.items.len() {
             //eprintln!("flex {:?} item pos {}", self.axis, d);
-            let len = axis.main_len(item_measures[i].size());
+            let len = axis.main_len(item_measures[i].size()).round_to_pixel(ctx.scale_factor);
             let offset = match axis {
                 Axis::Vertical => Offset::new(0.0, d),
                 Axis::Horizontal => Offset::new(d, 0.0),
@@ -126,14 +150,18 @@ impl Widget for Flex {
             Axis::Horizontal => Size::new(constraints.constrain_width(d), cross_axis_len),
         };
 
-        Measurements::new(Rect::new(Point::origin(), size))
+        Measurements::new(Rect::new(Point::origin(), size).round_to_pixel(ctx.scale_factor))
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         //ctx.canvas.clear(kyute_shell::skia::Color4f::new(0.55, 0.55, 0.55, 1.0));
 
         use crate::styling::*;
-        ctx.draw_styled_box(bounds, rectangle().with(fill(theme::FRAME_BG_NORMAL_COLOR)), env);
+        ctx.draw_styled_box(
+            bounds,
+            rectangle().with(fill(theme::FRAME_BG_NORMAL_COLOR)),
+            env,
+        );
 
         for item in self.items.iter() {
             // eprintln!("flex {:?} paint item {:?}", self.axis, item.child_offset());

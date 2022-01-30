@@ -1,5 +1,5 @@
 //! [`Events`](Event) sent to widgets, and related types.
-use crate::{bloom::Bloom, Point, WidgetId, WidgetPod};
+use crate::{bloom::Bloom, Offset, Point, WidgetId, WidgetPod};
 use std::collections::HashMap;
 use winit::event::DeviceId;
 // FIXME: reexport/import from kyute-shell?
@@ -163,6 +163,16 @@ pub enum Event<'a> {
 }
 
 impl<'a> Event<'a> {
+    /// Apply an offset to local pointer events.
+    pub fn apply_offset(&mut self, offset: Offset) {
+        match self {
+            Event::Pointer(p) => {
+                p.position -= offset;
+            }
+            _ => {}
+        }
+    }
+
     pub fn pointer_event(&self) -> Option<&PointerEvent> {
         match self {
             Event::Pointer(p) => Some(p),

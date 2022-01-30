@@ -1,25 +1,32 @@
 //! Baseline alignment.
-use kyute::{Widget, WidgetPod, composable};
-use crate::{BoxConstraints, Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx, Measurements, Offset, PaintCtx, Rect};
-use crate::core2::WindowPaintCtx;
+use crate::{
+    core2::WindowPaintCtx, widget::LayoutWrapper, BoxConstraints, Environment, Event, EventCtx,
+    GpuFrameCtx, LayoutCtx, Measurements, Offset, PaintCtx, Rect, Size,
+};
+use kyute::{composable, Widget, WidgetPod};
+use kyute_shell::drawing::ToSkia;
+use std::cell::Cell;
 
 /// A widget that aligns its child according to a fixed baseline.
+#[derive(Clone)]
 pub struct Baseline<Inner> {
-    inner: Inner,
+    inner: WidgetPod<Inner>,
     baseline: f64,
 }
 
-impl Baseline {
-    #[composable(uncached)]
-    pub fn new(baseline: f64, inner: WidgetPod<Inner>) -> WidgetPod<Baseline> {
-        WidgetPod::new(Baseline { inner, baseline })
+impl<Inner: Widget + 'static> Baseline<Inner> {
+    // Inner? impl Widget?
+    pub fn new(baseline: f64, inner: Inner) -> Baseline<Inner> {
+        Baseline {
+            inner: WidgetPod::new(inner),
+            baseline,
+        }
     }
 }
 
-impl Widget for Baseline {
-
+impl<Inner: Widget> Widget for Baseline<Inner> {
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env)
+        self.inner.event(ctx, event, env);
     }
 
     fn layout(
@@ -28,34 +35,20 @@ impl Widget for Baseline {
         constraints: BoxConstraints,
         env: &Environment,
     ) -> Measurements {
-        let child_measurements = self.inner.layout(ctx, constraints, env);
-
+        let mut m = self.inner.layout(ctx, constraints, env);
         // baselines are not guaranteed to fall on a pixel boundary, round it manually
         // FIXME should do pixel snapping instead
-        let y_offset = (self.baseline
-            - child_measurements
-            .baseline
-            .unwrap_or(child_measurements.size.height))
-            .round();
-
-        self.inner.set_child_offset(Offset::new(0.0, y_offset));
-
-        let width = child_measurements.size.width;
-        let height = child_measurements.size.height + y_offset;
-
-        let measurements = Measurements {
-            size: constraints.constrain((width, height).into()),
-            baseline: Some(self.baseline),
-            is_window: false
-        };
-
-        // TODO: layout() should return an arbitrary box, in local coordinates, not necessarily something
-        // with the origin at the top-left corner.
-        // This way we'd be able to translate the inner widget without the need for a separate widgetpod.
-        measurements
+        let y_offset = (self.baseline - m.baseline.unwrap_or(m.bounds.size.height)).round();
+        let offset = Offset::new(0.0, y_offset);
+        self.inner.set_child_offset(offset);
+        Measurements::new(
+            constraints
+                .constrain(Size::new(m.width(), m.height() + y_offset))
+                .into(),
+        )
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        self.inner.paint(ctx, bounds, env)
+        self.inner.paint(ctx, bounds, env);
     }
 }

@@ -184,6 +184,7 @@ struct CacheInner {
     slots: Vec<Slot>,
     ///
     entries: SlotMap<CacheEntryKey, StateEntry>,
+    /// The number of times `Cache::run` has been called.
     revision: usize,
 }
 
@@ -230,10 +231,10 @@ impl CacheInner {
         let entry = &self.entries[entry_key];
         //trace!("invalidate_dependents_recursive: {:?} node={:#?}", entry_key, entry.call_node);
         //if !entry.dirty.replace(true) {
-            entry.dirty.set(true);
-            for &d in entry.dependents.iter() {
-                self.invalidate_dependents_recursive(d);
-            }
+        entry.dirty.set(true);
+        for &d in entry.dependents.iter() {
+            self.invalidate_dependents_recursive(d);
+        }
         //}
     }
 
@@ -729,13 +730,19 @@ impl Cache {
         }
     }
 
+    /// Returns the revision index (the number of times `run` has been called).
+    pub fn revision(&self) -> usize {
+        self.inner.as_ref().unwrap().revision
+    }
+
     /// Runs a cached function with this cache.
     pub fn run<T>(&mut self, function: impl Fn() -> T) -> T {
         CURRENT_CACHE_CONTEXT.with(move |cx_cell| {
             // We can't put a reference type in a TLS.
-            // As a workaround, use the classic sleight-of-hand:
+            // As a workaround, use the classic sleight of hand:
             // temporarily move our internals out of self and into the TLS, and move it back to self once we've finished.
-            let inner = self.inner.take().unwrap();
+            let mut inner = self.inner.take().unwrap();
+            inner.revision += 1;
 
             // start writing to the cache
             let writer = CacheWriter::new(inner);
@@ -810,6 +817,11 @@ fn with_cache_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
 /// Returns the current call identifier.
 pub fn current_call_id() -> CallId {
     with_cache_cx(|cx| cx.id_stack.current())
+}
+
+/// Returns the current revision.
+pub fn revision() -> usize {
+    with_cache_cx(|cx| cx.writer.cache.revision)
 }
 
 /// Must be called inside `Cache::run`.
@@ -938,7 +950,7 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
             let CacheEntryInsertResult { key, dirty, .. } =
                 cx.writer
                     .get_or_insert_entry(call_id, call_node.clone(), || None);
-           /* if args_changed {
+            /* if args_changed {
                 trace!("memoize: recomputing because arguments have changed {:#?}", call_node);
             }
             if dirty {

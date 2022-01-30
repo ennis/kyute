@@ -1,8 +1,8 @@
 mod color;
 mod path;
 
-use float_cmp::ApproxEqUlps;
 pub use color::Color;
+use float_cmp::ApproxEqUlps;
 pub use path::{Path, PathSegment};
 
 /// The DIP (device-independent pixel) unit.
@@ -38,6 +38,32 @@ pub type Point = euclid::Point2D<f64, Dip>;
 pub type PhysicalPoint = euclid::Point2D<f64, Px>;
 pub type Transform = euclid::Transform2D<f64, Dip, Dip>;
 pub type Length = DipLength;
+
+pub trait RoundToPixel {
+    fn round_to_pixel(&self, scale_factor: f64) -> Self;
+}
+
+// Lengths: round up/down to pixel boundary; round to nearest
+// Rects: round inside/outside
+// Points/Vectors/Offsets: round to nearest pixel boundary
+
+impl RoundToPixel for f64 {
+    fn round_to_pixel(&self, scale_factor: f64) -> Self {
+        (*self * scale_factor).round() * (1.0 / scale_factor)
+    }
+}
+
+impl RoundToPixel for Offset {
+    fn round_to_pixel(&self, scale_factor: f64) -> Self {
+        (*self * scale_factor).round() * (1.0 / scale_factor)
+    }
+}
+
+impl RoundToPixel for Rect {
+    fn round_to_pixel(&self, scale_factor: f64) -> Rect {
+        (*self * scale_factor).round() * (1.0 / scale_factor)
+    }
+}
 
 pub trait RectExt {
     fn stroke_inset(self, width: f64) -> Self;
@@ -97,7 +123,6 @@ impl FuzzyZero for f64 {
 pub trait ToSkia {
     type Target;
     fn to_skia(&self) -> Self::Target;
-
 }
 
 pub trait FromSkia {
@@ -116,7 +141,6 @@ impl ToSkia for Rect {
             bottom: (self.origin.y + self.size.height) as f32,
         }
     }
-
 }
 
 impl FromSkia for Rect {

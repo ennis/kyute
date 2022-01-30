@@ -7,7 +7,6 @@ use std::{
     ops::{Bound, RangeBounds},
     sync::Arc,
 };
-use kyute_shell::skia::rrect::Type::Rect;
 
 /// Box constraints.
 #[derive(Copy, Clone)]
@@ -187,12 +186,12 @@ impl Alignment {
 /// and updates the baseline of the parent.
 pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measurements) -> Offset {
     let parent_pos = Point::new(
-        0.5 * parent.size.width * (1.0 + alignment.x),
-        0.5 * parent.size.height * (1.0 + alignment.y),
+        0.5 * parent.width() * (1.0 + alignment.x),
+        0.5 * parent.height() * (1.0 + alignment.y),
     );
     let child_pos = Point::new(
-        0.5 * child.size.width * (1.0 + alignment.x),
-        0.5 * child.size.height * (1.0 + alignment.y),
+        0.5 * child.width() * (1.0 + alignment.x),
+        0.5 * child.height() * (1.0 + alignment.y),
     );
     let offset = parent_pos - child_pos;
     parent.baseline = child.baseline.map(|baseline| baseline + offset.y);
@@ -203,6 +202,7 @@ pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measu
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Measurements {
     /// Bounds of this node relative to the parent node origin.
+    /// TODO replace with size+anchor point? might be more intuitive
     pub bounds: Rect,
     /// Baseline offset relative to *this* node.
     /// The baseline relative to the parent node is `offset.y + baseline`.
@@ -213,8 +213,10 @@ pub struct Measurements {
 
 impl Hash for Measurements {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.size.width.to_bits().hash(state);
-        self.size.height.to_bits().hash(state);
+        self.bounds.origin.x.to_bits().hash(state);
+        self.bounds.origin.y.to_bits().hash(state);
+        self.bounds.size.width.to_bits().hash(state);
+        self.bounds.size.height.to_bits().hash(state);
         self.baseline.map(|x| x.to_bits()).hash(state);
         self.is_window.hash(state);
     }
@@ -304,7 +306,7 @@ impl LayoutItem {
     }
 
     pub fn size(&self) -> Size {
-        self.0.measurements.size
+        self.0.measurements.size()
     }
 
     pub fn measurements(&self) -> Measurements {
@@ -316,7 +318,7 @@ impl LayoutItem {
     }
 
     pub fn bounds(&self) -> Rect {
-        Rect::new(Point::origin(), self.0.measurements.size)
+        Rect::new(Point::origin(), self.0.measurements.size())
     }
 
     pub fn children(&self) -> &[(Offset, LayoutItem)] {

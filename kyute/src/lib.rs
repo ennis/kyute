@@ -30,7 +30,7 @@ pub mod text;
 //mod style;
 
 pub use cache::{Cache, CacheError, Key};
-pub use core2::{EventCtx, LayoutCtx, PaintCtx, Widget, WidgetPod, WidgetId, GpuFrameCtx};
+pub use core2::{EventCtx, LayoutCtx, PaintCtx, Widget, WidgetPod, WidgetId, GpuFrameCtx, SHOW_DEBUG_OVERLAY};
 pub use data::Data;
 pub use env::{EnvKey, EnvValue, Environment};
 pub use event::{Event, InternalEvent};

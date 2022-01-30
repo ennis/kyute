@@ -23,21 +23,20 @@ pub struct Button {
 //      -> update the button (replace with new instance)
 //
 
-
 impl Button {
     /// Creates a new button with the specified label.
     #[composable]
-    pub fn new(label: String) -> WidgetPod<Button> {
+    pub fn new(label: String) -> Button {
         let clicked_state = cache::state(|| false);
         let clicked = clicked_state.get();
         if clicked {
             clicked_state.set(false);
         }
-        WidgetPod::new(Button {
-            label: Text::new(label),
+        Button {
+            label: WidgetPod::new(Text::new(label)),
             clicked,
             clicked_state,
-        })
+        }
     }
 
     /// Returns whether this button has been clicked.
@@ -91,14 +90,14 @@ impl Widget for Button {
         //trace!("label_measurements={:?}", label_measurements);
 
         // add padding on the sides
-        measurements.size += Size::new(padding.horizontal(), padding.vertical());
+        measurements.bounds.size += Size::new(padding.horizontal(), padding.vertical());
 
         // apply minimum size
-        measurements.size.width = measurements.size.width.max(10.0);
-        measurements.size.height = measurements.size.height.max(10.0);
+        measurements.bounds.size.width = measurements.bounds.size.width.max(10.0);
+        measurements.bounds.size.height = measurements.bounds.size.height.max(10.0);
 
         // constrain size
-        measurements.size = constraints.constrain(measurements.size);
+        measurements.bounds.size = constraints.constrain(measurements.bounds.size);
 
         //trace!("button_measurements={:?}", measurements);
 

@@ -6,10 +6,13 @@ use crate::{
     call_key::CallId,
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
-    BoxConstraints, Data, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect,
+    styling::PaintCtxExt,
+    BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point,
+    Rect,
 };
 use kyute_macros::composable;
 use kyute_shell::{
+    drawing::{Color, Path},
     graal,
     graal::{ash::vk, BufferId, ImageId},
     winit::{event_loop::EventLoopWindowTarget, window::WindowId},
@@ -20,20 +23,31 @@ use std::{
     hash::Hash,
     marker::Unsize,
     ops::{CoerceUnsized, Deref},
+    str::FromStr,
     sync::{Arc, Weak},
 };
 use tracing::{trace, warn};
+
+pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.show_debug_overlay");
 
 /// Context passed to widgets during the layout pass.
 ///
 /// See [`Widget::layout`].
 pub struct LayoutCtx {
+    pub scale_factor: f64,
     changed: bool,
 }
 
 impl LayoutCtx {
-    pub fn new() -> LayoutCtx {
-        LayoutCtx { changed: false }
+    pub fn new(scale_factor: f64) -> LayoutCtx {
+        LayoutCtx {
+            scale_factor,
+            changed: false,
+        }
+    }
+
+    pub fn round_to_pixel(&self, dip_length: f64) -> f64 {
+        (dip_length * self.scale_factor).round()
     }
 }
 
@@ -390,16 +404,14 @@ impl fmt::Debug for WidgetId {
     }
 }
 
-// It would be good to have a visual tree (or quadtree) so that we can do optimized hit-tests and
+/*// TODO It would be good to have a visual tree (or quadtree) so that we can do optimized hit-tests and
 // event delivery.
 struct VisualNode {
     widget: WidgetPod,
     measurements: Measurements,
     children: Vec<Arc<VisualNode>>,
 }
-
-// 1. Use visual tree to determine target ID
-// 2. Build propagation path to target ID (Vec<WidgetPod>)
+*/
 
 #[derive(Copy, Clone, Debug, Hash)]
 struct LayoutResult {
@@ -429,6 +441,12 @@ struct WidgetPodState {
     /// Any pointer hovering this widget
     /// FIXME: handle multiple pointers?
     pointer_over: Cell<bool>,
+
+    /// The revision in which the WidgetPod was created.
+    created: usize,
+    /// Debugging: flag indicating whether this WidgetPod was recreated since the last
+    /// debug paint.
+    created_since_debug_paint: Cell<bool>,
 }
 
 impl WidgetPodState {
@@ -555,7 +573,7 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
             tracing::warn!(id=?self.state.id, "`paint` called with invalid layout");
             return;
         };
-        let size = measurements.size;
+        let size = measurements.size();
         // bounds of this widget in window space
         let window_bounds = Rect::new(ctx.window_bounds.origin + offset, size);
         if !ctx.invalid.intersects(window_bounds) {
@@ -600,6 +618,54 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
             };
             self.widget
                 .paint(&mut child_ctx, Rect::new(Point::origin(), size), env);
+        }
+
+        if !env.get(SHOW_DEBUG_OVERLAY).unwrap_or_default() {
+            use crate::styling::*;
+            use kyute_shell::{drawing::ToSkia, skia as sk};
+
+            if self.state.created_since_debug_paint.take() {
+                ctx.draw_styled_box(
+                    measurements.bounds,
+                    rectangle().with(
+                        border(1.0)
+                            .inside(0.0)
+                            .brush(Color::new(0.9, 0.8, 0.0, 1.0)),
+                    ),
+                    env,
+                );
+                ctx.canvas.draw_line(
+                    Point::new(0.5, 0.5).to_skia(),
+                    Point::new(6.5, 0.5).to_skia(),
+                    &sk::Paint::new(Color::new(1.0, 0.0, 0.0, 1.0).to_skia(), None),
+                );
+                ctx.canvas.draw_line(
+                    Point::new(0.5, 0.5).to_skia(),
+                    Point::new(0.5, 6.5).to_skia(),
+                    &sk::Paint::new(Color::new(0.0, 1.0, 0.0, 1.0).to_skia(), None),
+                );
+
+                {
+                    let w = measurements.bounds.width() as sk::scalar;
+                    let mut font: sk::Font = sk::Font::new(sk::Typeface::default(), Some(10.0));
+                    font.set_edging(sk::font::Edging::Alias);
+                    let text = format!("{}", self.state.created);
+                    let text_blob =
+                        sk::TextBlob::from_str(&text, &font).unwrap();
+                    let text_paint: sk::Paint =
+                        sk::Paint::new(sk::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+                    let bg_paint: sk::Paint =
+                        sk::Paint::new(sk::Color4f::new(0.9, 0.8, 0.0, 1.0), None);
+                    let (_, bounds) = font.measure_str(&text, Some(&text_paint));
+                    ctx.canvas.draw_rect(
+                        sk::Rect::new(w - bounds.width(), 0.0, w, bounds.height()),
+                        &bg_paint,
+                    );
+                    ctx.canvas
+                        .draw_text_blob(text_blob, (w - bounds.width(), -bounds.y()), &text_paint);
+                    //let bounds = Rect::from_skia(bounds);
+                }
+            }
         }
 
         ctx.canvas.restore();
@@ -698,7 +764,7 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
             return;
         };
         let window_position = parent_ctx.window_position + offset;
-        let bounds = Rect::new(window_position, measurements.size);
+        let bounds = Rect::new(window_position, measurements.size());
 
         let modified_event = match event {
             Event::Pointer(pointer_event) => {
@@ -775,7 +841,6 @@ impl fmt::Debug for WidgetPod {
 }
 
 impl<T: Widget + 'static> WidgetPod<T> {
-
     /// Creates a new `WidgetPod` wrapping the specified widget.
     #[composable(uncached)]
     pub fn new(widget: T) -> WidgetPod<T> {
@@ -783,18 +848,9 @@ impl<T: Widget + 'static> WidgetPod<T> {
 
         // HACK: returns false on first call, true on following calls, so we can use that
         // to determine whether the widget has been initialized.
-        let initialized = !cache::changed(()); // false on first call, true on following calls
+        let initialized = !cache::changed(());
+        let created = cache::revision();
 
-        let state = cache::state(|| {
-
-        });
-
-        /*tracing::trace!(
-            "WidgetPod::new[{}-{:?}]: initialized={}",
-            widget.debug_name(),
-            id,
-            initialized
-        );*/
         WidgetPod(Arc::new_cyclic(|this: &Weak<WidgetPodInner<T>>| {
             WidgetPodInner {
                 state: WidgetPodState {
@@ -808,6 +864,8 @@ impl<T: Widget + 'static> WidgetPod<T> {
                     // we don't know if all children have been initialized
                     children_initialized: Cell::new(false),
                     pointer_over: Cell::new(false),
+                    created,
+                    created_since_debug_paint: Cell::new(true),
                 },
                 widget,
             }
@@ -871,8 +929,16 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
 
     /// Computes the layout of this widget and its children. Returns the measurements, and whether
     /// the measurements have changed since last layout.
-    pub fn relayout(&self, constraints: BoxConstraints, env: &Environment) -> (Measurements, bool) {
-        let mut ctx = LayoutCtx { changed: false };
+    pub fn relayout(
+        &self,
+        constraints: BoxConstraints,
+        scale_factor: f64,
+        env: &Environment,
+    ) -> (Measurements, bool) {
+        let mut ctx = LayoutCtx {
+            scale_factor,
+            changed: false,
+        };
         let measurements = self.layout(&mut ctx, constraints, env);
         (measurements, ctx.changed)
     }

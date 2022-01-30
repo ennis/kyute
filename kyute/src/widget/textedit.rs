@@ -104,7 +104,7 @@ impl TextEdit {
     pub fn with_selection(
         formatted_text: impl Into<FormattedText>,
         selection: Selection,
-    ) -> WidgetPod<TextEdit> {
+    ) -> TextEdit {
         let editing_finished = cache::state(|| None);
         let text_changed = cache::state(|| None);
         let selection_changed = cache::state(|| None);
@@ -116,7 +116,7 @@ impl TextEdit {
             selection
         );
 
-        WidgetPod::new(TextEdit {
+        TextEdit {
             formatted_text,
             selection,
             content_offset: Default::default(),
@@ -125,12 +125,12 @@ impl TextEdit {
             editing_finished,
             text_changed,
             paragraph: RefCell::new(None),
-        })
+        }
     }
 
     /// Use if you don't care about the selection.
     #[composable(uncached)]
-    pub fn new(formatted_text: impl Into<FormattedText>) -> WidgetPod<TextEdit> {
+    pub fn new(formatted_text: impl Into<FormattedText>) -> TextEdit {
         let selection = cache::state(|| Selection::empty(0));
         let text_edit = Self::with_selection(formatted_text, selection.get());
 
@@ -292,7 +292,7 @@ impl Widget for TextEdit {
         self.paragraph.replace(Some(paragraph));
 
         Measurements {
-            size,
+            bounds: size.into(),
             baseline: Some(baseline),
             is_window: false,
         }

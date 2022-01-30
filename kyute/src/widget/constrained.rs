@@ -1,26 +1,22 @@
 use crate::{
     align_boxes, core2::WindowPaintCtx, layout::BoxConstraints, widget::LayoutWrapper, Alignment,
     Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx, Measurements, Offset, PaintCtx, Rect,
-    Widget, WidgetPod,
+    Widget,
 };
-use kyute_shell::drawing::ToSkia;
 use std::cell::Cell;
 
-pub struct Align<W> {
-    alignment: Alignment,
-    inner: WidgetPod<W>,
+pub struct ConstrainedBox<W> {
+    constraints: BoxConstraints,
+    inner: W,
 }
 
-impl<W> Align<W> {
-    pub fn new(alignment: Alignment, inner: WidgetPod<W>) -> Align<W> {
-        Align {
-            alignment,
-            inner
-        }
+impl<W> ConstrainedBox<W> {
+    pub fn new(constraints: BoxConstraints, inner: W) -> ConstrainedBox<W> {
+        ConstrainedBox { constraints, inner }
     }
 }
 
-impl<W: Widget> Widget for Align<W> {
+impl<W: Widget> Widget for ConstrainedBox<W> {
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.inner.event(ctx, event, env);
     }
@@ -31,11 +27,8 @@ impl<W: Widget> Widget for Align<W> {
         constraints: BoxConstraints,
         env: &Environment,
     ) -> Measurements {
-        let child_measurements = self.inner.layout(ctx, constraints.loosen(), env);
-        let mut m = Measurements::new(constraints.constrain(child_measurements.size()).into());
-        let offset = align_boxes(self.alignment, &mut m, child_measurements);
-        self.inner.set_child_offset(offset);
-        m
+        let constraints = constraints.enforce(&self.constraints);
+        self.inner.layout(ctx, constraints, env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {

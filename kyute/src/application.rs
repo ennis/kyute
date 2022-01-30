@@ -105,18 +105,18 @@ fn eval_root_widget(
     root_widget
 }
 
-pub fn run(ui: fn() -> WidgetPod) {
+pub fn run(ui: fn() -> WidgetPod, env: Environment) {
     let mut event_loop = EventLoop::new();
     let mut app_ctx = AppCtx::new();
-    let root_env = theme::get_default_application_style();
 
     // initial evaluation of the root widget in the main UI cache.
-    let mut root_widget = eval_root_widget(&mut app_ctx, &event_loop, &root_env, ui);
+    let mut root_widget = eval_root_widget(&mut app_ctx, &event_loop, &env, ui);
 
     // run event loop
     event_loop.run(move |event, elwt, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
+            // --- WINDOW EVENT PROCESSING ---------------------------------------------------------
             winit::event::Event::WindowEvent {
                 window_id,
                 event: winit_event,
@@ -127,32 +127,43 @@ pub fn run(ui: fn() -> WidgetPod) {
                             &mut root_widget,
                             elwt,
                             Event::Internal(InternalEvent::RouteWindowEvent { target, event }),
-                            &root_env,
+                            &env,
                         );
                     }
                 } else {
                     tracing::warn!("unregistered window id: {:?}", window_id);
                 }
             }
+            // --- RECOMPOSITION -------------------------------------------------------------------
+            // happens after window event processing
+            winit::event::Event::MainEventsCleared => {
+                // Re-evaluate the root widget.
+                // If no state variable in the cache has changed (because of an event), then it will simply
+                // return the same root widget.
+
+                // 1st eval: run event handlers
+                // 2nd eval: reflect new state of UI
+                //tracing::trace!("1st recomp");
+                root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
+                //tracing::trace!("2nd recomp");
+                root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
+            }
+            // --- REPAINT -------------------------------------------------------------------------
+            // happens after recomposition
             winit::event::Event::RedrawRequested(window_id) => {
                 if let Some(&target) = app_ctx.windows.get(&window_id) {
                     root_widget.send_root_event(
                         &mut app_ctx,
                         elwt,
                         &mut Event::Internal(InternalEvent::RouteRedrawRequest(target)),
-                        &root_env,
+                        &env,
                     )
                 } else {
                     tracing::warn!("unregistered window id: {:?}", window_id);
                 }
             }
-            winit::event::Event::MainEventsCleared => {}
             _ => (),
         }
 
-        // Re-evaluate the root widget.
-        // If no state variable in the cache has changed (because of an event), then it will simply
-        // return the same root widget.
-        root_widget = eval_root_widget(&mut app_ctx, elwt, &root_env, ui);
     })
 }

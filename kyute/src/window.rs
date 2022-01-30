@@ -22,6 +22,7 @@ use kyute_shell::{
 };
 use std::{cell::RefCell, collections::HashMap, env, mem, sync::Arc, time::Instant};
 use tracing::trace;
+use kyute_shell::drawing::RoundToPixel;
 
 fn key_code_from_winit(
     input: &winit::event::KeyboardInput,
@@ -655,11 +656,7 @@ impl Window {
     ///
     /// TODO: explain subtleties
     #[composable(uncached)]
-    pub fn new(
-        window_builder: WindowBuilder,
-        contents: WidgetPod,
-        menu: Option<Menu>,
-    ) -> WidgetPod<Window> {
+    pub fn new(window_builder: WindowBuilder, contents: WidgetPod, menu: Option<Menu>) -> Window {
         // create the initial window state
         // we don't want to recreate it every time, so it only depends on the call ID.
         let window_state = cache::once(move || {
@@ -688,10 +685,10 @@ impl Window {
         }
         // TODO update title, size, position, etc.
 
-        WidgetPod::new(Window {
+        Window {
             window_state,
             contents,
-        })
+        }
     }
 
     /// Hot mess responsible for rendering the contents of the window with vulkan and skia.
@@ -941,8 +938,11 @@ impl Widget for Window {
 
                 // perform initial layout of contents
                 let (width, height): (f64, f64) = window.window().inner_size().into();
-                self.contents
-                    .relayout(BoxConstraints::new(0.0..width, 0.0..height), env);
+                self.contents.relayout(
+                    BoxConstraints::new(0.0..width, 0.0..height),
+                    window.window().scale_factor(),
+                    env,
+                );
 
                 // update window state
                 window_state.scale_factor = window.window().scale_factor();
@@ -978,19 +978,23 @@ impl Widget for Window {
 
         let mut window_state = self.window_state.borrow_mut();
         if let Some(ref mut window) = window_state.window {
-            let (width, height): (f64, f64) = window.window().inner_size().into();
+            let winit_window = window.window();
+            let (width, height): (f64, f64) = winit_window.inner_size().into();
 
-            let mut m_window = Measurements::new(Size::new(width, height));
-            let (m_content, layout_changed) = self
-                .contents
-                .relayout(BoxConstraints::new(0.0..width, 0.0..height), &env);
+            let scale_factor = winit_window.scale_factor();
+            let mut m_window = Measurements::new(Size::new(width, height).into());
+            let (m_content, layout_changed) = self.contents.relayout(
+                BoxConstraints::new(0.0..width, 0.0..height),
+                scale_factor,
+                &env,
+            );
             if layout_changed {
-                let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content);
+                let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content).round_to_pixel(scale_factor);
                 self.contents.set_child_offset(offset);
             }
 
             if self.contents.invalidated() {
-                window.window().request_redraw()
+                winit_window.request_redraw()
             }
         }
     }
@@ -1002,7 +1006,7 @@ impl Widget for Window {
         env: &Environment,
     ) -> Measurements {
         Measurements {
-            size: Default::default(),
+            bounds: Default::default(),
             baseline: None,
             is_window: true,
         }

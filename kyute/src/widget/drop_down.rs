@@ -30,9 +30,9 @@ pub struct DropDown<T: Data + Display> {
 impl<T: Data + Display> DropDown<T> {
     /// Creates a new drop down with the specified choices.
     #[composable(uncached)]
-    pub fn new(choices: Vec<T>, selected_index: usize) -> WidgetPod<DropDown<T>> {
+    pub fn new(choices: Vec<T>, selected_index: usize) -> DropDown<T> {
         let new_selected_item = cache::state(|| None);
-        let label = Text::new(format!("{}", choices[selected_index]));
+        let label = WidgetPod::new(Text::new(format!("{}", choices[selected_index])));
 
         // create menu IDs for each choice
         let mut choices_with_ids = Vec::new();
@@ -43,12 +43,12 @@ impl<T: Data + Display> DropDown<T> {
             })
         }
 
-        WidgetPod::new(DropDown {
+        DropDown {
             choices: choices_with_ids,
             selected_index,
             label,
             new_selected_item,
-        })
+        }
     }
 
     /// Returns whether TODO.
@@ -86,7 +86,7 @@ impl<T: Data + Display> Widget for DropDown<T> {
             Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerDown if p.button == Some(PointerButton::RIGHT) => {
                     // show the context menu
-                    ctx.track_popup_menu(self.create_context_menu(), p.window_position):
+                    ctx.track_popup_menu(self.create_context_menu(), p.window_position);
                     ctx.request_redraw();
                     ctx.set_handled();
                 }

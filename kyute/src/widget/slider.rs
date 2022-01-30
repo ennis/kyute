@@ -83,20 +83,21 @@ impl Slider {
     /// * `min` - lower bound of the slider range
     /// * `max` - upper bound of the slider range
     /// * `initial` - initial value of the slider.
-    #[composable]
-    pub fn new(min: f64, max: f64, initial_value: f64) -> WidgetPod<Slider> {
+    #[composable(uncached)]
+    pub fn new(min: f64, max: f64, initial_value: f64) -> Slider {
         let initial_value = initial_value.clamp(min, max);
         let value_key = cache::state(|| initial_value);
         let value = value_key.get();
-        WidgetPod::new(Slider {
+        Slider {
             // endpoints calculated during layout
             track: Default::default(),
             value,
             value_key,
             min,
             max,
-        })
+        }
     }
+
     /// Returns the current value, normalized between 0 and 1.
     fn value_norm(&self) -> f64 {
         (self.value - self.min) / (self.max - self.min)
@@ -177,7 +178,7 @@ impl Widget for Slider {
         });
 
         Measurements {
-            size,
+            bounds: size.into(),
             baseline: None,
             is_window: false,
         }
