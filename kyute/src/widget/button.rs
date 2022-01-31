@@ -82,7 +82,7 @@ impl Widget for Button {
     ) -> Measurements {
         // measure the label inside
         let padding = SideOffsets::new_all_same(4.0);
-        let content_constraints = constraints.deflate(&padding);
+        let content_constraints = constraints.deflate(padding);
 
         let label_measurements = self.label.layout(ctx, content_constraints, env);
         let mut measurements = label_measurements;

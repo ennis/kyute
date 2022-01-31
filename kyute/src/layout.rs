@@ -86,14 +86,14 @@ impl BoxConstraints {
         }
     }
 
-    pub fn enforce(&self, other: &BoxConstraints) -> BoxConstraints {
+    pub fn enforce(&self, other: BoxConstraints) -> BoxConstraints {
         BoxConstraints {
             min: self.min.max(other.min),
             max: self.max.min(other.max),
         }
     }
 
-    pub fn deflate(&self, insets: &SideOffsets) -> BoxConstraints {
+    pub fn deflate(&self, insets: SideOffsets) -> BoxConstraints {
         let max_w = self.max.width - insets.horizontal();
         let max_h = self.max.height - insets.vertical();
 
@@ -258,6 +258,12 @@ impl Measurements {
 
     pub fn height(&self) -> f64 {
         self.bounds.size.height
+    }
+
+    pub fn constrain(&self, constraints: BoxConstraints) -> Measurements {
+        let mut m = self.clone();
+        m.bounds.size = constraints.constrain(m.bounds.size);
+        m
     }
 }
 

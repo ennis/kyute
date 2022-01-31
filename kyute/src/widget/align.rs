@@ -1,7 +1,7 @@
 use crate::{
     align_boxes, core2::WindowPaintCtx, layout::BoxConstraints, widget::LayoutWrapper, Alignment,
     Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx, Measurements, Offset, PaintCtx, Rect,
-    Widget, WidgetPod,
+    Widget, WidgetPod, composable
 };
 use kyute_shell::drawing::ToSkia;
 use std::cell::Cell;
@@ -11,11 +11,12 @@ pub struct Align<W> {
     inner: WidgetPod<W>,
 }
 
-impl<W> Align<W> {
-    pub fn new(alignment: Alignment, inner: WidgetPod<W>) -> Align<W> {
+impl<W: Widget+'static> Align<W> {
+    #[composable(uncached)]
+    pub fn new(alignment: Alignment, inner: W) -> Align<W> {
         Align {
             alignment,
-            inner
+            inner: WidgetPod::new(inner)
         }
     }
 }

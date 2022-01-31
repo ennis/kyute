@@ -1,12 +1,12 @@
-use kyute_shell::drawing::{RectExt, RoundToPixel};
 use crate::{
     composable,
     core2::{LayoutCtx, PaintCtx},
-    theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Point, Rect, Size,
-    Widget, WidgetPod,
+    theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Orientation, Point,
+    Rect, Size, Widget, WidgetPod,
 };
+use kyute_shell::drawing::{RectExt, RoundToPixel};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+/*#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Axis {
     Horizontal,
     Vertical,
@@ -32,6 +32,20 @@ impl Axis {
             Axis::Vertical => size.width,
             Axis::Horizontal => size.height,
         }
+    }
+}*/
+
+pub fn main_axis_length(orientation: Orientation, size: Size) -> f64 {
+    match orientation {
+        Orientation::Vertical => size.height,
+        Orientation::Horizontal => size.width,
+    }
+}
+
+pub fn cross_axis_length(orientation: Orientation, size: Size) -> f64 {
+    match orientation {
+        Orientation::Vertical => size.width,
+        Orientation::Horizontal => size.height,
     }
 }
 
@@ -62,14 +76,14 @@ pub enum MainAxisSize {
 
 #[derive(Clone)]
 pub struct Flex {
-    axis: Axis,
+    axis_orientation: Orientation,
     items: Vec<WidgetPod>,
 }
 
 impl Flex {
-    pub fn new(axis: Axis) -> Flex {
+    pub fn new(axis_orientation: Orientation) -> Flex {
         Flex {
-            axis,
+            axis_orientation,
             items: vec![],
         }
     }
@@ -109,8 +123,6 @@ impl Widget for Flex {
         constraints: BoxConstraints,
         env: &Environment,
     ) -> Measurements {
-        let axis = self.axis;
-
         let item_measures: Vec<Measurements> = self
             .items
             .iter()
@@ -119,13 +131,13 @@ impl Widget for Flex {
 
         let max_cross_axis_len = item_measures
             .iter()
-            .map(|m| axis.cross_len(m.size()))
+            .map(|m| cross_axis_length(self.axis_orientation, m.size()))
             .fold(0.0, f64::max);
 
         // preferred size of this flex: max size in axis direction, max elem width in cross-axis direction
-        let cross_axis_len = match axis {
-            Axis::Vertical => constraints.constrain_width(max_cross_axis_len),
-            Axis::Horizontal => constraints.constrain_height(max_cross_axis_len),
+        let cross_axis_len = match self.axis_orientation {
+            Orientation::Vertical => constraints.constrain_width(max_cross_axis_len),
+            Orientation::Horizontal => constraints.constrain_height(max_cross_axis_len),
         };
 
         // distribute children
@@ -135,19 +147,20 @@ impl Widget for Flex {
 
         for i in 0..self.items.len() {
             //eprintln!("flex {:?} item pos {}", self.axis, d);
-            let len = axis.main_len(item_measures[i].size()).round_to_pixel(ctx.scale_factor);
-            let offset = match axis {
-                Axis::Vertical => Offset::new(0.0, d),
-                Axis::Horizontal => Offset::new(d, 0.0),
+            let len = main_axis_length(self.axis_orientation, item_measures[i].size())
+                .round_to_pixel(ctx.scale_factor);
+            let offset = match self.axis_orientation {
+                Orientation::Vertical => Offset::new(0.0, d),
+                Orientation::Horizontal => Offset::new(d, 0.0),
             };
             self.items[i].set_child_offset(offset);
             d += len + spacing;
             d = d.ceil();
         }
 
-        let size = match axis {
-            Axis::Vertical => Size::new(cross_axis_len, constraints.constrain_height(d)),
-            Axis::Horizontal => Size::new(constraints.constrain_width(d), cross_axis_len),
+        let size = match self.axis_orientation {
+            Orientation::Vertical => Size::new(cross_axis_len, constraints.constrain_height(d)),
+            Orientation::Horizontal => Size::new(constraints.constrain_width(d), cross_axis_len),
         };
 
         Measurements::new(Rect::new(Point::origin(), size).round_to_pixel(ctx.scale_factor))

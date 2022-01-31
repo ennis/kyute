@@ -859,6 +859,9 @@ impl Window {
                     let mut invalid = Region::new();
                     invalid.add_rect(window_bounds);
 
+                    // clear to default bg color
+                    canvas.clear(skia::Color4f::new(0.0, 0.0, 0.0, 1.0));
+
                     let mut paint_ctx = PaintCtx {
                         canvas,
                         id,

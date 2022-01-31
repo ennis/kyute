@@ -47,7 +47,7 @@ pub fn generate_composable(
         quote! {
             #[track_caller]
             #(#attrs)* #vis #sig {
-                ::#CRATE::cache::scoped(0, move || #return_type {
+                ::#CRATE::cache::scoped(0, move || {
                     #orig_block
                 })
             }

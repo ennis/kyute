@@ -7,8 +7,9 @@ use crate::{
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
     styling::PaintCtxExt,
-    BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point,
-    Rect,
+    widget::{Align, ConstrainedBox},
+    Alignment, BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements,
+    Offset, Point, Rect, Size,
 };
 use kyute_macros::composable;
 use kyute_shell::{
@@ -22,7 +23,7 @@ use std::{
     fmt,
     hash::Hash,
     marker::Unsize,
-    ops::{CoerceUnsized, Deref},
+    ops::{CoerceUnsized, Deref, RangeBounds},
     str::FromStr,
     sync::{Arc, Weak},
 };
@@ -387,6 +388,52 @@ pub trait Widget {
     fn gpu_frame<'a, 'b>(&'a self, _ctx: &mut GpuFrameCtx<'a, 'b>) {}
 }
 
+/// Extension methods on widgets.
+pub trait WidgetExt: Widget + Sized + 'static {
+    /// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
+    #[composable(uncached)]
+    fn constrain_width(self, width: impl RangeBounds<f64>) -> ConstrainedBox<Self> {
+        ConstrainedBox::new(BoxConstraints::new(width, ..), self)
+    }
+
+    /// Wraps the widget in a `ConstrainedBox` that constrains the height of the widget.
+    #[composable(uncached)]
+    fn constrain_height(self, height: impl RangeBounds<f64>) -> ConstrainedBox<Self> {
+        ConstrainedBox::new(BoxConstraints::new(.., height), self)
+    }
+
+    /// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
+    #[composable(uncached)]
+    fn fix_width(self, width: f64) -> ConstrainedBox<Self> {
+        ConstrainedBox::new(BoxConstraints::new(width..width, ..), self)
+    }
+
+    /// Wraps the widget in a `ConstrainedBox` that constrains the height of the widget.
+    #[composable(uncached)]
+    fn fix_height(self, height: f64) -> ConstrainedBox<Self> {
+        ConstrainedBox::new(BoxConstraints::new(.., height..height), self)
+    }
+    /// Wraps the widget in a `ConstrainedBox` that constrains the size of the widget.
+    #[composable(uncached)]
+    fn fix_size(self, size: Size) -> ConstrainedBox<Self> {
+        ConstrainedBox::new(BoxConstraints::tight(size), self)
+    }
+
+    /// Centers the widget in the available space.
+    #[composable(uncached)]
+    fn centered(self) -> Align<Self> {
+        Align::new(Alignment::CENTER, self)
+    }
+
+    /// Aligns the widget in the available space.
+    #[composable(uncached)]
+    fn aligned(self, alignment: Alignment) -> Align<Self> {
+        Align::new(alignment, self)
+    }
+}
+
+impl<W: Widget + 'static> WidgetExt for W {}
+
 /// ID of a node in the tree.
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(transparent)]
@@ -403,15 +450,6 @@ impl fmt::Debug for WidgetId {
         write!(f, "{:04X}", self.0.to_u64())
     }
 }
-
-/*// TODO It would be good to have a visual tree (or quadtree) so that we can do optimized hit-tests and
-// event delivery.
-struct VisualNode {
-    widget: WidgetPod,
-    measurements: Measurements,
-    children: Vec<Arc<VisualNode>>,
-}
-*/
 
 #[derive(Copy, Clone, Debug, Hash)]
 struct LayoutResult {
@@ -620,7 +658,7 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
                 .paint(&mut child_ctx, Rect::new(Point::origin(), size), env);
         }
 
-        if !env.get(SHOW_DEBUG_OVERLAY).unwrap_or_default() {
+        /*if !env.get(SHOW_DEBUG_OVERLAY).unwrap_or_default() {
             use crate::styling::*;
             use kyute_shell::{drawing::ToSkia, skia as sk};
 
@@ -666,7 +704,7 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
                     //let bounds = Rect::from_skia(bounds);
                 }
             }
-        }
+        }*/
 
         ctx.canvas.restore();
         self.state.paint_invalid.set(false);
