@@ -2,18 +2,16 @@ use crate::{
     application::AppCtx,
     bloom::Bloom,
     cache,
-    cache::{Cache, Key},
+    cache::Key,
     call_key::CallId,
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
-    style::PaintCtxExt,
     widget::{Align, ConstrainedBox},
     Alignment, BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements,
     Offset, Point, Rect, Size,
 };
 use kyute_macros::composable;
 use kyute_shell::{
-    drawing::{Color, Path},
     graal,
     graal::{ash::vk, BufferId, ImageId},
     winit::{event_loop::EventLoopWindowTarget, window::WindowId},
@@ -24,7 +22,6 @@ use std::{
     hash::Hash,
     marker::Unsize,
     ops::{CoerceUnsized, Deref, RangeBounds},
-    str::FromStr,
     sync::{Arc, Weak},
 };
 use tracing::{trace, warn};
@@ -139,7 +136,7 @@ pub struct FocusState {
     pub(crate) popup_target: Option<WidgetId>,
 }
 
-impl FocusState {
+/*impl FocusState {
     pub fn new() -> FocusState {
         FocusState {
             focus: None,
@@ -148,7 +145,7 @@ impl FocusState {
             popup_target: None,
         }
     }
-}
+}*/
 
 pub struct EventCtx<'a> {
     pub(crate) app_ctx: &'a mut AppCtx,
@@ -598,7 +595,7 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
         measurements
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
         /*if !self.0.paint_invalid.get() {
             // no need to repaint
             return;

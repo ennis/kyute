@@ -1,10 +1,8 @@
 use crate::{
-    align_boxes, composable, core2::WindowPaintCtx, layout::BoxConstraints, widget::LayoutWrapper,
-    Alignment, Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx, Measurements, Offset,
-    PaintCtx, Rect, Size, Widget, WidgetPod,
+    composable, layout::BoxConstraints,
+    Alignment, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
+    PaintCtx, Rect, Widget, WidgetPod,
 };
-use kyute_shell::drawing::ToSkia;
-use std::cell::Cell;
 
 pub struct Align<W> {
     alignment: Alignment,

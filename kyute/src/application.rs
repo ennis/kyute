@@ -3,7 +3,7 @@
 //! Provides the `run_application` function that opens the main window and translates the incoming
 //! events from winit into the events expected by kyute.
 use crate::{
-    cache::Key, core2::WidgetId, theme, Cache, Environment, Event, InternalEvent, WidgetPod,
+    cache::Key, core2::WidgetId, Cache, Environment, Event, InternalEvent, WidgetPod,
 };
 use kyute_shell::{
     winit,
@@ -26,8 +26,6 @@ pub struct AppCtx {
     ///
     /// Stores cached copies of widgets and state variables.
     pub(crate) cache: Cache,
-    pub(crate) should_relayout: bool,
-    pub(crate) should_redraw: bool,
     pub(crate) pending_events: Vec<Event<'static>>,
 }
 
@@ -37,8 +35,6 @@ impl AppCtx {
         AppCtx {
             windows: HashMap::new(),
             cache: Cache::new(),
-            should_relayout: false,
-            should_redraw: false,
             pending_events: vec![],
         }
     }
@@ -55,11 +51,6 @@ impl AppCtx {
                 entry.insert(widget_id);
             }
         }
-    }
-
-    /// Sets the value of the state variable identified by `key` in the main UI cache.
-    pub(crate) fn set_state<T: 'static>(&mut self, key: Key<T>, value: T) {
-        self.cache.set_state(key, value);
     }
 
     pub fn post_event(&mut self, event: Event<'static>) {
@@ -106,7 +97,7 @@ fn eval_root_widget(
 }
 
 pub fn run(ui: fn() -> WidgetPod, env: Environment) {
-    let mut event_loop = EventLoop::new();
+    let event_loop = EventLoop::new();
     let mut app_ctx = AppCtx::new();
 
     // initial evaluation of the root widget in the main UI cache.
@@ -144,7 +135,7 @@ pub fn run(ui: fn() -> WidgetPod, env: Environment) {
                 // 1st eval: run event handlers
                 // 2nd eval: reflect new state of UI
                 //tracing::trace!("1st recomp");
-                root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
+                eval_root_widget(&mut app_ctx, elwt, &env, ui);
                 //tracing::trace!("2nd recomp");
                 root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
             }

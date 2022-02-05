@@ -1,7 +1,6 @@
 use crate::{
-    composable, layout::Measurements, style::Length, text::resolve_range, BoxConstraints, Data,
-    EnvKey, Environment, Event, EventCtx, LayoutCtx, Offset, PaintCtx, Rect, Size, Widget,
-    WidgetPod,
+    composable, layout::Measurements, BoxConstraints, EnvKey, Environment, Event, EventCtx,
+    LayoutCtx, Offset, PaintCtx, Rect, Size, Widget, WidgetPod,
 };
 use kyute::Point;
 use kyute_shell::drawing::{Color, ToSkia};
@@ -51,12 +50,12 @@ pub struct GridItem {
 }
 
 impl GridItem {
-    fn track_span(&self, axis: TrackAxis) -> Range<usize> {
+    /*fn track_span(&self, axis: TrackAxis) -> Range<usize> {
         match axis {
             TrackAxis::Row => self.row_range.clone(),
             TrackAxis::Column => self.column_range.clone(),
         }
-    }
+    }*/
 
     fn is_in_track(&self, axis: TrackAxis, index: usize) -> bool {
         match axis {
@@ -71,19 +70,19 @@ pub trait GridSpan {
 }
 
 impl GridSpan for usize {
-    fn resolve(&self, len: usize) -> Range<usize> {
+    fn resolve(&self, _len: usize) -> Range<usize> {
         *self..*self + 1
     }
 }
 
 impl GridSpan for Range<usize> {
-    fn resolve(&self, len: usize) -> Range<usize> {
+    fn resolve(&self, _len: usize) -> Range<usize> {
         self.clone()
     }
 }
 
 impl GridSpan for RangeInclusive<usize> {
-    fn resolve(&self, len: usize) -> Range<usize> {
+    fn resolve(&self, _len: usize) -> Range<usize> {
         *self.start()..*self.end() + 1
     }
 }
@@ -95,13 +94,13 @@ impl GridSpan for RangeFrom<usize> {
 }
 
 impl GridSpan for RangeTo<usize> {
-    fn resolve(&self, len: usize) -> Range<usize> {
+    fn resolve(&self, _len: usize) -> Range<usize> {
         0..self.end
     }
 }
 
 impl GridSpan for RangeToInclusive<usize> {
-    fn resolve(&self, len: usize) -> Range<usize> {
+    fn resolve(&self, _len: usize) -> Range<usize> {
         0..(self.end + 1)
     }
 }
@@ -296,7 +295,9 @@ impl Grid {
 
 impl Widget for Grid {
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        // TODO
+        for item in self.items.iter() {
+            item.widget.event(ctx, event, env);
+        }
     }
 
     fn layout(

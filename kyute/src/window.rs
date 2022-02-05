@@ -1,14 +1,13 @@
 use crate::{
     align_boxes, cache, composable,
-    core2::{FocusState, GpuResourceReferences, WindowInfo},
+    core2::{FocusState, GpuResourceReferences},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind},
     graal,
     graal::{vk::Handle, MemoryLocation},
     region::Region,
-    theme,
     widget::{Action, Menu},
-    Alignment, BoxConstraints, Cache, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
-    Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetId, WidgetPod,
+    Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
+    Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetPod,
 };
 use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
@@ -610,7 +609,7 @@ impl WindowState {
                             &mut self.focus_state,
                         );
                         content_widget.event(
-                            parent_ctx,
+                            &mut content_ctx,
                             &mut Event::Internal(InternalEvent::RouteEvent {
                                 target: focus,
                                 event: Box::new(event),
@@ -960,7 +959,7 @@ impl Widget for Window {
             Event::WindowRedrawRequest => self.do_redraw(ctx, env),
             _ => {
                 let mut window_state = self.window_state.borrow_mut();
-                let mut window_state = &mut *window_state; // hrmpf...
+                let window_state = &mut *window_state; // hrmpf...
 
                 if let Some(window) = window_state.window.as_mut() {
                     let mut content_ctx = EventCtx::new_subwindow(

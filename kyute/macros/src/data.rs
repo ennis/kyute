@@ -45,7 +45,7 @@ pub enum FieldIdent {
     Unnamed(usize),
 }
 
-impl FieldIdent {
+/*impl FieldIdent {
     pub fn unwrap_named(&self) -> syn::Ident {
         if let FieldIdent::Named(s) = self {
             syn::Ident::new(&s, Span::call_site())
@@ -53,7 +53,7 @@ impl FieldIdent {
             panic!("Unwrap named called on unnamed FieldIdent");
         }
     }
-}
+}*/
 
 #[derive(Debug)]
 pub struct Field<Attrs> {
@@ -203,7 +203,7 @@ fn parse_lit_into_expr_path(lit: &syn::Lit) -> Result<ExprPath, Error> {
     syn::parse2(tokens)
 }
 
-fn parse_lit_into_ident(lit: &syn::Lit) -> Result<Ident, Error> {
+/*fn parse_lit_into_ident(lit: &syn::Lit) -> Result<Ident, Error> {
     let ident = if let syn::Lit::Str(lit) = lit {
         Ident::new(&lit.value(), lit.span())
     } else {
@@ -214,7 +214,7 @@ fn parse_lit_into_ident(lit: &syn::Lit) -> Result<Ident, Error> {
     };
 
     Ok(ident)
-}
+}*/
 
 pub(crate) fn derive_data_impl(
     input: syn::DeriveInput,

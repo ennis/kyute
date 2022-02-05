@@ -1,6 +1,6 @@
 use crate::{
-    align_boxes, composable,
-    style::{Border, NullVisual, PaintCtxExt, Style, Visual},
+    composable,
+    style::{NullVisual, PaintCtxExt, Visual},
     Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
     PaintCtx, Point, Rect, SideOffsets, Size, Widget, WidgetPod,
 };
@@ -119,7 +119,7 @@ impl<V: Visual, Content: Widget> Widget for Container<V, Content> {
         // basically: do we stretch or do we size to contents?
         // -> if we have alignment and we are bounded: stretch
         // -> otherwise (if we don't have alignment, or we are unbounded): size to contents
-        let size = if let Some(alignment) = self.alignment {
+        let size = if self.alignment.is_some() {
             let w = if constraints.max_width().is_finite() {
                 // alignment specified, finite width bounds: expand to fill
                 constraints.max_width()

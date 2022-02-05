@@ -1,16 +1,15 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
+use std::cell::Cell;
 use crate::{
-    cache, composable,
-    core2::{Widget, WindowPaintCtx},
+    composable,
+    Widget,
     event::{Event, PointerEventKind},
-    state::Signal,
+    Signal,
     style::PaintCtxExt,
-    theme, BoxConstraints, Cache, Environment, EventCtx, GpuFrameCtx, Key, LayoutCtx, Measurements,
-    PaintCtx, Point, Rect, SideOffsets, Size, WidgetPod,
+    theme, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements,
+    PaintCtx, Point, Rect, SideOffsets, Size,
 };
-use kyute_shell::drawing::Path;
-use std::{any::Any, cell::Cell, str::FromStr};
 use tracing::trace;
 
 /// Utility class representing a slider track on which a knob can move.
@@ -157,7 +156,7 @@ impl Widget for Slider {
 
     fn layout(
         &self,
-        ctx: &mut LayoutCtx,
+        _ctx: &mut LayoutCtx,
         constraints: BoxConstraints,
         env: &Environment,
     ) -> Measurements {
@@ -194,7 +193,7 @@ impl Widget for Slider {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
         use crate::style::*;
 
         let background_gradient = linear_gradient()

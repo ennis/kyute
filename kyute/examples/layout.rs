@@ -1,4 +1,3 @@
-use euclid::Size2D;
 use kyute::{
     application, composable,
     shell::application::Application,

@@ -476,7 +476,7 @@ impl CacheWriter {
             match slot {
                 Slot::Value { key, .. } => {
                     let entry = self.cache.entries.get(key).expect("cache entry not found");
-                    tracing::trace!("removing cache entry cache_key={:?} depends={:?} call_id={:?}, call_node={:#?}", key, entry.dependents, entry.call_id, entry.call_node);
+                    trace!("removing cache entry cache_key={:?} depends={:?} call_id={:?}, call_node={:#?}", key, entry.dependents, entry.call_id, entry.call_node);
                     self.cache.entries.remove(key).unwrap();
                 }
                 _ => {}

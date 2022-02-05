@@ -60,16 +60,16 @@ pub struct CallNode {
 impl fmt::Debug for CallNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
-            writeln!(f, "CallNode({:016X})", self.id.0);
+            writeln!(f, "CallNode({:016X})", self.id.0)?;
             let mut node = Some(self);
-            let mut depth = 0;
+            //let mut depth = 0;
             while let Some(current_node) = node {
                 writeln!(
                     f,
                     "\t --> {} (index {})",
                     current_node.location, current_node.index
                 )?;
-                depth += 1;
+                //depth += 1;
                 node = current_node.parent.as_deref();
             }
             Ok(())

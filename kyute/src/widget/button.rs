@@ -1,13 +1,12 @@
 use crate::{
-    align_boxes, cache, composable,
+    align_boxes, composable,
     core2::{EventCtx, LayoutCtx, PaintCtx},
     event::PointerEventKind,
     state::Signal,
     widget::Text,
-    Alignment, BoxConstraints, Cache, Environment, Event, Key, Measurements, Rect, SideOffsets,
+    Alignment, BoxConstraints, Environment, Event, Measurements, Rect, SideOffsets,
     Size, Widget, WidgetPod,
 };
-use kyute::state::State;
 use tracing::trace;
 
 #[derive(Clone)]

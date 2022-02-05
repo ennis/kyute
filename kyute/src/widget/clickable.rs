@@ -1,13 +1,11 @@
 use crate::{
-    align_boxes, cache, composable,
+    composable,
     core2::{EventCtx, LayoutCtx, PaintCtx},
     event::PointerEventKind,
-    widget::Text,
-    Alignment, BoxConstraints, Cache, Environment, Event, Key, Measurements, Rect, SideOffsets,
-    Size, Widget, WidgetPod,
+    state::Signal,
+    BoxConstraints, Environment, Event, Measurements, Rect, Widget, WidgetPod,
 };
 use tracing::trace;
-use crate::state::Signal;
 
 #[derive(Clone)]
 pub struct Clickable<Content> {

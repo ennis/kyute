@@ -5,7 +5,7 @@ use approx::ulps_eq;
 use kyute_shell::{
     drawing::{Color, RectExt, ToSkia},
     skia as sk,
-    skia::{gradient_shader::GradientShaderColors, BlendMode, PaintStyle::Stroke, RRect, Vector},
+    skia::{gradient_shader::GradientShaderColors, BlendMode, RRect, Vector},
 };
 use std::str::FromStr;
 
@@ -401,7 +401,6 @@ pub enum BorderStyle {
 pub struct Border {
     /// Left,top,right,bottom border widths.
     widths: [ValueRef<Length>; 4],
-    radii: [ValueRef<Length>; 4],
     /// Position of the border relative to the bounds.
     position: BorderPosition,
     brush: Brush,
@@ -417,7 +416,6 @@ impl Border {
         let width = width.into();
         Border {
             widths: [width; 4],
-            radii: [ValueRef::Inline(Length::Dip(0.0)); 4],
             position: BorderPosition::Center,
             brush: Brush::SolidColor {
                 color: ValueRef::Inline(Color::new(0.0, 0.0, 0.0, 1.0)),
@@ -574,7 +572,7 @@ where
 pub struct NullVisual;
 
 impl Visual for NullVisual {
-    fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {}
+    fn draw(&self, _ctx: &mut PaintCtx, _bounds: Rect, _env: &Environment) {}
 }
 
 /// Style of a container.
@@ -591,7 +589,7 @@ pub struct Style<V> {
 
 impl<V: Visual> Style<V> {
     /// Adds a visual to be drawn.
-    pub fn visual<VN: Visual>(mut self, visual: VN) -> Style<(V, VN)> {
+    pub fn visual<VN: Visual>(self, visual: VN) -> Style<(V, VN)> {
         Style {
             baseline: self.baseline,
             padding: self.padding,

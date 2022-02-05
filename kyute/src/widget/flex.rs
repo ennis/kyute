@@ -4,7 +4,7 @@ use crate::{
     theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Orientation, Point,
     Rect, Size, Widget, WidgetPod,
 };
-use kyute_shell::drawing::{RectExt, RoundToPixel};
+use kyute_shell::drawing::RoundToPixel;
 
 /*#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Axis {

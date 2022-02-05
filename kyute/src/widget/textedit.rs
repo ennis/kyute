@@ -1,28 +1,20 @@
 //! Text editor widget.
 use crate::{
-    cache, composable,
+    composable,
     core2::Widget,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
     state::{Signal, State},
-    style::PaintCtxExt,
-    text::{FormattedText, FormattedTextParagraph, ParagraphStyle, TextAffinity},
-    theme, BoxConstraints, Cache, Data, EnvKey, EventCtx, Key, LayoutCtx, Measurements, Offset,
-    PaintCtx, Point, Rect, SideOffsets, Size, WidgetPod,
+    text::{FormattedText, FormattedTextParagraph},
+    theme, BoxConstraints, Data, EventCtx, LayoutCtx, Measurements, Offset,
+    PaintCtx, Point, Rect, Size,
 };
 use keyboard_types::KeyState;
 use kyute::text::TextPosition;
 use kyute_shell::{
-    drawing::{Color, FromSkia, ToSkia},
-    skia as sk,
-    winit::event::VirtualKeyCode,
+    drawing::{Color, ToSkia},
 };
-use std::{
-    any::Any,
-    cell::{Cell, RefCell},
-    ops::Range,
-    sync::Arc,
-};
+use std::cell::RefCell;
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
 

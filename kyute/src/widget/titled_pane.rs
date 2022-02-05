@@ -1,19 +1,15 @@
 use crate::{
-    cache, composable,
-    state::{Signal, State},
-    style::Rectangle,
-    widget::{Clickable, Container, Flex, Text},
-    BoxConstraints, Environment, Event, Key, Measurements, Orientation, PaintCtx, Rect,
-    SideOffsets, Widget, WidgetPod,
+    composable,
+    state::State,
+    widget::{Clickable, Container, Flex, SingleChildWidget, Text},
+    Color, Orientation,
+    SideOffsets, Widget,
 };
-use kyute::{EventCtx, LayoutCtx};
-use kyute_shell::{drawing::Color, skia::gradient_shader::GradientShaderColors::Colors};
 
 /// A widget with a title TODO.
 #[derive(Clone)]
 pub struct TitledPane {
-    inner: WidgetPod<Flex>,
-    collapsed: bool,
+    inner: Flex,
     collapsed_changed: Option<bool>,
 }
 
@@ -23,7 +19,7 @@ impl TitledPane {
     pub fn collapsible(
         title: impl Into<String>,
         initially_collapsed: bool,
-        content: impl Widget+'static,
+        content: impl Widget + 'static,
     ) -> TitledPane {
         let state = State::new(|| initially_collapsed);
         let pane = Self::new(state.get(), title.into(), content);
@@ -32,7 +28,7 @@ impl TitledPane {
     }
 
     #[composable(uncached)]
-    fn new(collapsed: bool, title: String, content: impl Widget+'static) -> TitledPane {
+    fn new(collapsed: bool, title: String, content: impl Widget + 'static) -> TitledPane {
         let mut inner = Flex::new(Orientation::Vertical);
 
         use kyute::style::*;
@@ -58,31 +54,19 @@ impl TitledPane {
         }
 
         TitledPane {
-            inner: WidgetPod::new(inner),
-            collapsed,
+            inner,
             collapsed_changed,
         }
     }
 
     /// Returns whether the panel has been collapsed or expanded from user input.
-    pub fn collapsed_changed(&mut self) -> Option<bool> { self.collapsed_changed }
+    pub fn collapsed_changed(&mut self) -> Option<bool> {
+        self.collapsed_changed
+    }
 }
 
-impl Widget for TitledPane {
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env);
-    }
-
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
-        self.inner.layout(ctx, constraints, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        self.inner.paint(ctx, bounds, env);
+impl SingleChildWidget for TitledPane {
+    fn child(&self) -> &dyn Widget {
+        &self.inner
     }
 }

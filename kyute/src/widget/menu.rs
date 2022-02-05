@@ -1,4 +1,4 @@
-use crate::{cache, composable, util::Counter, Cache, Data, Key};
+use crate::{cache, composable, util::Counter, Data};
 use std::{collections::HashMap, convert::TryInto};
 use crate::state::Signal;
 

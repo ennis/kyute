@@ -190,9 +190,9 @@ struct TextRuns {
 }
 
 impl TextRuns {
-    fn new() -> TextRuns {
+    /*fn new() -> TextRuns {
         TextRuns { runs: vec![] }
-    }
+    }*/
 
     fn search_run(&self, text_pos: usize) -> Result<usize, usize> {
         self.runs.binary_search_by(|run| {
@@ -339,7 +339,7 @@ impl FormattedText {
     }
 
     pub fn format(&self, width: f64) -> FormattedTextParagraph {
-        let mut default_font_manager = sk::FontMgr::default();
+        let default_font_manager = sk::FontMgr::default();
         let mut font_collection = sk::textlayout::FontCollection::new();
         font_collection.set_default_font_manager(default_font_manager, "Consolas");
         let mut builder =

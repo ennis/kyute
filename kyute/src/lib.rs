@@ -39,7 +39,7 @@ pub use data::Data;
 pub use env::{EnvKey, EnvValue, Environment};
 pub use event::{Event, InternalEvent};
 pub use kyute_macros::{composable, Data};
-pub use layout::{align_boxes, Alignment, BoxConstraints, LayoutItem, Measurements};
+pub use layout::{align_boxes, Alignment, BoxConstraints, Measurements};
 pub use widget::Orientation;
 pub use window::Window;
 pub use state::{Signal, State};

@@ -52,7 +52,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         m
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
         // TODO cleanup duplication: ctx.measurements() and bounds
         ctx.canvas.save();
         ctx.canvas.translate(self.offset.get().to_skia());

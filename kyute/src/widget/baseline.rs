@@ -1,11 +1,8 @@
 //! Baseline alignment.
 use crate::{
-    core2::WindowPaintCtx, widget::LayoutWrapper, BoxConstraints, Environment, Event, EventCtx,
-    GpuFrameCtx, LayoutCtx, Measurements, Offset, PaintCtx, Rect, Size,
+    composable, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
+    PaintCtx, Rect, Size, Widget, WidgetPod,
 };
-use kyute::{composable, Widget, WidgetPod};
-use kyute_shell::drawing::ToSkia;
-use std::cell::Cell;
 
 /// A widget that aligns its child according to a fixed baseline.
 #[derive(Clone)]
@@ -35,7 +32,7 @@ impl<Inner: Widget> Widget for Baseline<Inner> {
         constraints: BoxConstraints,
         env: &Environment,
     ) -> Measurements {
-        let mut m = self.inner.layout(ctx, constraints, env);
+        let m = self.inner.layout(ctx, constraints, env);
         // baselines are not guaranteed to fall on a pixel boundary, round it manually
         // FIXME should do pixel snapping instead
         let y_offset = (self.baseline - m.baseline.unwrap_or(m.bounds.size.height)).round();

@@ -1,12 +1,12 @@
 use crate::{
-    align_boxes, cache, composable,
+    composable,
     core2::{EventCtx, LayoutCtx, PaintCtx},
     event::{PointerButton, PointerEventKind},
     state::Signal,
     util::Counter,
     widget::Text,
-    Alignment, BoxConstraints, Cache, Data, Environment, Event, Key, Measurements, Rect,
-    SideOffsets, Size, Widget, WidgetPod,
+    BoxConstraints, Data, Environment, Event, Measurements, Rect,
+    Widget, WidgetPod,
 };
 use std::{convert::TryInto, fmt::Display};
 use tracing::trace;
@@ -17,8 +17,6 @@ struct DropDownChoice<T: Data + Display> {
     value: T,
     item_id: u16,
 }
-
-static ITEM_ID_COUNTER: Counter = Counter::new();
 
 #[derive(Clone)]
 pub struct DropDown<T: Data + Display> {

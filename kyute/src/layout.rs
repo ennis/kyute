@@ -268,6 +268,7 @@ impl From<Rect> for Measurements {
     }
 }
 
+/*
 #[derive(Clone)]
 struct LayoutItemImpl {
     measurements: Measurements,
@@ -330,6 +331,7 @@ impl LayoutItem {
         self.0
             .children
             .get(at)
-            .map(|(offset, layout)| layout.clone())
+            .map(|(_offset, layout)| layout.clone())
     }
 }
+*/

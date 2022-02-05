@@ -1,6 +1,6 @@
 use crate::CRATE;
-use proc_macro2::{Ident, Span};
-use quote::{quote, ToTokens};
+use proc_macro2::Ident;
+use quote::quote;
 use syn::{
     parse::{ParseStream, Parser},
     punctuated::Punctuated,
@@ -42,7 +42,7 @@ pub fn generate_composable(
 
     let altered_fn = if attr_args.uncached {
         let sig = &fn_item.sig;
-        let return_type = &fn_item.sig.output;
+        //let return_type = &fn_item.sig.output;
         //let debug_name = format!("scope for `{}`", fn_item.sig.ident);
         quote! {
             #[track_caller]
@@ -79,7 +79,7 @@ pub fn generate_composable(
             .collect();
 
         let sig = &fn_item.sig;
-        let return_type = &fn_item.sig.output;
+        //let return_type = &fn_item.sig.output;
         //let debug_name = format!("memoization wrapper for `{}`", fn_item.sig.ident);
 
         quote! {

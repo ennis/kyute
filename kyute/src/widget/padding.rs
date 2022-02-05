@@ -1,10 +1,8 @@
 use crate::{
-    align_boxes, composable, core2::WindowPaintCtx, layout::BoxConstraints, widget::LayoutWrapper,
-    Alignment, Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx, Measurements, Offset,
+    composable, layout::BoxConstraints,
+    Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
     PaintCtx, Rect, SideOffsets, Widget, WidgetPod,
 };
-use kyute_shell::drawing::ToSkia;
-use std::cell::Cell;
 
 /// A widgets that insets its content by a specified padding.
 pub struct Padding<W> {
