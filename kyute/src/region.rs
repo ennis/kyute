@@ -1,6 +1,6 @@
 use crate::Rect;
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct Region {
     rects: Vec<Rect>,
 }
@@ -8,9 +8,7 @@ pub struct Region {
 impl Region {
     /// Creates an empty region
     pub fn new() -> Region {
-        Region {
-            rects: vec![]
-        }
+        Region { rects: vec![] }
     }
 
     /// Adds a rectangle to this region.

@@ -14,6 +14,7 @@ use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
 use kyute_shell::{
     application::Application,
+    drawing::RoundToPixel,
     winit,
     winit::{
         event::{DeviceId, VirtualKeyCode, WindowEvent},
@@ -22,7 +23,6 @@ use kyute_shell::{
 };
 use std::{cell::RefCell, collections::HashMap, env, mem, sync::Arc, time::Instant};
 use tracing::trace;
-use kyute_shell::drawing::RoundToPixel;
 
 fn key_code_from_winit(
     input: &winit::event::KeyboardInput,
@@ -398,7 +398,7 @@ impl WindowState {
                     // command from the window menu
                     // find matching action and trigger it
                     if let Some(action) = self.menu_actions.get(&(*id as u32)) {
-                        parent_ctx.set_state(action.triggered_state, true);
+                        action.triggered.signal(parent_ctx, ());
                     }
                 }
                 None
@@ -878,7 +878,6 @@ impl Window {
 
                     // TODO environment
                     //tracing::trace!("window redraw");
-                    let env = theme::get_default_application_style();
                     contents.paint(&mut paint_ctx, window_bounds, &env);
                     surface.flush_and_submit();
                 });
@@ -992,7 +991,8 @@ impl Widget for Window {
                 &env,
             );
             if layout_changed {
-                let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content).round_to_pixel(scale_factor);
+                let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content)
+                    .round_to_pixel(scale_factor);
                 self.contents.set_child_offset(offset);
             }
 
@@ -1011,7 +1011,6 @@ impl Widget for Window {
         Measurements {
             bounds: Default::default(),
             baseline: None,
-            is_window: true,
         }
     }
 

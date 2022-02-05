@@ -207,8 +207,6 @@ pub struct Measurements {
     /// Baseline offset relative to *this* node.
     /// The baseline relative to the parent node is `offset.y + baseline`.
     pub baseline: Option<f64>,
-    /// True if the widget is a separate window, in which case it takes no space in its parent.
-    pub is_window: bool,
 }
 
 impl Hash for Measurements {
@@ -218,7 +216,6 @@ impl Hash for Measurements {
         self.bounds.size.width.to_bits().hash(state);
         self.bounds.size.height.to_bits().hash(state);
         self.baseline.map(|x| x.to_bits()).hash(state);
-        self.is_window.hash(state);
     }
 }
 
@@ -227,7 +224,6 @@ impl Default for Measurements {
         Measurements {
             bounds: Rect::zero(),
             baseline: None,
-            is_window: false,
         }
     }
 }
@@ -238,7 +234,6 @@ impl Measurements {
         Measurements {
             bounds,
             baseline: None,
-            is_window: false,
         }
     }
 

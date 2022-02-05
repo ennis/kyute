@@ -3,8 +3,8 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     panic::Location,
+    rc::Rc,
 };
-use std::rc::Rc;
 
 /// Identifies a particular call site in a call tree.
 ///
@@ -54,7 +54,7 @@ pub struct CallNode {
     parent: Option<Rc<CallNode>>,
     location: &'static Location<'static>,
     index: usize, // or `iteration`, `count`
-    //debug_name: Option<&'static str>,
+                  //debug_name: Option<&'static str>,
 }
 
 impl fmt::Debug for CallNode {

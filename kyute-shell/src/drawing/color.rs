@@ -28,7 +28,9 @@ const fn nibble_from_ascii(b: u8) -> Result<u8, ColorParseError> {
 
 const fn byte_from_ascii(b0: u8, b1: u8) -> Result<u8, ColorParseError> {
     match (nibble_from_ascii(b0), nibble_from_ascii(b1)) {
-        (Ok(b0), Ok(b1)) => Ok(b0 << 4 + b1),
+        (Ok(a), Ok(b)) => {
+            Ok((a << 4) + b)
+        },
         _ => Err(ColorParseError),
     }
 }
@@ -134,7 +136,6 @@ impl ToSkia for Color {
             a: self.0.alpha,
         }
     }
-
 }
 
 impl FromSkia for Color {

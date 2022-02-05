@@ -4,7 +4,8 @@ use crate::{
     core2::Widget,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
-    styling::PaintCtxExt,
+    state::{Signal, State},
+    style::PaintCtxExt,
     text::{FormattedText, FormattedTextParagraph, ParagraphStyle, TextAffinity},
     theme, BoxConstraints, Cache, Data, EnvKey, EventCtx, Key, LayoutCtx, Measurements, Offset,
     PaintCtx, Point, Rect, SideOffsets, Size, WidgetPod,
@@ -90,9 +91,9 @@ pub struct TextEdit {
     /// The size of the content area
     content_size: Size,
 
-    editing_finished: Key<Option<FormattedText>>,
-    text_changed: Key<Option<FormattedText>>,
-    selection_changed: Key<Option<Selection>>,
+    editing_finished: Signal<FormattedText>,
+    text_changed: Signal<FormattedText>,
+    selection_changed: Signal<Selection>,
 
     /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
     paragraph: RefCell<Option<FormattedTextParagraph>>,
@@ -105,9 +106,6 @@ impl TextEdit {
         formatted_text: impl Into<FormattedText>,
         selection: Selection,
     ) -> TextEdit {
-        let editing_finished = cache::state(|| None);
-        let text_changed = cache::state(|| None);
-        let selection_changed = cache::state(|| None);
         let formatted_text = formatted_text.into();
 
         trace!(
@@ -121,9 +119,9 @@ impl TextEdit {
             selection,
             content_offset: Default::default(),
             content_size: Default::default(),
-            selection_changed,
-            editing_finished,
-            text_changed,
+            selection_changed: Signal::new(),
+            editing_finished: Signal::new(),
+            text_changed: Signal::new(),
             paragraph: RefCell::new(None),
         }
     }
@@ -131,34 +129,27 @@ impl TextEdit {
     /// Use if you don't care about the selection.
     #[composable(uncached)]
     pub fn new(formatted_text: impl Into<FormattedText>) -> TextEdit {
-        let selection = cache::state(|| Selection::empty(0));
+        let selection = State::new(|| Selection::empty(0));
         let text_edit = Self::with_selection(formatted_text, selection.get());
-
-        // dependents of selection_changed: the parent state entry
-        // selection_changed will always invalidate the parent state entry
-
-        if let Some(s) = text_edit.selection_changed() {
-            eprintln!("received selection change");
-            selection.set(s);
-        }
+        selection.update(text_edit.selection_changed());
         text_edit
     }
 
     /// Returns whether TODO.
     #[composable(uncached)]
     pub fn editing_finished(&self) -> Option<FormattedText> {
-        self.editing_finished.update(None)
+        self.editing_finished.value()
     }
 
     /// Returns whether the text has changed.
     #[composable(uncached)]
     pub fn text_changed(&self) -> Option<FormattedText> {
-        self.text_changed.update(None)
+        self.text_changed.value()
     }
 
     #[composable(uncached)]
     pub fn selection_changed(&self) -> Option<Selection> {
-        self.selection_changed.update(None)
+        self.selection_changed.value()
     }
 
     /// Moves the cursor forward or backward. Returns the new selection.
@@ -237,16 +228,16 @@ impl TextEdit {
                 "notify selection changed {:?}->{:?}",
                 self.selection, new_selection
             );
-            ctx.set_state(self.selection_changed, Some(new_selection));
+            self.selection_changed.signal(ctx, new_selection);
         }
     }
 
     fn notify_text_changed(&self, ctx: &mut EventCtx, new_text: FormattedText) {
-        ctx.set_state(self.text_changed, Some(new_text));
+        self.text_changed.signal(ctx, new_text);
     }
 
     fn notify_editing_finished(&self, ctx: &mut EventCtx, new_text: FormattedText) {
-        ctx.set_state(self.editing_finished, Some(new_text));
+        self.editing_finished.signal(ctx, new_text);
     }
 }
 
@@ -294,12 +285,11 @@ impl Widget for TextEdit {
         Measurements {
             bounds: size.into(),
             baseline: Some(baseline),
-            is_window: false,
         }
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        use crate::styling::*;
+        use crate::style::*;
         let bounds = ctx.bounds();
         let padding = env.get(theme::TEXT_EDIT_PADDING).unwrap_or_default();
 
@@ -322,10 +312,10 @@ impl Widget for TextEdit {
         // draw selection
         let selection_boxes = paragraph.rects_for_range(self.selection.min()..self.selection.max());
         for tb in selection_boxes {
-            ctx.draw_styled_box(
+            ctx.draw_visual(
                 tb.rect,
-                rectangle().with(fill(Color::new(0.0, 0.1, 0.8, 0.5))),
-                env
+                &Rectangle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)),
+                env,
             );
         }
 

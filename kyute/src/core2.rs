@@ -6,7 +6,7 @@ use crate::{
     call_key::CallId,
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
-    styling::PaintCtxExt,
+    style::PaintCtxExt,
     widget::{Align, ConstrainedBox},
     Alignment, BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements,
     Offset, Point, Rect, Size,
@@ -364,7 +364,7 @@ impl<'a, 'b> GpuFrameCtx<'a, 'b> {
 pub trait Widget {
     /// Implement to give a debug name to your widget. Used only for debugging.
     fn debug_name(&self) -> &str {
-        "Widget"
+        std::any::type_name::<Self>()
     }
 
     /// Propagates an event through the widget hierarchy.

@@ -164,6 +164,5 @@ pub fn run(ui: fn() -> WidgetPod, env: Environment) {
             }
             _ => (),
         }
-
     })
 }

@@ -1,12 +1,13 @@
 //! Drawing code for GUI elements.
 
-use crate::{env::Environment, EnvKey, EnvValue, Offset, PaintCtx, Rect};
+use crate::{env::Environment, EnvKey, EnvValue, Offset, PaintCtx, Rect, SideOffsets};
 use approx::ulps_eq;
 use kyute_shell::{
-    drawing::{Color, Path, RectExt, ToSkia},
+    drawing::{Color, RectExt, ToSkia},
     skia as sk,
     skia::{gradient_shader::GradientShaderColors, BlendMode, PaintStyle::Stroke, RRect, Vector},
 };
+use std::str::FromStr;
 
 /// Unit of length: device-independent pixel.
 pub struct Dip;
@@ -32,12 +33,18 @@ impl Length {
         Length::Dip(0.0)
     }
 
-    pub fn to_dips(self, ctx: &PaintCtx) -> f64 {
+    pub fn to_dips(self, scale_factor: f64) -> f64 {
         match self {
-            Length::Px(x) => x / ctx.scale_factor,
+            Length::Px(x) => x / scale_factor,
             Length::In(x) => 96.0 * x,
             Length::Dip(x) => x,
         }
+    }
+}
+
+impl Default for Length {
+    fn default() -> Self {
+        Length::Dip(0.0)
     }
 }
 
@@ -110,7 +117,7 @@ impl IntoAngle for f64 {
 //--------------------------------------------------------------------------------------------------
 
 /// Either a value or a reference to a value in an environment.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ValueRef<T> {
     /// Inline value.
     Inline(T),
@@ -124,6 +131,12 @@ impl<T: EnvValue> ValueRef<T> {
             ValueRef::Inline(v) => Some(v.clone()),
             ValueRef::Env(k) => env.get(*k),
         }
+    }
+}
+
+impl<T: EnvValue + Default> ValueRef<T> {
+    pub fn resolve_or_default(&self, env: &Environment) -> T {
+        self.resolve(env).unwrap_or_default()
     }
 }
 
@@ -311,7 +324,7 @@ impl From<LinearGradient> for Brush {
     }
 }
 
-//--------------------------------------------------------------------------------------------------
+/*//--------------------------------------------------------------------------------------------------
 pub trait Modifier {
     fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, shape: &Shape, env: &Environment);
 }
@@ -333,38 +346,16 @@ pub struct NullModifier;
 
 impl Modifier for NullModifier {
     fn draw(&self, _ctx: &mut PaintCtx, _bounds: Rect, _shape: &Shape, _env: &Environment) {}
-}
+}*/
 
 //--------------------------------------------------------------------------------------------------
-/// Fill modifier.
-///
-/// Fills a shape with a brush.
-pub struct Fill {
-    brush: Brush,
-    enabled: bool,
-}
-
-impl Fill {
-    pub fn enabled(mut self, enabled: bool) -> Fill {
-        self.enabled = enabled;
-        self
-    }
-}
-
-/// Creates a fill modifier.
-pub fn fill(brush: impl Into<Brush>) -> Fill {
-    Fill {
-        brush: brush.into(),
-        enabled: true,
-    }
-}
 
 fn radii_to_skia(ctx: &mut PaintCtx, radii: &[Length; 4]) -> [sk::Vector; 4] {
     let radii_dips = [
-        radii[0].to_dips(ctx),
-        radii[1].to_dips(ctx),
-        radii[2].to_dips(ctx),
-        radii[3].to_dips(ctx),
+        radii[0].to_dips(ctx.scale_factor),
+        radii[1].to_dips(ctx.scale_factor),
+        radii[2].to_dips(ctx.scale_factor),
+        radii[3].to_dips(ctx.scale_factor),
     ];
 
     // TODO x,y radii
@@ -376,57 +367,74 @@ fn radii_to_skia(ctx: &mut PaintCtx, radii: &[Length; 4]) -> [sk::Vector; 4] {
     ]
 }
 
-impl Modifier for Fill {
-    fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, shape: &Shape, env: &Environment) {
-        if !self.enabled {
-            return;
-        }
+//--------------------------------------------------------------------------------------------------
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct BoxShadowParams {
+    offset_x: ValueRef<Length>,
+    offset_y: ValueRef<Length>,
+    blur_radius: ValueRef<Length>,
+    spread_radius: ValueRef<Length>,
+}
 
-        let mut paint = self.brush.to_sk_paint(env, ctx.bounds());
-        paint.set_style(sk::PaintStyle::Fill);
-
-        match shape {
-            Shape::Path(path) => {
-                let sk_path = path.to_skia();
-                ctx.canvas.save();
-                ctx.canvas.translate(bounds.top_left().to_skia());
-                ctx.canvas.draw_path(&sk_path, &paint);
-                ctx.canvas.restore();
-            }
-            Shape::RoundedRect { radii } => {
-                let rrect = RRect::new_rect_radii(bounds.to_skia(), &radii_to_skia(ctx, radii));
-                ctx.canvas.draw_rrect(rrect, &paint);
-            }
-        }
-    }
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum BoxShadow {
+    Drop(BoxShadowParams),
+    Inset(BoxShadowParams),
 }
 
 //--------------------------------------------------------------------------------------------------
+
 /// Border reference position
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BorderPosition {
-    Inside(Length),
+    Inside(ValueRef<Length>),
     Center,
-    Outside(Length),
+    Outside(ValueRef<Length>),
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum BorderStyle {
+    Solid,
+    Dotted,
 }
 
 pub struct Border {
     /// Left,top,right,bottom border widths.
-    widths: [Length; 4],
+    widths: [ValueRef<Length>; 4],
+    radii: [ValueRef<Length>; 4],
+    /// Position of the border relative to the bounds.
     position: BorderPosition,
     brush: Brush,
+    /// Border line style.
+    style: BorderStyle,
     opacity: f64,
     blend_mode: BlendMode,
     enabled: bool,
 }
 
 impl Border {
-    pub fn inside(mut self, pos: impl Into<Length>) -> Self {
+    pub fn new(width: impl Into<ValueRef<Length>>) -> Border {
+        let width = width.into();
+        Border {
+            widths: [width; 4],
+            radii: [ValueRef::Inline(Length::Dip(0.0)); 4],
+            position: BorderPosition::Center,
+            brush: Brush::SolidColor {
+                color: ValueRef::Inline(Color::new(0.0, 0.0, 0.0, 1.0)),
+            },
+            style: BorderStyle::Solid,
+            opacity: 1.0,
+            blend_mode: sk::BlendMode::SrcOver,
+            enabled: true,
+        }
+    }
+
+    pub fn inside(mut self, pos: impl Into<ValueRef<Length>>) -> Self {
         self.position = BorderPosition::Inside(pos.into());
         self
     }
 
-    pub fn outside(mut self, pos: impl Into<Length>) -> Self {
+    pub fn outside(mut self, pos: impl Into<ValueRef<Length>>) -> Self {
         self.position = BorderPosition::Outside(pos.into());
         self
     }
@@ -455,143 +463,304 @@ impl Border {
         self.enabled = enabled;
         self
     }
-}
 
-pub fn border(widths: impl CornerLengths) -> Border {
-    Border {
-        widths: widths.into_corner_lengths(),
-        position: BorderPosition::Center,
-        brush: Brush::SolidColor {
-            color: ValueRef::Inline(Color::new(0.0, 0.0, 0.0, 1.0)),
-        },
-        opacity: 1.0,
-        blend_mode: sk::BlendMode::SrcOver,
-        enabled: true,
-    }
-}
-
-impl Modifier for Border {
-    fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, shape: &Shape, env: &Environment) {
-        if !self.enabled {
-            return;
-        }
-
+    fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, radii: [sk::Vector; 4], env: &Environment) {
         let mut paint = self.brush.to_sk_paint(env, bounds);
         paint.set_style(sk::PaintStyle::Stroke);
         paint.set_blend_mode(self.blend_mode);
         paint.set_alpha_f(self.opacity as sk::scalar);
 
         let widths = [
-            self.widths[0].to_dips(ctx) as sk::scalar,
-            self.widths[1].to_dips(ctx) as sk::scalar,
-            self.widths[2].to_dips(ctx) as sk::scalar,
-            self.widths[3].to_dips(ctx) as sk::scalar,
+            self.widths[0]
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor) as sk::scalar,
+            self.widths[1]
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor) as sk::scalar,
+            self.widths[2]
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor) as sk::scalar,
+            self.widths[3]
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor) as sk::scalar,
         ];
         let uniform_border = widths.iter().all(|&w| ulps_eq!(w, widths[0]));
 
         let rect = match self.position {
             BorderPosition::Inside(x) => {
-                let x = -0.5 - x.to_dips(ctx);
+                let x = -0.5 - x.resolve_or_default(env).to_dips(ctx.scale_factor);
                 bounds.inflate(x, x)
             }
             BorderPosition::Outside(x) => {
-                let x = 0.5 + x.to_dips(ctx);
+                let x = 0.5 + x.resolve_or_default(env).to_dips(ctx.scale_factor);
                 bounds.inflate(x, x)
             }
             BorderPosition::Center => bounds,
         };
 
-        match shape {
-            Shape::Path(path) => {
-                // just stroke the path?
-                let sk_path = path.to_skia();
-                ctx.canvas.save();
-                ctx.canvas.translate(bounds.top_left().to_skia());
-                ctx.canvas.draw_path(&sk_path, &paint);
-                ctx.canvas.restore();
+        if !uniform_border {
+            // draw lines, ignore radii
+            // TODO border colors
+
+            // left
+            if !ulps_eq!(widths[0], 0.0) {
+                paint.set_stroke_width(widths[0]);
+                ctx.canvas.draw_line(
+                    rect.top_left().to_skia(),
+                    rect.bottom_left().to_skia(),
+                    &paint,
+                );
             }
-            Shape::RoundedRect { radii } => {
-                if !uniform_border {
-                    // draw lines, ignore radii
-                    // TODO border colors
 
-                    // left
-                    if !ulps_eq!(widths[0], 0.0) {
-                        paint.set_stroke_width(widths[0]);
-                        ctx.canvas.draw_line(
-                            rect.top_left().to_skia(),
-                            rect.bottom_left().to_skia(),
-                            &paint,
-                        );
-                    }
+            // top
+            if !ulps_eq!(widths[1], 0.0) {
+                paint.set_stroke_width(widths[1]);
+                ctx.canvas.draw_line(
+                    rect.top_left().to_skia(),
+                    rect.top_right().to_skia(),
+                    &paint,
+                );
+            }
 
-                    // top
-                    if !ulps_eq!(widths[1], 0.0) {
-                        paint.set_stroke_width(widths[1]);
-                        ctx.canvas.draw_line(
-                            rect.top_left().to_skia(),
-                            rect.top_right().to_skia(),
-                            &paint,
-                        );
-                    }
+            // right
+            if !ulps_eq!(widths[2], 0.0) {
+                paint.set_stroke_width(widths[2]);
+                ctx.canvas.draw_line(
+                    rect.top_right().to_skia(),
+                    rect.bottom_right().to_skia(),
+                    &paint,
+                );
+            }
 
-                    // right
-                    if !ulps_eq!(widths[2], 0.0) {
-                        paint.set_stroke_width(widths[2]);
-                        ctx.canvas.draw_line(
-                            rect.top_right().to_skia(),
-                            rect.bottom_right().to_skia(),
-                            &paint,
-                        );
-                    }
-
-                    // bottom
-                    if !ulps_eq!(widths[3], 0.0) {
-                        paint.set_stroke_width(widths[3]);
-                        ctx.canvas.draw_line(
-                            rect.bottom_left().to_skia(),
-                            rect.bottom_right().to_skia(),
-                            &paint,
-                        );
-                    }
-                } else {
-                    let radii = radii_to_skia(ctx, radii);
-                    if radii[0].is_zero()
-                        && radii[1].is_zero()
-                        && radii[2].is_zero()
-                        && radii[3].is_zero()
-                    {
-                        ctx.canvas.draw_rect(rect.to_skia(), &paint);
-                    } else {
-                        let rrect = RRect::new_rect_radii(rect.to_skia(), &radii);
-                        ctx.canvas.draw_rrect(rrect, &paint);
-                    }
-                }
+            // bottom
+            if !ulps_eq!(widths[3], 0.0) {
+                paint.set_stroke_width(widths[3]);
+                ctx.canvas.draw_line(
+                    rect.bottom_left().to_skia(),
+                    rect.bottom_right().to_skia(),
+                    &paint,
+                );
+            }
+        } else {
+            if radii[0].is_zero() && radii[1].is_zero() && radii[2].is_zero() && radii[3].is_zero()
+            {
+                ctx.canvas.draw_rect(rect.to_skia(), &paint);
+            } else {
+                let rrect = RRect::new_rect_radii(rect.to_skia(), &radii);
+                ctx.canvas.draw_rrect(rrect, &paint);
             }
         }
     }
 }
 
 //--------------------------------------------------------------------------------------------------
-pub enum Shape {
-    Path(Path),
-    RoundedRect { radii: [Length; 4] },
+
+/// Represents something that can be drawn in a layout box.
+pub trait Visual {
+    fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment);
+}
+
+impl<VA, VB> Visual for (VA, VB)
+where
+    VA: Visual,
+    VB: Visual,
+{
+    fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        self.0.draw(ctx, bounds, env);
+        self.1.draw(ctx, bounds, env);
+    }
+}
+
+pub struct NullVisual;
+
+impl Visual for NullVisual {
+    fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {}
+}
+
+/// Style of a container.
+pub struct Style<V> {
+    // width/height: stretched, fixed, etc.
+    // content alignment
+    // baseline alignment
+    pub baseline: Option<ValueRef<Length>>,
+    // padding
+    pub padding: [ValueRef<Length>; 4],
+    // visual
+    pub visual: V,
+}
+
+impl<V: Visual> Style<V> {
+    /// Adds a visual to be drawn.
+    pub fn visual<VN: Visual>(mut self, visual: VN) -> Style<(V, VN)> {
+        Style {
+            baseline: self.baseline,
+            padding: self.padding,
+            visual: (self.visual, visual),
+        }
+    }
+
+    pub fn resolve_padding(&self, scale_factor: f64, env: &Environment) -> SideOffsets {
+        SideOffsets::new(
+            self.padding[0]
+                .resolve_or_default(env)
+                .to_dips(scale_factor),
+            self.padding[1]
+                .resolve_or_default(env)
+                .to_dips(scale_factor),
+            self.padding[2]
+                .resolve_or_default(env)
+                .to_dips(scale_factor),
+            self.padding[3]
+                .resolve_or_default(env)
+                .to_dips(scale_factor),
+        )
+    }
+
+    pub fn resolve_baseline(&self, scale_factor: f64, env: &Environment) -> Option<f64> {
+        self.baseline
+            .map(|x| x.resolve_or_default(env).to_dips(scale_factor))
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
-pub struct DrawItem<M> {
-    shape: Shape,
-    modifiers: M,
+
+/// Path visual.
+pub struct Path {
+    path: kyute_shell::drawing::Path,
+    stroke: Option<Brush>,
+    fill: Option<Brush>,
+    box_shadow: Option<BoxShadow>,
 }
 
-impl<M> DrawItem<M> {
-    pub fn with<M2: Modifier>(self, next_modifier: M2) -> DrawItem<ModifierChain<M, M2>> {
-        DrawItem {
-            modifiers: ModifierChain(self.modifiers, next_modifier),
-            shape: self.shape,
+impl Path {
+    pub fn new(path: &str) -> Path {
+        Path {
+            path: kyute_shell::drawing::Path::from_str(path).unwrap(),
+            stroke: None,
+            fill: None,
+            box_shadow: None,
         }
     }
+
+    /// Sets the brush used to fill the path.
+    pub fn fill(mut self, brush: impl Into<Brush>) -> Self {
+        self.fill = Some(brush.into());
+        self
+    }
+
+    /// Sets the brush used to stroke the path.
+    pub fn stroke(mut self, brush: impl Into<Brush>) -> Self {
+        self.fill = Some(brush.into());
+        self
+    }
 }
+
+impl Visual for Path {
+    fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        let sk_path = self.path.to_skia();
+
+        // fill
+        if let Some(ref brush) = self.fill {
+            let mut paint = brush.to_sk_paint(env, ctx.bounds());
+            paint.set_style(sk::PaintStyle::Fill);
+            ctx.canvas.save();
+            ctx.canvas.translate(bounds.top_left().to_skia());
+            ctx.canvas.draw_path(&sk_path, &paint);
+            ctx.canvas.restore();
+        }
+
+        // stroke
+        if let Some(ref stroke) = self.stroke {
+            let mut paint = stroke.to_sk_paint(env, ctx.bounds());
+            paint.set_style(sk::PaintStyle::Stroke);
+            ctx.canvas.save();
+            ctx.canvas.translate(bounds.top_left().to_skia());
+            ctx.canvas.draw_path(&sk_path, &paint);
+            ctx.canvas.restore();
+        }
+
+        // TODO draw box shadow
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+
+/// Rectangle, possibly with rounded corners.
+pub struct Rectangle {
+    radii: [ValueRef<Length>; 4],
+    fill: Option<Brush>,
+    border: Option<Border>,
+    box_shadow: Option<BoxShadow>,
+}
+
+impl Rectangle {
+    /// Creates a new rectangle visual.
+    pub fn new() -> Rectangle {
+        Rectangle {
+            radii: [ValueRef::Inline(Length::Dip(0.0)); 4],
+            fill: None,
+            border: None,
+            box_shadow: None,
+        }
+    }
+
+    /// Creates a new rectangle with rounded corners.
+    pub fn new_rounded(radii: [ValueRef<Length>; 4]) -> Rectangle {
+        Rectangle {
+            radii,
+            fill: None,
+            border: None,
+            box_shadow: None,
+        }
+    }
+
+    /// Sets the brush used to fill the rectangle.
+    pub fn fill(mut self, brush: impl Into<Brush>) -> Self {
+        self.fill = Some(brush.into());
+        self
+    }
+
+    /// Adds a border.
+    pub fn border(mut self, border: Border) -> Self {
+        self.border = Some(border);
+        self
+    }
+
+    /// Adds a box shadow.
+    pub fn box_shadow(mut self, box_shadow: BoxShadow) -> Self {
+        self.box_shadow = Some(box_shadow);
+        self
+    }
+}
+
+impl Visual for Rectangle {
+    fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        let radii = [
+            self.radii[0].resolve_or_default(env),
+            self.radii[1].resolve_or_default(env),
+            self.radii[2].resolve_or_default(env),
+            self.radii[3].resolve_or_default(env),
+        ];
+        let radii = radii_to_skia(ctx, &radii);
+
+        // fill
+        if let Some(ref brush) = self.fill {
+            let mut paint = brush.to_sk_paint(env, ctx.bounds());
+            paint.set_style(sk::PaintStyle::Fill);
+            let rrect = RRect::new_rect_radii(bounds.to_skia(), &radii);
+            ctx.canvas.draw_rrect(rrect, &paint);
+        }
+
+        // borders
+        if let Some(ref border) = self.border {
+            border.draw(ctx, bounds, radii, env);
+        }
+
+        // TODO draw box shadow
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
 
 pub trait CornerLengths {
     /// Returns corner lengths.
@@ -616,34 +785,13 @@ impl CornerLengths for f32 {
     }
 }
 
-pub fn rounded_rectangle(radii: impl CornerLengths) -> DrawItem<NullModifier> {
-    DrawItem {
-        shape: Shape::RoundedRect {
-            radii: radii.into_corner_lengths(),
-        },
-        modifiers: NullModifier,
-    }
-}
-
-pub fn rectangle() -> DrawItem<NullModifier> {
-    rounded_rectangle(0.0)
-}
-
-pub fn path(path: Path) -> DrawItem<NullModifier> {
-    DrawItem {
-        shape: Shape::Path(path),
-        modifiers: NullModifier,
-    }
-}
-
 //--------------------------------------------------------------------------------------------------
 pub trait PaintCtxExt {
-    fn draw_styled_box<M: Modifier>(&mut self, bounds: Rect, item: DrawItem<M>, env: &Environment);
+    fn draw_visual<V: Visual>(&mut self, bounds: Rect, visual: &V, env: &Environment);
 }
 
 impl<'a> PaintCtxExt for PaintCtx<'a> {
-    fn draw_styled_box<M: Modifier>(&mut self, bounds: Rect, item: DrawItem<M>, env: &Environment) {
-        let shape = &item.shape;
-        item.modifiers.draw(self, bounds, shape, env);
+    fn draw_visual<V: Visual>(&mut self, bounds: Rect, visual: &V, env: &Environment) {
+        visual.draw(self, bounds, env)
     }
 }

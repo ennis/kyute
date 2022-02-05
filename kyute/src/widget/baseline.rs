@@ -15,7 +15,7 @@ pub struct Baseline<Inner> {
 }
 
 impl<Inner: Widget + 'static> Baseline<Inner> {
-    // Inner? impl Widget?
+    #[composable(uncached)]
     pub fn new(baseline: f64, inner: Inner) -> Baseline<Inner> {
         Baseline {
             inner: WidgetPod::new(inner),

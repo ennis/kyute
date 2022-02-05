@@ -1,8 +1,13 @@
 //! Text elements
-use crate::{composable, env::Environment, event::Event, BoxConstraints, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Widget, WidgetPod, Point};
-use kyute_shell::{drawing::ToSkia, skia as sk};
+use crate::{
+    composable, env::Environment, event::Event, BoxConstraints, EventCtx, LayoutCtx, Measurements,
+    PaintCtx, Point, Rect, Widget, WidgetPod,
+};
+use kyute_shell::{
+    drawing::{FromSkia, ToSkia},
+    skia as sk,
+};
 use std::cell::RefCell;
-use kyute_shell::drawing::FromSkia;
 
 #[derive(Clone)]
 pub struct Text {
@@ -53,7 +58,6 @@ impl Widget for Text {
         Measurements {
             bounds: Rect::new(Point::origin(), size),
             baseline: Some(baseline), // TODO
-            is_window: false,
         }
     }
 

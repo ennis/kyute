@@ -1,20 +1,15 @@
 //! Platform-specific window creation
-use std::ptr;
 use crate::{application::Application, drawing::Point, error::Error, Menu};
-use graal::{
-    swapchain::Swapchain,
-    vk,
-    vk::Handle,
-};
+use graal::{swapchain::Swapchain, vk, vk::Handle};
 use raw_window_handle::HasRawWindowHandle;
 use skia_safe::gpu::vk as skia_vk;
 use skia_vk::GetProcOf;
+use std::ptr;
 use windows::Win32::{
-    Foundation::{HINSTANCE, HWND, POINT},
+    Foundation::{BOOL, HINSTANCE, HWND, POINT},
     Graphics::Gdi::ClientToScreen,
     UI::WindowsAndMessaging::{DestroyMenu, SetMenu, TrackPopupMenu, HMENU, TPM_LEFTALIGN},
 };
-use windows::Win32::Foundation::BOOL;
 use winit::{
     event_loop::EventLoopWindowTarget,
     platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
@@ -212,8 +207,15 @@ impl Window {
                     y: y as i32,
                 };
                 ClientToScreen(self.hwnd, &mut point);
-                if TrackPopupMenu(hmenu, TPM_LEFTALIGN, point.x, point.y, 0, self.hwnd, ptr::null())
-                    == BOOL::from(false)
+                if TrackPopupMenu(
+                    hmenu,
+                    TPM_LEFTALIGN,
+                    point.x,
+                    point.y,
+                    0,
+                    self.hwnd,
+                    ptr::null(),
+                ) == BOOL::from(false)
                 {
                     tracing::warn!("failed to track popup menu");
                 }

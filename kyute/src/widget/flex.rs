@@ -88,14 +88,22 @@ impl Flex {
         }
     }
 
+    pub fn horizontal() -> Flex {
+        Flex::new(Orientation::Horizontal)
+    }
+
+    pub fn vertical() -> Flex {
+        Flex::new(Orientation::Vertical)
+    }
+
     #[composable(uncached)]
     pub fn with(mut self, widget: impl Widget + 'static) -> Self {
-        self.append(widget);
+        self.push(widget);
         self
     }
 
     #[composable(uncached)]
-    pub fn append(&mut self, widget: impl Widget + 'static) {
+    pub fn push(&mut self, widget: impl Widget + 'static) {
         self.items.push(WidgetPod::new(widget));
     }
 
@@ -167,12 +175,10 @@ impl Widget for Flex {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        //ctx.canvas.clear(kyute_shell::skia::Color4f::new(0.55, 0.55, 0.55, 1.0));
-
-        use crate::styling::*;
-        ctx.draw_styled_box(
+        use crate::style::*;
+        ctx.draw_visual(
             bounds,
-            rectangle().with(fill(theme::FRAME_BG_NORMAL_COLOR)),
+            &Rectangle::new().fill(theme::FRAME_BG_NORMAL_COLOR),
             env,
         );
 

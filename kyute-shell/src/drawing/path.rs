@@ -175,7 +175,7 @@ impl ToSkia for Path {
                 }
                 PathSegment::ClosePath { abs: _ } => {
                     sk_path.close();
-                },
+                }
             }
         }
 

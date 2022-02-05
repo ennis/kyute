@@ -1,6 +1,14 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
-use crate::{composable, core2::{Widget, WindowPaintCtx}, event::{Event, PointerEventKind}, styling::PaintCtxExt, theme, BoxConstraints, Cache, Environment, EventCtx, GpuFrameCtx, Key, LayoutCtx, Measurements, PaintCtx, Point, Rect, SideOffsets, Size, WidgetPod, cache};
+use crate::{
+    cache, composable,
+    core2::{Widget, WindowPaintCtx},
+    event::{Event, PointerEventKind},
+    state::Signal,
+    style::PaintCtxExt,
+    theme, BoxConstraints, Cache, Environment, EventCtx, GpuFrameCtx, Key, LayoutCtx, Measurements,
+    PaintCtx, Point, Rect, SideOffsets, Size, WidgetPod,
+};
 use kyute_shell::drawing::Path;
 use std::{any::Any, cell::Cell, str::FromStr};
 use tracing::trace;
@@ -69,7 +77,7 @@ impl Default for SliderTrack {
 pub struct Slider {
     track: Cell<SliderTrack>,
     value: f64,
-    value_key: Key<f64>,
+    value_changed: Signal<f64>,
     min: f64,
     max: f64,
 }
@@ -84,15 +92,12 @@ impl Slider {
     /// * `max` - upper bound of the slider range
     /// * `initial` - initial value of the slider.
     #[composable(uncached)]
-    pub fn new(min: f64, max: f64, initial_value: f64) -> Slider {
-        let initial_value = initial_value.clamp(min, max);
-        let value_key = cache::state(|| initial_value);
-        let value = value_key.get();
+    pub fn new(min: f64, max: f64, value: f64) -> Slider {
         Slider {
             // endpoints calculated during layout
             track: Default::default(),
             value,
-            value_key,
+            value_changed: Signal::new(),
             min,
             max,
         }
@@ -106,6 +111,10 @@ impl Slider {
     /// Returns the current value of the slider.
     pub fn current_value(&self) -> f64 {
         self.value
+    }
+
+    pub fn value_changed(&self) -> Option<f64> {
+        self.value_changed.value()
     }
 }
 
@@ -122,9 +131,10 @@ impl Widget for Slider {
                 }
                 PointerEventKind::PointerDown => {
                     let new_value = self
-                        .track.get()
+                        .track
+                        .get()
                         .value_from_position(p.position, self.min, self.max);
-                    ctx.set_state(self.value_key, new_value);
+                    self.value_changed.signal(ctx, new_value);
                     ctx.capture_pointer();
                     ctx.request_focus();
                     ctx.request_redraw();
@@ -132,9 +142,10 @@ impl Widget for Slider {
                 PointerEventKind::PointerMove => {
                     if ctx.is_capturing_pointer() {
                         let new_value = self
-                            .track.get()
+                            .track
+                            .get()
                             .value_from_position(p.position, self.min, self.max);
-                        ctx.set_state(self.value_key, new_value);
+                        self.value_changed.signal(ctx, new_value);
                         ctx.request_redraw();
                     }
                 }
@@ -180,12 +191,11 @@ impl Widget for Slider {
         Measurements {
             bounds: size.into(),
             baseline: None,
-            is_window: false,
         }
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        use crate::styling::*;
+        use crate::style::*;
 
         let background_gradient = linear_gradient()
             .angle(90.0.degrees())
@@ -216,14 +226,18 @@ impl Widget for Slider {
         );
 
         // track
-        ctx.draw_styled_box(
+        ctx.draw_visual(
             track_bounds,
-            rounded_rectangle(2.0)
-                .with(fill(theme::FRAME_BG_SUNKEN_COLOR))
-                .with(border(1.0).brush(theme::FRAME_BG_SUNKEN_COLOR).inside(0.0))
-                .with(
-                    border(1.0)
-                        .outside(0.0)
+            &Rectangle::new()
+                .fill(theme::FRAME_BG_SUNKEN_COLOR)
+                .border(
+                    Border::new(1.0.dip())
+                        .brush(theme::FRAME_BG_SUNKEN_COLOR)
+                        .inside(0.0.dip()),
+                )
+                .border(
+                    Border::new(1.0.dip())
+                        .outside(0.0.dip())
                         .brush(
                             linear_gradient()
                                 .angle(90.0.degrees())
@@ -232,28 +246,14 @@ impl Widget for Slider {
                         )
                         .opacity(1.0),
                 ),
-            env
+            env,
         );
 
-        ctx.draw_styled_box(
+        ctx.draw_visual(
             knob_bounds,
-            path(Path::from_str("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z").unwrap())
-                .with(fill(background_gradient.clone())),
-            env
+            &Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
+                .fill(background_gradient.clone()),
+            env,
         );
     }
 }
-
-/*
-pub fn slider(cx: &mut CompositionCtx, min: f64, max: f64, value: f64) -> SliderResult {
-    cx.enter(0);
-    let action = cx.emit_node(
-        |cx| Slider::new(min, max, value),
-        |cx, slider| {
-            slider.set_value(value);
-        },
-        |_| {},
-    );
-    cx.exit();
-    SliderResult(action.cast())
-}*/

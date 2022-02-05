@@ -22,7 +22,8 @@ pub mod application;
 pub mod cache;
 pub mod call_key;
 mod core2;
-pub mod styling;
+mod state;
+pub mod style;
 pub mod text;
 pub mod theme;
 pub mod widget;
@@ -39,10 +40,12 @@ pub use env::{EnvKey, EnvValue, Environment};
 pub use event::{Event, InternalEvent};
 pub use kyute_macros::{composable, Data};
 pub use layout::{align_boxes, Alignment, BoxConstraints, LayoutItem, Measurements};
-pub use window::Window;
 pub use widget::Orientation;
-// re-export graal
+pub use window::Window;
+pub use state::{Signal, State};
+
 pub use kyute_shell as shell;
+// re-export graal
 pub use kyute_shell::graal;
 
 pub type Dip = kyute_shell::drawing::Dip;
@@ -57,3 +60,4 @@ pub type Rect = kyute_shell::drawing::Rect;
 pub type Offset = kyute_shell::drawing::Offset;
 pub type Point = kyute_shell::drawing::Point;
 pub type PhysicalPoint = kyute_shell::drawing::PhysicalPoint;
+pub type Color = kyute_shell::drawing::Color;

@@ -1,4 +1,5 @@
 #![feature(const_fn_floating_point_arithmetic)]
+#![feature(const_mut_refs)]
 
 //! Windowing and drawing base for kyute.
 //!
@@ -6,16 +7,15 @@
 pub mod drawing;
 //pub mod text;
 //pub mod imaging;
-pub mod error;
 pub mod application;
-pub mod window;
 mod backend;
+pub mod error;
 mod shortcut;
+pub mod window;
 
 // TODO: backend-agnostic wrapper
 pub use backend::Menu;
-pub use shortcut::Shortcut;
-
+pub use shortcut::{Shortcut, ShortcutKey};
 
 // Re-export winit for WindowBuilder and stuff
 pub use winit;

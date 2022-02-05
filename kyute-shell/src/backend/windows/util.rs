@@ -1,5 +1,4 @@
-use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
+use std::{ffi::OsStr, os::windows::ffi::OsStrExt};
 
 // --- this section taken from https://github.com/linebender/druid/blob/f588fa76bc88215ce6b2b500d0eba26149ca8368/druid-shell/src/backend/windows/util.rs#L63
 // see licenses

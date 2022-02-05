@@ -1,7 +1,5 @@
-use crate::{data::Data, SideOffsets};
-use kyute_shell::{
-    drawing::Color
-};
+use crate::{data::Data, style::Length, Color, SideOffsets};
+
 use std::{
     any::Any,
     collections::HashMap,
@@ -63,6 +61,7 @@ impl_env_value!(f64);
 impl_env_value!(Color);
 impl_env_value!(String);
 impl_env_value!(SideOffsets);
+impl_env_value!(Length);
 
 impl<T: Any> EnvValue for Arc<T> {
     fn as_any(&self) -> &dyn Any {

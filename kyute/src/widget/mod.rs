@@ -1,20 +1,23 @@
 //! built-in widgets.
 mod button;
 //mod container;
-mod flex;
-mod text;
-mod graphics;
-mod menu;
-mod baseline;
-mod slider;
-mod textedit;
-mod drop_down;
 mod align;
-mod layout_wrapper;
+mod baseline;
 mod constrained;
+mod drop_down;
+mod flex;
+mod layout_wrapper;
+mod menu;
 mod padding;
+mod slider;
+mod text;
+mod textedit;
 //mod splitter;
-mod grid;
+pub mod grid;
+//mod collapsible;
+mod container;
+mod collapsible;
+mod clickable;
 //mod grid;
 //mod slider;
 //mod text;
@@ -36,19 +39,21 @@ impl Orientation {
     }
 }
 
-pub use layout_wrapper::LayoutWrapper;
-pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
-pub use text::Text;
-pub use button::Button;
-pub use menu::{MenuItem, Menu, Action, Shortcut};
-pub use baseline::Baseline;
-pub use slider::Slider;
-pub use textedit::TextEdit;
-pub use drop_down::DropDown;
 pub use align::Align;
+pub use baseline::Baseline;
+pub use button::Button;
 pub use constrained::ConstrainedBox;
+pub use container::Container;
+pub use drop_down::DropDown;
+pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
+pub use grid::{Grid, GridLength};
+pub use layout_wrapper::LayoutWrapper;
+pub use menu::{Action, Menu, MenuItem, Shortcut};
 pub use padding::Padding;
-pub use grid::{GridLength,Grid};
+pub use slider::Slider;
+pub use text::Text;
+pub use textedit::TextEdit;
+pub use clickable::Clickable;
 
 /*pub use button::{button, ButtonResult};
 pub use container::container;

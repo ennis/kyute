@@ -1,22 +1,30 @@
 use crate::{cache, composable, util::Counter, Cache, Data, Key};
 use std::{collections::HashMap, convert::TryInto};
+use crate::state::Signal;
 
 /// Keyboard shortcut.
 // This is a newtype so that we can impl Data on it.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Shortcut(kyute_shell::Shortcut);
 
 impl Shortcut {
-    pub fn new(modifiers: keyboard_types::Modifiers, key: keyboard_types::Key) -> Shortcut {
+    pub const fn new(
+        modifiers: keyboard_types::Modifiers,
+        key: kyute_shell::ShortcutKey,
+    ) -> Shortcut {
         Shortcut(kyute_shell::Shortcut::new(modifiers, key))
+    }
+
+    pub const fn from_str(str: &str) -> Shortcut {
+        Shortcut(kyute_shell::Shortcut::from_str(str))
     }
 
     pub fn modifiers(&self) -> keyboard_types::Modifiers {
         self.0.modifiers
     }
 
-    pub fn key(&self) -> &keyboard_types::Key {
-        &self.0.key
+    pub fn key(&self) -> kyute_shell::ShortcutKey {
+        self.0.key
     }
 
     pub fn to_string(&self) -> String {
@@ -36,9 +44,7 @@ pub struct Action {
     pub(crate) shortcut: Option<Shortcut>,
     // ignore "triggered" which is transient state
     #[data(ignore)]
-    pub(crate) triggered: bool,
-    #[data(ignore)]
-    pub(crate) triggered_state: Key<bool>,
+    pub(crate) triggered: Signal<()>,
 }
 
 // FIXME: WM_COMMAND menu ids are 16-bit, so we can exhaust IDs quickly if we keep creating new actions
@@ -64,22 +70,16 @@ impl Action {
     #[composable(uncached)]
     fn new_inner(shortcut: Option<Shortcut>) -> Action {
         let id: u32 = cache::once(|| ACTION_ID_COUNTER.next().try_into().unwrap());
-        let triggered_state = cache::state(|| false);
-        let triggered = triggered_state.get();
-        if triggered {
-            triggered_state.set(false);
-        }
         Action {
             id,
-            triggered,
+            triggered: Signal::new(),
             shortcut,
-            triggered_state,
         }
     }
 
     /// Returns whether the action was triggered.
     pub fn triggered(&self) -> bool {
-        self.triggered
+        self.triggered.signalled()
     }
 }
 

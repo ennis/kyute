@@ -1,5 +1,5 @@
 use crate::{
-    align_boxes, core2::WindowPaintCtx, layout::BoxConstraints, styling::PaintCtxExt,
+    align_boxes, core2::WindowPaintCtx, layout::BoxConstraints, style::PaintCtxExt,
     widget::LayoutWrapper, Alignment, Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx,
     Measurements, Offset, PaintCtx, Point, Rect, Size, Widget,
 };
@@ -35,10 +35,10 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        use kyute::styling::*;
-        ctx.draw_styled_box(
+        use kyute::style::*;
+        ctx.draw_visual(
             bounds,
-            rectangle().with(fill(Color::new(0.0, 0.8, 0.0, 0.1))),
+            &Rectangle::new().fill(Color::new(0.0, 0.8, 0.0, 0.1)),
             env,
         );
         self.inner.paint(ctx, bounds, env)

@@ -1,13 +1,17 @@
 use crate::{
-    composable, layout::Measurements, styling::Length, text::resolve_range, BoxConstraints, Data,
-    Environment, Event, EventCtx, LayoutCtx, Offset, PaintCtx, Rect, Size, Widget, WidgetPod,
+    composable, layout::Measurements, style::Length, text::resolve_range, BoxConstraints, Data,
+    EnvKey, Environment, Event, EventCtx, LayoutCtx, Offset, PaintCtx, Rect, Size, Widget,
+    WidgetPod,
 };
 use kyute::Point;
 use kyute_shell::drawing::{Color, ToSkia};
 use std::{
     cell::RefCell,
-    ops::{Range, RangeBounds, RangeFrom, RangeFull, RangeTo, RangeToInclusive},
+    ops::{Range, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
 };
+use tracing::trace;
+
+pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = EnvKey::new("kyute.show_grid_layout_lines");
 
 #[derive(Copy, Clone, Debug)]
 pub enum GridLength {
@@ -22,10 +26,21 @@ pub struct TrackSize {
     max_size: GridLength,
 }
 
+/// Orientation of a grid track.
 #[derive(Copy, Clone, Debug)]
-enum TrackKind {
+enum TrackAxis {
     Row,
     Column,
+}
+
+impl TrackAxis {
+    /// Width for a column, height for a row
+    fn width(&self, size: Size) -> f64 {
+        match self {
+            TrackAxis::Column => size.width,
+            TrackAxis::Row => size.height,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -36,18 +51,18 @@ pub struct GridItem {
 }
 
 impl GridItem {
-    fn track_span(&self, track_kind: TrackKind) -> Range<usize> {
-        match track_kind {
-            TrackKind::Row => self.row_range.clone(),
-            TrackKind::Column => self.column_range.clone(),
+    fn track_span(&self, axis: TrackAxis) -> Range<usize> {
+        match axis {
+            TrackAxis::Row => self.row_range.clone(),
+            TrackAxis::Column => self.column_range.clone(),
         }
     }
-}
 
-fn track_width(track_kind: TrackKind, size: Size) -> f64 {
-    match track_kind {
-        TrackKind::Column => size.width,
-        TrackKind::Row => size.height,
+    fn is_in_track(&self, axis: TrackAxis, index: usize) -> bool {
+        match axis {
+            TrackAxis::Row => self.row_range.start == index,
+            TrackAxis::Column => self.column_range.start == index,
+        }
     }
 }
 
@@ -64,6 +79,12 @@ impl GridSpan for usize {
 impl GridSpan for Range<usize> {
     fn resolve(&self, len: usize) -> Range<usize> {
         self.clone()
+    }
+}
+
+impl GridSpan for RangeInclusive<usize> {
+    fn resolve(&self, len: usize) -> Range<usize> {
+        *self.start()..*self.end() + 1
     }
 }
 
@@ -92,6 +113,12 @@ impl GridSpan for RangeFull {
 }
 
 #[derive(Clone, Debug)]
+struct GridTrackLayout {
+    pos: f64,
+    size: f64,
+}
+
+#[derive(Clone, Debug)]
 pub struct Grid {
     /// Column sizes.
     columns: Vec<TrackSize>,
@@ -99,8 +126,9 @@ pub struct Grid {
     rows: Vec<TrackSize>,
     /// List of grid items: widgets positioned inside the grid.
     items: Vec<GridItem>,
-    row_sizes: RefCell<Vec<f64>>,
-    column_sizes: RefCell<Vec<f64>>,
+
+    row_layout: RefCell<Vec<GridTrackLayout>>,
+    column_layout: RefCell<Vec<GridTrackLayout>>,
 }
 
 impl Grid {
@@ -110,8 +138,8 @@ impl Grid {
             columns: vec![],
             rows: vec![],
             items: vec![],
-            row_sizes: RefCell::new(vec![]),
-            column_sizes: RefCell::new(vec![]),
+            row_layout: RefCell::new(vec![]),
+            column_layout: RefCell::new(vec![]),
         }
     }
 
@@ -145,120 +173,125 @@ impl Grid {
         });
         self
     }
-}
 
-fn items_in_track(
-    items: &[GridItem],
-    track_kind: TrackKind,
-    track_index: usize,
-) -> impl Iterator<Item = &GridItem> {
-    items
-        .iter()
-        .filter(move |item| item.track_span(track_kind).start == track_index)
-}
+    fn items_in_track(&self, axis: TrackAxis, index: usize) -> impl Iterator<Item = &GridItem> {
+        self.items
+            .iter()
+            .filter(move |item| item.is_in_track(axis, index))
+    }
 
-fn size_tracks(
-    layout_ctx: &mut LayoutCtx,
-    available_space: f64,
-    tk: TrackKind,
-    tracks: &[TrackSize],
-    items: &[GridItem],
-    env: &Environment,
-) -> Vec<f64> {
-    let mut base_size = vec![0.0; tracks.len()];
-    let mut growth_limit = vec![0.0; tracks.len()];
-
-    // 11.4. Initialize Track Sizes (https://www.w3.org/TR/css-grid-1/#algo-init)
-    for (i, t) in tracks.iter().enumerate() {
-        base_size[i] = match t.min_size {
-            GridLength::Auto => 0.0,
-            GridLength::Fixed(x) => x,
-            GridLength::Flex(_) => {
-                0.0
-                //panic!("flex-size is invalid as a track size minimum")
-            }
+    /// Computes the sizes of rows or columns.
+    ///
+    /// * `available_space`: max size across track direction (columns => max width, rows => max height).
+    /// * `column_sizes`: contains the result of `compute_track_sizes` on the columns when sizing the rows. Used as an additional constraint for rows that size to content.
+    fn compute_track_sizes(
+        &self,
+        layout_ctx: &mut LayoutCtx,
+        env: &Environment,
+        axis: TrackAxis,
+        available_space: f64,
+        column_layout: Option<&[GridTrackLayout]>,
+    ) -> (Vec<GridTrackLayout>, f64) {
+        let tracks = match axis {
+            TrackAxis::Row => &self.rows[..],
+            TrackAxis::Column => &self.columns[..],
         };
 
-        growth_limit[i] = match t.max_size {
-            GridLength::Fixed(x) => x,
-            GridLength::Auto | GridLength::Flex(_) => f64::INFINITY,
-        };
+        let num_tracks = tracks.len();
 
-        if growth_limit[i] < base_size[i] {
-            growth_limit[i] = base_size[i];
+        let mut base_size = vec![0.0; num_tracks];
+        let mut growth_limit = vec![0.0; num_tracks];
+
+        for i in 0..num_tracks {
+            match tracks[i].min_size {
+                GridLength::Fixed(x) => {
+                    base_size[i] = x;
+                }
+                GridLength::Auto => {
+                    for item in self.items_in_track(axis, i) {
+                        let size = item
+                            .widget
+                            .layout(layout_ctx, BoxConstraints::tight(Size::zero()), env)
+                            .size();
+                        base_size[i] = base_size[i].max(axis.width(size));
+                    }
+                }
+                _ => {}
+            };
+
+            match tracks[i].max_size {
+                GridLength::Fixed(x) => {
+                    growth_limit[i] = x;
+                }
+                GridLength::Auto => {
+                    for item in self.items_in_track(axis, i) {
+                        let constraints = if let Some(column_layout) = column_layout {
+                            BoxConstraints::new(0.0..column_layout[i].size, ..)
+                        } else {
+                            BoxConstraints::new(.., ..)
+                        };
+                        let size = item.widget.layout(layout_ctx, constraints, env).size();
+                        growth_limit[i] = growth_limit[i].max(axis.width(size));
+                    }
+                }
+                GridLength::Flex(_) => growth_limit[i] = f64::INFINITY,
+            };
+
+            if growth_limit[i] < base_size[i] {
+                growth_limit[i] = base_size[i];
+            }
         }
-    }
 
-    // 11.5 Resolve Intrinsic Track Sizes
-    // 2. Size tracks to fit non-spanning items (https://www.w3.org/TR/css-grid-1/#algo-single-span-items)
-
-    for (i, t) in tracks.iter().enumerate() {
-        match t.min_size {
-            GridLength::Auto => {
-                // size = maximum of "natural" sizes
-                // filter items whose spans start at the current track
-                for item in items_in_track(items, tk, i) {
-                    // min-content => hypothetical "minimum size"
-                    // max-content => result of layout with no constraints
-                    // `width: 100%` => tight constraint
-                    // layout first with no constraints to get the preferred size
-                    let m =
-                        item.widget
-                            .layout(layout_ctx, BoxConstraints::tight(Size::zero()), env);
-                    base_size[i] = f64::max(base_size[i], track_width(tk, m.size()));
+        // Maximize non-flex tracks
+        let mut free_space = available_space - base_size.iter().sum::<f64>();
+        for i in 0..tracks.len() {
+            let delta = growth_limit[i] - base_size[i];
+            if delta > 0.0 {
+                if free_space > delta {
+                    base_size[i] = growth_limit[i];
+                    free_space -= delta;
+                } else {
+                    base_size[i] += free_space;
+                    free_space = 0.0;
+                    break;
                 }
             }
-            _ => {}
         }
 
-        match t.max_size {
-            GridLength::Auto => {
-                for item in items_in_track(items, tk, i) {
-                    let m = item
-                        .widget
-                        .layout(layout_ctx, BoxConstraints::new(.., ..), env);
-                    growth_limit[i] = f64::max(base_size[i], track_width(tk, m.size()));
+        // distribute remaining spaces to flex tracks
+        let mut flex_total = 0.0;
+        for t in tracks {
+            match t.max_size {
+                GridLength::Flex(x) => flex_total += x,
+                _ => {}
+            }
+        }
+        for i in 0..num_tracks {
+            match tracks[i].max_size {
+                GridLength::Flex(x) => {
+                    let fr = x / flex_total;
+                    base_size[i] = base_size[i].max(fr * free_space);
                 }
-            }
-            _ => {}
-        }
-
-        if growth_limit[i] < base_size[i] {
-            growth_limit[i] = base_size[i];
-        }
-    }
-
-    // 4. Increase sizes to accommodate spanning items crossing flexible tracks (https://www.w3.org/TR/css-grid-1/#algo-spanning-flex-items)
-
-    // 11.6. Maximize Tracks (https://www.w3.org/TR/css-grid-1/#algo-grow-tracks)
-    let mut free_space = available_space - base_size.iter().sum::<f64>();
-    for i in 0..tracks.len() {
-        let delta = growth_limit[i] - base_size[i];
-        if delta > 0.0 {
-            if free_space > delta {
-                base_size[i] = growth_limit[i];
-                free_space -= delta;
-            } else {
-                base_size[i] += free_space;
-                free_space = 0.0;
-                break;
+                _ => {}
             }
         }
+
+        tracing::trace!(
+            "{:?} base_size={:?}, growth_limit={:?}",
+            axis,
+            base_size,
+            growth_limit
+        );
+
+        // grid line positions
+        let mut layout = Vec::with_capacity(num_tracks);
+        let mut pos = 0.0;
+        for &size in base_size.iter() {
+            layout.push(GridTrackLayout { pos, size });
+            pos += size;
+        }
+        (layout, pos)
     }
-
-    /*// 11.7. Expand Flexible Tracks (https://www.w3.org/TR/css-grid-1/#algo-flex-tracks)
-    if free_space > 0.0 {
-
-    }*/
-
-    tracing::trace!(
-        "{:?} base_size={:?}, growth_limit={:?}",
-        tk,
-        base_size,
-        growth_limit
-    );
-    base_size
-    // TODO
 }
 
 impl Widget for Grid {
@@ -272,56 +305,41 @@ impl Widget for Grid {
         constraints: BoxConstraints,
         env: &Environment,
     ) -> Measurements {
-        let column_sizes = size_tracks(
+        // first measure the width of the columns
+        let (column_layout, width) =
+            self.compute_track_sizes(ctx, env, TrackAxis::Column, constraints.max_width(), None);
+        // then measure the height of the rows, which may depend on the width of the columns
+        // Note: it may go the other way around (width of columns that depend on the height of the rows)
+        // but we choose to do it like this
+        let (row_layout, height) = self.compute_track_sizes(
             ctx,
-            constraints.max_width(),
-            TrackKind::Column,
-            &self.columns,
-            &self.items,
             env,
-        );
-        let row_sizes = size_tracks(
-            ctx,
+            TrackAxis::Row,
             constraints.max_height(),
-            TrackKind::Row,
-            &self.rows,
-            &self.items,
-            env,
+            Some(&column_layout[..]),
         );
-
-        let column_x: Vec<_> = column_sizes
-            .iter()
-            .scan(0.0, |s, &x| {
-                let px = *s;
-                *s += x;
-                Some(px)
-            })
-            .collect();
-        let row_y: Vec<_> = row_sizes
-            .iter()
-            .scan(0.0, |s, &x| {
-                let px = *s;
-                *s += x;
-                Some(px)
-            })
-            .collect();
-
-        let width: f64 = column_sizes.iter().sum();
-        let height: f64 = row_sizes.iter().sum();
 
         // layout items
         for item in self.items.iter() {
-            let w: f64 = column_sizes[item.column_range.clone()].iter().sum();
-            let h: f64 = row_sizes[item.row_range.clone()].iter().sum();
+            let w: f64 = column_layout[item.column_range.clone()]
+                .iter()
+                .map(|x| x.size)
+                .sum();
+            let h: f64 = row_layout[item.row_range.clone()]
+                .iter()
+                .map(|x| x.size)
+                .sum();
+
             let constraints = BoxConstraints::loose(Size::new(w, h));
             item.widget.layout(ctx, constraints, env);
-            let x = column_x[item.column_range.start];
-            let y = row_y[item.row_range.start];
+
+            let x = column_layout[item.column_range.start].pos;
+            let y = row_layout[item.row_range.start].pos;
             item.widget.set_child_offset(Offset::new(x, y));
         }
 
-        self.row_sizes.replace(row_sizes);
-        self.column_sizes.replace(column_sizes);
+        self.row_layout.replace(row_layout);
+        self.column_layout.replace(column_layout);
 
         Measurements::new(Rect::new(Point::origin(), Size::new(width, height)))
     }
@@ -331,39 +349,38 @@ impl Widget for Grid {
         let height = bounds.size.height;
         let width = bounds.size.width;
 
-        let row_sizes = self.row_sizes.borrow();
-        let column_sizes = self.column_sizes.borrow();
+        // draw debug grid lines
+        if env.get(SHOW_GRID_LAYOUT_LINES).unwrap_or_default() {
+            let row_layout = self.row_layout.borrow();
+            let column_layout = self.column_layout.borrow();
+            let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
 
-        let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
+            for x in column_layout
+                .iter()
+                .map(|x| x.pos)
+                .chain(std::iter::once(width))
+            {
+                ctx.canvas.draw_line(
+                    Point::new(x + 0.5, 0.5).to_skia(),
+                    Point::new(x + 0.5, height + 0.5).to_skia(),
+                    &paint,
+                );
+            }
 
-        for x in std::iter::once(0.0)
-            .chain(column_sizes.iter().cloned())
-            .scan(0.0, |s, x| {
-                *s += x;
-                Some(*s)
-            })
-        {
-            ctx.canvas.draw_line(
-                Point::new(x + 0.5, 0.5).to_skia(),
-                Point::new(x + 0.5, height + 0.5).to_skia(),
-                &paint,
-            );
+            for y in row_layout
+                .iter()
+                .map(|x| x.pos)
+                .chain(std::iter::once(height))
+            {
+                ctx.canvas.draw_line(
+                    Point::new(0.5, y + 0.5).to_skia(),
+                    Point::new(width + 0.5, y + 0.5).to_skia(),
+                    &paint,
+                );
+            }
         }
 
-        for y in std::iter::once(0.0)
-            .chain(row_sizes.iter().cloned())
-            .scan(0.0, |s, x| {
-                *s += x;
-                Some(*s)
-            })
-        {
-            ctx.canvas.draw_line(
-                Point::new(0.5, y + 0.5).to_skia(),
-                Point::new(width + 0.5, y + 0.5).to_skia(),
-                &paint,
-            );
-        }
-
+        // draw grid items
         for item in self.items.iter() {
             item.widget.paint(ctx, bounds, env);
         }

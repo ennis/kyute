@@ -2,6 +2,7 @@ use crate::{
     align_boxes, cache, composable,
     core2::{EventCtx, LayoutCtx, PaintCtx},
     event::{PointerButton, PointerEventKind},
+    state::Signal,
     util::Counter,
     widget::Text,
     Alignment, BoxConstraints, Cache, Data, Environment, Event, Key, Measurements, Rect,
@@ -24,14 +25,13 @@ pub struct DropDown<T: Data + Display> {
     choices: Vec<DropDownChoice<T>>,
     label: WidgetPod<Text>,
     selected_index: usize,
-    new_selected_item: Key<Option<(usize, T)>>,
+    selected_item_changed: Signal<(usize, T)>,
 }
 
 impl<T: Data + Display> DropDown<T> {
     /// Creates a new drop down with the specified choices.
     #[composable(uncached)]
     pub fn new(choices: Vec<T>, selected_index: usize) -> DropDown<T> {
-        let new_selected_item = cache::state(|| None);
         let label = WidgetPod::new(Text::new(format!("{}", choices[selected_index])));
 
         // create menu IDs for each choice
@@ -47,18 +47,14 @@ impl<T: Data + Display> DropDown<T> {
             choices: choices_with_ids,
             selected_index,
             label,
-            new_selected_item,
+            selected_item_changed: Signal::new(),
         }
     }
 
     /// Returns whether TODO.
     #[composable(uncached)]
-    pub fn new_selected_item(&self) -> Option<T> {
-        if let Some((i, item)) = self.new_selected_item.update(None) {
-            Some(item)
-        } else {
-            None
-        }
+    pub fn selected_item_changed(&self) -> Option<T> {
+        self.selected_item_changed.value().map(|x| x.1)
     }
 
     fn create_context_menu(&self) -> kyute_shell::Menu {
@@ -102,10 +98,8 @@ impl<T: Data + Display> Widget for DropDown<T> {
             },
             Event::MenuCommand(id) => {
                 trace!("menu command: {}", *id);
-                ctx.set_state(
-                    self.new_selected_item,
-                    Some((*id, self.choices[*id].value.clone())),
-                );
+                self.selected_item_changed
+                    .signal(ctx, (*id, self.choices[*id].value.clone()));
                 ctx.set_handled();
             }
             _ => {}
