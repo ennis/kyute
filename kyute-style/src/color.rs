@@ -1,10 +1,7 @@
-use crate::drawing::{FromSkia, ToSkia};
-use std::{error::Error, fmt, marker::PhantomData};
-
-/// Color spec.
-#[derive(Copy, Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Color(palette::Srgba);
+//! TODO: copied code from kyute-shell: at some point, move this into a shared "common types" crate
+//!
+use serde::Serialize;
+use std::{error::Error, fmt};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ColorParseError;
@@ -34,28 +31,25 @@ const fn byte_from_ascii(b0: u8, b1: u8) -> Result<u8, ColorParseError> {
     }
 }
 
-impl Default for Color {
-    fn default() -> Self {
-        Color::new(0.0, 0.0, 0.0, 0.0)
-    }
+#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
+pub struct Color {
+    pub red: f64,
+    pub green: f64,
+    pub blue: f64,
+    pub alpha: f64,
 }
 
 impl Color {
-    /// Creates a new color from RGBA values.
-    pub const fn new(red: f64, green: f64, blue: f64, alpha: f64) -> Color {
-        Color(palette::Srgba {
-            color: palette::Srgb {
-                red: red as f32,
-                green: green as f32,
-                blue: blue as f32,
-                standard: PhantomData,
-            },
-            alpha: alpha as f32,
-        })
+    pub fn new(red: f64, green: f64, blue: f64, alpha: f64) -> Color {
+        Color {
+            red,
+            green,
+            blue,
+            alpha,
+        }
     }
 
-    /// TODO documentation
-    pub const fn from_rgb_u8(red: u8, green: u8, blue: u8) -> Color {
+    pub fn from_rgb_u8(red: u8, green: u8, blue: u8) -> Color {
         Color::new(
             (red as f64) / 255.0,
             (green as f64) / 255.0,
@@ -64,17 +58,7 @@ impl Color {
         )
     }
 
-    pub const fn to_rgba_u8(&self) -> (u8, u8, u8, u8) {
-        (
-            (self.0.color.red * 255.0) as u8,
-            (self.0.color.green * 255.0) as u8,
-            (self.0.color.blue * 255.0) as u8,
-            (self.0.alpha * 255.0) as u8,
-        )
-    }
-
-    /// TODO documentation
-    pub const fn from_rgba_u8(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
+    pub fn from_rgba_u8(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
         Color::new(
             (red as f64) / 255.0,
             (green as f64) / 255.0,
@@ -83,29 +67,8 @@ impl Color {
         )
     }
 
-    pub fn to_hex(&self) -> String {
-        match self.to_rgba_u8() {
-            (r, g, b, 255) => {
-                format!("#{:02x}{:02x}{:02x}", r, g, b)
-            }
-            (r, g, b, a) => {
-                format!("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a)
-            }
-        }
-    }
-
     /// Creates a new color from an hex code.
-    pub const fn from_hex(hex: &str) -> Color {
-        match Self::try_from_hex(hex) {
-            Ok(color) => color,
-            Err(e) => {
-                panic!("invalid hex color")
-            }
-        }
-    }
-
-    /// Creates a new color from an hex code.
-    pub const fn try_from_hex(hex: &str) -> Result<Color, ColorParseError> {
+    pub fn from_hex(hex: &str) -> Result<Color, ColorParseError> {
         match hex.as_bytes() {
             // #RRGGBB, RRGGBB
             &[b'#', r0, r1, g0, g1, b0, b1] | &[r0, r1, g0, g1, b0, b1] => {
@@ -155,34 +118,5 @@ impl Color {
             }
             _ => Err(ColorParseError),
         }
-    }
-}
-
-impl ToSkia for Color {
-    type Target = skia_safe::Color4f;
-
-    fn to_skia(&self) -> Self::Target {
-        skia_safe::Color4f {
-            r: self.0.red,
-            g: self.0.green,
-            b: self.0.blue,
-            a: self.0.alpha,
-        }
-    }
-}
-
-impl FromSkia for Color {
-    type Source = skia_safe::Color4f;
-
-    fn from_skia(value: Self::Source) -> Self {
-        Color(palette::Srgba {
-            color: palette::Srgb {
-                red: value.r,
-                green: value.g,
-                blue: value.b,
-                standard: PhantomData,
-            },
-            alpha: value.a,
-        })
     }
 }

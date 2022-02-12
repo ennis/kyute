@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 kyute-macros = { path="macros" }
-kyute-shell = { path="../kyute-shell" }
+kyute-shell = { path="../kyute-shell", features = ["serializing"] }
 tracing = { version = "0.1.25", features = ["attributes"] }
 euclid = "0.22"
 keyboard-types = "0.6"
@@ -19,6 +19,8 @@ anyhow = "1.0.44"
 thiserror = "1.0.29"
 imbl = { version = "1", optional = true }
 approx = "0.5"
+serde_json = "1.0.78"
+serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.2.19", features = ["fmt"] }

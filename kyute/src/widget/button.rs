@@ -4,8 +4,8 @@ use crate::{
     event::PointerEventKind,
     state::Signal,
     widget::Text,
-    Alignment, BoxConstraints, Environment, Event, Measurements, Rect, SideOffsets,
-    Size, Widget, WidgetPod,
+    Alignment, BoxConstraints, Environment, Event, Measurements, Rect, SideOffsets, Size, Widget,
+    WidgetPod,
 };
 use tracing::trace;
 
@@ -14,14 +14,6 @@ pub struct Button {
     label: WidgetPod<Text>,
     clicked: Signal<()>,
 }
-
-// if Button::new returns a Button, then Button must impl Data so that
-// WidgetPod::new(widget) can be cached on the widget.
-// -> actually, it might not be necessary:
-// -> WidgetPod::new:
-//      -> get state from the positional cache
-//      -> update the button (replace with new instance)
-//
 
 impl Button {
     /// Creates a new button with the specified label.
@@ -110,26 +102,24 @@ impl Widget for Button {
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         use kyute::{style::*, theme::*};
 
-        //tracing::trace!(?bounds, "button paint");
-
-        let background_gradient = linear_gradient()
+        let background_gradient = LinearGradient::new()
             .angle(90.0.degrees())
             .stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
             .stop(BUTTON_BACKGROUND_TOP_COLOR, 1.0);
 
-        ctx.draw_visual(
+        ctx.draw_styled_box(
             bounds,
-            &Rectangle::new()
+            &BoxStyle::new()
                 .fill(background_gradient.clone())
                 .border(
-                    Border::new(1.0.dip())
-                        .inside(0.0.dip())
-                        .brush(BUTTON_BORDER_BOTTOM_COLOR)
+                    Border::new(1.dip())
+                        .inside(0.dip())
+                        .paint(BUTTON_BORDER_BOTTOM_COLOR)
                         .opacity(1.0),
                 )
                 .border(
-                    Border::new(1.0.dip()).outside(0.0.dip()).brush(
-                        linear_gradient()
+                    Border::new(1.dip()).outside(0.dip()).paint(
+                        LinearGradient::new()
                             .angle(90.0.degrees())
                             .stop(WIDGET_OUTER_GROOVE_BOTTOM_COLOR, 0.0)
                             .stop(WIDGET_OUTER_GROOVE_TOP_COLOR, 0.3),

@@ -1,37 +1,37 @@
 use crate::{
     composable,
-    style::{NullVisual, PaintCtxExt, Visual},
+    style::{BoxStyle, PaintCtxExt},
     Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
     PaintCtx, Point, Rect, SideOffsets, Size, Widget, WidgetPod,
 };
 
 #[derive(Clone)]
-pub struct Container<V, Content> {
+pub struct Container<Content> {
     alignment: Option<Alignment>,
     width: Option<f64>,
     height: Option<f64>,
     baseline: Option<f64>,
     content_padding: SideOffsets,
-    visual: V,
+    box_style: BoxStyle,
     content: WidgetPod<Content>,
 }
 
-impl<Content: Widget + 'static> Container<NullVisual, Content> {
+impl<Content: Widget + 'static> Container<Content> {
     #[composable(uncached)]
-    pub fn new(content: Content) -> Container<NullVisual, Content> {
+    pub fn new(content: Content) -> Container<Content> {
         Container {
             alignment: None,
             width: None,
             height: None,
             baseline: None,
             content_padding: Default::default(),
-            visual: NullVisual,
+            box_style: BoxStyle::default(),
             content: WidgetPod::new(content),
         }
     }
 }
 
-impl<V: Visual, Content: Widget + 'static> Container<V, Content> {
+impl<Content: Widget + 'static> Container<Content> {
     /// Constrain the width of the container.
     pub fn fix_width(mut self, width: f64) -> Self {
         self.width = Some(width);
@@ -68,20 +68,14 @@ impl<V: Visual, Content: Widget + 'static> Container<V, Content> {
         self
     }
 
-    pub fn visual<V2: Visual>(self, visual: V2) -> Container<(V, V2), Content> {
-        Container {
-            alignment: self.alignment,
-            width: self.width,
-            height: self.height,
-            baseline: self.baseline,
-            content_padding: self.content_padding,
-            visual: (self.visual, visual),
-            content: self.content,
-        }
+    /// Sets the style used to paint the box of the container.
+    pub fn box_style(mut self, box_style: BoxStyle) -> Self {
+        self.box_style = box_style;
+        self
     }
 }
 
-impl<V: Visual, Content: Widget> Widget for Container<V, Content> {
+impl<Content: Widget> Widget for Container<Content> {
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.content.event(ctx, event, env)
     }
@@ -160,7 +154,7 @@ impl<V: Visual, Content: Widget> Widget for Container<V, Content> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        ctx.draw_visual(bounds, &self.visual, env);
+        ctx.draw_styled_box(bounds, &self.box_style, env);
         self.content.paint(ctx, bounds, env);
     }
 }

@@ -1,10 +1,6 @@
-use kyute::{
-    application, composable,
-    shell::application::Application,
-    theme,
-    widget::{Button, ConstrainedBox, Container, Flex, Grid, GridLength, Text},
-    Alignment, BoxConstraints, Color, Orientation, Size, Widget, WidgetExt, WidgetPod, Window,
-};
+use kyute::{application, composable, shell::application::Application, style::define_theme, theme, widget::{Button, ConstrainedBox, Container, Flex, Grid, GridLength, Text}, Alignment, BoxConstraints, Color, Environment, Orientation, Size, Widget, WidgetExt, WidgetPod, Window, EnvKey};
+use kyute::style::{standard_theme, ThemeData};
+use kyute_shell::AssetId;
 use kyute_shell::winit::window::WindowBuilder;
 
 #[composable(uncached)]
@@ -16,16 +12,16 @@ fn fixed_size_widget(w: f64, h: f64, name: &str) -> impl Widget {
 #[composable(uncached)]
 fn grid_layout_example() -> impl Widget + Clone {
     Grid::new()
-        .column(GridLength::Fixed(100.0))
-        .column(GridLength::Auto)
-        .column(GridLength::Fixed(100.0))
-        .row(GridLength::Fixed(100.0))
-        .row(GridLength::Flex(1.0))
-        .item(0, 0, fixed_size_widget(50.0, 50.0, "(0,0)"))
-        .item(0, 1, fixed_size_widget(50.0, 50.0, "(0,1)"))
-        .item(0, 2, fixed_size_widget(50.0, 50.0, "(0,2)"))
-        .item(1, 0, fixed_size_widget(50.0, 50.0, "(1,0)"))
-        .item(1, 1..=2, fixed_size_widget(150.0, 50.0, "(1,1)").centered())
+        .with_column(GridLength::Fixed(100.0))
+        .with_column(GridLength::Auto)
+        .with_column(GridLength::Fixed(100.0))
+        .with_row(GridLength::Fixed(100.0))
+        .with_row(GridLength::Flex(1.0))
+        .with(0, 0, fixed_size_widget(50.0, 50.0, "(0,0)"))
+        .with(0, 1, fixed_size_widget(50.0, 50.0, "(0,1)"))
+        .with(0, 2, fixed_size_widget(50.0, 50.0, "(0,2)"))
+        .with(1, 0, fixed_size_widget(50.0, 50.0, "(1,0)"))
+        .with(1, 1..=2, fixed_size_widget(150.0, 50.0, "(1,1)").centered())
     //.item(1, 2, fixed_size_widget(50.0, 50.0, "(1,2)"))
 }
 
@@ -45,7 +41,7 @@ fn align_in_constrained_box() -> impl Widget + Clone {
             Container::new(Text::new("Container".into()))
                 //.aligned(Alignment::CENTER_RIGHT)
                 .fix_width(500.0)
-                .visual(Rectangle::new().fill(Color::from_hex("#b9edc788"))),
+                .box_style(BoxStyle::new().fill(Color::from_hex("#b9edc788"))),
         )
 }
 
@@ -58,8 +54,14 @@ fn ui_root() -> WidgetPod {
     ))
 }
 
+const STANDARD_THEME_CONFIG: AssetId<ThemeData> = AssetId::new("../standard-theme.json");
+
 fn main() {
     let _app = Application::new();
+
+    let mut env = Environment::new();
+    standard_theme::load(&mut env, STANDARD_THEME_CONFIG);
+    env.push(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
 
     tracing_subscriber::fmt()
         .compact()
@@ -67,11 +69,7 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    application::run(
-        ui_root,
-        theme::get_default_application_style()
-            .add(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true),
-    );
+    application::run(ui_root, env);
 
     Application::shutdown();
 }

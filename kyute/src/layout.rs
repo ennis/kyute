@@ -5,7 +5,6 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     ops::{Bound, RangeBounds},
-    sync::Arc,
 };
 
 /// Box constraints.

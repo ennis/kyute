@@ -1,6 +1,7 @@
 #![feature(coerce_unsized)]
 #![feature(unsize)]
 #![feature(arc_new_cyclic)]
+#![feature(const_str_from_utf8)]
 extern crate self as kyute;
 
 #[macro_use]
@@ -40,13 +41,16 @@ pub use env::{EnvKey, EnvValue, Environment};
 pub use event::{Event, InternalEvent};
 pub use kyute_macros::{composable, Data};
 pub use layout::{align_boxes, Alignment, BoxConstraints, Measurements};
+pub use state::{Signal, State};
 pub use widget::Orientation;
 pub use window::Window;
-pub use state::{Signal, State};
 
 pub use kyute_shell as shell;
 // re-export graal
 pub use kyute_shell::graal;
+
+#[cfg(feature = "imbl")]
+pub use imbl;
 
 pub type Dip = kyute_shell::drawing::Dip;
 pub type Px = kyute_shell::drawing::Px;

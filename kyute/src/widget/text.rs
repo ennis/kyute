@@ -1,10 +1,10 @@
 //! Text elements
 use crate::{
     composable, env::Environment, event::Event, BoxConstraints, EventCtx, LayoutCtx, Measurements,
-    PaintCtx, Point, Rect, Widget, WidgetPod,
+    PaintCtx, Point, Rect, Widget,
 };
 use kyute_shell::{
-    drawing::{FromSkia, ToSkia},
+    drawing::FromSkia,
     skia as sk,
 };
 use std::cell::RefCell;

@@ -1,15 +1,13 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
-use std::cell::Cell;
 use crate::{
     composable,
-    Widget,
     event::{Event, PointerEventKind},
-    Signal,
     style::PaintCtxExt,
-    theme, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements,
-    PaintCtx, Point, Rect, SideOffsets, Size,
+    theme, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect,
+    SideOffsets, Signal, Size, Widget,
 };
+use std::cell::Cell;
 use tracing::trace;
 
 /// Utility class representing a slider track on which a knob can move.
@@ -194,18 +192,18 @@ impl Widget for Slider {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
-        use crate::style::*;
+        use crate::{style::*, theme::*};
 
-        let background_gradient = linear_gradient()
+        let background_gradient = LinearGradient::new()
             .angle(90.0.degrees())
-            .stop(theme::BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
-            .stop(theme::BUTTON_BACKGROUND_TOP_COLOR, 1.0);
+            .stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
+            .stop(BUTTON_BACKGROUND_TOP_COLOR, 1.0);
 
-        let track_y = env.get(theme::SLIDER_TRACK_Y).unwrap_or_default();
-        let track_h = env.get(theme::SLIDER_TRACK_HEIGHT).unwrap_or_default();
-        let knob_w = env.get(theme::SLIDER_KNOB_WIDTH).unwrap_or_default();
-        let knob_h = env.get(theme::SLIDER_KNOB_HEIGHT).unwrap_or_default();
-        let knob_y = env.get(theme::SLIDER_KNOB_Y).unwrap_or_default();
+        let track_y = env.get(SLIDER_TRACK_Y).unwrap_or_default();
+        let track_h = env.get(SLIDER_TRACK_HEIGHT).unwrap_or_default();
+        let knob_w = env.get(SLIDER_KNOB_WIDTH).unwrap_or_default();
+        let knob_h = env.get(SLIDER_KNOB_HEIGHT).unwrap_or_default();
+        let knob_y = env.get(SLIDER_KNOB_Y).unwrap_or_default();
 
         let track_x_start = self.track.get().start.x;
         let track_x_end = self.track.get().end.x;
@@ -225,34 +223,31 @@ impl Widget for Slider {
         );
 
         // track
-        ctx.draw_visual(
+        ctx.draw_styled_box(
             track_bounds,
-            &Rectangle::new()
-                .fill(theme::FRAME_BG_SUNKEN_COLOR)
+            &BoxStyle::new()
+                .fill(FRAME_BG_SUNKEN_COLOR)
                 .border(
                     Border::new(1.0.dip())
-                        .brush(theme::FRAME_BG_SUNKEN_COLOR)
+                        .paint(FRAME_BG_SUNKEN_COLOR)
                         .inside(0.0.dip()),
                 )
                 .border(
                     Border::new(1.0.dip())
                         .outside(0.0.dip())
-                        .brush(
-                            linear_gradient()
+                        .paint(
+                            LinearGradient::new()
                                 .angle(90.0.degrees())
-                                .stop(theme::WIDGET_OUTER_GROOVE_BOTTOM_COLOR, 0.0)
-                                .stop(theme::WIDGET_OUTER_GROOVE_TOP_COLOR, 0.3),
+                                .stop(WIDGET_OUTER_GROOVE_BOTTOM_COLOR, 0.0)
+                                .stop(WIDGET_OUTER_GROOVE_TOP_COLOR, 0.3),
                         )
                         .opacity(1.0),
                 ),
             env,
         );
 
-        ctx.draw_visual(
-            knob_bounds,
-            &Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
-                .fill(background_gradient.clone()),
-            env,
-        );
+        Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
+            .fill(background_gradient.clone())
+            .draw(ctx, knob_bounds, env);
     }
 }

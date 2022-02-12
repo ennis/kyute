@@ -1,4 +1,4 @@
-use keyboard_types::{Key, Modifiers};
+use keyboard_types::Modifiers;
 use std::{fmt::Write, ops::Range};
 
 /// Subset of `Key`s usable as the last key in a shortcut.

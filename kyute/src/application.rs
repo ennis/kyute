@@ -2,9 +2,7 @@
 //!
 //! Provides the `run_application` function that opens the main window and translates the incoming
 //! events from winit into the events expected by kyute.
-use crate::{
-    cache::Key, core2::WidgetId, Cache, Environment, Event, InternalEvent, WidgetPod,
-};
+use crate::{core2::WidgetId, Cache, Environment, Event, InternalEvent, WidgetPod};
 use kyute_shell::{
     winit,
     winit::{

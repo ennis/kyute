@@ -1,0 +1,23 @@
+[package]
+name = "kyute-style"
+version = "0.1.0"
+authors = ["Alexandre Bléron <alex.bleron@gmail.com>"]
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+lalrpop-util = "0.19.7"
+regex = "1"
+#logos = "0.12"
+thiserror = "1.0"
+bumpalo = "3.9.1"
+serde_json = { version="1.0.78", features = ["preserve_order"] }
+serde = { version="1.0.136", features = ["derive"] }
+#kyute = { path="../kyute", features = ["imbl"] }
+
+[dev-dependencies]
+anyhow = "1.0.53"
+notify = "5.0.0-pre.13"
+
+[build-dependencies]
+lalrpop = "0.19.7"

@@ -6,14 +6,12 @@ use crate::{
     event::{Event, Modifiers, PointerEventKind},
     state::{Signal, State},
     text::{FormattedText, FormattedTextParagraph},
-    theme, BoxConstraints, Data, EventCtx, LayoutCtx, Measurements, Offset,
-    PaintCtx, Point, Rect, Size,
+    theme, BoxConstraints, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect,
+    Size,
 };
 use keyboard_types::KeyState;
 use kyute::text::TextPosition;
-use kyute_shell::{
-    drawing::{Color, ToSkia},
-};
+use kyute_shell::drawing::{Color, ToSkia};
 use std::cell::RefCell;
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
@@ -304,9 +302,9 @@ impl Widget for TextEdit {
         // draw selection
         let selection_boxes = paragraph.rects_for_range(self.selection.min()..self.selection.max());
         for tb in selection_boxes {
-            ctx.draw_visual(
+            ctx.draw_styled_box(
                 tb.rect,
-                &Rectangle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)),
+                &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)),
                 env,
             );
         }

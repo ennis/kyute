@@ -3,22 +3,25 @@ use crate::{data::Data, style::Length, Color, SideOffsets};
 use std::{
     any::Any,
     collections::HashMap,
+    fs::File,
     hash::{Hash, Hasher},
+    io::Read,
     marker::PhantomData,
+    path::Path,
     sync::Arc,
 };
-//use crate::style::StyleSet;
 
 /// A type that identifies a named value in an [`Environment`], of a particular type `T`.
-///
-/// FIXME: this trait and the helper macro `impl_key` is only there to allow default values for
-/// types that cannot be created in const contexts. If we decide to remove compile-time default
-/// values for environment keys, then it might be cleaner to revert to representing keys with
-/// const `Key` values instead of `impl Key` types.
 #[derive(Debug, Eq, PartialEq)]
 pub struct EnvKey<T> {
     key: &'static str,
     _type: PhantomData<T>,
+}
+
+impl<T> EnvKey<T> {
+    pub fn name(&self) -> &'static str {
+        self.key
+    }
 }
 
 impl<T> Clone for EnvKey<T> {
@@ -48,8 +51,8 @@ pub trait EnvValue: Sized + Any + Clone {
 
 macro_rules! impl_env_value {
     ($t:ty) => {
-        impl EnvValue for $t {
-            fn as_any(&self) -> &dyn Any {
+        impl $crate::EnvValue for $t {
+            fn as_any(&self) -> &dyn ::std::any::Any {
                 self
             }
         }
@@ -92,12 +95,12 @@ struct EnvImpl {
 }
 
 impl EnvImpl {
-    fn get<T>(&self, key: EnvKey<T>) -> Option<T>
+    fn get<T>(&self, key: &str) -> Option<T>
     where
         T: EnvValue,
     {
         self.values
-            .get(key.key)
+            .get(key)
             .map(|v| {
                 v.downcast_ref::<T>()
                     .expect("unexpected type of environment value")
@@ -116,25 +119,41 @@ impl Environment {
         }))
     }
 
-    /// Creates a new environment that adds or overrides a given key.
-    pub fn add<T>(mut self, key: EnvKey<T>, value: T) -> Environment
+    fn push_inner<T>(&mut self, key: &'static str, value: T)
     where
         T: EnvValue,
     {
         match Arc::get_mut(&mut self.0) {
             Some(env) => {
-                env.values.insert(key.key, Arc::new(value));
-                self
+                env.values.insert(key, Arc::new(value));
             }
             None => {
                 let mut child_env = EnvImpl {
                     parent: Some(self.0.clone()),
                     values: HashMap::new(),
                 };
-                child_env.values.insert(key.key, Arc::new(value));
-                Environment(Arc::new(child_env))
+                child_env.values.insert(key, Arc::new(value));
+                self.0 = Arc::new(child_env);
             }
         }
+    }
+
+    /// Creates a new environment that adds or overrides a given key.
+    pub fn add<T>(mut self, key: EnvKey<T>, value: T) -> Environment
+    where
+        T: EnvValue,
+    {
+        self.push_inner(key.key, value);
+        self
+    }
+
+    /// Adds or overrides a given key in the given environment.
+    /// TODO: find a better verb than push
+    pub fn push<T>(&mut self, key: EnvKey<T>, value: T)
+    where
+        T: EnvValue,
+    {
+        self.push_inner(key.key, value);
     }
 
     /// Returns the value corresponding to the key.
@@ -142,7 +161,7 @@ impl Environment {
     where
         T: EnvValue,
     {
-        self.0.get(key)
+        self.0.get(key.key)
     }
 
     pub fn merged(&self, mut with: Environment) -> Environment {

@@ -16,12 +16,15 @@
 
 #![feature(proc_macro_diagnostic)]
 extern crate proc_macro;
-use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{ToTokens, TokenStreamExt};
 
 mod composable;
 mod data;
+
+use composable::generate_composable;
+use data::derive_data_impl;
+//use resource::generate_resource_directory;
 
 //--------------------------------------------------------------------------------------------------
 struct CrateName;
@@ -34,15 +37,12 @@ impl ToTokens for CrateName {
 }
 
 //--------------------------------------------------------------------------------------------------
-/*#[proc_macro_derive(Data, attributes(argument))]
-pub fn data_derive(input: TokenStream) -> TokenStream {
-  data::derive(input)
-}*/
-
-//--------------------------------------------------------------------------------------------------
 #[proc_macro_attribute]
-pub fn composable(attr: TokenStream, item: TokenStream) -> TokenStream {
-    composable::generate_composable(attr, item)
+pub fn composable(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    generate_composable(attr, item)
 }
 
 // Originally part of druid.
@@ -72,9 +72,9 @@ pub fn composable(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// }
 /// ```
 #[proc_macro_derive(Data, attributes(data))]
-pub fn derive_data(input: TokenStream) -> TokenStream {
+pub fn derive_data(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    data::derive_data_impl(input)
+    derive_data_impl(input)
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }

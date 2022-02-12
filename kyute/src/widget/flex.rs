@@ -176,9 +176,9 @@ impl Widget for Flex {
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         use crate::style::*;
-        ctx.draw_visual(
+        ctx.draw_styled_box(
             bounds,
-            &Rectangle::new().fill(theme::FRAME_BG_NORMAL_COLOR),
+            &BoxStyle::new().fill(theme::FRAME_BG_NORMAL_COLOR),
             env,
         );
 

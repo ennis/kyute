@@ -1,6 +1,5 @@
-use crate::{cache, composable, util::Counter, Data};
+use crate::{cache, composable, state::Signal, util::Counter, Data};
 use std::{collections::HashMap, convert::TryInto};
-use crate::state::Signal;
 
 /// Keyboard shortcut.
 // This is a newtype so that we can impl Data on it.

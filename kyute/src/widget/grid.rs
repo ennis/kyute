@@ -6,7 +6,7 @@ use kyute::Point;
 use kyute_shell::drawing::{Color, ToSkia};
 use std::{
     cell::RefCell,
-    ops::{Range, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
+    ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
 };
 use tracing::trace;
 
@@ -142,7 +142,7 @@ impl Grid {
         }
     }
 
-    pub fn column(mut self, size: GridLength) -> Self {
+    pub fn with_column(mut self, size: GridLength) -> Self {
         self.columns.push(TrackSize {
             min_size: size,
             max_size: size,
@@ -150,27 +150,41 @@ impl Grid {
         self
     }
 
-    pub fn row(mut self, size: GridLength) -> Self {
+    pub fn with_row(mut self, size: GridLength) -> Self {
+        self.add_row(size);
+        self
+    }
+
+    pub fn add_row(&mut self, size: GridLength) {
         self.rows.push(TrackSize {
             min_size: size,
             max_size: size,
         });
-        self
     }
 
     #[composable(uncached)]
-    pub fn item(
+    pub fn with(
         mut self,
         row_span: impl GridSpan,
         column_span: impl GridSpan,
         widget: impl Widget + 'static,
     ) -> Self {
+        self.add(row_span, column_span, widget);
+        self
+    }
+
+    #[composable(uncached)]
+    pub fn add(
+        &mut self,
+        row_span: impl GridSpan,
+        column_span: impl GridSpan,
+        widget: impl Widget + 'static,
+    ) {
         self.items.push(GridItem {
             row_range: row_span.resolve(self.rows.len()),
             column_range: column_span.resolve(self.columns.len()),
             widget: WidgetPod::new(widget),
         });
-        self
     }
 
     fn items_in_track(&self, axis: TrackAxis, index: usize) -> impl Iterator<Item = &GridItem> {

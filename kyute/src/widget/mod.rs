@@ -3,7 +3,6 @@ mod align;
 mod baseline;
 mod button;
 mod clickable;
-mod titled_pane;
 mod constrained;
 mod container;
 mod drop_down;
@@ -15,6 +14,7 @@ mod padding;
 mod slider;
 mod text;
 mod textedit;
+mod titled_pane;
 
 pub use align::Align;
 pub use baseline::Baseline;

@@ -3,10 +3,8 @@ use crate::{
     core2::{EventCtx, LayoutCtx, PaintCtx},
     event::{PointerButton, PointerEventKind},
     state::Signal,
-    util::Counter,
     widget::Text,
-    BoxConstraints, Data, Environment, Event, Measurements, Rect,
-    Widget, WidgetPod,
+    BoxConstraints, Data, Environment, Event, Measurements, Rect, Widget, WidgetPod,
 };
 use std::{convert::TryInto, fmt::Display};
 use tracing::trace;

@@ -2,8 +2,7 @@ use crate::{
     composable,
     state::State,
     widget::{Clickable, Container, Flex, SingleChildWidget, Text},
-    Color, Orientation,
-    SideOffsets, Widget,
+    Color, Orientation, SideOffsets, Widget,
 };
 
 /// A widget with a title TODO.
@@ -34,11 +33,13 @@ impl TitledPane {
         use kyute::style::*;
 
         // Title bar
-        let title_bar = Clickable::new(
-            Container::new(Text::new(title))
-                .content_padding(SideOffsets::new_all_same(2.0))
-                .visual(Rectangle::new().fill(Color::from_hex("#455574"))),
-        );
+        let title_bar = Clickable::new(Container::new(
+            Flex::horizontal().with(
+                Container::new(Text::new(title))
+                    .content_padding(SideOffsets::new_all_same(2.0))
+                    .box_style(BoxStyle::new().fill(Color::from_hex("#455574"))),
+            ),
+        ));
 
         let collapsed_changed = if title_bar.clicked() {
             Some(!collapsed)

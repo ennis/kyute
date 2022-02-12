@@ -1,4 +1,6 @@
+//! Common types related to drawing things on an image, plus some wrappers around skia types.
 mod color;
+mod image;
 mod path;
 
 pub use color::Color;

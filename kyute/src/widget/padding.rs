@@ -1,7 +1,6 @@
 use crate::{
-    composable, layout::BoxConstraints,
-    Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
-    PaintCtx, Rect, SideOffsets, Widget, WidgetPod,
+    composable, layout::BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements,
+    Offset, PaintCtx, Rect, SideOffsets, Widget, WidgetPod,
 };
 
 /// A widgets that insets its content by a specified padding.

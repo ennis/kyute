@@ -33,6 +33,7 @@ use windows::{
     },
 };
 //use windows::core::IUnknown;
+use crate::AssetLoader;
 use windows::Win32::Graphics::{
     Direct2D::D2D1_DEVICE_CONTEXT_OPTIONS_NONE, Direct3D::D3D_DRIVER_TYPE_HARDWARE,
     DirectWrite::DWRITE_FACTORY_TYPE_SHARED,
@@ -107,6 +108,7 @@ pub(crate) struct ApplicationImpl {
     // FIXME: it's far too easy to clone the ID2D11DeviceContext accidentally and use it in a thread-unsafe way: maybe create it on-the-fly instead?
     pub(crate) d2d_device_context: D2D1DeviceContext,
     pub(crate) wic_factory: WICImagingFactory2,
+    pub(crate) asset_loader: AssetLoader,
 }
 
 /// Encapsulates application-global services.
@@ -313,6 +315,9 @@ impl Application {
             WICImagingFactory2(wic)
         };
 
+        // ---------- Asset loader ----------
+        let asset_loader = AssetLoader::default();
+
         let app_impl = ApplicationImpl {
             gpu_device,
             gpu_context: Mutex::new(gpu_context),
@@ -324,6 +329,7 @@ impl Application {
             d2d_device,
             d2d_device_context,
             wic_factory,
+            asset_loader,
         };
 
         let app = Application(Arc::new(app_impl));
@@ -361,6 +367,11 @@ impl Application {
             let ms = GetDoubleClickTime();
             Duration::from_millis(ms as u64)
         }
+    }
+
+    /// Returns a reference to the asset loader instance.
+    pub fn asset_loader(&self) -> &AssetLoader {
+        &self.0.asset_loader
     }
 
     /// Returns the `graal::Device` instance.
