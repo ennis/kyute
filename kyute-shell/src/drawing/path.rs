@@ -1,4 +1,4 @@
-use crate::drawing::{Point, ToSkia};
+use crate::drawing::{Offset, Point, ToSkia};
 //use skia_safe as sk;
 use skia_safe::{path::ArcSize, scalar, PathDirection};
 use svgtypes::PathCommand;
@@ -19,31 +19,55 @@ impl ToSkia for Path {
         let mut last_p = Point::origin();
         let mut last_verb = PathCommand::MoveTo;
 
+        fn absx(abs: bool, last_p: Point, x: f64) -> f64 {
+            if abs {
+                x
+            } else {
+                (x + last_p.x)
+            }
+        }
+
+        fn absy(abs: bool, last_p: Point, y: f64) -> f64 {
+            if abs {
+                y
+            } else {
+                (y + last_p.y)
+            }
+        }
+
+        fn abs2(abs: bool, last_p: Point, x: f64, y: f64) -> (f64, f64) {
+            if abs {
+                (x, y)
+            } else {
+                (x + last_p.x, y + last_p.y)
+            }
+        }
+
         for &segment in self.0.iter() {
             match segment {
                 PathSegment::MoveTo { abs, x, y } => {
-                    if abs {
-                        sk_path.move_to((x as scalar, y as scalar));
-                    } else {
-                        sk_path.r_move_to((x as scalar, y as scalar));
-                    }
+                    let (x, y) = abs2(abs, last_p, x, y);
+                    sk_path.move_to((x as scalar, y as scalar));
                     last_p = (x, y).into();
                     last_verb = PathCommand::MoveTo;
                 }
                 PathSegment::LineTo { abs, x, y } => {
-                    if abs {
-                        sk_path.line_to((x as scalar, y as scalar));
-                    } else {
-                        sk_path.r_line_to((x as scalar, y as scalar));
-                    }
+                    let (x, y) = abs2(abs, last_p, x, y);
+                    sk_path.line_to((x as scalar, y as scalar));
                     last_p = (x, y).into();
                     last_verb = PathCommand::LineTo;
                 }
                 PathSegment::HorizontalLineTo { abs, x } => {
-                    unimplemented!()
+                    let x = absx(abs, last_p, x);
+                    sk_path.line_to((x as scalar, last_p.y as scalar));
+                    last_p.x = x;
+                    last_verb = PathCommand::HorizontalLineTo;
                 }
                 PathSegment::VerticalLineTo { abs, y } => {
-                    unimplemented!()
+                    let y = absy(abs, last_p, y);
+                    sk_path.line_to((last_p.x as scalar, y as scalar));
+                    last_p.y = y;
+                    last_verb = PathCommand::VerticalLineTo;
                 }
                 PathSegment::CurveTo {
                     abs,
@@ -54,79 +78,53 @@ impl ToSkia for Path {
                     x,
                     y,
                 } => {
-                    if abs {
-                        sk_path.cubic_to(
-                            (x1 as scalar, y1 as scalar),
-                            (x2 as scalar, y2 as scalar),
-                            (x as scalar, y as scalar),
-                        );
-                    } else {
-                        sk_path.r_cubic_to(
-                            (x1 as scalar, y1 as scalar),
-                            (x2 as scalar, y2 as scalar),
-                            (x as scalar, y as scalar),
-                        );
-                    }
-                    last_cp = (x2, y2).into();
+                    let (x1, y1) = abs2(abs, last_p, x1, y1);
+                    let (x2, y2) = abs2(abs, last_p, x2, y2);
+                    let (x, y) = abs2(abs, last_p, x, y);
+                    sk_path.cubic_to(
+                        (x1 as scalar, y1 as scalar),
+                        (x2 as scalar, y2 as scalar),
+                        (x as scalar, y as scalar),
+                    );
                     last_p = (x, y).into();
+                    last_cp = (x2, y2).into();
                     last_verb = PathCommand::CurveTo;
                 }
                 PathSegment::SmoothCurveTo { abs, x2, y2, x, y } => {
+                    let (x2, y2) = abs2(abs, last_p, x2, y2);
+                    let (x, y) = abs2(abs, last_p, x, y);
                     let cp1 = match last_verb {
                         PathCommand::CurveTo | PathCommand::SmoothCurveTo => {
-                            if abs {
-                                last_p - (last_cp - last_p)
-                            } else {
-                                Point::origin() - (last_cp - last_p)
-                            }
+                            last_p - (last_cp - last_p)
                         }
                         _ => last_p,
                     };
-
-                    if abs {
-                        sk_path.cubic_to(
-                            cp1.to_skia(),
-                            (x2 as scalar, y2 as scalar),
-                            (x as scalar, y as scalar),
-                        );
-                    } else {
-                        sk_path.r_cubic_to(
-                            cp1.to_skia(),
-                            (x2 as scalar, y2 as scalar),
-                            (x as scalar, y as scalar),
-                        );
-                    }
+                    sk_path.cubic_to(
+                        cp1.to_skia(),
+                        (x2 as scalar, y2 as scalar),
+                        (x as scalar, y as scalar),
+                    );
                     last_cp = (x2, y2).into();
                     last_p = (x, y).into();
                     last_verb = PathCommand::SmoothCurveTo;
                 }
                 PathSegment::Quadratic { abs, x1, y1, x, y } => {
-                    if abs {
-                        sk_path.quad_to((x1 as scalar, y1 as scalar), (x as scalar, y as scalar));
-                    } else {
-                        sk_path.r_quad_to((x1 as scalar, y1 as scalar), (x as scalar, y as scalar));
-                    }
-                    last_cp = (x1, y1).into();
+                    let (x1, y1) = abs2(abs, last_p, x1, y1);
+                    let (x, y) = abs2(abs, last_p, x, y);
+                    sk_path.quad_to((x1 as scalar, y1 as scalar), (x as scalar, y as scalar));
                     last_p = (x, y).into();
+                    last_cp = (x1, y1).into();
                     last_verb = PathCommand::Quadratic;
                 }
                 PathSegment::SmoothQuadratic { abs, x, y } => {
+                    let (x, y) = abs2(abs, last_p, x, y);
                     let cp = match last_verb {
                         PathCommand::Quadratic | PathCommand::SmoothQuadratic => {
-                            if abs {
-                                last_p - (last_cp - last_p)
-                            } else {
-                                Point::origin() - (last_cp - last_p)
-                            }
+                            last_p - (last_cp - last_p)
                         }
                         _ => last_p,
                     };
-
-                    if abs {
-                        sk_path.quad_to(cp.to_skia(), (x as scalar, y as scalar));
-                    } else {
-                        sk_path.r_quad_to(cp.to_skia(), (x as scalar, y as scalar));
-                    }
+                    sk_path.quad_to(cp.to_skia(), (x as scalar, y as scalar));
                     last_cp = cp.into();
                     last_p = (x, y).into();
                     last_verb = PathCommand::SmoothQuadratic;
@@ -141,6 +139,7 @@ impl ToSkia for Path {
                     x,
                     y,
                 } => {
+                    let (x, y) = abs2(abs, last_p, x, y);
                     let large_arc = if large_arc {
                         ArcSize::Large
                     } else {
@@ -151,25 +150,13 @@ impl ToSkia for Path {
                     } else {
                         PathDirection::CW
                     };
-
-                    if abs {
-                        sk_path.arc_to_rotated(
-                            (rx as scalar, ry as scalar),
-                            x_axis_rotation as scalar,
-                            large_arc,
-                            direction,
-                            (x as scalar, y as scalar),
-                        );
-                    } else {
-                        sk_path.r_arc_to_rotated(
-                            (rx as scalar, ry as scalar),
-                            x_axis_rotation as scalar,
-                            large_arc,
-                            direction,
-                            (x as scalar, y as scalar),
-                        );
-                    }
-
+                    sk_path.arc_to_rotated(
+                        (rx as scalar, ry as scalar),
+                        x_axis_rotation as scalar,
+                        large_arc,
+                        direction,
+                        (x as scalar, y as scalar),
+                    );
                     last_p = (x, y).into();
                     last_verb = PathCommand::EllipticalArc;
                 }

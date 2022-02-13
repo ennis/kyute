@@ -7,6 +7,7 @@ use kyute::{
     Alignment, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, Widget, WidgetExt,
     WidgetPod, Window,
 };
+use kyute::style::UnitExt;
 use kyute_shell::{winit::window::WindowBuilder, AssetId};
 
 #[composable(uncached)]
@@ -31,7 +32,6 @@ fn grid_layout_example() -> impl Widget + Clone {
     grid.add(0, 2, fixed_size_widget(50.0, 50.0, "(0,2)"));
     grid.add(1, 0, fixed_size_widget(50.0, 50.0, "(1,0)"));
     grid.add(1, 1..=2, fixed_size_widget(150.0, 50.0, "(1,1)").centered());
-
     grid
 }
 
@@ -50,7 +50,7 @@ fn align_in_constrained_box() -> impl Widget + Clone {
     grid.add_row(
         Container::new(Label::new("Container".into()))
             //.aligned(Alignment::CENTER_RIGHT)
-            .fix_width(500.0)
+            .fix_width(500.dip())
             .box_style(BoxStyle::new().fill(Color::from_hex("#b9edc788"))),
     );
 

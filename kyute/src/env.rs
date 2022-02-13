@@ -1,13 +1,10 @@
 use crate::{data::Data, style::Length, Color, SideOffsets};
 
 use std::{
-    any::{Any, TypeId},
+    any::Any,
     collections::HashMap,
-    fs::File,
     hash::{Hash, Hasher},
-    io::Read,
     marker::PhantomData,
-    path::Path,
     sync::Arc,
 };
 

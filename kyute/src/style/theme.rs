@@ -1,12 +1,10 @@
 //! Sets of environment keys loaded as a group.
-use crate::{Color, EnvKey, EnvValue, Environment};
+use crate::{EnvKey, EnvValue, Environment};
 use kyute_shell::{application::Application, asset::AssetLoadError, Asset, AssetId};
 use serde::de::DeserializeOwned;
 use serde_json as json;
 use std::{io, io::Read};
-use std::str::Utf8Error;
 use thiserror::Error;
-use crate::style::BoxStyle;
 
 /// Compile time snake to kebab-case 🥙
 const fn comptime_snake_to_kebab<const LEN: usize>(s: &str) -> [u8; LEN] {

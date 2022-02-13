@@ -6,17 +6,15 @@ use crate::{
     event::{Event, Modifiers, PointerEventKind},
     state::{Signal, State},
     style::{BoxStyle, PaintCtxExt},
-    text::{FormattedText, FormattedTextParagraph},
+    text::FormattedText,
     theme,
     widget::{text::Text, Container},
     BoxConstraints, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect,
     SideOffsets, Size, WidgetPod,
 };
-use euclid::SideOffsets2D;
 use keyboard_types::KeyState;
 use kyute::text::TextPosition;
-use kyute_shell::drawing::{Color, ToSkia};
-use std::cell::RefCell;
+use kyute_shell::drawing::Color;
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
 

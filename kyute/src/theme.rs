@@ -1,7 +1,6 @@
 //! Environment keys that control the visual aspect (theme) of common widgets.
 use crate::{
-    style::{Border, BoxStyle, ColorExpr, Length, LinearGradient, UnitExt},
-    theme::keys::{CONTROL_COLOR, UNDER_PAGE_BACKGROUND_COLOR},
+    style::{Border, BoxShadow, BoxStyle, ColorExpr, Length, LinearGradient, UnitExt},
     EnvKey, SideOffsets,
 };
 use kyute::Environment;
@@ -341,6 +340,7 @@ pub mod keys {
 
     pub const UNDER_PAGE_BACKGROUND_COLOR: EnvKey<Color> =
         EnvKey::new("kyute.theme-v2.under-page-background-color");
+    pub const SHADOW_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.shadow-color");
     pub const CONTROL_BACKGROUND_COLOR: EnvKey<Color> =
         EnvKey::new("kyute.theme-v2.control-background-color");
     pub const CONTROL_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.control-color");
@@ -360,6 +360,7 @@ pub mod keys {
         env.set(CONTROL_BACKGROUND_COLOR, palette::GREY_500);
         env.set(LABEL_COLOR, palette::GREY_50);
         env.set(GROOVE_COLOR, palette::GREY_800);
+        env.set(SHADOW_COLOR, palette::GREY_900.with_alpha(0.7));
         env.set(ALTERNATING_CONTENT_BACKGROUND_COLOR_A, palette::GREY_600);
         env.set(ALTERNATING_CONTENT_BACKGROUND_COLOR_A, palette::GREY_700);
     }
@@ -400,6 +401,13 @@ pub fn setup_default_style(env: &mut Environment) {
                 .stop(ColorExpr::darken(palette::LIGHT_BLUE_900, 0.02), Some(0.0))
                 .stop(ColorExpr::lighten(palette::LIGHT_BLUE_900, 0.02), Some(1.0)),
         )
+        .box_shadow(BoxShadow::drop(
+            0.dip(),
+            1.dip(),
+            1.dip(),
+            0.dip(),
+            keys::SHADOW_COLOR,
+        ))
         .border(control_border.clone());
 
     env.set(DROP_DOWN, button_like_frame.clone());

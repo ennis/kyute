@@ -1,5 +1,5 @@
 use crate::drawing::{FromSkia, ToSkia};
-use palette::{Blend, Shade};
+use palette::Shade;
 use std::{error::Error, fmt, marker::PhantomData};
 
 /// Color spec.
@@ -51,6 +51,14 @@ impl Color {
                 blue: blue as f32,
                 standard: PhantomData,
             },
+            alpha: alpha as f32,
+        })
+    }
+
+    /// Replaces alpha value.
+    pub const fn with_alpha(self, alpha: f64) -> Color {
+        Color(palette::Srgba {
+            color: self.0.color,
             alpha: alpha as f32,
         })
     }
@@ -109,7 +117,7 @@ impl Color {
     pub const fn from_hex(hex: &str) -> Color {
         match Self::try_from_hex(hex) {
             Ok(color) => color,
-            Err(e) => {
+            Err(_) => {
                 panic!("invalid hex color")
             }
         }

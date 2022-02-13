@@ -1,6 +1,6 @@
 //! Platform-specific window creation
 use crate::{application::Application, drawing::Point, error::Error, Menu};
-use graal::{swapchain::Swapchain, vk, vk::Handle};
+use graal::{vk, vk::Handle};
 use raw_window_handle::HasRawWindowHandle;
 use skia_safe::gpu::vk as skia_vk;
 use skia_vk::GetProcOf;
@@ -155,7 +155,7 @@ pub struct Window {
     //swap_chain: IDXGISwapChain1,
     surface: vk::SurfaceKHR,
     menu: Option<HMENU>,
-    swap_chain: graal::swapchain::Swapchain,
+    swap_chain: graal::Swapchain,
     swap_chain_width: u32,
     swap_chain_height: u32,
     skia_backend_context: skia_safe::gpu::vk::BackendContext<'static>,
@@ -201,24 +201,22 @@ impl Window {
             let scale_factor = self.window.scale_factor();
             let x = at.x * scale_factor;
             let y = at.y * scale_factor;
-            unsafe {
-                let mut point = POINT {
-                    x: x as i32,
-                    y: y as i32,
-                };
-                ClientToScreen(self.hwnd, &mut point);
-                if TrackPopupMenu(
-                    hmenu,
-                    TPM_LEFTALIGN,
-                    point.x,
-                    point.y,
-                    0,
-                    self.hwnd,
-                    ptr::null(),
-                ) == BOOL::from(false)
-                {
-                    tracing::warn!("failed to track popup menu");
-                }
+            let mut point = POINT {
+                x: x as i32,
+                y: y as i32,
+            };
+            ClientToScreen(self.hwnd, &mut point);
+            if TrackPopupMenu(
+                hmenu,
+                TPM_LEFTALIGN,
+                point.x,
+                point.y,
+                0,
+                self.hwnd,
+                ptr::null(),
+            ) == BOOL::from(false)
+            {
+                tracing::warn!("failed to track popup menu");
             }
         }
     }
@@ -243,7 +241,7 @@ impl Window {
 
         unsafe {
             let device = app.gpu_device();
-            self.swap_chain.resize(device, (width, height));
+            device.resize_swapchain(&mut self.swap_chain, (width, height));
         }
 
         self.swap_chain_width = width;
@@ -251,7 +249,7 @@ impl Window {
     }
 
     /// Returns the swap chain of this window.
-    pub fn swap_chain(&self) -> &graal::swapchain::Swapchain {
+    pub fn swap_chain(&self) -> &graal::Swapchain {
         &self.swap_chain
     }
 
@@ -334,7 +332,7 @@ impl Window {
         unsafe {
             assert!(device.is_compatible_for_presentation(surface));
         }
-        let swap_chain = unsafe { Swapchain::new(device, surface, swapchain_size) };
+        let swap_chain = unsafe { device.create_swapchain(surface, swapchain_size) };
 
         let skia_backend_context = unsafe { create_skia_vulkan_backend_context(device) };
         let recording_context_options = skia_safe::gpu::ContextOptions::new();

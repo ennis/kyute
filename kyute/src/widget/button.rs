@@ -1,13 +1,12 @@
 use crate::{
-    align_boxes, composable,
+    composable,
     core2::{EventCtx, LayoutCtx, PaintCtx},
     event::PointerEventKind,
     state::Signal,
-    style::{Border, BoxStyle, ColorRef, UnitExt, ValueRef},
+    style::{BoxStyle, ColorRef},
     theme,
     widget::{Container, Label},
-    Alignment, BoxConstraints, EnvKey, Environment, Event, Measurements, Rect, SideOffsets, Size,
-    Widget, WidgetPod,
+    BoxConstraints, Environment, Event, Measurements, Rect, SideOffsets, Widget, WidgetPod,
 };
 use tracing::trace;
 

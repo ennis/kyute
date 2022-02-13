@@ -4,16 +4,15 @@ mod box_style;
 mod paint;
 mod theme;
 
-use crate::{env::Environment, Color, EnvKey, EnvValue, PaintCtx, Rect, SideOffsets};
+use crate::{env::Environment, Color, EnvKey, EnvValue, PaintCtx, Rect};
 use kyute_shell::{
     drawing::{RectExt, ToSkia},
     skia as sk,
 };
 use std::str::FromStr;
 
-use crate::style::box_style::BoxShadow;
 pub use border::{Border, BorderPosition, BorderStyle};
-pub use box_style::BoxStyle;
+pub use box_style::{BoxStyle, BoxShadow, BoxShadowParams};
 pub use paint::{GradientStop, LinearGradient, Paint};
 pub use theme::{define_theme, ThemeData, ThemeLoadError};
 

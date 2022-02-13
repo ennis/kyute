@@ -1,6 +1,6 @@
 //! Description of paints.
 use crate::{
-    style::{Angle, ColorExpr, ValueRef},
+    style::{Angle, ColorExpr},
     Color, EnvKey, Environment, Offset, Rect,
 };
 use kyute_shell::{drawing::ToSkia, skia as sk, skia::gradient_shader::GradientShaderColors};

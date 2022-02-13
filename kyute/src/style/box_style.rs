@@ -1,6 +1,6 @@
 use crate::{
-    style::{border::Border, Length, Paint, ValueRef},
-    Color, Environment, PaintCtx, Rect,
+    style::{border::Border, ColorRef, Length, Paint, ValueRef},
+    Environment, Offset, PaintCtx, Rect,
 };
 use kyute_shell::{drawing::ToSkia, skia as sk};
 
@@ -32,7 +32,7 @@ pub struct BoxShadowParams {
     offset_y: ValueRef<Length>,
     blur_radius: ValueRef<Length>,
     spread_radius: ValueRef<Length>,
-    color: ValueRef<Color>,
+    color: ColorRef,
 }
 
 /// Box shadow effect.
@@ -43,6 +43,42 @@ pub enum BoxShadow {
     Drop(BoxShadowParams),
     #[serde(rename = "inset")]
     Inset(BoxShadowParams),
+}
+
+impl BoxShadow {
+    pub fn drop(
+        offset_x: impl Into<ValueRef<Length>>,
+        offset_y: impl Into<ValueRef<Length>>,
+        blur_radius: impl Into<ValueRef<Length>>,
+        spread_radius: impl Into<ValueRef<Length>>,
+        color: impl Into<ColorRef>,
+    ) -> BoxShadow {
+        let params = BoxShadowParams {
+            offset_x: offset_x.into(),
+            offset_y: offset_y.into(),
+            blur_radius: blur_radius.into(),
+            spread_radius: spread_radius.into(),
+            color: color.into(),
+        };
+        BoxShadow::Drop(params)
+    }
+
+    pub fn inset(
+        offset_x: impl Into<ValueRef<Length>>,
+        offset_y: impl Into<ValueRef<Length>>,
+        blur_radius: impl Into<ValueRef<Length>>,
+        spread_radius: impl Into<ValueRef<Length>>,
+        color: impl Into<ColorRef>,
+    ) -> BoxShadow {
+        let params = BoxShadowParams {
+            offset_x: offset_x.into(),
+            offset_y: offset_y.into(),
+            blur_radius: blur_radius.into(),
+            spread_radius: spread_radius.into(),
+            color: color.into(),
+        };
+        BoxShadow::Inset(params)
+    }
 }
 
 /// Style of a container.
@@ -121,6 +157,14 @@ impl BoxStyle {
             };
 
             let mut blur = sk::Paint::default();
+            let offset_x = params
+                .offset_x
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor);
+            let offset_y = params
+                .offset_y
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor);
             let blur_radius = params
                 .blur_radius
                 .resolve_or_default(env)
@@ -139,8 +183,10 @@ impl BoxStyle {
 
             match box_shadow {
                 BoxShadow::Drop(params) => {
-                    let rrect =
-                        sk::RRect::new_rect_radii(bounds.inflate(spread, spread).to_skia(), &radii);
+                    let mut shadow_bounds = bounds;
+                    shadow_bounds.origin += Offset::new(offset_x, offset_y);
+                    shadow_bounds = shadow_bounds.inflate(spread, spread);
+                    let rrect = sk::RRect::new_rect_radii(shadow_bounds.to_skia(), &radii);
                     ctx.canvas.draw_rrect(rrect, &blur);
                 }
                 BoxShadow::Inset(params) => {

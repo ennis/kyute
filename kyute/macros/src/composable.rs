@@ -2,10 +2,10 @@ use crate::CRATE;
 use proc_macro2::Ident;
 use quote::quote;
 use syn::{
-    parse::{ParseStream, Parser},
+    parse::ParseStream,
     punctuated::Punctuated,
     spanned::Spanned,
-    FnArg, Path,
+    FnArg,
 };
 
 struct ComposableArgs {

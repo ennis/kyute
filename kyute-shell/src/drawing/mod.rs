@@ -4,7 +4,6 @@ mod image;
 mod path;
 
 pub use color::Color;
-use float_cmp::ApproxEqUlps;
 pub use path::{Path, PathSegment};
 
 /// The DIP (device-independent pixel) unit.

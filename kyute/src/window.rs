@@ -3,7 +3,7 @@ use crate::{
     core2::{FocusState, GpuResourceReferences},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind},
     graal,
-    graal::{vk::Handle, MemoryLocation},
+    graal::{SwapchainImage, vk::Handle, MemoryLocation},
     region::Region,
     widget::{Action, Menu},
     Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
@@ -721,8 +721,20 @@ impl Window {
             let device = app.gpu_device().clone();
             let mut context = app.lock_gpu_context();
 
+            //---------------------------------------------------------------------------
+            // acquire next image in window swap chain for painting
+            // if we can't, skip the whole rendering
+            let swap_chain = window.swap_chain();
+            let swap_chain_image = unsafe { context.acquire_next_image(swap_chain) };
+            let swap_chain_image = match swap_chain_image {
+                Ok(image) => image,
+                Err(err) => {
+                    tracing::warn!("failed to acquire swapchain image: {}", err);
+                    return;
+                }
+            };
+
             // start GPU context frame
-            let image_ready = context.create_semaphore();
             let mut frame = context.start_frame(graal::FrameCreateInfo::default());
 
             //---------------------------------------------------------------------------
@@ -884,10 +896,6 @@ impl Window {
                 ui_render_pass.finish();
             }
 
-            //---------------------------------------------------------------------------
-            // acquire next image in window swap chain for painting, and copy skia result to swapchain image
-            let swap_chain = window.swap_chain();
-            let swap_chain_image = unsafe { swap_chain.acquire_next_image(&device, image_ready) };
             graal::utils::blit_images(
                 &mut frame,
                 skia_image,
