@@ -46,13 +46,13 @@ pub struct Border {
 
 impl Border {
     /// Creates a new border description with the specified side widths.
-    pub fn new(width: impl Into<ValueRef<Length>>) -> Border {
+    fn new(width: ValueRef<Length>, position: BorderPosition) -> Border {
         let width = width.into();
         Border {
             widths: [width; 4],
-            position: BorderPosition::Center,
+            position,
             paint: Paint::SolidColor {
-                color: ValueRef::Inline(Color::new(0.0, 0.0, 0.0, 1.0)),
+                color: Color::new(0.0, 0.0, 0.0, 1.0).into(),
             },
             style: BorderStyle::Solid,
             opacity: 1.0,
@@ -61,20 +61,35 @@ impl Border {
         }
     }
 
-    pub fn inside(mut self, pos: impl Into<ValueRef<Length>>) -> Self {
+    pub fn inside(width: impl Into<ValueRef<Length>>) -> Border {
+        let width = width.into();
+        Border::new(width, BorderPosition::Inside(width))
+    }
+
+    pub fn outside(width: impl Into<ValueRef<Length>>) -> Border {
+        let width = width.into();
+        Border::new(width, BorderPosition::Outside(width))
+    }
+
+    pub fn center(width: impl Into<ValueRef<Length>>) -> Border {
+        let width = width.into();
+        Border::new(width, BorderPosition::Center)
+    }
+
+    /*pub fn move_inside(mut self, pos: impl Into<ValueRef<Length>>) -> Self {
         self.position = BorderPosition::Inside(pos.into());
         self
     }
 
-    pub fn outside(mut self, pos: impl Into<ValueRef<Length>>) -> Self {
+    pub fn move_outside(mut self, pos: impl Into<ValueRef<Length>>) -> Self {
         self.position = BorderPosition::Outside(pos.into());
         self
     }
 
-    pub fn center(mut self) -> Self {
+    pub fn move_center(mut self) -> Self {
         self.position = BorderPosition::Center;
         self
-    }
+    }*/
 
     pub fn paint(mut self, paint: impl Into<Paint>) -> Self {
         self.paint = paint.into();
@@ -107,7 +122,7 @@ impl Border {
         let mut paint = self.paint.to_sk_paint(env, bounds);
         paint.set_style(sk::PaintStyle::Stroke);
         paint.set_blend_mode(self.blend_mode.to_skia());
-        paint.set_alpha_f(self.opacity as sk::scalar);
+        //paint.set_alpha_f(self.opacity as sk::scalar);
 
         let widths = [
             self.widths[0]

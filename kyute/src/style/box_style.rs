@@ -80,6 +80,12 @@ impl BoxStyle {
         }
     }
 
+    pub fn radius(mut self, radius: impl Into<ValueRef<Length>>) -> Self {
+        let radius = radius.into();
+        self.border_radii = [radius; 4];
+        self
+    }
+
     /// Sets the brush used to fill the rectangle.
     pub fn fill(mut self, paint: impl Into<Paint>) -> Self {
         self.fill = Some(paint.into());

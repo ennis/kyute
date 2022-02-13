@@ -5,6 +5,7 @@ use crate::{
     Rect, Size, Widget, WidgetPod,
 };
 use kyute_shell::drawing::RoundToPixel;
+use crate::style::{BoxStyle, PaintCtxExt};
 
 /*#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Axis {
@@ -175,10 +176,9 @@ impl Widget for Flex {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        use crate::style::*;
         ctx.draw_styled_box(
             bounds,
-            &BoxStyle::new().fill(theme::FRAME_BG_NORMAL_COLOR),
+            &BoxStyle::new().fill(theme::keys::CONTROL_BACKGROUND_COLOR),
             env,
         );
 

@@ -12,9 +12,10 @@ mod layout_wrapper;
 mod menu;
 mod padding;
 mod slider;
-mod text;
+mod label;
 mod textedit;
 mod titled_pane;
+mod text;
 
 pub use align::Align;
 pub use baseline::Baseline;
@@ -29,7 +30,7 @@ pub use layout_wrapper::LayoutWrapper;
 pub use menu::{Action, Menu, MenuItem, Shortcut};
 pub use padding::Padding;
 pub use slider::Slider;
-pub use text::Text;
+pub use label::Label;
 pub use textedit::TextEdit;
 pub use titled_pane::TitledPane;
 

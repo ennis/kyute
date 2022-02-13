@@ -14,8 +14,11 @@ pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = EnvKey::new("kyute.show_grid_la
 
 #[derive(Copy, Clone, Debug)]
 pub enum GridLength {
+    /// Size to content.
     Auto,
+    /// Fixed size.
     Fixed(f64),
+    /// Proportion of remaining space.
     Flex(f64),
 }
 
@@ -126,40 +129,90 @@ pub struct Grid {
     /// List of grid items: widgets positioned inside the grid.
     items: Vec<GridItem>,
 
+    /// Row template.
+    row_template: GridLength,
+    column_template: GridLength,
+
     row_layout: RefCell<Vec<GridTrackLayout>>,
     column_layout: RefCell<Vec<GridTrackLayout>>,
 }
 
 impl Grid {
-    #[composable(uncached)]
     pub fn new() -> Grid {
         Grid {
             columns: vec![],
             rows: vec![],
             items: vec![],
+            row_template: GridLength::Auto,
+            column_template: GridLength::Auto,
             row_layout: RefCell::new(vec![]),
             column_layout: RefCell::new(vec![]),
         }
     }
 
-    pub fn with_column(mut self, size: GridLength) -> Self {
-        self.columns.push(TrackSize {
-            min_size: size,
-            max_size: size,
-        });
+    /// Creates a single-column grid.
+    pub fn column(width: GridLength) -> Grid {
+        Self::with_columns([width])
+    }
+
+    /// Creates a single-row grid.
+    pub fn row(height: GridLength) -> Grid {
+        Self::with_rows([height])
+    }
+
+    /// Returns the current number of rows
+    pub fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Returns the current number of columns
+    pub fn column_count(&self) -> usize {
+        self.columns.len()
+    }
+
+    pub fn with_columns(columns: impl IntoIterator<Item = GridLength>) -> Grid {
+        Self::with_rows_columns([], columns)
+    }
+
+    pub fn with_rows(rows: impl IntoIterator<Item = GridLength>) -> Grid {
+        Self::with_rows_columns(rows, [])
+    }
+
+    pub fn with_rows_columns(
+        rows: impl IntoIterator<Item = GridLength>,
+        columns: impl IntoIterator<Item = GridLength>,
+    ) -> Grid {
+        Grid {
+            columns: columns
+                .into_iter()
+                .map(|size| TrackSize {
+                    min_size: size,
+                    max_size: size,
+                })
+                .collect(),
+            rows: rows
+                .into_iter()
+                .map(|size| TrackSize {
+                    min_size: size,
+                    max_size: size,
+                })
+                .collect(),
+            items: vec![],
+            row_template: GridLength::Auto,
+            column_template: GridLength::Auto,
+            row_layout: RefCell::new(vec![]),
+            column_layout: RefCell::new(vec![]),
+        }
+    }
+
+    pub fn row_template(mut self, size: GridLength) -> Self {
+        self.row_template = size;
         self
     }
 
-    pub fn with_row(mut self, size: GridLength) -> Self {
-        self.add_row(size);
+    pub fn column_template(mut self, size: GridLength) -> Self {
+        self.column_template = size;
         self
-    }
-
-    pub fn add_row(&mut self, size: GridLength) {
-        self.rows.push(TrackSize {
-            min_size: size,
-            max_size: size,
-        });
     }
 
     #[composable(uncached)]
@@ -180,11 +233,37 @@ impl Grid {
         column_span: impl GridSpan,
         widget: impl Widget + 'static,
     ) {
+        let row_range = row_span.resolve(self.rows.len());
+        let column_range = column_span.resolve(self.columns.len());
+
+        // add rows/columns as required
+        let num_rows = self.rows.len();
+        let num_columns = self.columns.len();
+        let extra_rows = row_range.end.checked_sub(num_rows).unwrap_or(0);
+        let extra_columns = column_range.end.checked_sub(num_columns).unwrap_or(0);
+        for i in 0..extra_rows {
+            self.rows.push(TrackSize {
+                min_size: self.row_template,
+                max_size: self.row_template,
+            });
+        }
+        for i in 0..extra_columns {
+            self.columns.push(TrackSize {
+                min_size: self.column_template,
+                max_size: self.column_template,
+            });
+        }
+
         self.items.push(GridItem {
-            row_range: row_span.resolve(self.rows.len()),
-            column_range: column_span.resolve(self.columns.len()),
+            row_range,
+            column_range,
             widget: WidgetPod::new(widget),
         });
+    }
+
+    #[composable(uncached)]
+    pub fn add_row(&mut self, widget: impl Widget + 'static) {
+        self.add(self.rows.len(), .., widget);
     }
 
     fn items_in_track(&self, axis: TrackAxis, index: usize) -> impl Iterator<Item = &GridItem> {
@@ -239,7 +318,11 @@ impl Grid {
                 GridLength::Auto => {
                     for item in self.items_in_track(axis, i) {
                         let constraints = if let Some(column_layout) = column_layout {
-                            BoxConstraints::new(0.0..column_layout[i].size, ..)
+                            let w: f64 = column_layout[item.column_range.clone()]
+                                .iter()
+                                .map(|x| x.size)
+                                .sum();
+                            BoxConstraints::new(0.0..w, ..)
                         } else {
                             BoxConstraints::new(.., ..)
                         };

@@ -3,32 +3,56 @@ use crate::{
     core2::{EventCtx, LayoutCtx, PaintCtx},
     event::{PointerButton, PointerEventKind},
     state::Signal,
-    widget::Text,
+    style::{BoxStyle, ColorRef, PaintCtxExt, ValueRef},
+    theme,
+    widget::{Container, Label},
     BoxConstraints, Data, Environment, Event, Measurements, Rect, Widget, WidgetPod,
 };
+use euclid::SideOffsets2D;
 use std::{convert::TryInto, fmt::Display};
 use tracing::trace;
 
-// FIXME: use something else than display
+/*/// Visual style for a drop-down control
+#[derive(Clone, Debug, Default)]
+pub struct DropDownStyle {
+    pub box_style: ValueRef<BoxStyle>,
+    pub label_color: ColorRef,
+}*/
+
 #[derive(Clone, Debug, Data)]
 struct DropDownChoice<T: Data + Display> {
     value: T,
     item_id: u16,
 }
 
+/// Selects one option among choices with a drop-down menu.
 #[derive(Clone)]
 pub struct DropDown<T: Data + Display> {
     choices: Vec<DropDownChoice<T>>,
-    label: WidgetPod<Text>,
+    //style: ValueRef<DropDownStyle>,
     selected_index: usize,
     selected_item_changed: Signal<(usize, T)>,
+    inner: WidgetPod<Container<Label>>,
 }
 
 impl<T: Data + Display> DropDown<T> {
     /// Creates a new drop down with the specified choices.
     #[composable(uncached)]
     pub fn new(choices: Vec<T>, selected_index: usize) -> DropDown<T> {
-        let label = WidgetPod::new(Text::new(format!("{}", choices[selected_index])));
+        // issue: propagating box style to the container?
+        // -> user can set style after `new`
+        //
+        // Solution A:
+        // - always use a container with default style keys (`theme::DROP_DOWN_BOX`)
+        // - in paint, override `theme::DROP_DOWN_BOX` with the resolved box style.
+
+        let inner = WidgetPod::new(
+            Container::new(Label::new(format!("{}", choices[selected_index])))
+                .min_height(theme::BUTTON_HEIGHT)
+                .baseline(theme::BUTTON_LABEL_BASELINE)
+                .content_padding(SideOffsets2D::new_all_same(5.0))
+                .box_style(theme::DROP_DOWN),
+        );
 
         // create menu IDs for each choice
         let mut choices_with_ids = Vec::new();
@@ -42,7 +66,7 @@ impl<T: Data + Display> DropDown<T> {
         DropDown {
             choices: choices_with_ids,
             selected_index,
-            label,
+            inner,
             selected_item_changed: Signal::new(),
         }
     }
@@ -108,12 +132,13 @@ impl<T: Data + Display> Widget for DropDown<T> {
         constraints: BoxConstraints,
         env: &Environment,
     ) -> Measurements {
-        // TODO
-        self.label.layout(ctx, constraints, env)
+        self.inner.layout(ctx, constraints, env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        // TODO
-        self.label.paint(ctx, bounds, env);
+        //let style = self.style.resolve(env).unwrap();
+        //let box_style = style.box_style.resolve(env).unwrap();
+        //let label_color = style.label_color.resolve(env).unwrap();
+        self.inner.paint(ctx, bounds, env);
     }
 }

@@ -3,7 +3,7 @@
 use crate::{
     composable,
     event::{Event, PointerEventKind},
-    style::PaintCtxExt,
+    style::{PaintCtxExt, Path},
     theme, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect,
     SideOffsets, Signal, Size, Widget,
 };
@@ -192,18 +192,16 @@ impl Widget for Slider {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
-        use crate::{style::*, theme::*};
+        /*let background_gradient = LinearGradient::new()
+        .angle(90.0.degrees())
+        .stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
+        .stop(BUTTON_BACKGROUND_TOP_COLOR, 1.0);*/
 
-        let background_gradient = LinearGradient::new()
-            .angle(90.0.degrees())
-            .stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
-            .stop(BUTTON_BACKGROUND_TOP_COLOR, 1.0);
-
-        let track_y = env.get(SLIDER_TRACK_Y).unwrap_or_default();
-        let track_h = env.get(SLIDER_TRACK_HEIGHT).unwrap_or_default();
-        let knob_w = env.get(SLIDER_KNOB_WIDTH).unwrap_or_default();
-        let knob_h = env.get(SLIDER_KNOB_HEIGHT).unwrap_or_default();
-        let knob_y = env.get(SLIDER_KNOB_Y).unwrap_or_default();
+        let track_y = env.get(theme::SLIDER_TRACK_Y).unwrap_or_default();
+        let track_h = env.get(theme::SLIDER_TRACK_HEIGHT).unwrap_or_default();
+        let knob_w = env.get(theme::SLIDER_KNOB_WIDTH).unwrap_or_default();
+        let knob_h = env.get(theme::SLIDER_KNOB_HEIGHT).unwrap_or_default();
+        let knob_y = env.get(theme::SLIDER_KNOB_Y).unwrap_or_default();
 
         let track_x_start = self.track.get().start.x;
         let track_x_end = self.track.get().end.x;
@@ -223,31 +221,11 @@ impl Widget for Slider {
         );
 
         // track
-        ctx.draw_styled_box(
-            track_bounds,
-            &BoxStyle::new()
-                .fill(FRAME_BG_SUNKEN_COLOR)
-                .border(
-                    Border::new(1.0.dip())
-                        .paint(FRAME_BG_SUNKEN_COLOR)
-                        .inside(0.0.dip()),
-                )
-                .border(
-                    Border::new(1.0.dip())
-                        .outside(0.0.dip())
-                        .paint(
-                            LinearGradient::new()
-                                .angle(90.0.degrees())
-                                .stop(WIDGET_OUTER_GROOVE_BOTTOM_COLOR, 0.0)
-                                .stop(WIDGET_OUTER_GROOVE_TOP_COLOR, 0.3),
-                        )
-                        .opacity(1.0),
-                ),
-            env,
-        );
+        let style = env.get(theme::SLIDER_TRACK).unwrap_or_default();
+        ctx.draw_styled_box(track_bounds, &style, env);
 
         Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
-            .fill(background_gradient.clone())
+            .fill(theme::keys::CONTROL_COLOR)
             .draw(ctx, knob_bounds, env);
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     composable,
     state::State,
-    widget::{Clickable, Container, Flex, SingleChildWidget, Text},
+    widget::{Clickable, Container, Flex, SingleChildWidget, Label},
     Color, Orientation, SideOffsets, Widget,
 };
 
@@ -35,7 +35,7 @@ impl TitledPane {
         // Title bar
         let title_bar = Clickable::new(Container::new(
             Flex::horizontal().with(
-                Container::new(Text::new(title))
+                Container::new(Label::new(title))
                     .content_padding(SideOffsets::new_all_same(2.0))
                     .box_style(BoxStyle::new().fill(Color::from_hex("#455574"))),
             ),

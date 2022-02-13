@@ -2,20 +2,9 @@ use crate::model::{Item, ItemColor, ItemKind, StyleSheet};
 use kyute::{
     composable,
     shell::drawing::Color,
-    widget::{Grid, GridLength, Text, TextEdit},
+    widget::{Grid, GridLength, Label, TextEdit},
     State, Widget,
 };
-
-// we still pass &mut StyleSheet
-// This is because widgets don't really have a "local" influence on the state due to links
-// for example, when modifying the value of an item with dependents we should modify the value
-// of all connected items, which are siblings.
-// => "Lensing"
-
-// fn create_item_color_ui(item: &mut ItemColor) -> Widget
-// -> problem: not enough, in the UI we want to display a popup containing all Items to which we can connect
-// -> thus, must pass a copy of the items vector, and can't mutate in place
-//
 
 #[composable(uncached)]
 pub fn create_item_color_ui(
@@ -43,7 +32,7 @@ pub fn create_item_ui(stylesheet: &mut StyleSheet, grid: &mut Grid, row: usize, 
         ItemKind::Color(item_color) => create_item_color_ui(stylesheet, item, item_color),
     };
 
-    grid.push(row, 0, Text::new(item.name().to_string()));
+    grid.push(row, 0, Label::new(item.name().to_string()));
     grid.push(row, 1, item_widget);
 }
 
@@ -53,11 +42,6 @@ pub fn items_ui(stylesheet: &mut StyleSheet) -> impl Widget {
     let mut grid = Grid::new()
         .with_column(GridLength::Fixed(200.0))
         .with_column(GridLength::Flex(1.0));
-
-    // create rows for each item
-    for i in 0..stylesheet.items().len() {
-        grid.add_row(GridLength::Auto);
-    }
 
     let items = stylesheet.items().clone();
     for (row, item) in items.values().enumerate() {

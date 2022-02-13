@@ -75,7 +75,7 @@ impl ThemeData {
             .get(key.name())
             .ok_or(ThemeLoadError::PropertyNotFound)?;
         let value = serde_json::from_value(prop.clone())?;
-        env.push(key, value);
+        env.set(key, value);
         Ok(())
     }
 }
@@ -113,13 +113,3 @@ macro_rules! define_theme {
 }
 
 pub use define_theme;
-
-define_theme! {
-    /// The standard theme.
-    pub standard_theme ["standard-theme"] {
-        /// Style of buttons.
-        const BUTTON                   : BoxStyle ;
-        /// Default background color.
-        const DEFAULT_BACKGROUND_COLOR : Color    ;
-    }
-}

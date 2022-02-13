@@ -4,7 +4,7 @@ mod box_style;
 mod paint;
 mod theme;
 
-use crate::{env::Environment, EnvKey, EnvValue, PaintCtx, Rect, SideOffsets};
+use crate::{env::Environment, Color, EnvKey, EnvValue, PaintCtx, Rect, SideOffsets};
 use kyute_shell::{
     drawing::{RectExt, ToSkia},
     skia as sk,
@@ -15,7 +15,7 @@ use crate::style::box_style::BoxShadow;
 pub use border::{Border, BorderPosition, BorderStyle};
 pub use box_style::BoxStyle;
 pub use paint::{GradientStop, LinearGradient, Paint};
-pub use theme::{define_theme, standard_theme, ThemeData, ThemeLoadError};
+pub use theme::{define_theme, ThemeData, ThemeLoadError};
 
 /// Unit of length: device-independent pixel.
 pub struct Dip;
@@ -71,6 +71,7 @@ impl From<f64> for Length {
 pub trait UnitExt {
     fn dip(self) -> Length;
     fn inch(self) -> Length;
+    fn px(self) -> Length;
     fn degrees(self) -> Angle;
     fn radians(self) -> Angle;
 }
@@ -81,6 +82,9 @@ impl UnitExt for f32 {
     }
     fn inch(self) -> Length {
         Length::In(self as f64)
+    }
+    fn px(self) -> Length {
+        Length::Px(self as f64)
     }
     fn degrees(self) -> Angle {
         Angle::degrees(self as f64)
@@ -97,6 +101,9 @@ impl UnitExt for f64 {
     fn inch(self) -> Length {
         Length::In(self)
     }
+    fn px(self) -> Length {
+        Length::Px(self)
+    }
     fn degrees(self) -> Angle {
         Angle::degrees(self)
     }
@@ -112,6 +119,9 @@ impl UnitExt for i32 {
     fn inch(self) -> Length {
         Length::In(self as f64)
     }
+    fn px(self) -> Length {
+        Length::Px(self as f64)
+    }
     fn degrees(self) -> Angle {
         Angle::degrees(self as f64)
     }
@@ -126,6 +136,9 @@ impl UnitExt for u32 {
     }
     fn inch(self) -> Length {
         Length::In(self as f64)
+    }
+    fn px(self) -> Length {
+        Length::Px(self as f64)
     }
     fn degrees(self) -> Angle {
         Angle::degrees(self as f64)
@@ -257,6 +270,86 @@ where
     }
 }
 
+/// ValueRef to a color.
+pub type ColorRef = ValueRef<Color>;
+
+/// Modifier applied to a color expr (`ColorExpr`).
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ColorModifier {
+    Darken(f64),
+    Lighten(f64),
+}
+
+impl ColorModifier {
+    pub fn apply(self, color: Color) -> Color {
+        match self {
+            ColorModifier::Darken(amount) => color.darken(amount),
+            ColorModifier::Lighten(amount) => color.lighten(amount),
+        }
+    }
+}
+
+/// A reference to a color value with a modifier.
+#[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
+pub struct ColorExpr {
+    color: ColorRef,
+    #[serde(skip)]
+    modifier: Option<ColorModifier>,
+}
+
+impl ColorExpr {
+    pub fn resolve(&self, env: &Environment) -> Option<Color> {
+        let color = self.color.resolve(env)?;
+        Some(self.modifier.map(|m| m.apply(color)).unwrap_or(color))
+    }
+
+    /*pub fn resolve_or_default(&self, env: &Environment) -> Color {
+        let color = self.color.resolve(env).unwrap_or_default();
+        self.modifier.map(|m| m.apply(color)).unwrap_or(color)
+    }*/
+
+    pub fn darken(color: impl Into<ColorRef>, amount: f64) -> ColorExpr {
+        ColorExpr {
+            color: color.into(),
+            modifier: Some(ColorModifier::Darken(amount)),
+        }
+    }
+
+    pub fn lighten(color: impl Into<ColorRef>, amount: f64) -> ColorExpr {
+        ColorExpr {
+            color: color.into(),
+            modifier: Some(ColorModifier::Lighten(amount)),
+        }
+    }
+}
+
+impl From<ColorRef> for ColorExpr {
+    fn from(color: ColorRef) -> Self {
+        ColorExpr {
+            color,
+            modifier: None,
+        }
+    }
+}
+
+impl From<Color> for ColorExpr {
+    fn from(color: Color) -> Self {
+        ColorExpr {
+            color: color.into(),
+            modifier: None,
+        }
+    }
+}
+
+impl From<EnvKey<Color>> for ColorExpr {
+    fn from(color: EnvKey<Color>) -> Self {
+        ColorExpr {
+            color: color.into(),
+            modifier: None,
+        }
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 
 /// Represents something that can be drawn in a layout box.
@@ -279,51 +372,6 @@ pub struct NullVisual;
 
 impl Visual for NullVisual {
     fn draw(&self, _ctx: &mut PaintCtx, _bounds: Rect, _env: &Environment) {}
-}
-
-/// Style of a container.
-pub struct Style<V> {
-    // width/height: stretched, fixed, etc.
-    // content alignment
-    // baseline alignment
-    pub baseline: Option<ValueRef<Length>>,
-    // padding
-    pub padding: [ValueRef<Length>; 4],
-    // visual
-    pub visual: V,
-}
-
-impl<V: Visual> Style<V> {
-    /// Adds a visual to be drawn.
-    pub fn visual<VN: Visual>(self, visual: VN) -> Style<(V, VN)> {
-        Style {
-            baseline: self.baseline,
-            padding: self.padding,
-            visual: (self.visual, visual),
-        }
-    }
-
-    pub fn resolve_padding(&self, scale_factor: f64, env: &Environment) -> SideOffsets {
-        SideOffsets::new(
-            self.padding[0]
-                .resolve_or_default(env)
-                .to_dips(scale_factor),
-            self.padding[1]
-                .resolve_or_default(env)
-                .to_dips(scale_factor),
-            self.padding[2]
-                .resolve_or_default(env)
-                .to_dips(scale_factor),
-            self.padding[3]
-                .resolve_or_default(env)
-                .to_dips(scale_factor),
-        )
-    }
-
-    pub fn resolve_baseline(&self, scale_factor: f64, env: &Environment) -> Option<f64> {
-        self.baseline
-            .map(|x| x.resolve_or_default(env).to_dips(scale_factor))
-    }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -419,12 +467,7 @@ impl<'a> PaintCtxExt for PaintCtx<'a> {
         visual.draw(self, bounds, env)
     }
 
-    fn draw_styled_box(
-        &mut self,
-        bounds: Rect,
-        box_style: &BoxStyle,
-        env: &Environment,
-    ) {
+    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, env: &Environment) {
         box_style.draw(self, bounds, env)
     }
 }

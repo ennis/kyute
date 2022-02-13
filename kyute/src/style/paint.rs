@@ -1,12 +1,10 @@
 //! Description of paints.
 use crate::{
-    style::{Angle, ValueRef},
+    style::{Angle, ColorExpr, ValueRef},
     Color, EnvKey, Environment, Offset, Rect,
 };
+use kyute_shell::{drawing::ToSkia, skia as sk, skia::gradient_shader::GradientShaderColors};
 use std::fmt;
-use kyute_shell::drawing::ToSkia;
-use kyute_shell::skia as sk;
-use kyute_shell::skia::gradient_shader::GradientShaderColors;
 
 /// Represents a gradient stop.
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -14,7 +12,8 @@ pub struct GradientStop {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pos: Option<f64>,
-    color: ValueRef<Color>,
+    #[serde(flatten)]
+    color: ColorExpr,
 }
 
 /// Paint.
@@ -22,7 +21,7 @@ pub struct GradientStop {
 #[serde(tag = "type")]
 pub enum Paint {
     #[serde(rename = "color")]
-    SolidColor { color: ValueRef<Color> },
+    SolidColor { color: ColorExpr },
     #[serde(rename = "linear-gradient")]
     LinearGradient(LinearGradient),
     #[serde(rename = "image")]
@@ -125,7 +124,7 @@ impl Paint {
 impl From<Color> for Paint {
     fn from(color: Color) -> Self {
         Paint::SolidColor {
-            color: ValueRef::Inline(color),
+            color: color.into(),
         }
     }
 }
@@ -133,7 +132,7 @@ impl From<Color> for Paint {
 impl From<EnvKey<Color>> for Paint {
     fn from(color: EnvKey<Color>) -> Self {
         Paint::SolidColor {
-            color: ValueRef::Env(color),
+            color: color.into(),
         }
     }
 }
@@ -184,7 +183,7 @@ impl LinearGradient {
     }
 
     /// Appends a color stop to this gradient.
-    pub fn stop(mut self, color: impl Into<ValueRef<Color>>, pos: impl Into<Option<f64>>) -> Self {
+    pub fn stop(mut self, color: impl Into<ColorExpr>, pos: impl Into<Option<f64>>) -> Self {
         self.stops.push(GradientStop {
             color: color.into(),
             pos: pos.into(),

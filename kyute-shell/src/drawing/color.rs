@@ -1,4 +1,5 @@
 use crate::drawing::{FromSkia, ToSkia};
+use palette::{Blend, Shade};
 use std::{error::Error, fmt, marker::PhantomData};
 
 /// Color spec.
@@ -81,6 +82,16 @@ impl Color {
             (blue as f64) / 255.0,
             (alpha as f64) / 255.0,
         )
+    }
+
+    /// TODO documentation
+    pub fn lighten(&self, amount: f64) -> Color {
+        Color(Shade::lighten(&self.0.into_linear(), amount as f32).into_encoding())
+    }
+
+    /// TODO documentation
+    pub fn darken(&self, amount: f64) -> Color {
+        Color(Shade::darken(&self.0.into_linear(), amount as f32).into_encoding())
     }
 
     pub fn to_hex(&self) -> String {

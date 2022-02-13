@@ -1,7 +1,7 @@
 use crate::{data::Data, style::Length, Color, SideOffsets};
 
 use std::{
-    any::Any,
+    any::{Any, TypeId},
     collections::HashMap,
     fs::File,
     hash::{Hash, Hasher},
@@ -72,6 +72,10 @@ impl<T: Any> EnvValue for Arc<T> {
     }
 }
 
+// FIXME: i'm not sure about passing envs:
+// we don't pass it during recomp, which means that a lot of calculations that involve theme vars are deferred until layout
+// -> pass envs during recomp, resolve theme vars during recomp
+
 #[derive(Clone)]
 pub struct Environment(Arc<EnvImpl>);
 
@@ -119,10 +123,13 @@ impl Environment {
         }))
     }
 
-    fn push_inner<T>(&mut self, key: &'static str, value: T)
+    fn set_inner<T>(&mut self, key: &'static str, value: T)
     where
         T: EnvValue,
     {
+        // checks that the type is correct
+        self.0.get::<T>(key);
+
         match Arc::get_mut(&mut self.0) {
             Some(env) => {
                 env.values.insert(key, Arc::new(value));
@@ -143,17 +150,16 @@ impl Environment {
     where
         T: EnvValue,
     {
-        self.push_inner(key.key, value);
+        self.set_inner(key.key, value);
         self
     }
 
     /// Adds or overrides a given key in the given environment.
-    /// TODO: find a better verb than push
-    pub fn push<T>(&mut self, key: EnvKey<T>, value: T)
+    pub fn set<T>(&mut self, key: EnvKey<T>, value: T)
     where
         T: EnvValue,
     {
-        self.push_inner(key.key, value);
+        self.set_inner(key.key, value);
     }
 
     /// Returns the value corresponding to the key.

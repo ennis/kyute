@@ -1,48 +1,60 @@
-use kyute::{application, composable, shell::application::Application, style::define_theme, theme, widget::{Button, ConstrainedBox, Container, Flex, Grid, GridLength, Text}, Alignment, BoxConstraints, Color, Environment, Orientation, Size, Widget, WidgetExt, WidgetPod, Window, EnvKey};
-use kyute::style::{standard_theme, ThemeData};
-use kyute_shell::AssetId;
-use kyute_shell::winit::window::WindowBuilder;
+use kyute::{
+    application, composable,
+    shell::application::Application,
+    style::ThemeData,
+    theme,
+    widget::{Button, ConstrainedBox, Container, Flex, Grid, GridLength, Label},
+    Alignment, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, Widget, WidgetExt,
+    WidgetPod, Window,
+};
+use kyute_shell::{winit::window::WindowBuilder, AssetId};
 
 #[composable(uncached)]
 fn fixed_size_widget(w: f64, h: f64, name: &str) -> impl Widget {
     // TODO "debug widget" that draws a background pattern, with a border
-    Text::new(name.to_string()).fix_size(Size::new(w, h))
+    Label::new(name.to_string()).fix_size(Size::new(w, h))
 }
 
 #[composable(uncached)]
 fn grid_layout_example() -> impl Widget + Clone {
-    Grid::new()
-        .with_column(GridLength::Fixed(100.0))
-        .with_column(GridLength::Auto)
-        .with_column(GridLength::Fixed(100.0))
-        .with_row(GridLength::Fixed(100.0))
-        .with_row(GridLength::Flex(1.0))
-        .with(0, 0, fixed_size_widget(50.0, 50.0, "(0,0)"))
-        .with(0, 1, fixed_size_widget(50.0, 50.0, "(0,1)"))
-        .with(0, 2, fixed_size_widget(50.0, 50.0, "(0,2)"))
-        .with(1, 0, fixed_size_widget(50.0, 50.0, "(1,0)"))
-        .with(1, 1..=2, fixed_size_widget(150.0, 50.0, "(1,1)").centered())
-    //.item(1, 2, fixed_size_widget(50.0, 50.0, "(1,2)"))
+    let mut grid = Grid::with_rows_columns(
+        [GridLength::Fixed(100.0), GridLength::Flex(1.0)],
+        [
+            GridLength::Fixed(100.0),
+            GridLength::Auto,
+            GridLength::Fixed(100.0),
+        ],
+    );
+
+    grid.add(0, 0, fixed_size_widget(50.0, 50.0, "(0,0)"));
+    grid.add(0, 1, fixed_size_widget(50.0, 50.0, "(0,1)"));
+    grid.add(0, 2, fixed_size_widget(50.0, 50.0, "(0,2)"));
+    grid.add(1, 0, fixed_size_widget(50.0, 50.0, "(1,0)"));
+    grid.add(1, 1..=2, fixed_size_widget(150.0, 50.0, "(1,1)").centered());
+
+    grid
 }
 
 #[composable(uncached)]
 fn align_in_constrained_box() -> impl Widget + Clone {
     use kyute::style::*;
 
-    Flex::new(Orientation::Horizontal)
-        .with(
-            Text::new("ConstrainedBox".into())
-                .aligned(Alignment::CENTER_RIGHT)
-                .height_factor(1.0)
-                .fix_width(300.0),
-        )
-        .with(grid_layout_example())
-        .with(
-            Container::new(Text::new("Container".into()))
-                //.aligned(Alignment::CENTER_RIGHT)
-                .fix_width(500.0)
-                .box_style(BoxStyle::new().fill(Color::from_hex("#b9edc788"))),
-        )
+    let mut grid = Grid::column(GridLength::Auto);
+    grid.add_row(
+        Label::new("ConstrainedBox".into())
+            .aligned(Alignment::CENTER_RIGHT)
+            .height_factor(1.0)
+            .fix_width(300.0),
+    );
+    grid.add_row(grid_layout_example());
+    grid.add_row(
+        Container::new(Label::new("Container".into()))
+            //.aligned(Alignment::CENTER_RIGHT)
+            .fix_width(500.0)
+            .box_style(BoxStyle::new().fill(Color::from_hex("#b9edc788"))),
+    );
+
+    grid
 }
 
 #[composable]
@@ -54,14 +66,12 @@ fn ui_root() -> WidgetPod {
     ))
 }
 
-const STANDARD_THEME_CONFIG: AssetId<ThemeData> = AssetId::new("../standard-theme.json");
-
 fn main() {
     let _app = Application::new();
 
     let mut env = Environment::new();
-    standard_theme::load(&mut env, STANDARD_THEME_CONFIG);
-    env.push(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
+    theme::setup_default_style(&mut env);
+    env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
 
     tracing_subscriber::fmt()
         .compact()

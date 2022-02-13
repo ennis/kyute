@@ -5,10 +5,14 @@ use crate::{
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
     state::{Signal, State},
+    style::{BoxStyle, PaintCtxExt},
     text::{FormattedText, FormattedTextParagraph},
-    theme, BoxConstraints, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect,
-    Size,
+    theme,
+    widget::{text::Text, Container},
+    BoxConstraints, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect,
+    SideOffsets, Size, WidgetPod,
 };
+use euclid::SideOffsets2D;
 use keyboard_types::KeyState;
 use kyute::text::TextPosition;
 use kyute_shell::drawing::{Color, ToSkia};
@@ -85,8 +89,7 @@ pub struct TextEdit {
     text_changed: Signal<FormattedText>,
     selection_changed: Signal<Selection>,
 
-    /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
-    paragraph: RefCell<Option<FormattedTextParagraph>>,
+    inner: WidgetPod<Container<Text>>,
 }
 
 impl TextEdit {
@@ -104,6 +107,10 @@ impl TextEdit {
             selection
         );
 
+        let inner = Container::new(Text::new(formatted_text.clone()))
+            .box_style(theme::TEXT_EDIT)
+            .content_padding(SideOffsets::new_all_same(2.0));
+
         TextEdit {
             formatted_text,
             selection,
@@ -112,7 +119,7 @@ impl TextEdit {
             selection_changed: Signal::new(),
             editing_finished: Signal::new(),
             text_changed: Signal::new(),
-            paragraph: RefCell::new(None),
+            inner: WidgetPod::new(inner),
         }
     }
 
@@ -204,12 +211,10 @@ impl TextEdit {
         self.state.selection.end = self.state.text.len();
     }*/
 
+    /// Returns the position in the text (character offset) that is closest to the given point.
     fn text_position(&self, pos: Point) -> TextPosition {
-        self.paragraph
-            .borrow()
-            .as_ref()
-            .expect("position_to_text called before layout")
-            .glyph_text_position(pos)
+        let paragraph = self.inner.contents().formatted_paragraph();
+        paragraph.glyph_text_position(pos - self.inner.content_offset())
     }
 
     fn notify_selection_changed(&self, ctx: &mut EventCtx, new_selection: Selection) {
@@ -238,70 +243,19 @@ impl Widget for TextEdit {
         constraints: BoxConstraints,
         env: &Environment,
     ) -> Measurements {
-        // ???
-        const SELECTION_MAGIC: f64 = 3.0;
-
-        // get available size & content size
-        let padding = env.get(theme::TEXT_EDIT_PADDING).unwrap_or_default();
-        let available_width = constraints.constrain_width(200.0); // not sure why 200?
-        let available_height = constraints.max_height();
-        let text_available_width = available_width - padding.horizontal();
-        let text_available_height = available_height - padding.vertical();
-
-        /*let size = Size::new(
-            constraints.constrain_width(200.0),
-            constraints.constrain_height(font_size + SELECTION_MAGIC + padding.vertical()),
-        );*/
-        //let mut style2 = self.formatted_text.paragraph_style.clone();
-        //style2.0.set_height(text_available_height as sk::scalar);
-        //trace!("TextEdit: paragraph style: {:#?}", style2.0);
-
-        // create the paragraph & layout in content width
-        let mut paragraph = self.formatted_text.format(text_available_width);
-
-        //trace!("TextEdit: layout result: {:#?}", paragraph.0);
-
-        // measure the paragraph
-        let text_height = paragraph.0.height() as f64;
-        let baseline = paragraph.0.alphabetic_baseline() as f64 + padding.top;
-        let size = Size::new(
-            available_width,
-            constraints.constrain_height(text_height + padding.vertical()),
-        );
-
-        // stash the laid out paragraph for rendering
-        self.paragraph.replace(Some(paragraph));
-
-        Measurements {
-            bounds: size.into(),
-            baseline: Some(baseline),
-        }
+        self.inner.layout(ctx, constraints, env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        use crate::style::*;
-        let bounds = ctx.bounds();
-        let padding = env.get(theme::TEXT_EDIT_PADDING).unwrap_or_default();
+        // paint the text
+        self.inner.paint(ctx, bounds, env);
 
-        let mut paragraph = self.paragraph.borrow_mut();
-        let paragraph = paragraph.as_mut().expect("paint called before layout");
-
-        // draw background
-        //let background_color = env.get(theme::TEXT_EDIT_BACKGROUND_COLOR).unwrap();
-        //ctx.draw_styled_box(bounds, rectangle().with(fill(background_color)), env);
-
-        // draw paragraph
-        ctx.canvas.save();
-        //ctx.canvas
-        //    .translate(Offset::new(padding.left, padding.top).to_skia());
-        paragraph
-            .0
-            .paint(&mut ctx.canvas, Point::origin().to_skia());
-        ctx.canvas.restore();
-
-        // draw selection
+        // paint the selection over it
+        let offset = self.inner.content_offset();
+        let paragraph = self.inner.contents().formatted_paragraph();
         let selection_boxes = paragraph.rects_for_range(self.selection.min()..self.selection.max());
-        for tb in selection_boxes {
+        for mut tb in selection_boxes {
+            tb.rect.origin += offset;
             ctx.draw_styled_box(
                 tb.rect,
                 &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)),
@@ -309,7 +263,7 @@ impl Widget for TextEdit {
             );
         }
 
-        // TODO selection highlight, caret
+        // TODO caret
         // -> move to helper function (format_text_edit): applies the format ranges, splits the text into blocks, returns a SkParagraph
     }
 
