@@ -1,12 +1,12 @@
 use crate::{
-    composable, layout::BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements,
-    Offset, PaintCtx, Rect, SideOffsets, Widget, WidgetPod,
+    composable, layout::BoxConstraints, widget::LayoutWrapper, Environment, Event, EventCtx,
+    LayoutCtx, Measurements, Offset, PaintCtx, Rect, SideOffsets, Widget, WidgetPod,
 };
 
 /// A widgets that insets its content by a specified padding.
 pub struct Padding<W> {
     padding: SideOffsets,
-    inner: WidgetPod<W>,
+    inner: LayoutWrapper<W>,
 }
 
 impl<W: Widget + 'static> Padding<W> {
@@ -15,7 +15,7 @@ impl<W: Widget + 'static> Padding<W> {
     pub fn new(padding: SideOffsets, inner: W) -> Padding<W> {
         Padding {
             padding,
-            inner: WidgetPod::new(inner),
+            inner: LayoutWrapper::new(inner),
         }
     }
 }
@@ -36,7 +36,7 @@ impl<W: Widget> Widget for Padding<W> {
             .layout(ctx, constraints.deflate(self.padding), env);
         m.bounds = m.bounds.outer_rect(self.padding);
         self.inner
-            .set_child_offset(Offset::new(self.padding.left, self.padding.top));
+            .set_offset(Offset::new(self.padding.left, self.padding.top));
         m
     }
 

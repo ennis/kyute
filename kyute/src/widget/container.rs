@@ -1,6 +1,7 @@
 use crate::{
     composable,
     style::{BoxStyle, Length, PaintCtxExt, UnitExt, ValueRef},
+    widget::LayoutWrapper,
     Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
     PaintCtx, Point, Rect, SideOffsets, Size, Widget, WidgetPod,
 };
@@ -15,7 +16,7 @@ pub struct Container<Content> {
     baseline: Option<ValueRef<Length>>,
     content_padding: ValueRef<SideOffsets>,
     box_style: ValueRef<BoxStyle>,
-    content: WidgetPod<Content>,
+    content: LayoutWrapper<Content>,
 }
 
 impl<Content: Widget + 'static> Container<Content> {
@@ -30,7 +31,7 @@ impl<Content: Widget + 'static> Container<Content> {
             baseline: None,
             content_padding: Default::default(),
             box_style: BoxStyle::default().into(),
-            content: WidgetPod::new(content),
+            content: LayoutWrapper::new(content),
         }
     }
 
@@ -43,75 +44,129 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Returns a reference to the contents.
     pub fn contents(&self) -> &Content {
-        &self.content
+        &self.content.inner()
+    }
+
+    /// Returns a mutable reference to the contents.
+    pub fn contents_mut(&mut self) -> &mut Content {
+        &mut self.content.inner_mut()
     }
 }
 
 impl<Content: Widget + 'static> Container<Content> {
     /// Sets the baseline of the content.
     pub fn baseline(mut self, baseline: impl Into<ValueRef<Length>>) -> Self {
-        self.baseline = Some(baseline.into());
+        self.set_baseline(baseline);
         self
+    }
+
+    /// Sets the baseline of the content.
+    pub fn set_baseline(&mut self, baseline: impl Into<ValueRef<Length>>) {
+        self.baseline = Some(baseline.into());
     }
 
     /// Constrain the minimum width of the container.
     pub fn min_width(mut self, width: impl Into<ValueRef<Length>>) -> Self {
-        self.min_width = Some(width.into());
+        self.set_min_width(width);
         self
+    }
+
+    /// Constrain the minimum width of the container.
+    pub fn set_min_width(&mut self, width: impl Into<ValueRef<Length>>) {
+        self.min_width = Some(width.into());
     }
 
     /// Constrain the minimum height of the container.
     pub fn min_height(mut self, height: impl Into<ValueRef<Length>>) -> Self {
+        self.set_min_height(height);
+        self
+    }
+
+    /// Constrain the minimum height of the container.
+    pub fn set_min_height(&mut self, height: impl Into<ValueRef<Length>>) {
         self.min_height = Some(height.into());
+    }
+
+    /// Constrain the width of the container.
+    pub fn fixed_width(mut self, width: impl Into<ValueRef<Length>>) -> Self {
+        self.set_fix_width(width);
         self
     }
 
     /// Constrain the width of the container.
-    pub fn fix_width(mut self, width: impl Into<ValueRef<Length>>) -> Self {
+    pub fn set_fixed_width(mut self, width: impl Into<ValueRef<Length>>) {
         let w = width.into();
         self.min_width = Some(w);
         self.max_width = Some(w);
+    }
+
+    /// Constrain the width of the container.
+    pub fn fixed_height(mut self, height: impl Into<ValueRef<Length>>) -> Self {
+        self.set_fixed_height(height);
         self
     }
 
     /// Constrain the width of the container.
-    pub fn fix_height(mut self, height: impl Into<ValueRef<Length>>) -> Self {
+    pub fn set_fixed_height(&mut self, height: impl Into<ValueRef<Length>>) {
         let h = height.into();
         self.min_height = Some(h);
         self.max_height = Some(h);
-        self
     }
 
     pub fn fix_size(mut self, size: Size) -> Self {
+        self.set_fixed_size(size);
+        self
+    }
+
+    pub fn set_fixed_size(mut self, size: Size) {
         self.min_width = Some(size.width.dip().into());
         self.max_width = Some(size.width.dip().into());
         self.min_height = Some(size.height.dip().into());
         self.max_height = Some(size.height.dip().into());
-        self
     }
 
     /// Centers the content in the available space.
     pub fn centered(mut self) -> Self {
+        self.set_centered();
+        self
+    }
+
+    /// Centers the content in the available space.
+    pub fn set_centered(&mut self) {
         self.alignment = Some(Alignment::CENTER);
+    }
+
+    /// Aligns the widget in the available space.
+    pub fn alignment(mut self, alignment: Alignment) -> Self {
+        self.set_alignment(alignment);
         self
     }
 
     /// Aligns the widget in the available space.
-    pub fn aligned(mut self, alignment: Alignment) -> Self {
+    pub fn set_alignment(&mut self, alignment: Alignment) {
         self.alignment = Some(alignment);
-        self
     }
 
     /// Aligns the widget in the available space.
     pub fn content_padding(mut self, padding: impl Into<ValueRef<SideOffsets>>) -> Self {
+        self.set_content_padding(padding);
+        self
+    }
+
+    /// Aligns the widget in the available space.
+    pub fn set_content_padding(&mut self, padding: impl Into<ValueRef<SideOffsets>>) {
         self.content_padding = padding.into();
+    }
+
+    /// Sets the style used to paint the box of the container.
+    pub fn box_style(&mut self, box_style: impl Into<ValueRef<BoxStyle>>) -> Self {
+        self.set_box_style(box_style);
         self
     }
 
     /// Sets the style used to paint the box of the container.
-    pub fn box_style(mut self, box_style: impl Into<ValueRef<BoxStyle>>) -> Self {
+    pub fn set_box_style(&mut self, box_style: impl Into<ValueRef<BoxStyle>>) {
         self.box_style = box_style.into();
-        self
     }
 }
 
@@ -225,7 +280,7 @@ impl<Content: Widget> Widget for Container<Content> {
             content_offset.y += y;
         }
 
-        self.content.set_child_offset(content_offset);
+        self.content.set_offset(content_offset);
 
         Measurements {
             bounds: Rect {

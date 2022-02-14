@@ -12,6 +12,16 @@ impl<W> ConstrainedBox<W> {
     pub fn new(constraints: BoxConstraints, inner: W) -> ConstrainedBox<W> {
         ConstrainedBox { constraints, inner }
     }
+
+    /// Returns a reference to the inner widget.
+    pub fn inner(&self) -> &W {
+        &self.inner
+    }
+
+    /// Returns a mutable reference to the inner widget.
+    pub fn inner_mut(&mut self) -> &mut W {
+        &mut self.inner
+    }
 }
 
 impl<W: Widget> Widget for ConstrainedBox<W> {
@@ -32,12 +42,12 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        use kyute::style::*;
-        ctx.draw_styled_box(
+        //use kyute::style::*;
+        /*ctx.draw_styled_box(
             bounds,
             &BoxStyle::new().fill(Color::new(0.0, 0.8, 0.0, 0.1)),
             env,
-        );
+        );*/
         self.inner.paint(ctx, bounds, env)
     }
 }

@@ -3,7 +3,7 @@ use crate::{
     core2::{EventCtx, LayoutCtx, PaintCtx},
     event::PointerEventKind,
     state::Signal,
-    style::{BoxStyle, ColorRef},
+    style::{BoxStyle, ColorRef, ValueRef},
     theme,
     widget::{Container, Label},
     BoxConstraints, Environment, Event, Measurements, Rect, SideOffsets, Widget, WidgetPod,
@@ -21,7 +21,7 @@ impl_env_value!(ButtonStyle);
 
 #[derive(Clone)]
 pub struct Button {
-    inner: WidgetPod<Container<Label>>,
+    inner: Container<Label>,
     clicked: Signal<()>,
 }
 
@@ -30,22 +30,36 @@ impl Button {
     #[composable]
     pub fn new(label: String) -> Button {
         Button {
-            inner: WidgetPod::new(
-                Container::new(Label::new(label))
-                    .min_height(theme::BUTTON_HEIGHT)
-                    .content_padding(SideOffsets::new_all_same(5.0))
-                    .baseline(theme::BUTTON_LABEL_BASELINE)
-                    .box_style(theme::BUTTON),
-            ),
+            inner: Container::new(Label::new(label))
+                .min_height(theme::BUTTON_HEIGHT)
+                .content_padding(SideOffsets::new_all_same(5.0))
+                .baseline(theme::BUTTON_LABEL_BASELINE)
+                .box_style(theme::BUTTON),
             clicked: Signal::new(),
         }
     }
 
-    /*/// Sets the style of this button.
-    pub fn style(mut self, style: impl Into<ValueRef<ButtonStyle>>) -> Button {
-        self.style = style.into();
+    /// Sets the style of this button.
+    pub fn box_style(mut self, style: impl Into<ValueRef<BoxStyle>>) -> Button {
+        self.set_box_style(style);
         self
-    }*/
+    }
+
+    /// Sets the style of this button.
+    pub fn set_box_style(&mut self, style: impl Into<ValueRef<BoxStyle>>) {
+        self.inner.set_box_style(style.into());
+    }
+
+    /// Sets the text color of this button.
+    pub fn text_color(mut self, color: impl Into<ColorRef>) -> Button {
+        self.set_text_color(color);
+        self
+    }
+
+    /// Sets the text color of this button.
+    pub fn set_text_color(&mut self, color: impl Into<ColorRef>) {
+        self.inner.contents_mut().set_color(color);
+    }
 
     /// Returns whether this button has been clicked.
     pub fn clicked(&self) -> bool {

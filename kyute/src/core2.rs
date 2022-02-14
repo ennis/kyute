@@ -147,6 +147,15 @@ pub struct FocusState {
     }
 }*/
 
+/// The result of a hit test.
+pub struct HitTestResult {
+    pub pass: bool,
+    /// If the event was a pointer event, contains the pointer event but with the coordinates
+    /// modified to be relative to the hit-test bounds. It should be sent to the child widget
+    /// instead.
+    pub relative_pointer_event: Option<PointerEvent>,
+}
+
 pub struct EventCtx<'a> {
     pub(crate) app_ctx: &'a mut AppCtx,
     pub(crate) event_loop: &'a EventLoopWindowTarget<()>,
@@ -207,6 +216,56 @@ impl<'a> EventCtx<'a> {
         }
     }
 
+
+    /// Performs hit-testing of the specified event in the given sub-bounds.
+    ///
+    /// The behavior of hit-testing is as follows:
+    /// - if the event is not a pointer event, the hit-test passes automatically
+    /// - otherwise, do the pointer event hit-test:
+    ///      - if the pointer
+    ///
+    /// The function returns whether the hit-test passed, and, if it was successful and the event
+    /// was a pointer event, the pointer event with coordinates relative to the given sub-bounds.
+    pub fn hit_test(&mut self, event: &Event, bounds: Rect) -> HitTestResult {
+        match self {
+            Event::Pointer(p) => {
+                if p.kind == PointerEventKind::PointerOut {
+                    // pointer out events are exempt from hit-test: if the pointer leaves
+                    // the parent widget, we also want the child elements to know that
+                    HitTestResult {
+                        pass: true,
+                        relative_pointer_event: None,
+                    }
+                } else {
+                    // we pass the hit test if either:
+                    // - the pointer position is inside the bounds
+                    // - the current widget is currently grabbing the pointer
+
+                    if bounds.contains(p.position) || self.focus_state.pointer_grab != Some(self.id) {
+                        // hit-test pass
+                        // compute relative pointer event
+                        let relative_pointer_event = PointerEvent {
+                            position: (p.position - bounds.origin).to_point(),
+                            .. *p
+                        };
+                        HitTestResult {
+                            pass: true,
+                            relative_pointer_event: Some(relative_pointer_event),
+                        }
+                    }
+                }
+            }
+            _ => {
+                // every other type of event passes through
+                HitTestResult {
+                    pass: true,
+                    relative_pointer_event: None,
+                }
+            }
+        }
+    }
+
+    /// Returns the parent widget ID.
     pub fn widget_id(&self) -> WidgetId {
         self.id
     }
@@ -474,7 +533,9 @@ struct WidgetPodState {
     /// Indicates that the children of this widget have been initialized.
     children_initialized: Cell<bool>,
     /// Any pointer hovering this widget
-    /// FIXME: handle multiple pointers?
+    // FIXME: handle multiple pointers?
+    // FIXME: this is destroyed on recomp, probably not what we want
+    // FIXME: never mind that, this is invalidated on **relayouts**, this is totally broken
     pointer_over: Cell<bool>,
 
     /// The revision in which the WidgetPod was created.
@@ -707,9 +768,6 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
         self.state.paint_invalid.set(false);
     }
 
-    /*fn propagate_event(&self, parent_ctx: &mut EventCtx, path: &[WidgetId], event: &mut Event, env: &Environment) {
-
-    }*/
 
     /// Propagates an event to the wrapped widget.
     fn event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -789,71 +847,55 @@ impl<T: Widget + ?Sized> WidgetPodInner<T> {
             _ => {}
         }
 
-        // ---- Handle pointer events, for which we must do hit-test ----
-        let mut position_adjusted_event;
-        let offset = self.state.offset.get();
+        // ---- hit-test pointer events
         let measurements = if let Some(layout_result) = self.state.layout_result.get() {
             layout_result.measurements
         } else {
             tracing::warn!("`event` called before layout ({:?})", event);
             return;
         };
-        let window_position = parent_ctx.window_position + offset;
-        let bounds = Rect::new(window_position, measurements.size());
+        let hit_test = parent_ctx.hit_test(event, measurements.bounds.translate(self.state.offset.get()));
 
-        let modified_event = match event {
-            Event::Pointer(pointer_event) => {
-                let adjusted_pointer_event = PointerEvent {
-                    position: (pointer_event.window_position - window_position).to_point(),
-                    ..*pointer_event
-                };
-                position_adjusted_event = Event::Pointer(adjusted_pointer_event);
-
-                // TODO (?): perform hit-test before sending the pointer event instead of
-                // doing it "on-the-fly" when propagating the pointer event?
-                // this would make the code cleaner, at the cost of two traversals instead of one.
-
-                // pass hit test if we have pointer capture
-                if !bounds.contains(pointer_event.window_position)
-                    && parent_ctx.focus_state.pointer_grab != Some(self.state.id)
-                {
-                    // pointer hit-test fail; if we were hovering the widget, send pointerout
-                    if self.state.pointer_over.get() {
-                        self.state.pointer_over.set(false);
-                        self.do_event(
-                            parent_ctx,
-                            &mut Event::Pointer(PointerEvent {
-                                kind: PointerEventKind::PointerOut,
-                                ..adjusted_pointer_event
-                            }),
-                            env,
-                        );
-                    }
-                    // pointer hit-test fail, don't recurse
-                    return;
-                } else {
-                    // pointer hit-test pass; send pointerover
-                    if !self.state.pointer_over.get() {
-                        self.state.pointer_over.set(true);
-                        self.do_event(
-                            parent_ctx,
-                            &mut Event::Pointer(PointerEvent {
-                                kind: PointerEventKind::PointerOver,
-                                ..adjusted_pointer_event
-                            }),
-                            env,
-                        );
-                    }
-                    // pointer event is modified
-                    &mut position_adjusted_event
+        // send potential pointerover/pointerout events
+        if let Some(mut relative_pointer_event) = hit_test.relative_pointer_event {
+            if hit_test.pass {
+                // Pointer hit-test pass: send pointerover; set flag that tells we're hovering the widget.
+                if !self.state.pointer_over.get() {
+                    self.state.pointer_over.set(true);
+                    self.do_event(
+                        parent_ctx,
+                        &mut Event::Pointer(PointerEvent {
+                            kind: PointerEventKind::PointerOver,
+                            ..relative_pointer_event
+                        }),
+                        env,
+                    );
+                }
+            } else {
+                // pointer hit-test fail; if we were hovering the widget, send pointerout
+                if self.state.pointer_over.get() {
+                    self.state.pointer_over.set(false);
+                    self.do_event(
+                        parent_ctx,
+                        &mut Event::Pointer(PointerEvent {
+                            kind: PointerEventKind::PointerOut,
+                            ..adjusted_pointer_event
+                        }),
+                        env,
+                    );
                 }
             }
-            // send event as-is
-            _ => event,
-        };
+        }
 
-        // --- propagate to the widget inside ---
-        self.do_event(parent_ctx, modified_event, env);
+        if hit_test.pass {
+            if let Some(relative_pointer_event) = hit_test.relative_pointer_event {
+                // propagate relative pointer event if the hit-test produced one
+                self.do_event(parent_ctx, &mut Event::Pointer(relative_pointer_event), env);
+            } else {
+                // otherwise just forward the event
+                self.do_event(parent_ctx, event, env);
+            }
+        }
     }
 }
 

@@ -36,8 +36,13 @@ impl Label {
 
     /// Sets the color of the label.
     pub fn color(mut self, color: impl Into<ColorRef>) -> Self {
-        self.style.color = color.into();
+        self.set_color(color);
         self
+    }
+
+    /// Sets the color of the label.
+    pub fn set_color(&mut self, color: impl Into<ColorRef>) {
+        self.style.color = color.into();
     }
 }
 

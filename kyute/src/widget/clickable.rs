@@ -9,7 +9,7 @@ use tracing::trace;
 
 #[derive(Clone)]
 pub struct Clickable<Content> {
-    content: WidgetPod<Content>,
+    content: Content,
     clicked: Signal<()>,
 }
 
@@ -25,6 +25,16 @@ impl<Content: Widget + 'static> Clickable<Content> {
     /// Returns whether this button has been clicked.
     pub fn clicked(&self) -> bool {
         self.clicked.signalled()
+    }
+
+    /// Returns a reference to the inner widget.
+    pub fn content(&self) -> &Content {
+        &self.content
+    }
+
+    /// Returns a mutable reference to the inner widget.
+    pub fn content_mut(&mut self) -> &mut Content {
+        &mut self.content
     }
 }
 
