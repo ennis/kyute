@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use kyute::{
     application, composable,
     shell::application::Application,
@@ -58,12 +59,12 @@ fn align_in_constrained_box() -> impl Widget + Clone {
 }
 
 #[composable]
-fn ui_root() -> WidgetPod {
-    WidgetPod::new(Window::new(
+fn ui_root() -> Window {
+    Window::new(
         WindowBuilder::new().with_title("Layouts"),
-        WidgetPod::new(Flex::new(Orientation::Vertical).with(align_in_constrained_box())),
+        Flex::vertical().with(align_in_constrained_box()),
         None,
-    ))
+    )
 }
 
 fn main() {

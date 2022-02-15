@@ -2,7 +2,7 @@
 //!
 //! Provides the `run_application` function that opens the main window and translates the incoming
 //! events from winit into the events expected by kyute.
-use crate::{core2::WidgetId, Cache, Environment, Event, InternalEvent, WidgetPod};
+use crate::{core2::WidgetId, Cache, Environment, Event, InternalEvent, Widget, WidgetPod};
 use kyute_shell::{
     winit,
     winit::{
@@ -13,6 +13,7 @@ use kyute_shell::{
 use std::{
     collections::{hash_map::Entry, HashMap},
     mem,
+    sync::Arc,
 };
 use tracing::warn;
 
@@ -58,7 +59,7 @@ impl AppCtx {
 
     fn send_event(
         &mut self,
-        root_widget: &mut WidgetPod,
+        root_widget: &WidgetPod,
         event_loop: &EventLoopWindowTarget<()>,
         event: Event<'static>,
         root_env: &Environment,
@@ -69,7 +70,7 @@ impl AppCtx {
 
     fn flush_pending_events(
         &mut self,
-        root_widget: &mut WidgetPod,
+        root_widget: &WidgetPod,
         event_loop: &EventLoopWindowTarget<()>,
         root_env: &Environment,
     ) {
@@ -86,15 +87,15 @@ fn eval_root_widget(
     app_ctx: &mut AppCtx,
     event_loop: &EventLoopWindowTarget<()>,
     root_env: &Environment,
-    f: fn() -> WidgetPod,
-) -> WidgetPod {
-    let root_widget: WidgetPod = app_ctx.cache.run(f);
+    f: fn() -> Arc<WidgetPod>,
+) -> Arc<WidgetPod> {
+    let root_widget = app_ctx.cache.run(f);
     // ensures that all widgets have received the `Initialize` event.
     root_widget.initialize(app_ctx, event_loop, root_env);
     root_widget
 }
 
-pub fn run(ui: fn() -> WidgetPod, env: Environment) {
+pub fn run(ui: fn() -> Arc<WidgetPod>, env: Environment) {
     let event_loop = EventLoop::new();
     let mut app_ctx = AppCtx::new();
 
@@ -113,7 +114,7 @@ pub fn run(ui: fn() -> WidgetPod, env: Environment) {
                 if let Some(&target) = app_ctx.windows.get(&window_id) {
                     if let Some(event) = winit_event.to_static() {
                         app_ctx.send_event(
-                            &mut root_widget,
+                            &root_widget,
                             elwt,
                             Event::Internal(InternalEvent::RouteWindowEvent { target, event }),
                             &env,
@@ -130,6 +131,8 @@ pub fn run(ui: fn() -> WidgetPod, env: Environment) {
                 // If no state variable in the cache has changed (because of an event), then it will simply
                 // return the same root widget.
 
+                // TODO: this is broken: recomp should run in a loop until stabilized (root cache entry not dirty)
+
                 // 1st eval: run event handlers
                 // 2nd eval: reflect new state of UI
                 //tracing::trace!("1st recomp");
@@ -141,10 +144,10 @@ pub fn run(ui: fn() -> WidgetPod, env: Environment) {
             // happens after recomposition
             winit::event::Event::RedrawRequested(window_id) => {
                 if let Some(&target) = app_ctx.windows.get(&window_id) {
-                    root_widget.send_root_event(
-                        &mut app_ctx,
+                    app_ctx.send_event(
+                        &root_widget,
                         elwt,
-                        &mut Event::Internal(InternalEvent::RouteRedrawRequest(target)),
+                        Event::Internal(InternalEvent::RouteRedrawRequest(target)),
                         &env,
                     )
                 } else {

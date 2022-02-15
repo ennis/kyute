@@ -1,6 +1,7 @@
 //! [`Events`](Event) sent to widgets, and related types.
 use crate::{bloom::Bloom, EventCtx, Offset, Point, Rect, WidgetId, WidgetPod};
 use std::collections::HashMap;
+use std::sync::Arc;
 use winit::event::DeviceId;
 // FIXME: reexport/import from kyute-shell?
 pub use keyboard_types::{CompositionEvent, Key, KeyboardEvent, Modifiers};
@@ -129,6 +130,10 @@ pub enum InternalEvent<'a> {
         target: WidgetId,
         event: Box<Event<'a>>,
     },
+    RoutePointerEvent {
+        target: WidgetId,
+        event: PointerEvent,
+    },
     RouteWindowEvent {
         target: WidgetId,
         event: winit::event::WindowEvent<'static>,
@@ -139,8 +144,9 @@ pub enum InternalEvent<'a> {
         filter: &'a mut Bloom<WidgetId>,
     },
     /// Used to get a list of all widgets in depth-first traversal order.
+    /// FIXME this doesn't work anymore
     Traverse {
-        widgets: &'a mut Vec<WidgetPod>,
+        widgets: &'a mut Vec<Arc<WidgetPod>>,
     },
 }
 
@@ -165,11 +171,26 @@ pub enum Event<'a> {
 
 impl<'a> Event<'a> {
 
-
-    /// Apply an offset to local pointer events.
-    pub fn apply_offset(&mut self, offset: Offset) {
-
+    /// If this event contains a relative pointer location, subtracts the specified offset to it and
+    /// runs the provided closure with the modified event.
+    /// Otherwise, runs the provided closure with this event, unmodified.
+    pub fn with_local_coordinates<R>(&mut self, offset: Offset, f: impl FnOnce(&mut Event) -> R) -> R {
+        match *self {
+            Event::Internal(InternalEvent::RoutePointerEvent { ref event, target }) => {
+                let mut event_copy = *event;
+                event_copy.position -= offset;
+                f(&mut Event::Internal(InternalEvent::RoutePointerEvent { event: event_copy, target }))
+            }
+            Event::Pointer(ref pointer_event) => {
+                let mut event_copy = *pointer_event;
+                event_copy.position -= offset;
+                f(&mut Event::Pointer(event_copy))
+            }
+            _ => f(self)
+        }
     }
+
+
 
     pub fn pointer_event(&self) -> Option<&PointerEvent> {
         match self {

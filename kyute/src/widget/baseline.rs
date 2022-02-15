@@ -19,6 +19,16 @@ impl<Inner: Widget + 'static> Baseline<Inner> {
             baseline,
         }
     }
+
+    /// Returns a reference to the inner widget.
+    pub fn inner(&self) -> &Inner {
+        self.inner.inner()
+    }
+
+    /// Returns a mutable reference to the inner widget.
+    pub fn inner_mut(&mut self) -> &mut Inner {
+        self.inner.inner_mut()
+    }
 }
 
 impl<Inner: Widget> Widget for Baseline<Inner> {

@@ -8,6 +8,7 @@ use std::{
     cell::RefCell,
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
 };
+use std::sync::Arc;
 use tracing::trace;
 
 pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = EnvKey::new("kyute.show_grid_layout_lines");
@@ -49,7 +50,7 @@ impl TrackAxis {
 pub struct GridItem {
     row_range: Range<usize>,
     column_range: Range<usize>,
-    widget: WidgetPod,
+    widget: Arc<WidgetPod>,
 }
 
 impl GridItem {
@@ -257,7 +258,7 @@ impl Grid {
         self.items.push(GridItem {
             row_range,
             column_range,
-            widget: WidgetPod::new(widget),
+            widget: Arc::new(WidgetPod::new(widget)),
         });
     }
 

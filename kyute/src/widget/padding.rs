@@ -18,6 +18,16 @@ impl<W: Widget + 'static> Padding<W> {
             inner: LayoutWrapper::new(inner),
         }
     }
+
+    /// Returns a reference to the inner widget.
+    pub fn inner(&self) -> &W {
+        self.inner.inner()
+    }
+
+    /// Returns a mutable reference to the inner widget.
+    pub fn inner_mut(&mut self) -> &mut W {
+        self.inner.inner_mut()
+    }
 }
 
 impl<W: Widget> Widget for Padding<W> {

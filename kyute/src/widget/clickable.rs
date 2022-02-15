@@ -17,7 +17,7 @@ impl<Content: Widget + 'static> Clickable<Content> {
     #[composable(uncached)]
     pub fn new(content: Content) -> Clickable<Content> {
         Clickable {
-            content: WidgetPod::new(content),
+            content,
             clicked: Signal::new(),
         }
     }

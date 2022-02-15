@@ -1,7 +1,7 @@
 use crate::{
     composable,
     text::{FormattedText, FormattedTextParagraph},
-    theme, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
+    BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
     Rect, Size, Widget,
 };
 use kyute_shell::drawing::ToSkia;

@@ -6,7 +6,9 @@ use crate::{
 };
 use kyute_shell::drawing::ToSkia;
 use std::cell::Cell;
+use crate::core2::HitTestResult;
 
+#[derive(Clone)]
 pub struct LayoutWrapper<W> {
     inner: W,
     offset: Cell<Offset>,
@@ -31,6 +33,10 @@ impl<W> LayoutWrapper<W> {
         self.offset.set(offset);
     }
 
+    pub fn offset(&self) -> Offset {
+        self.offset.get()
+    }
+
     /// Returns a reference to the inner widget.
     pub fn inner(&self) -> &W {
         &self.inner
@@ -49,54 +55,46 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         // Perform our own hit-test on the inner element.
-        // This is basically the same logic than what is done in `WidgetPod::event`.
+        // This is pretty much the same logic as in `WidgetPod::event`.
         //
         // NOTE: If we end up here before layout, the bounds may not be valid, so in theory the hit-test may fail,
         // But since the only events sent before layout should be non-pointer events, which always pass
         // the hit-test, that's not a problem.
-        let bounds = self.measurements.get().bounds.translate(self.offset.get());
-        let hit_test = ctx.hit_test(event, bounds);
+        let bounds = self.measurements.get().bounds;
 
-        // send potential pointerover/pointerout events
-        if let Some(relative_pointer_event) = hit_test.relative_pointer_event {
-            if hit_test.pass {
-                // Pointer hit-test pass: send pointerover; set flag that tells we're hovering the inner element.
-                if !self.pointer_over.get() {
-                    self.pointer_over.set(true);
-                    self.do_event(
-                        parent_ctx,
-                        &mut Event::Pointer(PointerEvent {
-                            kind: PointerEventKind::PointerOver,
-                            ..relative_pointer_event
-                        }),
-                        env,
-                    );
+        event.with_local_coordinates(self.offset.get(), |event| {
+            match event {
+                Event::Pointer(p) => {
+                    match ctx.hit_test(p, bounds) {
+                        HitTestResult::Passed => {
+                            if !self.pointer_over.get() {
+                                self.pointer_over.set(true);
+                                self.inner.event(ctx, &mut Event::Pointer(PointerEvent {
+                                    kind: PointerEventKind::PointerOver,
+                                    ..*p
+                                }), env);
+                            }
+                            self.inner.event(ctx, event, env);
+                        }
+                        HitTestResult::Failed => {
+                            if self.pointer_over.get() {
+                                self.pointer_over.set(false);
+                                self.inner.event(ctx, &mut Event::Pointer(PointerEvent {
+                                    kind: PointerEventKind::PointerOut,
+                                    ..*p
+                                }), env);
+                            }
+                        }
+                        HitTestResult::Skipped => {
+                            self.inner.event(ctx, event, env);
+                        }
+                    }
                 }
-            } else {
-                // pointer hit-test fail; if we were hovering the element, send pointerout
-                if self.pointer_over.get() {
-                    self.pointer_over.set(false);
-                    self.do_event(
-                        parent_ctx,
-                        &mut Event::Pointer(PointerEvent {
-                            kind: PointerEventKind::PointerOut,
-                            ..adjusted_pointer_event
-                        }),
-                        env,
-                    );
+                _ => {
+                    self.inner.event(ctx, event, env);
                 }
             }
-        }
-
-        // deliver event
-        if hit_test.pass {
-            if let Some(mut relative_pointer_event) = hit_test.relative_pointer_event {
-                self.inner
-                    .event(ctx, &mut Event::Pointer(relative_pointer_event), env);
-            } else {
-                self.inner.event(ctx, event, env);
-            }
-        }
+        });
     }
 
     fn layout(

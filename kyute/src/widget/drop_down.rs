@@ -32,27 +32,19 @@ pub struct DropDown<T: Data + Display> {
     //style: ValueRef<DropDownStyle>,
     selected_index: usize,
     selected_item_changed: Signal<(usize, T)>,
-    inner: WidgetPod<Container<Label>>,
+    inner: Container<Label>,
 }
 
 impl<T: Data + Display> DropDown<T> {
     /// Creates a new drop down with the specified choices.
     #[composable(uncached)]
     pub fn new(choices: Vec<T>, selected_index: usize) -> DropDown<T> {
-        // issue: propagating box style to the container?
-        // -> user can set style after `new`
-        //
-        // Solution A:
-        // - always use a container with default style keys (`theme::DROP_DOWN_BOX`)
-        // - in paint, override `theme::DROP_DOWN_BOX` with the resolved box style.
-
-        let inner = WidgetPod::new(
+        let inner =
             Container::new(Label::new(format!("{}", choices[selected_index])))
                 .min_height(theme::BUTTON_HEIGHT)
                 .baseline(theme::BUTTON_LABEL_BASELINE)
                 .content_padding(SideOffsets2D::new_all_same(5.0))
-                .box_style(theme::DROP_DOWN),
-        );
+                .box_style(theme::DROP_DOWN);
 
         // create menu IDs for each choice
         let mut choices_with_ids = Vec::new();

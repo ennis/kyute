@@ -581,9 +581,10 @@ impl WindowState {
 
                         content_widget.event(
                             &mut content_ctx,
-                            &mut Event::Internal(InternalEvent::RouteEvent {
+                            // must use RoutePointerEvent so that relative pointer positions are computed during propagation
+                            &mut Event::Internal(InternalEvent::RoutePointerEvent {
                                 target: pointer_grab,
-                                event: Box::new(event),
+                                event: *pointer_event,
                             }),
                             env,
                         );
@@ -645,9 +646,10 @@ impl WindowState {
 }
 
 /// A window managed by kyute.
+#[derive(Clone)]
 pub struct Window {
     window_state: Arc<RefCell<WindowState>>,
-    contents: WidgetPod,
+    contents: Arc<WidgetPod>,
 }
 
 impl Window {
@@ -655,7 +657,7 @@ impl Window {
     ///
     /// TODO: explain subtleties
     #[composable(uncached)]
-    pub fn new(window_builder: WindowBuilder, contents: WidgetPod, menu: Option<Menu>) -> Window {
+    pub fn new(window_builder: WindowBuilder, contents: impl Widget + 'static, menu: Option<Menu>) -> Window {
         // create the initial window state
         // we don't want to recreate it every time, so it only depends on the call ID.
         let window_state = cache::once(move || {
@@ -677,7 +679,7 @@ impl Window {
         {
             let mut window_state = window_state.borrow_mut();
             if !window_state.menu.same(&menu) {
-                tracing::trace!("updating window menu: {:#?}", menu);
+                //tracing::trace!("updating window menu: {:#?}", menu);
                 window_state.menu = menu;
                 window_state.update_menu();
             }
@@ -686,7 +688,7 @@ impl Window {
 
         Window {
             window_state,
-            contents,
+            contents: Arc::new(WidgetPod::new(contents)),
         }
     }
 
@@ -978,7 +980,7 @@ impl Widget for Window {
                     );
                     self.contents.event(&mut content_ctx, event, env);
                 } else {
-                    tracing::warn!("received window event before initialization: {:?}", event);
+                    //tracing::warn!("received window event before initialization: {:?}", event);
                     self.contents.event(ctx, event, env);
                 }
                 // don't propagate, but TODO check for redraw and such

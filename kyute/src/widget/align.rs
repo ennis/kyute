@@ -1,13 +1,13 @@
 use crate::{
-    composable, layout::BoxConstraints, Alignment, Environment, Event, EventCtx, LayoutCtx,
-    Measurements, Offset, PaintCtx, Rect, Widget, WidgetPod,
+    composable, layout::BoxConstraints, widget::LayoutWrapper, Alignment, Environment, Event,
+    EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Rect, Widget, WidgetPod,
 };
 
 pub struct Align<W> {
     alignment: Alignment,
     width_factor: Option<f64>,
     height_factor: Option<f64>,
-    inner: WidgetPod<W>,
+    inner: LayoutWrapper<W>,
 }
 
 impl<W: Widget + 'static> Align<W> {
@@ -17,7 +17,7 @@ impl<W: Widget + 'static> Align<W> {
             alignment,
             width_factor: None,
             height_factor: None,
-            inner: WidgetPod::new(inner),
+            inner: LayoutWrapper::new(inner),
         }
     }
 
@@ -29,6 +29,16 @@ impl<W: Widget + 'static> Align<W> {
     pub fn height_factor(mut self, h: f64) -> Self {
         self.height_factor = Some(h);
         self
+    }
+
+    /// Returns a reference to the inner widget.
+    pub fn inner(&self) -> &W {
+        self.inner.inner()
+    }
+
+    /// Returns a mutable reference to the inner widget.
+    pub fn inner_mut(&mut self) -> &mut W {
+        self.inner.inner_mut()
     }
 }
 
@@ -67,7 +77,7 @@ impl<W: Widget> Widget for Align<W> {
             - 0.5 * child.height() * (1.0 + self.alignment.y);
         let baseline = child.baseline.map(|b| b + y);
 
-        self.inner.set_child_offset(Offset::new(x, y));
+        self.inner.set_offset(Offset::new(x, y));
 
         Measurements {
             bounds: Rect {

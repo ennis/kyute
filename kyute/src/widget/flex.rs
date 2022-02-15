@@ -1,11 +1,12 @@
 use crate::{
     composable,
     core2::{LayoutCtx, PaintCtx},
+    style::{BoxStyle, PaintCtxExt},
     theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Orientation, Point,
     Rect, Size, Widget, WidgetPod,
 };
 use kyute_shell::drawing::RoundToPixel;
-use crate::style::{BoxStyle, PaintCtxExt};
+use std::sync::Arc;
 
 /*#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Axis {
@@ -78,7 +79,7 @@ pub enum MainAxisSize {
 #[derive(Clone)]
 pub struct Flex {
     axis_orientation: Orientation,
-    items: Vec<WidgetPod>,
+    items: Vec<Arc<WidgetPod>>,
 }
 
 impl Flex {
@@ -105,13 +106,7 @@ impl Flex {
 
     #[composable(uncached)]
     pub fn push(&mut self, widget: impl Widget + 'static) {
-        self.items.push(WidgetPod::new(widget));
-    }
-
-    // TODO remove this, genericize the append method
-    #[composable(uncached)]
-    pub fn append_pod(&mut self, widget: WidgetPod) {
-        self.items.push(widget);
+        self.items.push(Arc::new(WidgetPod::new(widget)));
     }
 }
 

@@ -39,17 +39,17 @@ impl<Content: Widget + 'static> Container<Content> {
     ///
     /// The returned value is unspecified if this function is called before layout.
     pub fn content_offset(&self) -> Offset {
-        self.content.child_offset()
+        self.content.offset()
     }
 
     /// Returns a reference to the contents.
     pub fn contents(&self) -> &Content {
-        &self.content.inner()
+        self.content.inner()
     }
 
     /// Returns a mutable reference to the contents.
     pub fn contents_mut(&mut self) -> &mut Content {
-        &mut self.content.inner_mut()
+        self.content.inner_mut()
     }
 }
 
@@ -89,12 +89,12 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Constrain the width of the container.
     pub fn fixed_width(mut self, width: impl Into<ValueRef<Length>>) -> Self {
-        self.set_fix_width(width);
+        self.set_fixed_width(width);
         self
     }
 
     /// Constrain the width of the container.
-    pub fn set_fixed_width(mut self, width: impl Into<ValueRef<Length>>) {
+    pub fn set_fixed_width(&mut self, width: impl Into<ValueRef<Length>>) {
         let w = width.into();
         self.min_width = Some(w);
         self.max_width = Some(w);
@@ -118,7 +118,7 @@ impl<Content: Widget + 'static> Container<Content> {
         self
     }
 
-    pub fn set_fixed_size(mut self, size: Size) {
+    pub fn set_fixed_size(&mut self, size: Size) {
         self.min_width = Some(size.width.dip().into());
         self.max_width = Some(size.width.dip().into());
         self.min_height = Some(size.height.dip().into());
@@ -159,7 +159,7 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Sets the style used to paint the box of the container.
-    pub fn box_style(&mut self, box_style: impl Into<ValueRef<BoxStyle>>) -> Self {
+    pub fn box_style(mut self, box_style: impl Into<ValueRef<BoxStyle>>) -> Self {
         self.set_box_style(box_style);
         self
     }
