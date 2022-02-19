@@ -1,23 +1,11 @@
 use crate::{
-    composable,
-    core2::{EventCtx, LayoutCtx, PaintCtx},
-    event::{PointerButton, PointerEventKind},
-    state::Signal,
-    style::{BoxStyle, ColorRef, PaintCtxExt, ValueRef},
     theme,
-    widget::{Container, Label},
-    BoxConstraints, Data, Environment, Event, Measurements, Rect, Widget, WidgetPod,
+    widget::{prelude::*, Container, Label},
+    Data, SideOffsets, Signal,
 };
-use euclid::SideOffsets2D;
 use std::{convert::TryInto, fmt::Display};
 use tracing::trace;
-
-/*/// Visual style for a drop-down control
-#[derive(Clone, Debug, Default)]
-pub struct DropDownStyle {
-    pub box_style: ValueRef<BoxStyle>,
-    pub label_color: ColorRef,
-}*/
+use crate::event::{PointerButton, PointerEventKind};
 
 #[derive(Clone, Debug, Data)]
 struct DropDownChoice<T: Data + Display> {
@@ -39,12 +27,11 @@ impl<T: Data + Display> DropDown<T> {
     /// Creates a new drop down with the specified choices.
     #[composable(uncached)]
     pub fn new(choices: Vec<T>, selected_index: usize) -> DropDown<T> {
-        let inner =
-            Container::new(Label::new(format!("{}", choices[selected_index])))
-                .min_height(theme::BUTTON_HEIGHT)
-                .baseline(theme::BUTTON_LABEL_BASELINE)
-                .content_padding(SideOffsets2D::new_all_same(5.0))
-                .box_style(theme::DROP_DOWN);
+        let inner = Container::new(Label::new(format!("{}", choices[selected_index])))
+            .min_height(theme::BUTTON_HEIGHT)
+            .baseline(theme::BUTTON_LABEL_BASELINE)
+            .content_padding(SideOffsets::new_all_same(5.0))
+            .box_style(theme::DROP_DOWN);
 
         // create menu IDs for each choice
         let mut choices_with_ids = Vec::new();

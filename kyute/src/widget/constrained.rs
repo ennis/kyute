@@ -1,7 +1,4 @@
-use crate::{
-    layout::BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx,
-    Rect, Widget,
-};
+use crate::widget::prelude::*;
 
 pub struct ConstrainedBox<W> {
     constraints: BoxConstraints,
@@ -42,12 +39,6 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        //use kyute::style::*;
-        /*ctx.draw_styled_box(
-            bounds,
-            &BoxStyle::new().fill(Color::new(0.0, 0.8, 0.0, 0.1)),
-            env,
-        );*/
         self.inner.paint(ctx, bounds, env)
     }
 }

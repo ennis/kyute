@@ -1,4 +1,4 @@
-use crate::{data::Data, style::Length, Color, SideOffsets};
+use crate::{cache, data::Data, style::Length, Color, SideOffsets};
 
 use std::{
     any::Any,
@@ -41,6 +41,13 @@ impl<T> EnvKey<T> {
     }
 }
 
+impl<T: EnvValue> EnvKey<T> {
+    /// Returns the value of the environment variable in the current env.
+    pub fn get(self) -> Option<T> {
+        cache::environment().get(self)
+    }
+}
+
 /// Trait implemented by values that can be stored in an environment.
 pub trait EnvValue: Sized + Any + Clone {
     fn as_any(&self) -> &dyn Any;
@@ -68,10 +75,6 @@ impl<T: Any> EnvValue for Arc<T> {
         self
     }
 }
-
-// FIXME: i'm not sure about passing envs:
-// we don't pass it during recomp, which means that a lot of calculations that involve theme vars are deferred until layout
-// -> pass envs during recomp, resolve theme vars during recomp
 
 #[derive(Clone)]
 pub struct Environment(Arc<EnvImpl>);

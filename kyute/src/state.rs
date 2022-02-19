@@ -11,7 +11,7 @@ pub struct Signal<T> {
 }
 
 impl<T: Clone + 'static> Signal<T> {
-    #[composable(uncached)]
+    #[composable]
     pub fn new() -> Signal<T> {
         let key = cache::state(|| None);
         Signal {

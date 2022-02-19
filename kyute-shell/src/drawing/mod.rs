@@ -33,6 +33,7 @@ pub trait IntoDip {
 
 /// Common graphics types
 pub type Size = euclid::Size2D<f64, Dip>;
+pub type SizeI = euclid::Size2D<i64, Dip>;
 pub type PhysicalSize = euclid::Size2D<f64, Px>;
 pub type Rect = euclid::Rect<f64, Dip>;
 pub type Offset = euclid::Vector2D<f64, Dip>;

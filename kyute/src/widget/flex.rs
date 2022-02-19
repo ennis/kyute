@@ -1,41 +1,8 @@
-use crate::{
-    composable,
-    core2::{LayoutCtx, PaintCtx},
-    style::{BoxStyle, PaintCtxExt},
-    theme, BoxConstraints, Environment, Event, EventCtx, Measurements, Offset, Orientation, Point,
-    Rect, Size, Widget, WidgetPod,
-};
+use crate::widget::prelude::*;
 use kyute_shell::drawing::RoundToPixel;
 use std::sync::Arc;
-
-/*#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Axis {
-    Horizontal,
-    Vertical,
-}
-
-impl Axis {
-    pub fn cross_axis(self) -> Axis {
-        match self {
-            Axis::Horizontal => Axis::Vertical,
-            Axis::Vertical => Axis::Horizontal,
-        }
-    }
-
-    pub fn main_len(self, size: Size) -> f64 {
-        match self {
-            Axis::Vertical => size.height,
-            Axis::Horizontal => size.width,
-        }
-    }
-
-    pub fn cross_len(self, size: Size) -> f64 {
-        match self {
-            Axis::Vertical => size.width,
-            Axis::Horizontal => size.height,
-        }
-    }
-}*/
+use crate::style::{BoxStyle, PaintCtxExt};
+use crate::theme;
 
 pub fn main_axis_length(orientation: Orientation, size: Size) -> f64 {
     match orientation {

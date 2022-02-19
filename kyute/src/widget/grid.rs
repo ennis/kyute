@@ -1,14 +1,10 @@
-use crate::{
-    composable, layout::Measurements, BoxConstraints, EnvKey, Environment, Event, EventCtx,
-    LayoutCtx, Offset, PaintCtx, Rect, Size, Widget, WidgetPod,
-};
-use kyute::Point;
+use crate::{widget::prelude::*, EnvKey};
 use kyute_shell::drawing::{Color, ToSkia};
 use std::{
     cell::RefCell,
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
+    sync::Arc,
 };
-use std::sync::Arc;
 use tracing::trace;
 
 pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = EnvKey::new("kyute.show_grid_layout_lines");
@@ -373,12 +369,12 @@ impl Grid {
             }
         }
 
-        tracing::trace!(
+        /*tracing::trace!(
             "{:?} base_size={:?}, growth_limit={:?}",
             axis,
             base_size,
             growth_limit
-        );
+        );*/
 
         // grid line positions
         let mut layout = Vec::with_capacity(num_tracks);

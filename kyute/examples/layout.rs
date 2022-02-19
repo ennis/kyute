@@ -1,15 +1,6 @@
-use std::sync::Arc;
-use kyute::{
-    application, composable,
-    shell::application::Application,
-    style::ThemeData,
-    theme,
-    widget::{Button, ConstrainedBox, Container, Flex, Grid, GridLength, Label},
-    Alignment, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, Widget, WidgetExt,
-    WidgetPod, Window,
-};
-use kyute::style::UnitExt;
+use kyute::{application, composable, shell::application::Application, style::{ThemeData, UnitExt}, theme, widget::{Button, ConstrainedBox, Container, Flex, Grid, GridLength, Image, Label, Null}, Alignment, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, Widget, WidgetPod, Window, WidgetExt};
 use kyute_shell::{winit::window::WindowBuilder, AssetId};
+use std::sync::Arc;
 
 #[composable(uncached)]
 fn fixed_size_widget(w: f64, h: f64, name: &str) -> impl Widget {
@@ -30,7 +21,12 @@ fn grid_layout_example() -> impl Widget + Clone {
 
     grid.add(0, 0, fixed_size_widget(50.0, 50.0, "(0,0)"));
     grid.add(0, 1, fixed_size_widget(50.0, 50.0, "(0,1)"));
-    grid.add(0, 2, fixed_size_widget(50.0, 50.0, "(0,2)"));
+    //grid.add(0, 2, fixed_size_widget(50.0, 50.0, "(0,2)"));
+    grid.add(
+        0,
+        2,
+        Image::from_uri_async("data/haniyasushin_keiki.jpg", Null),
+    );
     grid.add(1, 0, fixed_size_widget(50.0, 50.0, "(1,0)"));
     grid.add(1, 1..=2, fixed_size_widget(150.0, 50.0, "(1,1)").centered());
     grid
@@ -51,7 +47,7 @@ fn align_in_constrained_box() -> impl Widget + Clone {
     grid.add_row(
         Container::new(Label::new("Container".into()))
             //.aligned(Alignment::CENTER_RIGHT)
-            .fix_width(500.dip())
+            .fixed_width(500.dip())
             .box_style(BoxStyle::new().fill(Color::from_hex("#b9edc788"))),
     );
 
@@ -59,12 +55,12 @@ fn align_in_constrained_box() -> impl Widget + Clone {
 }
 
 #[composable]
-fn ui_root() -> Window {
-    Window::new(
+fn ui_root() -> Arc<WidgetPod> {
+    Arc::new(WidgetPod::new(Window::new(
         WindowBuilder::new().with_title("Layouts"),
         Flex::vertical().with(align_in_constrained_box()),
         None,
-    )
+    )))
 }
 
 fn main() {

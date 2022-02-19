@@ -1,12 +1,11 @@
 use crate::{
-    core2::WindowPaintCtx,
+    core2::{HitTestResult, WindowPaintCtx},
     event::{PointerEvent, PointerEventKind},
-    BoxConstraints, Environment, Event, EventCtx, GpuFrameCtx, LayoutCtx, Measurements, Offset,
-    PaintCtx, Rect, Widget,
+    widget::prelude::*,
+    GpuFrameCtx,
 };
 use kyute_shell::drawing::ToSkia;
 use std::cell::Cell;
-use crate::core2::HitTestResult;
 
 #[derive(Clone)]
 pub struct LayoutWrapper<W> {
@@ -62,37 +61,41 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         // the hit-test, that's not a problem.
         let bounds = self.measurements.get().bounds;
 
-        event.with_local_coordinates(self.offset.get(), |event| {
-            match event {
-                Event::Pointer(p) => {
-                    match ctx.hit_test(p, bounds) {
-                        HitTestResult::Passed => {
-                            if !self.pointer_over.get() {
-                                self.pointer_over.set(true);
-                                self.inner.event(ctx, &mut Event::Pointer(PointerEvent {
-                                    kind: PointerEventKind::PointerOver,
-                                    ..*p
-                                }), env);
-                            }
-                            self.inner.event(ctx, event, env);
-                        }
-                        HitTestResult::Failed => {
-                            if self.pointer_over.get() {
-                                self.pointer_over.set(false);
-                                self.inner.event(ctx, &mut Event::Pointer(PointerEvent {
-                                    kind: PointerEventKind::PointerOut,
-                                    ..*p
-                                }), env);
-                            }
-                        }
-                        HitTestResult::Skipped => {
-                            self.inner.event(ctx, event, env);
-                        }
+        event.with_local_coordinates(self.offset.get(), |event| match event {
+            Event::Pointer(p) => match ctx.hit_test(p, bounds) {
+                HitTestResult::Passed => {
+                    if !self.pointer_over.get() {
+                        self.pointer_over.set(true);
+                        self.inner.event(
+                            ctx,
+                            &mut Event::Pointer(PointerEvent {
+                                kind: PointerEventKind::PointerOver,
+                                ..*p
+                            }),
+                            env,
+                        );
                     }
-                }
-                _ => {
                     self.inner.event(ctx, event, env);
                 }
+                HitTestResult::Failed => {
+                    if self.pointer_over.get() {
+                        self.pointer_over.set(false);
+                        self.inner.event(
+                            ctx,
+                            &mut Event::Pointer(PointerEvent {
+                                kind: PointerEventKind::PointerOut,
+                                ..*p
+                            }),
+                            env,
+                        );
+                    }
+                }
+                HitTestResult::Skipped => {
+                    self.inner.event(ctx, event, env);
+                }
+            },
+            _ => {
+                self.inner.event(ctx, event, env);
             }
         });
     }

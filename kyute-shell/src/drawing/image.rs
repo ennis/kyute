@@ -2,10 +2,18 @@
 use crate::{asset::Asset, drawing::ToSkia};
 use skia_safe as sk;
 use std::{io, io::Read};
+use crate::drawing::{Size, SizeI};
 
 #[derive(Clone, Debug)]
 pub struct Image(skia_safe::Image);
 
+impl Image {
+    /// Returns the size in pixels of the image.
+    pub fn size(&self) -> SizeI {
+        let s = self.0.dimensions();
+        SizeI::new(s.width as i64, s.height as i64)
+    }
+}
 
 impl ToSkia for Image {
     type Target = skia_safe::Image;

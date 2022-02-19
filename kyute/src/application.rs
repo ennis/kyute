@@ -100,7 +100,7 @@ fn eval_root_widget(
     root_env: &Environment,
     f: fn() -> Arc<WidgetPod>,
 ) -> Arc<WidgetPod> {
-    let root_widget = app_ctx.cache.run(app_ctx.event_loop_proxy.clone(), f);
+    let root_widget = app_ctx.cache.run(app_ctx.event_loop_proxy.clone(), root_env, f);
     // ensures that all widgets have received the `Initialize` event.
     root_widget.initialize(app_ctx, event_loop, root_env);
     root_widget

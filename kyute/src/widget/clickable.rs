@@ -1,10 +1,4 @@
-use crate::{
-    composable,
-    core2::{EventCtx, LayoutCtx, PaintCtx},
-    event::PointerEventKind,
-    state::Signal,
-    BoxConstraints, Environment, Event, Measurements, Rect, Widget, WidgetPod,
-};
+use crate::{event::PointerEventKind, widget::prelude::*, Signal};
 use tracing::trace;
 
 #[derive(Clone)]

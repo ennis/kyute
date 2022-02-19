@@ -1,14 +1,10 @@
 use crate::{
-    cache, composable,
-    core2::{EventCtx, LayoutCtx, PaintCtx},
     event::PointerEventKind,
-    state::Signal,
     style::{BoxStyle, ColorRef, ValueRef},
     theme,
-    widget::{Container, Label},
-    BoxConstraints, Environment, Event, Measurements, Rect, SideOffsets, Widget, WidgetPod,
+    widget::{prelude::*, Container, Label},
+    SideOffsets, Signal,
 };
-use std::time::Duration;
 use tracing::trace;
 
 /// Button styling information.
@@ -30,11 +26,6 @@ impl Button {
     /// Creates a new button with the specified label.
     #[composable]
     pub fn new(label: String) -> Button {
-        /*cache::state_async(async {
-            tokio::time::sleep(Duration::from_secs(4)).await;
-            eprintln!("finished");
-        });*/
-
         Button {
             inner: Container::new(Label::new(label))
                 .min_height(theme::BUTTON_HEIGHT)
@@ -120,29 +111,3 @@ impl Widget for Button {
         self.inner.paint(ctx, bounds, env)
     }
 }
-
-/*let background_gradient = LinearGradient::new()
-.angle(90.0.degrees())
-.stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
-.stop(BUTTON_BACKGROUND_TOP_COLOR, 1.0);*/
-
-/*ctx.draw_styled_box(
-    bounds,
-    &BoxStyle::new()
-        .fill(background_gradient.clone())
-        .border(
-            Border::new(1.dip())
-                .inside(0.dip())
-                .paint(BUTTON_BORDER_BOTTOM_COLOR)
-                .opacity(1.0),
-        )
-        .border(
-            Border::new(1.dip()).outside(0.dip()).paint(
-                LinearGradient::new()
-                    .angle(90.0.degrees())
-                    .stop(WIDGET_OUTER_GROOVE_BOTTOM_COLOR, 0.0)
-                    .stop(WIDGET_OUTER_GROOVE_TOP_COLOR, 0.3),
-            ),
-        ),
-    env,
-);*/

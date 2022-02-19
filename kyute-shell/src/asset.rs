@@ -1,10 +1,8 @@
 use notify::{RecursiveMode, Watcher};
 use std::{
-    any::Any,
-    cell::RefCell,
     collections::HashMap,
     error::Error,
-    fmt,
+    fmt, fs,
     fs::File,
     future::Future,
     hash::{Hash, Hasher},
@@ -15,6 +13,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::task;
+use tracing::trace;
 
 #[derive(Copy, Clone, Debug)]
 pub struct AssetUri<'a> {
@@ -95,10 +94,18 @@ type EventTxMap = HashMap<String, tokio::sync::mpsc::Sender<notify::Event>>;
 type EventRx = tokio::sync::mpsc::Receiver<notify::Event>;
 
 fn handle_filesystem_event(event: notify::Event, watchers: &EventTxMap) {
+    //trace!("handle_filesystem_event {:?}", event);
     for path in event.paths.iter() {
         if let Some(s) = path.to_str() {
-            if let Some(tx) = watchers.get(s) {
-                tx.send(event.clone());
+            for (watched_path, tx) in watchers {
+                if let Ok(watched_canonical) = fs::canonicalize(watched_path) {
+                    if let Ok(event_canonical) = fs::canonicalize(s) {
+                        if watched_canonical == event_canonical {
+                            trace!("changed: {:?}", watched_path);
+                            tx.send(event.clone());
+                        }
+                    }
+                }
             }
         }
     }
@@ -142,6 +149,7 @@ impl Resolvers {
     fn watch_changes(&self, uri: &str, recursive: bool) -> EventRx {
         let (tx, rx) = tokio::sync::mpsc::channel(50);
         let mut txs = self.event_txs.lock().unwrap();
+
         txs.insert(uri.to_string(), tx);
         self.filesystem_watcher
             .lock()
@@ -225,7 +233,9 @@ impl AssetLoader {
         let resolvers = self.resolvers.clone();
         let uri = uri.to_string();
         async move {
+            trace!("load_async {:?}", uri);
             task::spawn_blocking(move || {
+                trace!("load_async(worker) {:?}", uri);
                 let mut reader = resolvers.open(&uri).map_err(AssetLoadError::Io)?;
                 let value = T::load(&mut reader).map_err(AssetLoadError::Asset)?;
                 Ok(value)
@@ -236,9 +246,11 @@ impl AssetLoader {
     }
 
     /// Watches for changes to an asset file.
-    pub async fn wait_for_changes(&self, uri: &str) -> notify::Event {
+    pub fn watch_changes(&self, uri: &str) -> impl Future<Output = ()> {
         let mut rx = self.resolvers.watch_changes(uri, false);
-        rx.recv().await.expect("failed to await")
+        async move {
+            rx.recv().await;
+        }
     }
 
     /*pub fn load_from_file<T: Asset>(&self, path: &str) -> io::Result<T> {

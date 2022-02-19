@@ -1,7 +1,8 @@
+//! GUI positional cache.
 use crate::{
     application::ExtEvent,
     call_key::{CallId, CallIdStack, CallNode},
-    Data,
+    Data, Environment,
 };
 use kyute_shell::winit::event_loop::EventLoopProxy;
 use slotmap::SlotMap;
@@ -17,29 +18,16 @@ use std::{
     mem,
     panic::Location,
     rc::Rc,
+    task::Poll,
 };
 use thiserror::Error;
-use tracing::trace;
+use tracing::{trace, warn};
 
 slotmap::new_key_type! {
     struct CacheEntryKey;
 }
 
-/// Error related to state entries.
-#[derive(Error, Debug)]
-pub enum CacheError {
-    #[error("state entry not found")]
-    EntryNotFound,
-    #[error("no value in state entry")]
-    VacantEntry,
-    #[error("state entry already contains a value")]
-    OccupiedEntry,
-    #[error("type mismatch")]
-    TypeMismatch,
-}
-
-// TODO rename to `CacheEntry`?
-/// Entry representing a group
+/// Entry representing a mutable state slot inside a composition cache.
 struct StateEntry {
     call_id: CallId,
     /// For debugging purposes.
@@ -102,7 +90,7 @@ impl<T> fmt::Debug for Key<T> {
 impl<T: Data + 'static> Key<T> {
     /// Returns the value of the cache entry and replaces it by the default value.
     pub fn update(&self, new_value: T) -> T {
-        with_cache_cx(|cx| {
+        with_comp_cx(|cx| {
             let prev_value = cx.writer.replace_value(*self, new_value.clone());
             if !prev_value.same(&new_value) {
                 cx.writer.invalidate_dependents(*self);
@@ -124,7 +112,7 @@ impl<T: 'static> Key<T> {
     /// Returns the value of the cache entry and replaces it by the default value.
     /// Always invalidates.
     pub fn replace(&self, new_value: T) -> T {
-        with_cache_cx(|cx| {
+        with_comp_cx(|cx| {
             let prev_value = cx.writer.replace_value(*self, new_value);
             cx.writer.invalidate_dependents(*self);
             prev_value
@@ -134,7 +122,7 @@ impl<T: 'static> Key<T> {
     pub fn set(&self, new_value: T) {
         // TODO idea: log the call sites that invalidated the cache, for debugging
         // e.g. `state entry @ (call site) invalidated because of (state entries), because of manual invalidation @ (call site) OR invalidated externally`
-        with_cache_cx(|cx| {
+        with_comp_cx(|cx| {
             cx.writer.set_value(*self, new_value);
             cx.writer.invalidate_dependents(*self);
         })
@@ -143,7 +131,7 @@ impl<T: 'static> Key<T> {
     pub fn set_without_invalidation(&self, new_value: T) {
         // TODO idea: log the call sites that invalidated the cache, for debugging
         // e.g. `state entry @ (call site) invalidated because of (state entries), because of manual invalidation @ (call site) OR invalidated externally `
-        with_cache_cx(|cx| {
+        with_comp_cx(|cx| {
             cx.writer.set_value(*self, new_value);
         })
     }
@@ -151,7 +139,7 @@ impl<T: 'static> Key<T> {
 
 impl<T: Clone + 'static> Key<T> {
     pub fn get(&self) -> T {
-        with_cache_cx(|cx| cx.writer.get_value(*self))
+        with_comp_cx(|cx| cx.writer.get_value(*self))
     }
 }
 
@@ -162,7 +150,7 @@ impl<T: Default + 'static> Key<T> {
     }
 }
 
-/// Cache internals. They are split from `Cache` itself so that they can be temporarily moved out.
+/// Composition cache. Contains the recorded call tree and state entries.
 struct CacheInner {
     /// The call tree, represented as an array of slots.
     slots: Vec<Slot>,
@@ -189,6 +177,11 @@ impl CacheInner {
 
     /// Sets the value of a state entry and invalidates all dependent entries.
     pub fn set_state<T: 'static>(&mut self, key: Key<T>, new_value: T) {
+        if !self.entries.contains_key(key.key) {
+            warn!("set_state: entry deleted: {:?}", key.key);
+            return;
+        }
+
         let value = self.entries[key.key]
             .value
             .downcast_mut::<T>()
@@ -576,6 +569,7 @@ struct CacheContext {
     event_loop_proxy: EventLoopProxy<ExtEvent>,
     id_stack: CallIdStack,
     writer: CacheWriter,
+    env: Environment,
 }
 
 thread_local! {
@@ -586,35 +580,36 @@ thread_local! {
     static CURRENT_CACHE_CONTEXT: RefCell<Option<CacheContext>> = RefCell::new(None);
 }
 
-/// Positional cache.
+///
 pub struct Cache {
-    inner: Option<CacheInner>,
+    cache: Option<CacheInner>,
 }
 
 impl Cache {
     /// Creates a new cache.
     pub fn new() -> Cache {
         Cache {
-            inner: Some(CacheInner::new()),
+            cache: Some(CacheInner::new()),
         }
     }
 
     /// Returns the revision index (the number of times `run` has been called).
     pub fn revision(&self) -> usize {
-        self.inner.as_ref().unwrap().revision
+        self.cache.as_ref().unwrap().revision
     }
 
     /// Runs a cached function with this cache.
     pub fn run<T>(
         &mut self,
         event_loop_proxy: EventLoopProxy<ExtEvent>,
+        env: &Environment,
         function: impl Fn() -> T,
     ) -> T {
         CURRENT_CACHE_CONTEXT.with(move |cx_cell| {
             // We can't put a reference type in a TLS.
             // As a workaround, use the classic sleight of hand:
             // temporarily move our internals out of self and into the TLS, and move it back to self once we've finished.
-            let mut inner = self.inner.take().unwrap();
+            let mut inner = self.cache.take().unwrap();
             inner.revision += 1;
 
             // start writing to the cache
@@ -626,6 +621,7 @@ impl Cache {
                 event_loop_proxy,
                 id_stack: CallIdStack::new(),
                 writer,
+                env: env.clone(),
             };
             cx_cell.borrow_mut().replace(cx);
 
@@ -638,7 +634,7 @@ impl Cache {
             assert!(cx.id_stack.is_empty(), "unbalanced CallKeyStack");
 
             // finalize cache writer and put the internals back
-            self.inner.replace(cx.writer.finish());
+            self.cache.replace(cx.writer.finish());
 
             result
         })
@@ -646,13 +642,13 @@ impl Cache {
 
     /// Sets the value of the state variable identified by `key`, and invalidates all dependent variables in the cache.
     pub fn set_state<T: 'static>(&mut self, key: Key<T>, value: T) {
-        self.inner.as_mut().unwrap().set_state(key, value)
+        self.cache.as_mut().unwrap().set_state(key, value)
     }
 }
 
 //--------------------------------------------------------------------------------------------------
 
-fn with_cache_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
+fn with_comp_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
     CURRENT_CACHE_CONTEXT.with(|cx_cell| {
         let mut cx = cx_cell.borrow_mut();
         let cx = cx
@@ -664,24 +660,24 @@ fn with_cache_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
 
 /// Returns the current call identifier.
 pub fn current_call_id() -> CallId {
-    with_cache_cx(|cx| cx.id_stack.current())
+    with_comp_cx(|cx| cx.id_stack.current())
 }
 
 /// Returns the current revision.
 pub fn revision() -> usize {
-    with_cache_cx(|cx| cx.writer.cache.revision)
+    with_comp_cx(|cx| cx.writer.cache.revision)
 }
 
 /// Must be called inside `Cache::run`.
 #[track_caller]
 fn enter(index: usize) {
     let location = Location::caller();
-    with_cache_cx(move |cx| cx.id_stack.enter(location, index));
+    with_comp_cx(move |cx| cx.id_stack.enter(location, index));
 }
 
 /// Must be called inside `Cache::run`.
 fn exit() {
-    with_cache_cx(move |cx| cx.id_stack.exit());
+    with_comp_cx(move |cx| cx.id_stack.exit());
 }
 
 /// Enters a
@@ -694,10 +690,24 @@ pub fn scoped<R>(index: usize, f: impl FnOnce() -> R) -> R {
     r
 }
 
+pub fn environment() -> Environment {
+    with_comp_cx(|cx| cx.env.clone())
+}
+
+#[track_caller]
+pub fn with_environment<R>(env: Environment, f: impl FnOnce() -> R) -> R {
+    let parent_env = with_comp_cx(|cx| mem::replace(&mut cx.env, cx.env.merged(env)));
+    let r = scoped(0, f);
+    with_comp_cx(|cx| {
+        cx.env = parent_env;
+    });
+    r
+}
+
 #[track_caller]
 pub fn changed<T: Data>(value: T) -> bool {
     let location = Location::caller();
-    with_cache_cx(move |cx| {
+    with_comp_cx(move |cx| {
         cx.id_stack.enter(location, 0);
         let key = cx.id_stack.current();
         let node = cx.id_stack.current_call_node();
@@ -708,9 +718,9 @@ pub fn changed<T: Data>(value: T) -> bool {
 }
 
 #[track_caller]
-fn state_inner<T: 'static>(init: impl FnOnce() -> T) -> CacheEntryInsertResult<T> {
+fn state_inner<T: 'static, Init: FnOnce() -> T>(init: Init) -> CacheEntryInsertResult<T> {
     let location = Location::caller();
-    with_cache_cx(move |cx| {
+    with_comp_cx(move |cx| {
         cx.id_stack.enter(location, 0);
         let call_id = cx.id_stack.current();
         let node = cx.id_stack.current_call_node();
@@ -719,6 +729,7 @@ fn state_inner<T: 'static>(init: impl FnOnce() -> T) -> CacheEntryInsertResult<T
         r
     })
 }
+
 /// TODO document
 #[track_caller]
 pub fn state<T: 'static>(init: impl FnOnce() -> T) -> Key<T> {
@@ -727,36 +738,77 @@ pub fn state<T: 'static>(init: impl FnOnce() -> T) -> Key<T> {
 
 /// TODO document
 #[track_caller]
-pub fn state_async<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static) -> Key<Option<T>> {
-    let CacheEntryInsertResult { key, inserted, .. } = state_inner(|| None);
-    if inserted {
-        with_cache_cx(move |cx| {
+pub fn run_async<T, Fut>(future: Fut, restart: bool) -> Poll<T>
+where
+    T: Clone + Send + 'static,
+    Fut: Future<Output = T> + Send + 'static,
+{
+    struct AsyncTaskEntry {
+        handle: tokio::task::JoinHandle<()>,
+        revision: usize,
+    }
+
+    let CacheEntryInsertResult {
+        key: task_key,
+        inserted,
+        ..
+    } = state_inner::<Option<AsyncTaskEntry>, _>(|| None);
+
+    // if we requested a restart, abort the current running task
+    let mut task = task_key.take();
+
+    let revision = if let Some(ref mut task) = task {
+        if restart {
+            trace!("run_async: restarting task");
+            task.handle.abort();
+            task.revision += 1;
+            task.revision
+        } else {
+            task.revision
+        }
+    } else {
+        0
+    };
+
+    let CacheEntryInsertResult {
+        key: result_key,
+        inserted,
+        ..
+    } = scoped(revision, || state_inner(|| Poll::Pending));
+
+    if inserted || restart {
+        with_comp_cx(|cx| {
             let el = cx.event_loop_proxy.clone();
+
             // spawn task that will set the value
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 let result = future.await;
                 // TODO I'd really like to just do `key.set(...)` regardless of whether we're in or out the cache,
                 // instead of having to do weird things like this
                 el.send_event(ExtEvent::Recompose {
                     cache_fn: Box::new(move |cache| {
-                        cache.set_state(key, Some(result));
+                        cache.set_state(result_key, Poll::Ready(result));
                     }),
                 });
             });
+
+            task = Some(AsyncTaskEntry { handle, revision })
         });
     }
-    key
+
+    task_key.set(task);
+    result_key.get()
 }
 
 #[track_caller]
 pub fn group<R>(f: impl FnOnce() -> R) -> R {
     let location = Location::caller();
-    with_cache_cx(|cx| {
+    with_comp_cx(|cx| {
         cx.id_stack.enter(location, 0);
         cx.writer.start_group(cx.id_stack.current())
     });
     let r = f();
-    with_cache_cx(|cx| {
+    with_comp_cx(|cx| {
         cx.writer.end_group();
         cx.id_stack.exit();
     });
@@ -764,16 +816,20 @@ pub fn group<R>(f: impl FnOnce() -> R) -> R {
 }
 
 pub fn skip_to_end_of_group() {
-    with_cache_cx(|cx| {
+    with_comp_cx(|cx| {
         cx.writer.skip_until_end_of_group();
     })
+}
+
+pub fn event_loop_proxy() -> EventLoopProxy<ExtEvent> {
+    with_comp_cx(|cx| cx.event_loop_proxy.clone())
 }
 
 /// Memoizes the result of a function at this call site.
 #[track_caller]
 pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T) -> T {
     group(move || {
-        let (result_entry, result_dirty) = with_cache_cx(move |cx| {
+        let (result_entry, result_dirty) = with_comp_cx(move |cx| {
             let call_id = cx.id_stack.current();
             let call_node = cx.id_stack.current_call_node();
             let args_changed = cx
@@ -792,11 +848,11 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
         });
 
         if result_dirty {
-            with_cache_cx(|cx| {
+            with_comp_cx(|cx| {
                 cx.writer.start_state(result_entry);
             });
             let result = f();
-            with_cache_cx(|cx| {
+            with_comp_cx(|cx| {
                 cx.writer.end_state();
                 cx.writer.set_value(result_entry, Some(result));
             });

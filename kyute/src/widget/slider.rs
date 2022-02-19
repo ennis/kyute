@@ -1,11 +1,11 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
 use crate::{
-    composable,
-    event::{Event, PointerEventKind},
+    event::PointerEventKind,
     style::{PaintCtxExt, Path},
-    theme, BoxConstraints, Environment, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect,
-    SideOffsets, Signal, Size, Widget,
+    theme,
+    widget::prelude::*,
+    SideOffsets, Signal,
 };
 use std::cell::Cell;
 use tracing::trace;
