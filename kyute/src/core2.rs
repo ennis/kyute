@@ -8,7 +8,7 @@ use crate::{
     region::Region,
     widget::{Align, ConstrainedBox},
     Alignment, BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements,
-    Offset, Point, Rect, Size, Window,
+    Offset, Point, Rect, Size,
 };
 use approx::relative_eq;
 use kyute_macros::composable;
@@ -21,11 +21,11 @@ use std::{
     cell::Cell,
     fmt,
     hash::Hash,
-    marker::Unsize,
-    ops::{CoerceUnsized, Deref, DerefMut, RangeBounds},
-    sync::{Arc, Weak},
+    ops::{Deref, DerefMut, RangeBounds},
+    sync::Arc,
 };
 use tracing::{trace, warn};
+use crate::application::ExtEvent;
 
 pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.show_debug_overlay");
 
@@ -181,7 +181,7 @@ fn hit_test_helper(
 
 pub struct EventCtx<'a> {
     pub(crate) app_ctx: &'a mut AppCtx,
-    pub(crate) event_loop: &'a EventLoopWindowTarget<()>,
+    pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
     pub(crate) parent_window: Option<&'a mut kyute_shell::window::Window>,
     pub(crate) focus_state: &'a mut FocusState,
     pub(crate) window_position: Point,
@@ -197,7 +197,7 @@ impl<'a> EventCtx<'a> {
     fn new(
         app_ctx: &'a mut AppCtx,
         focus_state: &'a mut FocusState,
-        event_loop: &'a EventLoopWindowTarget<()>,
+        event_loop: &'a EventLoopWindowTarget<ExtEvent>,
         id: WidgetId,
     ) -> EventCtx<'a> {
         EventCtx {
@@ -1045,7 +1045,7 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
     pub(crate) fn send_root_event(
         &self,
         app_ctx: &mut AppCtx,
-        event_loop: &EventLoopWindowTarget<()>,
+        event_loop: &EventLoopWindowTarget<ExtEvent>,
         event: &mut Event,
         env: &Environment,
     ) {
@@ -1068,7 +1068,7 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
     pub(crate) fn initialize(
         &self,
         app_ctx: &mut AppCtx,
-        event_loop: &EventLoopWindowTarget<()>,
+        event_loop: &EventLoopWindowTarget<ExtEvent>,
         env: &Environment,
     ) {
         self.send_root_event(

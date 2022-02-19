@@ -6,7 +6,7 @@ use crate::{core2::WidgetId, Cache, Environment, Event, InternalEvent, Widget, W
 use kyute_shell::{
     winit,
     winit::{
-        event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
+        event_loop::{ControlFlow, EventLoop, EventLoopProxy, EventLoopWindowTarget},
         window::WindowId,
     },
 };
@@ -17,6 +17,14 @@ use std::{
 };
 use tracing::warn;
 
+//#[derive(Debug)]
+pub enum ExtEvent {
+    /// Triggers a recomposition
+    Recompose {
+        cache_fn: Box<dyn FnOnce(&mut Cache) + Send>,
+    },
+}
+
 /// Global application context. Contains stuff passed to all widget contexts (Event,Layout,Paint...)
 pub struct AppCtx {
     /// Open windows, mapped to their corresponding widget.
@@ -26,15 +34,17 @@ pub struct AppCtx {
     /// Stores cached copies of widgets and state variables.
     pub(crate) cache: Cache,
     pub(crate) pending_events: Vec<Event<'static>>,
+    event_loop_proxy: EventLoopProxy<ExtEvent>,
 }
 
 impl AppCtx {
     /// Creates a new AppCtx.
-    fn new() -> AppCtx {
+    fn new(event_loop_proxy: EventLoopProxy<ExtEvent>) -> AppCtx {
         AppCtx {
             windows: HashMap::new(),
             cache: Cache::new(),
             pending_events: vec![],
+            event_loop_proxy,
         }
     }
 
@@ -52,6 +62,7 @@ impl AppCtx {
         }
     }
 
+    /// Posts a widget event.
     pub fn post_event(&mut self, event: Event<'static>) {
         //tracing::trace!("post_event {:?}", &event);
         self.pending_events.push(event);
@@ -60,7 +71,7 @@ impl AppCtx {
     fn send_event(
         &mut self,
         root_widget: &WidgetPod,
-        event_loop: &EventLoopWindowTarget<()>,
+        event_loop: &EventLoopWindowTarget<ExtEvent>,
         event: Event<'static>,
         root_env: &Environment,
     ) {
@@ -71,7 +82,7 @@ impl AppCtx {
     fn flush_pending_events(
         &mut self,
         root_widget: &WidgetPod,
-        event_loop: &EventLoopWindowTarget<()>,
+        event_loop: &EventLoopWindowTarget<ExtEvent>,
         root_env: &Environment,
     ) {
         while !self.pending_events.is_empty() {
@@ -85,19 +96,23 @@ impl AppCtx {
 
 fn eval_root_widget(
     app_ctx: &mut AppCtx,
-    event_loop: &EventLoopWindowTarget<()>,
+    event_loop: &EventLoopWindowTarget<ExtEvent>,
     root_env: &Environment,
     f: fn() -> Arc<WidgetPod>,
 ) -> Arc<WidgetPod> {
-    let root_widget = app_ctx.cache.run(f);
+    let root_widget = app_ctx.cache.run(app_ctx.event_loop_proxy.clone(), f);
     // ensures that all widgets have received the `Initialize` event.
     root_widget.initialize(app_ctx, event_loop, root_env);
     root_widget
 }
 
 pub fn run(ui: fn() -> Arc<WidgetPod>, env: Environment) {
-    let event_loop = EventLoop::new();
-    let mut app_ctx = AppCtx::new();
+    let event_loop = EventLoop::<ExtEvent>::with_user_event();
+    let mut app_ctx = AppCtx::new(event_loop.create_proxy());
+
+    // setup and enter the tokio runtime
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    let _rt_guard = rt.enter();
 
     // initial evaluation of the root widget in the main UI cache.
     let mut root_widget = eval_root_widget(&mut app_ctx, &event_loop, &env, ui);
@@ -140,6 +155,13 @@ pub fn run(ui: fn() -> Arc<WidgetPod>, env: Environment) {
                 //tracing::trace!("2nd recomp");
                 root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
             }
+            // --- EXT EVENTS ----------------------------------------------------------------------
+            winit::event::Event::UserEvent(ext_event) => match ext_event {
+                ExtEvent::Recompose { cache_fn } => {
+                    cache_fn(&mut app_ctx.cache);
+                    root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
+                }
+            },
             // --- REPAINT -------------------------------------------------------------------------
             // happens after recomposition
             winit::event::Event::RedrawRequested(window_id) => {

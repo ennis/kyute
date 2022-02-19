@@ -64,7 +64,7 @@ pub const SELECTED_TEXT_BACKGROUND_COLOR: EnvKey<Color> =
 pub const SELECTED_TEXT_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.selected_text_color"); // [Color::new(1.0,1.0,1.0,1.0)];
 
 pub mod palette {
-    use crate::{Color, EnvKey};
+    use crate::Color;
 
     pub const RED_50: Color = Color::from_hex("#ffebee"); //   #ffebee;
     pub const RED_100: Color = Color::from_hex("#ffcdd2"); //  #ffcdd2;

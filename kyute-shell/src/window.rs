@@ -266,8 +266,8 @@ impl Window {
     /// To create the window with an OpenGL context, `with_gl` should be `true`.
     ///
     /// [`WindowBuilder`]: winit::WindowBuilder
-    pub fn new(
-        event_loop: &EventLoopWindowTarget<()>,
+    pub fn new<T>(
+        event_loop: &EventLoopWindowTarget<T>,
         mut builder: WindowBuilder,
         parent_window: Option<&Window>,
     ) -> Result<Window, Error> {

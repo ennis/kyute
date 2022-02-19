@@ -52,12 +52,12 @@ impl Asset for ThemeData {
 }
 
 impl ThemeData {
-    /// Loads theme data from a JSON resource.
+    /*/// Loads theme data from a JSON resource.
     pub fn load(id: AssetId<ThemeData>) -> Result<ThemeData, AssetLoadError<ThemeLoadError>> {
         let application = Application::instance();
         let asset_loader = application.asset_loader();
         asset_loader.load(id)
-    }
+    }*/
 
     /// Reads a named property from the theme into the specified environment.
     pub fn load_property<T: DeserializeOwned + EnvValue>(

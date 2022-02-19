@@ -1,31 +1,37 @@
+use notify::{RecursiveMode, Watcher};
 use std::{
     any::Any,
     cell::RefCell,
     collections::HashMap,
     error::Error,
+    fmt,
     fs::File,
+    future::Future,
     hash::{Hash, Hasher},
     io,
     marker::PhantomData,
+    path::Path,
+    sync::{Arc, Mutex},
 };
 use thiserror::Error;
+use tokio::task;
 
 #[derive(Copy, Clone, Debug)]
-pub struct RawAssetId<'a> {
+pub struct AssetUri<'a> {
     pub uri: &'a str,
     pub data: Option<&'static [u8]>,
 }
 
-impl<'a> PartialEq for RawAssetId<'a> {
+impl<'a> PartialEq for AssetUri<'a> {
     fn eq(&self, other: &Self) -> bool {
         // the second part is not necessary if we rely on uri to uniquely identify the asset
         self.uri == other.uri /*&& self.data.map(|d| d.as_ptr()) == other.data.map(|d| d.as_ptr())*/
     }
 }
 
-impl<'a> Eq for RawAssetId<'a> {}
+impl<'a> Eq for AssetUri<'a> {}
 
-impl<'a> Hash for RawAssetId<'a> {
+impl<'a> Hash for AssetUri<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         Hash::hash(self.uri, state);
     }
@@ -34,7 +40,7 @@ impl<'a> Hash for RawAssetId<'a> {
 /// Statically identifies an asset.
 #[derive(Debug, Eq, PartialEq)]
 pub struct AssetId<T> {
-    pub raw: RawAssetId<'static>,
+    pub raw: AssetUri<'static>,
     _type: PhantomData<T>,
 }
 
@@ -58,14 +64,14 @@ impl<T> Hash for AssetId<T> {
 impl<T> AssetId<T> {
     pub const fn new(uri: &'static str) -> AssetId<T> {
         AssetId {
-            raw: RawAssetId { uri, data: None },
+            raw: AssetUri { uri, data: None },
             _type: PhantomData,
         }
     }
 
     pub const fn with_data(uri: &'static str, data: &'static [u8]) -> AssetId<T> {
         AssetId {
-            raw: RawAssetId {
+            raw: AssetUri {
                 uri,
                 data: Some(data),
             },
@@ -74,8 +80,8 @@ impl<T> AssetId<T> {
     }
 }
 
-pub trait Asset: Any + Clone {
-    type LoadError: std::error::Error;
+pub trait Asset: Sized + Send {
+    type LoadError: std::error::Error + Send + 'static;
 
     fn load(reader: &mut dyn io::Read) -> Result<Self, Self::LoadError>;
 
@@ -85,26 +91,76 @@ pub trait Asset: Any + Clone {
     }
 }
 
-struct Resolvers;
+type EventTxMap = HashMap<String, tokio::sync::mpsc::Sender<notify::Event>>;
+type EventRx = tokio::sync::mpsc::Receiver<notify::Event>;
 
-impl Resolvers {
-    /// Resolves an asset URI to a reader
-    pub fn resolve(&self, asset_id: &RawAssetId) -> io::Result<Box<dyn io::Read>> {
-        if let Some(data) = asset_id.data {
-            let reader = data;
-            Ok(Box::new(reader))
-        } else {
-            // resolve from filesystem
-            // TODO pluggable schemes / search paths
-            let file = File::open(asset_id.uri)?;
-            Ok(Box::new(file))
+fn handle_filesystem_event(event: notify::Event, watchers: &EventTxMap) {
+    for path in event.paths.iter() {
+        if let Some(s) = path.to_str() {
+            if let Some(tx) = watchers.get(s) {
+                tx.send(event.clone());
+            }
         }
     }
 }
 
+struct Resolvers {
+    filesystem_watcher: Mutex<notify::RecommendedWatcher>,
+    event_txs: Arc<Mutex<EventTxMap>>,
+}
+
+impl Resolvers {
+    fn new() -> Resolvers {
+        let event_txs = Arc::new(Mutex::new(EventTxMap::new()));
+        let event_txs_clone = event_txs.clone();
+        let filesystem_watcher = Mutex::new(
+            notify::recommended_watcher(move |res| match res {
+                Ok(event) => {
+                    let w = event_txs_clone.lock().unwrap();
+                    handle_filesystem_event(event, &w);
+                }
+                Err(e) => tracing::error!("watch error: {}", e),
+            })
+            .expect("failed to create filesystem watcher"),
+        );
+
+        Resolvers {
+            filesystem_watcher,
+            event_txs,
+        }
+    }
+
+    /// Resolves an asset URI to a reader
+    fn open(&self, uri: &str) -> io::Result<Box<dyn io::Read>> {
+        // resolve from filesystem
+        // TODO pluggable schemes / search paths
+        let file = File::open(uri)?;
+        Ok(Box::new(file))
+    }
+
+    /// Watches for changes to a specified URI.
+    fn watch_changes(&self, uri: &str, recursive: bool) -> EventRx {
+        let (tx, rx) = tokio::sync::mpsc::channel(50);
+        let mut txs = self.event_txs.lock().unwrap();
+        txs.insert(uri.to_string(), tx);
+        self.filesystem_watcher
+            .lock()
+            .unwrap()
+            .watch(
+                Path::new(uri),
+                if recursive {
+                    RecursiveMode::Recursive
+                } else {
+                    RecursiveMode::NonRecursive
+                },
+            )
+            .expect("failed to watch for file changes");
+        rx
+    }
+}
+
 pub struct AssetLoader {
-    cache: RefCell<HashMap<String, Box<dyn Any>>>,
-    resolvers: Resolvers,
+    resolvers: Arc<Resolvers>,
 }
 
 impl Default for AssetLoader {
@@ -113,54 +169,76 @@ impl Default for AssetLoader {
     }
 }
 
-#[derive(Error)]
-pub enum AssetLoadError<E: Error> {
+#[derive(Debug, Error)]
+pub enum AssetLoadError<E: Error + fmt::Debug> {
     #[error("I/O error")]
     Io(io::Error),
     #[error("asset error")]
     Asset(#[from] E),
-    #[error("type mismatch for cached asset")]
-    CachedAssetTypeMismatch,
 }
 
+/*
+We have:
+ - typed asset IDs, generated by the "resource compiler" or whatever
+ - asset URIs
+
+Should the assetLoader be in charge of caching the loaded results?
+- for all assets?
+- only for typed asset IDs?
+
+If not the asset loader, then what should cache the loaded assets?
+- store asset objects in lazy_statics
+- an "asset cache" wrapper on top of the asset loader
+- something else?
+
+Is there a difference between assets and resources?
+
+What about hot-reloading?
+- AssetLoader should provide a way to watch for file changes
+
+Watch asset paths for changes.
+    - Async?
+    - recomp when something changes
+*/
 impl AssetLoader {
     pub fn new() -> AssetLoader {
         AssetLoader {
-            cache: RefCell::new(Default::default()),
-            resolvers: Resolvers,
+            resolvers: Arc::new(Resolvers::new()),
         }
     }
 
-    /// Loads an asset from a raw asset id.
-    pub fn load_raw<T: Asset>(
-        &self,
-        raw_asset_id: RawAssetId,
-    ) -> Result<T, AssetLoadError<T::LoadError>> {
-        {
-            let cache = self.cache.borrow();
-            if let Some(entry) = cache.get(raw_asset_id.uri) {
-                return Ok(entry
-                    .downcast_ref::<T>()
-                    .ok_or(AssetLoadError::CachedAssetTypeMismatch)?
-                    .clone());
-            }
-        }
-
-        let mut reader = self
-            .resolvers
-            .resolve(&raw_asset_id)
-            .map_err(AssetLoadError::Io)?;
+    /// Loads an asset from an URI.
+    pub fn load<T: Asset>(&self, uri: &str) -> Result<T, AssetLoadError<T::LoadError>> {
+        // open reader
+        let mut reader = self.resolvers.open(uri).map_err(AssetLoadError::Io)?;
         // FIXME should call load_from_bytes when possible
+        // load the asset from the reader
         let value = T::load(&mut reader).map_err(AssetLoadError::Asset)?;
-        self.cache
-            .borrow_mut()
-            .insert(raw_asset_id.uri.to_string(), Box::new(value.clone()));
         Ok(value)
     }
 
-    /// Loads an asset.
-    pub fn load<T: Asset>(&self, asset_id: AssetId<T>) -> Result<T, AssetLoadError<T::LoadError>> {
-        self.load_raw(asset_id.raw)
+    /// Loads an asset asynchronously.
+    pub fn load_async<T: Asset + 'static>(
+        &self,
+        uri: &str,
+    ) -> impl Future<Output = Result<T, AssetLoadError<T::LoadError>>> {
+        let resolvers = self.resolvers.clone();
+        let uri = uri.to_string();
+        async move {
+            task::spawn_blocking(move || {
+                let mut reader = resolvers.open(&uri).map_err(AssetLoadError::Io)?;
+                let value = T::load(&mut reader).map_err(AssetLoadError::Asset)?;
+                Ok(value)
+            })
+            .await
+            .expect("failed to await")
+        }
+    }
+
+    /// Watches for changes to an asset file.
+    pub async fn wait_for_changes(&self, uri: &str) -> notify::Event {
+        let mut rx = self.resolvers.watch_changes(uri, false);
+        rx.recv().await.expect("failed to await")
     }
 
     /*pub fn load_from_file<T: Asset>(&self, path: &str) -> io::Result<T> {

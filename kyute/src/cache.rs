@@ -1,7 +1,9 @@
 use crate::{
+    application::ExtEvent,
     call_key::{CallId, CallIdStack, CallNode},
     Data,
 };
+use kyute_shell::winit::event_loop::EventLoopProxy;
 use slotmap::SlotMap;
 use std::{
     any::Any,
@@ -9,6 +11,7 @@ use std::{
     collections::HashSet,
     convert::TryInto,
     fmt,
+    future::Future,
     hash::Hash,
     marker::PhantomData,
     mem,
@@ -35,13 +38,8 @@ pub enum CacheError {
     TypeMismatch,
 }
 
-// refactor:
-// 1. groups don't emit state entries
-// 2. track parent state entry in context
-// 3. State entries store a vec of dependents
-
 // TODO rename to `CacheEntry`?
-/// Entry representing a group or
+/// Entry representing a group
 struct StateEntry {
     call_id: CallId,
     /// For debugging purposes.
@@ -50,30 +48,6 @@ struct StateEntry {
     dirty: Cell<bool>,
     dependents: HashSet<CacheEntryKey>,
     value: Box<dyn Any>,
-}
-
-impl StateEntry {
-    /*pub fn value_mut<T: 'static>(&mut self) -> Result<&mut T, CacheError> {
-        self.value
-            .as_mut()
-            .ok_or(CacheError::VacantEntry)?
-            .downcast_mut::<T>()
-            .ok_or(CacheError::TypeMismatch)
-    }*/
-
-    /*pub fn take_value<T: 'static>(&mut self) -> Result<T, CacheError> {
-        if let Some(v) = self.value.take() {
-            if v.is::<T>() {
-                Ok(*v.downcast().unwrap())
-            } else {
-                // put back value
-                self.value = Some(v);
-                Err(CacheError::TypeMismatch)
-            }
-        } else {
-            Err(CacheError::VacantEntry)
-        }
-    }*/
 }
 
 /// A slot in the slot table.
@@ -93,9 +67,19 @@ enum Slot {
 }
 
 /// A key used to access a state variable stored in a `Cache`.
+// TODO right now the get/set methods on `Key` can only be called in a composition context,
+// but not outside. To set the value of a cache entry outside of a composition context,
+// we have to call `cache.set_state(key)`.
+// A possible change would be to keep some kind of weak ref to the cache inside the key,
+// and allow calling `Key::set` outside of a composition context.
+// This way there would be a single function to call, regardless of the calling context, streamlining the
+// API.
+// Counterpoint: this bloats the struct with an Arc pointer.
+// Counter-counterpoint: but at least this makes the whole system self-contained.
 pub struct Key<T> {
     key: CacheEntryKey,
-    _phantom: PhantomData<*const T>,
+    // TODO: `cache: Arc<Cache>`. When setting values, schedule a recomp on the main event loop. Cache gets an EventLoopProxy on construction to send recomp events.
+    _phantom: PhantomData<fn() -> T>,
 }
 
 impl<T> Copy for Key<T> {}
@@ -304,17 +288,6 @@ impl CacheWriter {
         writer
     }
 
-    /*fn parent_entry_key(&self) -> Option<CacheEntryKey> {
-        if let Some(&group_start) = self.group_stack.last() {
-            match self.cache.slots[group_start] {
-                Slot::StartGroup { key: group_key, .. } => Some(group_key),
-                _ => panic!("unexpected entry type"),
-            }
-        } else {
-            None
-        }
-    }*/
-
     fn start_state<T>(&mut self, key: Key<T>) {
         self.state_stack.push(key.key);
         self.cache.entries[key.key].dirty.set(false);
@@ -392,28 +365,6 @@ impl CacheWriter {
             None => false,
         }
     }
-
-    /*fn parent_group_offset(&self) -> i32 {
-        if let Some(&parent) = self.group_stack.last() {
-            parent as i32 - self.pos as i32
-        } else {
-            0
-        }
-    }*/
-
-    /*fn update_parent_group_offset(&mut self) {
-        let parent = self.parent_group_offset();
-        match &mut self.cache.slots[self.pos] {
-            Slot::Tag(_) => {}
-            Slot::StartGroup { parent: old_parent, .. } => {
-                *old_parent = parent;
-            }
-            Slot::EndGroup => {}
-            Slot::State(entry) => {
-                entry.parent = parent;
-            }
-        }
-    }*/
 
     pub fn start_group(&mut self, call_id: CallId) {
         //let parent = self.parent_entry_key();
@@ -601,87 +552,6 @@ impl CacheWriter {
         )
     }
 
-    /*fn take_value<T: 'static>(&mut self, key: Key<T>) -> Option<T> {
-        let entry = &mut self.cache.entries[key.key];
-        if let Some(parent_state) = self.state_stack.last().cloned() {
-            entry.dependents.insert(parent_state);
-        }
-        if let Some(v) = entry.value.take() {
-            Some(*v.downcast::<T>().expect("unexpected type"))
-        } else {
-            None
-        }
-    }*/
-
-    /*/// If the next entry is a value of type T, returns a clone of the value, otherwise inserts a vacant entry.
-    /// Automatically makes the parent state entry a dependency of this state entry.
-    fn get_value<T: Clone + 'static>(
-        &mut self,
-        call_key: CallId,
-        call_node: Option<Rc<CallNode>>,
-    ) -> (Option<T>, Key<T>, bool) {
-        let result = if self.sync(call_key) {
-            match self.cache.slots[self.pos] {
-                Slot::Value { key: entry_key, .. } => {
-                    let dirty = self.cache.entries[entry_key].dirty.get();
-                    let value = self.cache.entries[entry_key]
-                        .value_mut::<T>()
-                        .unwrap()
-                        .clone();
-                    (Some(value), Key::from_entry_key(entry_key), dirty)
-                }
-                _ => panic!("unexpected entry type"),
-            }
-        } else {
-            let k = self.insert_value(call_key, None, call_node);
-            (None, k, false)
-        };
-        self.pos += 1;
-        result
-    }*/
-
-    /*/// Same as `expect_value`, but instead of returning a clone of the value, takes the value and leaves a vacant entry.
-    fn take_value<T: 'static>(
-        &mut self,
-        call_key: CallId,
-        call_node: Option<Rc<CallNode>>,
-    ) -> (Option<T>, Key<T>) {
-        let result = if self.sync(call_key) {
-            match self.cache.slots[self.pos] {
-                Slot::Value { key: entry_key, .. } => {
-                    // TODO allow vacant entries here?
-                    let value = self.cache.entries[entry_key].take_value().unwrap();
-                    (Some(value), Key::from_entry_key(entry_key))
-                }
-                _ => panic!("unexpected entry type"),
-            }
-        } else {
-            let k = self.insert_value(call_key, None, call_node);
-            (None, k)
-        };
-        self.pos += 1;
-        result
-    }*/
-
-    /*/// If the next entry is a value of type T, returns a clone of the value, otherwise inserts a
-    /// new value entry with `init` and returns a clone of this value.
-    fn get_or_insert_value<T: Clone + 'static>(
-        &mut self,
-        key: Key<T>,
-        init: impl FnOnce() -> T,
-    ) -> (T, Key<T>) {
-        let value = self.get_value(key);
-        let v = match value {
-            Some(v) => v,
-            None => {
-                let v = init();
-                self.set_value(key, v.clone());
-                v
-            }
-        };
-        (v, key)
-    }*/
-
     ///
     fn compare_and_update_value<T: Data>(
         &mut self,
@@ -701,7 +571,9 @@ impl CacheWriter {
     }
 }
 
+/// Context stored in TLS when running a function within the positional cache.
 struct CacheContext {
+    event_loop_proxy: EventLoopProxy<ExtEvent>,
     id_stack: CallIdStack,
     writer: CacheWriter,
 }
@@ -711,9 +583,6 @@ thread_local! {
     // to all functions.
     // A less hack-ish solution would be to rewrite composable function calls, but we need
     // more than a proc macro to be able to do that (must resolve function paths and rewrite call sites)
-    //
-    // TODO: actually, it might be possible if we're able to rewrite all function calls into a specific
-    // form
     static CURRENT_CACHE_CONTEXT: RefCell<Option<CacheContext>> = RefCell::new(None);
 }
 
@@ -736,7 +605,11 @@ impl Cache {
     }
 
     /// Runs a cached function with this cache.
-    pub fn run<T>(&mut self, function: impl Fn() -> T) -> T {
+    pub fn run<T>(
+        &mut self,
+        event_loop_proxy: EventLoopProxy<ExtEvent>,
+        function: impl Fn() -> T,
+    ) -> T {
         CURRENT_CACHE_CONTEXT.with(move |cx_cell| {
             // We can't put a reference type in a TLS.
             // As a workaround, use the classic sleight of hand:
@@ -750,6 +623,7 @@ impl Cache {
             // initialize the TLS cache context (which contains the cache table writer and the call key stack that maintains
             // unique IDs for each cached function call).
             let cx = CacheContext {
+                event_loop_proxy,
                 id_stack: CallIdStack::new(),
                 writer,
             };
@@ -774,35 +648,9 @@ impl Cache {
     pub fn set_state<T: 'static>(&mut self, key: Key<T>, value: T) {
         self.inner.as_mut().unwrap().set_state(key, value)
     }
-
-    // enter state scope
-    // -> widget sets its own state
-    // -> but parent sees the old state
-    // exit state scope
-    // -> scope must be run again
-
-    /*///
-    #[track_caller]
-    pub fn update_state<T: Data>(new_value: T) -> (Option<T>, Key<T>) {
-        let location = Location::caller();
-        Self::with_cx(move |cx| {
-            cx.key_stack.enter(location, 0);
-            let key = cx.key_stack.current();
-            let (value, cache_key) = cx.writer.expect_value::<T>(key);
-            match value {
-                Some(ref v) if v.same(&new_value) => {
-                    // same value, don't update
-                }
-                _ => {
-                    // update
-                    cx.writer.set_value(cache_key, new_value, true);
-                }
-            }
-            cx.key_stack.exit();
-            (value, cache_key)
-        })
-    }*/
 }
+
+//--------------------------------------------------------------------------------------------------
 
 fn with_cache_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
     CURRENT_CACHE_CONTEXT.with(|cx_cell| {
@@ -859,51 +707,46 @@ pub fn changed<T: Data>(value: T) -> bool {
     })
 }
 
-/*#[track_caller]
-fn get_cache_entry<T: Clone + 'static>() -> (Key<T>, bool) {
-    let location = Location::caller();
-    with_cache_cx(|cx| {
-        cx.id_stack.enter(location, 0);
-        let call_id = cx.id_stack.current();
-        let node = cx.id_stack.current_call_node();
-        let (key, dirty) = cx.writer.get_or_insert_entry::<T>(call_id, node);
-        let value = cx.writer.get_value(key);
-        cx.id_stack.exit();
-        (value, key, dirty)
-    })
-}*/
-
-/// TODO document
 #[track_caller]
-pub fn state<T: 'static>(init: impl FnOnce() -> T) -> Key<T> {
+fn state_inner<T: 'static>(init: impl FnOnce() -> T) -> CacheEntryInsertResult<T> {
     let location = Location::caller();
     with_cache_cx(move |cx| {
         cx.id_stack.enter(location, 0);
         let call_id = cx.id_stack.current();
         let node = cx.id_stack.current_call_node();
-        let CacheEntryInsertResult { key, .. } = cx.writer.get_or_insert_entry(call_id, node, init);
+        let r = cx.writer.get_or_insert_entry(call_id, node, init);
         cx.id_stack.exit();
-        key
+        r
     })
 }
+/// TODO document
+#[track_caller]
+pub fn state<T: 'static>(init: impl FnOnce() -> T) -> Key<T> {
+    state_inner(init).key
+}
 
-/*/// Updates a state entry.
-pub fn replace_state<T: 'static>(key: Key<T>, new_value: T) {
-    Self::with_cx(move |cx| {
-        cx.writer.set_value(key, new_value);
-        cx.writer.invalidate_dependents(key);
-    })
-}*/
-
-/*/// Updates a state entry.
-pub fn replace_state_without_invalidation<T: 'static>(key: Key<T>, new_value: T) {
-    Self::with_cx(move |cx| cx.writer.set_value(key, new_value))
-}*/
-
-/*/// TODO document
-fn set_value<T: 'static>(key: Key<T>, value: T) {
-    Self::with_cx(move |cx| cx.writer.set_value(key, value))
-}*/
+/// TODO document
+#[track_caller]
+pub fn state_async<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static) -> Key<Option<T>> {
+    let CacheEntryInsertResult { key, inserted, .. } = state_inner(|| None);
+    if inserted {
+        with_cache_cx(move |cx| {
+            let el = cx.event_loop_proxy.clone();
+            // spawn task that will set the value
+            tokio::spawn(async move {
+                let result = future.await;
+                // TODO I'd really like to just do `key.set(...)` regardless of whether we're in or out the cache,
+                // instead of having to do weird things like this
+                el.send_event(ExtEvent::Recompose {
+                    cache_fn: Box::new(move |cache| {
+                        cache.set_state(key, Some(result));
+                    }),
+                });
+            });
+        });
+    }
+    key
+}
 
 #[track_caller]
 pub fn group<R>(f: impl FnOnce() -> R) -> R {
@@ -925,17 +768,6 @@ pub fn skip_to_end_of_group() {
         cx.writer.skip_until_end_of_group();
     })
 }
-
-/*fn state_scope<T: Clone + 'static, R>(state_key: Key<T>, f: impl FnOnce() -> R) -> R {
-    with_cache_cx(|cx| {
-        cx.writer.start_state(state_key);
-    });
-    let r = f();
-    with_cache_cx(|cx| {
-        cx.writer.end_state();
-    });
-    r
-}*/
 
 /// Memoizes the result of a function at this call site.
 #[track_caller]
@@ -984,31 +816,6 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
 pub fn once<T: Clone + 'static>(f: impl FnOnce() -> T) -> T {
     state(f).get()
 }
-
-/*#[track_caller]
-pub fn with_state<T: Data, R>(init: impl FnOnce() -> T, update: impl Fn(&mut T) -> R) -> R {
-    // load the state from the cache, or reserve a slot if it's the first time we run
-    let (mut value, key, _) = get_value::<T>();
-    let initial = value.is_none();
-
-    let mut value = if let Some(value) = value {
-        // use the existing state
-        value
-    } else {
-        // create the initial value of the state
-        init()
-    };
-    let old_value = value.clone();
-    let r = Self::state_scope(key, || update(&mut value));
-
-    // if the state has changed, TODO
-    if initial || !old_value.same(&value) {
-        // TODO: re-run update? Invalidate?
-        Self::set_value(key, value);
-    }
-
-    r
-}*/
 
 #[cfg(test)]
 mod tests {

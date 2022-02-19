@@ -1,5 +1,5 @@
 use crate::{
-    composable,
+    cache, composable,
     core2::{EventCtx, LayoutCtx, PaintCtx},
     event::PointerEventKind,
     state::Signal,
@@ -8,6 +8,7 @@ use crate::{
     widget::{Container, Label},
     BoxConstraints, Environment, Event, Measurements, Rect, SideOffsets, Widget, WidgetPod,
 };
+use std::time::Duration;
 use tracing::trace;
 
 /// Button styling information.
@@ -29,6 +30,11 @@ impl Button {
     /// Creates a new button with the specified label.
     #[composable]
     pub fn new(label: String) -> Button {
+        /*cache::state_async(async {
+            tokio::time::sleep(Duration::from_secs(4)).await;
+            eprintln!("finished");
+        });*/
+
         Button {
             inner: Container::new(Label::new(label))
                 .min_height(theme::BUTTON_HEIGHT)

@@ -43,6 +43,8 @@ windows = { version = "0.29.0", features = ["Win32_Graphics_Direct2D",
     "std"] }
 skia-safe = { version = "0.43.0", features = ["vulkan", "textlayout"] }
 serde = { version = "1.0", optional = true }
+tokio = { version = "1.16.1", features = ["rt", "sync"] }
+notify = "5.0.0-pre.13"
 
 [features]
 serializing = ["serde", "palette/serializing"]

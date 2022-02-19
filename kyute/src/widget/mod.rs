@@ -16,6 +16,7 @@ mod label;
 mod textedit;
 mod titled_pane;
 mod text;
+mod image;
 
 pub use align::Align;
 pub use baseline::Baseline;

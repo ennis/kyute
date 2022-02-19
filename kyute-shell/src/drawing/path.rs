@@ -1,4 +1,4 @@
-use crate::drawing::{Offset, Point, ToSkia};
+use crate::drawing::{Point, ToSkia};
 //use skia_safe as sk;
 use skia_safe::{path::ArcSize, scalar, PathDirection};
 use svgtypes::PathCommand;
@@ -23,7 +23,7 @@ impl ToSkia for Path {
             if abs {
                 x
             } else {
-                (x + last_p.x)
+                x + last_p.x
             }
         }
 
@@ -31,7 +31,7 @@ impl ToSkia for Path {
             if abs {
                 y
             } else {
-                (y + last_p.y)
+                y + last_p.y
             }
         }
 

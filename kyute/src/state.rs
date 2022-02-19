@@ -1,5 +1,6 @@
-use crate::{cache, composable, EventCtx};
+use crate::{cache, composable, EventCtx, Key};
 use std::cell::{Cell, RefCell};
+use std::future::Future;
 
 /// FIXME: verify that the automatic clone impl doesn't have sketchy implications w.r.t. cache invalidation
 #[derive(Clone, Debug)]

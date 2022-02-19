@@ -5,6 +5,7 @@ mod path;
 
 pub use color::Color;
 pub use path::{Path, PathSegment};
+pub use image::Image;
 
 /// The DIP (device-independent pixel) unit.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

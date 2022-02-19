@@ -44,6 +44,7 @@ pub use layout::{align_boxes, Alignment, BoxConstraints, Measurements};
 pub use state::{Signal, State};
 pub use widget::Orientation;
 pub use window::Window;
+pub use kyute_shell::AssetUri;
 
 pub use kyute_shell as shell;
 // re-export graal
