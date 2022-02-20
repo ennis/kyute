@@ -1,4 +1,4 @@
-use notify::{RecursiveMode, Watcher};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::HashMap,
     error::Error,
@@ -8,12 +8,14 @@ use std::{
     hash::{Hash, Hasher},
     io,
     marker::PhantomData,
-    path::Path,
-    sync::{Arc, Mutex},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, Weak},
 };
 use thiserror::Error;
 use tokio::task;
 use tracing::trace;
+
+pub use notify::Event;
 
 #[derive(Copy, Clone, Debug)]
 pub struct AssetUri<'a> {
@@ -70,10 +72,7 @@ impl<T> AssetId<T> {
 
     pub const fn with_data(uri: &'static str, data: &'static [u8]) -> AssetId<T> {
         AssetId {
-            raw: AssetUri {
-                uri,
-                data: Some(data),
-            },
+            raw: AssetUri { uri, data: Some(data) },
             _type: PhantomData,
         }
     }
@@ -90,50 +89,50 @@ pub trait Asset: Sized + Send {
     }
 }
 
-type EventTxMap = HashMap<String, tokio::sync::mpsc::Sender<notify::Event>>;
-type EventRx = tokio::sync::mpsc::Receiver<notify::Event>;
+#[derive(Clone)]
+pub struct WatchSubscription(Arc<()>);
 
-fn handle_filesystem_event(event: notify::Event, watchers: &EventTxMap) {
-    //trace!("handle_filesystem_event {:?}", event);
-    for path in event.paths.iter() {
-        if let Some(s) = path.to_str() {
-            for (watched_path, tx) in watchers {
-                if let Ok(watched_canonical) = fs::canonicalize(watched_path) {
-                    if let Ok(event_canonical) = fs::canonicalize(s) {
-                        if watched_canonical == event_canonical {
-                            trace!("changed: {:?}", watched_path);
-                            tx.try_send(event.clone());
-                        }
-                    }
-                }
-            }
-        }
-    }
+struct WatchHandler {
+    original_path: PathBuf,
+    canonical_path: PathBuf,
+    callback: Box<dyn FnMut(Event) + Send>,
+    subscription: Weak<()>,
 }
 
 struct Resolvers {
-    filesystem_watcher: Mutex<notify::RecommendedWatcher>,
-    event_txs: Arc<Mutex<EventTxMap>>,
+    watcher: Mutex<RecommendedWatcher>,
+    watch_handlers: Arc<Mutex<HashMap<PathBuf, WatchHandler>>>,
 }
 
 impl Resolvers {
     fn new() -> Resolvers {
-        let event_txs = Arc::new(Mutex::new(EventTxMap::new()));
-        let event_txs_clone = event_txs.clone();
-        let filesystem_watcher = Mutex::new(
-            notify::recommended_watcher(move |res| match res {
-                Ok(event) => {
-                    let w = event_txs_clone.lock().unwrap();
-                    handle_filesystem_event(event, &w);
+        let watch_handlers : Arc<Mutex<HashMap<PathBuf, WatchHandler>>> = Arc::new(Mutex::new(HashMap::new()));
+        let watch_handlers_clone = watch_handlers.clone();
+
+        let watcher = Mutex::new(
+            notify::recommended_watcher(move |res: notify::Result<Event>| {
+                match res {
+                    Ok(event) => {
+                        let mut handlers = watch_handlers_clone.lock().unwrap();
+                        for path in event.paths.iter() {
+                            if let Ok(canonical_path) = fs::canonicalize(path) {
+                                // see if there's a watcher for this path
+                                if let Some(entry) = handlers.get_mut(&canonical_path) {
+                                    // OK, invoke callback
+                                    (entry.callback)(event.clone())
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => tracing::error!("watch error: {}", e),
                 }
-                Err(e) => tracing::error!("watch error: {}", e),
             })
             .expect("failed to create filesystem watcher"),
         );
 
         Resolvers {
-            filesystem_watcher,
-            event_txs,
+            watcher,
+            watch_handlers,
         }
     }
 
@@ -146,26 +145,51 @@ impl Resolvers {
     }
 
     /// Watches for changes to a specified URI.
-    fn watch_changes(&self, uri: &str, recursive: bool) -> EventRx {
-        let (tx, rx) = tokio::sync::mpsc::channel(50);
-        let mut txs = self.event_txs.lock().unwrap();
+    fn watch_changes(
+        &self,
+        uri: &str,
+        recursive: bool,
+        callback: impl FnMut(Event) + Send + 'static,
+    ) -> io::Result<WatchSubscription> {
+        let mode = if recursive {
+            RecursiveMode::Recursive
+        } else {
+            RecursiveMode::NonRecursive
+        };
 
-        txs.insert(uri.to_string(), tx);
-        self.filesystem_watcher
-            .lock()
-            .unwrap()
-            .watch(
-                Path::new(uri),
-                if recursive {
-                    RecursiveMode::Recursive
-                } else {
-                    RecursiveMode::NonRecursive
-                },
-            )
+        // canonicalize the path first
+        let canonical_path = fs::canonicalize(uri)?;
+
+        // watch the canonicalized path
+        let mut watcher = self.watcher.lock().unwrap();
+        watcher
+            .watch(&canonical_path, mode)
             .expect("failed to watch for file changes");
 
-        tracing::trace!("watching `{}`, txs: {:?}", uri, txs);
-        rx
+        // update the list of handlers...
+        let mut watch_list = self.watch_handlers.lock().unwrap();
+        // ... first, remove watch list entries that have expired (subscription dropped), and unwatch them
+        watch_list.retain(|p, w| {
+            if w.subscription.strong_count() > 0 {
+                true
+            } else {
+                tracing::trace!("removing watcher for path `{:?}`", p);
+                watcher.unwatch(&w.original_path);
+                false
+            }
+        });
+        // ... then add the new handler to the map
+        let subscription_token = Arc::new(());
+        let handler = WatchHandler {
+            original_path: uri.into(),
+            canonical_path: canonical_path.clone(),
+            callback: Box::new(callback),
+            subscription: Arc::downgrade(&subscription_token),
+        };
+        watch_list.insert(canonical_path.clone(), handler);
+
+        tracing::trace!("watching `{}`", uri);
+        Ok(WatchSubscription(subscription_token))
     }
 }
 
@@ -188,29 +212,6 @@ pub enum AssetLoadError<E: Error + fmt::Debug> {
     Asset(#[from] E),
 }
 
-/*
-We have:
- - typed asset IDs, generated by the "resource compiler" or whatever
- - asset URIs
-
-Should the assetLoader be in charge of caching the loaded results?
-- for all assets?
-- only for typed asset IDs?
-
-If not the asset loader, then what should cache the loaded assets?
-- store asset objects in lazy_statics
-- an "asset cache" wrapper on top of the asset loader
-- something else?
-
-Is there a difference between assets and resources?
-
-What about hot-reloading?
-- AssetLoader should provide a way to watch for file changes
-
-Watch asset paths for changes.
-    - Async?
-    - recomp when something changes
-*/
 impl AssetLoader {
     pub fn new() -> AssetLoader {
         AssetLoader {
@@ -249,15 +250,12 @@ impl AssetLoader {
     }
 
     /// Watches for changes to an asset file.
-    pub fn watch_changes(&self, uri: &str) -> impl Future<Output = ()> {
-        let mut rx = self.resolvers.watch_changes(uri, false);
-        async move {
-            let event = rx.recv().await;
-            trace!("watch_changes: event={:?}", event);
-        }
+    pub fn watch_changes(
+        &self,
+        uri: &str,
+        recursive: bool,
+        callback: impl FnMut(Event) + Send  + 'static,
+    ) -> io::Result<WatchSubscription> {
+        self.resolvers.watch_changes(uri, recursive, callback)
     }
-
-    /*pub fn load_from_file<T: Asset>(&self, path: &str) -> io::Result<T> {
-        std::fs::canonicalize(path)
-    }*/
 }

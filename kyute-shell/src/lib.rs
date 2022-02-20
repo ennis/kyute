@@ -13,7 +13,7 @@ mod shortcut;
 pub mod window;
 
 // TODO: backend-agnostic wrapper
-pub use asset::{Asset, AssetId, AssetLoader, AssetUri, AssetLoadError};
+pub use asset::{Asset, AssetId, AssetLoader, AssetUri, AssetLoadError, WatchSubscription};
 pub use backend::Menu;
 pub use shortcut::{Shortcut, ShortcutKey};
 

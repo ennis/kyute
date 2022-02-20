@@ -23,10 +23,7 @@ impl Image<Null> {
     #[composable(uncached)]
     pub fn from_uri(uri: &str) -> Image<Null> {
         let application = Application::instance();
-        let image: kyute_shell::drawing::Image = application
-            .asset_loader()
-            .load(uri)
-            .expect("failed to load image");
+        let image: kyute_shell::drawing::Image = application.asset_loader().load(uri).expect("failed to load image");
 
         Image {
             contents: ImageContents::Image(image),
@@ -34,20 +31,21 @@ impl Image<Null> {
     }
 }
 
+/// A composable function that returns true when the asset at the specified URI should be reloaded.
+#[composable(uncached)]
 fn watch_file_changes(uri: &str) -> bool {
-    let uri = uri.to_owned();
     let changed = cache::state(|| false);
-    let asset_loader = Application::instance().asset_loader().clone();
     let event_loop_proxy = cache::event_loop_proxy();
 
-    tokio::task::spawn(async move {
-        loop {
-            asset_loader.watch_changes(&uri).await;
-            trace!("watch_file_changes task: recomposing");
-            event_loop_proxy.send_event(ExtEvent::Recompose {
-                cache_fn: Box::new(move |cache| cache.set_state(changed, true)),
-            });
-        }
+    cache::memoize(uri.to_owned(), || {
+        Application::instance()
+            .asset_loader()
+            .watch_changes(uri, false, move |_event| {
+                event_loop_proxy.send_event(ExtEvent::Recompose {
+                    cache_fn: Box::new(move |cache| cache.set_state(changed, true)),
+                });
+            })
+            .ok()
     });
 
     changed.update(false)
@@ -71,7 +69,7 @@ impl<Placeholder: Widget> Image<Placeholder> {
                 trace!("Image::from_uri_async {:?}", image_result);
                 image_result.ok()
             },
-            false,
+            reload,
         );
 
         match image {
@@ -88,12 +86,7 @@ impl<Placeholder: Widget> Image<Placeholder> {
 impl<Placeholder: Widget> Widget for Image<Placeholder> {
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         match self.contents {
             ImageContents::Image(ref img) => {
                 // TODO DPI
@@ -103,17 +96,14 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
                     Size::new(size_i.width as f64, size_i.height as f64),
                 ))
             }
-            ImageContents::Placeholder(ref placeholder) => {
-                placeholder.layout(ctx, constraints, env)
-            }
+            ImageContents::Placeholder(ref placeholder) => placeholder.layout(ctx, constraints, env),
         }
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         match self.contents {
             ImageContents::Image(ref img) => {
-                ctx.canvas
-                    .draw_image(img.to_skia(), Point::origin().to_skia(), None);
+                ctx.canvas.draw_image(img.to_skia(), Point::origin().to_skia(), None);
             }
             ImageContents::Placeholder(ref placeholder) => placeholder.paint(ctx, bounds, env),
         }
