@@ -102,7 +102,7 @@ fn handle_filesystem_event(event: notify::Event, watchers: &EventTxMap) {
                     if let Ok(event_canonical) = fs::canonicalize(s) {
                         if watched_canonical == event_canonical {
                             trace!("changed: {:?}", watched_path);
-                            tx.send(event.clone());
+                            tx.try_send(event.clone());
                         }
                     }
                 }
@@ -163,10 +163,13 @@ impl Resolvers {
                 },
             )
             .expect("failed to watch for file changes");
+
+        tracing::trace!("watching `{}`, txs: {:?}", uri, txs);
         rx
     }
 }
 
+#[derive(Clone)]
 pub struct AssetLoader {
     resolvers: Arc<Resolvers>,
 }
@@ -249,7 +252,8 @@ impl AssetLoader {
     pub fn watch_changes(&self, uri: &str) -> impl Future<Output = ()> {
         let mut rx = self.resolvers.watch_changes(uri, false);
         async move {
-            rx.recv().await;
+            let event = rx.recv().await;
+            trace!("watch_changes: event={:?}", event);
         }
     }
 

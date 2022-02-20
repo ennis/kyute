@@ -696,7 +696,10 @@ pub fn environment() -> Environment {
 
 #[track_caller]
 pub fn with_environment<R>(env: Environment, f: impl FnOnce() -> R) -> R {
-    let parent_env = with_comp_cx(|cx| mem::replace(&mut cx.env, cx.env.merged(env)));
+    let parent_env = with_comp_cx(|cx| {
+        let merged_env = cx.env.merged(env);
+        mem::replace(&mut cx.env, merged_env)
+    });
     let r = scoped(0, f);
     with_comp_cx(|cx| {
         cx.env = parent_env;
@@ -735,6 +738,10 @@ fn state_inner<T: 'static, Init: FnOnce() -> T>(init: Init) -> CacheEntryInsertR
 pub fn state<T: 'static>(init: impl FnOnce() -> T) -> Key<T> {
     state_inner(init).key
 }
+
+
+//#[track_caller]
+//pub fn
 
 /// TODO document
 #[track_caller]

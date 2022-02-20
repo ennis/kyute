@@ -1,11 +1,11 @@
 use crate::{
+    application::ExtEvent,
     cache,
     widget::{prelude::*, Container, Null},
 };
 use kyute_shell::{application::Application, drawing::ToSkia};
 use std::task::Poll;
 use tracing::trace;
-use crate::application::ExtEvent;
 
 #[derive(Clone)]
 enum ImageContents<Placeholder> {
@@ -37,13 +37,16 @@ impl Image<Null> {
 fn watch_file_changes(uri: &str) -> bool {
     let uri = uri.to_owned();
     let changed = cache::state(|| false);
+    let asset_loader = Application::instance().asset_loader().clone();
     let event_loop_proxy = cache::event_loop_proxy();
 
     tokio::task::spawn(async move {
         loop {
-            let application = Application::instance();
-            application.asset_loader().watch_changes(&uri).await;
-            event_loop_proxy.send_event(ExtEvent::Recompose { cache_fn: Box::new(|cache| cache.set_state(changed, true)) });
+            asset_loader.watch_changes(&uri).await;
+            trace!("watch_file_changes task: recomposing");
+            event_loop_proxy.send_event(ExtEvent::Recompose {
+                cache_fn: Box::new(move |cache| cache.set_state(changed, true)),
+            });
         }
     });
 
@@ -68,20 +71,16 @@ impl<Placeholder: Widget> Image<Placeholder> {
                 trace!("Image::from_uri_async {:?}", image_result);
                 image_result.ok()
             },
-            reload,
+            false,
         );
 
         match image {
-            Poll::Ready(Some(image)) => {
-                Image {
-                    contents: ImageContents::Image(image),
-                }
-            }
-            _ => {
-                Image {
-                    contents: ImageContents::Placeholder(placeholder),
-                }
-            }
+            Poll::Ready(Some(image)) => Image {
+                contents: ImageContents::Image(image),
+            },
+            _ => Image {
+                contents: ImageContents::Placeholder(placeholder),
+            },
         }
     }
 }
