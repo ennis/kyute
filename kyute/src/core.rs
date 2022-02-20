@@ -1,5 +1,5 @@
 use crate::{
-    application::AppCtx,
+    application::{AppCtx, ExtEvent},
     bloom::Bloom,
     cache,
     cache::Key,
@@ -7,10 +7,9 @@ use crate::{
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
     widget::{Align, ConstrainedBox},
-    Alignment, BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements,
-    Offset, Point, Rect, Size,
+    Alignment, BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect,
+    Size,
 };
-use approx::relative_eq;
 use kyute_macros::composable;
 use kyute_shell::{
     graal,
@@ -25,7 +24,6 @@ use std::{
     sync::Arc,
 };
 use tracing::{trace, warn};
-use crate::application::ExtEvent;
 
 pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.show_debug_overlay");
 
@@ -148,11 +146,11 @@ pub struct FocusState {
     }
 }*/
 
-#[derive(Copy,Clone,Debug,Eq,PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum HitTestResult {
     Failed,
     Passed,
-    Skipped
+    Skipped,
 }
 
 fn hit_test_helper(
@@ -161,7 +159,6 @@ fn hit_test_helper(
     id: WidgetId,
     pointer_grab: Option<WidgetId>,
 ) -> HitTestResult {
-
     if pointer_event.kind == PointerEventKind::PointerOut {
         // pointer out events are exempt from hit-test: if the pointer leaves
         // the parent widget, we also want the child elements to know that
@@ -249,12 +246,7 @@ impl<'a> EventCtx<'a> {
     /// The function returns whether the hit-test passed, and, if it was successful and the event
     /// was a pointer event, the pointer event with coordinates relative to the given sub-bounds.
     pub fn hit_test(&mut self, pointer_event: &PointerEvent, bounds: Rect) -> HitTestResult {
-        hit_test_helper(
-            pointer_event,
-            bounds,
-            self.id,
-            self.focus_state.pointer_grab,
-        )
+        hit_test_helper(pointer_event, bounds, self.id, self.focus_state.pointer_grab)
     }
 
     /// Returns the parent widget ID.
@@ -419,12 +411,7 @@ pub trait Widget {
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
 
     /// Measures this widget and layouts the children of this widget.
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements;
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements;
 
     /// Paints the widget in the given context.
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment);
@@ -446,12 +433,7 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::event(&**self, ctx, event, env)
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         Widget::layout(&**self, ctx, constraints, env)
     }
 
@@ -471,42 +453,42 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
 /// Extension methods on widgets.
 pub trait WidgetExt: Widget + Sized + 'static {
     /// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
-    #[composable(uncached)]
+    #[composable]
     fn constrain_width(self, width: impl RangeBounds<f64>) -> ConstrainedBox<Self> {
         ConstrainedBox::new(BoxConstraints::new(width, ..), self)
     }
 
     /// Wraps the widget in a `ConstrainedBox` that constrains the height of the widget.
-    #[composable(uncached)]
+    #[composable]
     fn constrain_height(self, height: impl RangeBounds<f64>) -> ConstrainedBox<Self> {
         ConstrainedBox::new(BoxConstraints::new(.., height), self)
     }
 
     /// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
-    #[composable(uncached)]
+    #[composable]
     fn fix_width(self, width: f64) -> ConstrainedBox<Self> {
         ConstrainedBox::new(BoxConstraints::new(width..width, ..), self)
     }
 
     /// Wraps the widget in a `ConstrainedBox` that constrains the height of the widget.
-    #[composable(uncached)]
+    #[composable]
     fn fix_height(self, height: f64) -> ConstrainedBox<Self> {
         ConstrainedBox::new(BoxConstraints::new(.., height..height), self)
     }
     /// Wraps the widget in a `ConstrainedBox` that constrains the size of the widget.
-    #[composable(uncached)]
+    #[composable]
     fn fix_size(self, size: Size) -> ConstrainedBox<Self> {
         ConstrainedBox::new(BoxConstraints::tight(size), self)
     }
 
     /// Centers the widget in the available space.
-    #[composable(uncached)]
+    #[composable]
     fn centered(self) -> Align<Self> {
         Align::new(Alignment::CENTER, self)
     }
 
     /// Aligns the widget in the available space.
-    #[composable(uncached)]
+    #[composable]
     fn aligned(self, alignment: Alignment) -> Align<Self> {
         Align::new(alignment, self)
     }
@@ -586,11 +568,7 @@ pub struct WidgetPod<T: ?Sized = dyn Widget> {
 }
 
 impl<T: Widget + ?Sized> WidgetPod<T> {
-    fn compute_child_filter(
-        &self,
-        parent_ctx: &mut EventCtx,
-        env: &Environment,
-    ) -> Bloom<WidgetId> {
+    fn compute_child_filter(&self, parent_ctx: &mut EventCtx, env: &Environment) -> Bloom<WidgetId> {
         if let Some(filter) = self.state.child_filter.get() {
             // already computed
             filter
@@ -599,9 +577,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             let mut filter = Default::default();
             self.do_event(
                 parent_ctx,
-                &mut Event::Internal(InternalEvent::UpdateChildFilter {
-                    filter: &mut filter,
-                }),
+                &mut Event::Internal(InternalEvent::UpdateChildFilter { filter: &mut filter }),
                 env,
             );
             self.state.child_filter.set(Some(filter));
@@ -655,12 +631,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
     }
 
     /// Called to measure this widget and layout the children of this widget.
-    pub fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    pub fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         // FIXME also compare env
         if let Some(layout_result) = self.state.layout_result.get() {
             if layout_result.constraints.same(&constraints) {
@@ -721,10 +692,8 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             .any(|(_, state)| window_bounds.contains(state.position));
 
         ctx.canvas.save();
-        ctx.canvas.translate(kyute_shell::skia::Vector::new(
-            offset.x as f32,
-            offset.y as f32,
-        ));
+        ctx.canvas
+            .translate(kyute_shell::skia::Vector::new(offset.x as f32, offset.y as f32));
 
         {
             let mut child_ctx = PaintCtx {
@@ -740,8 +709,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                 invalid: &ctx.invalid,
                 measurements,
             };
-            self.widget
-                .paint(&mut child_ctx, Rect::new(Point::origin(), size), env);
+            self.widget.paint(&mut child_ctx, Rect::new(Point::origin(), size), env);
         }
 
         /*if !env.get(SHOW_DEBUG_OVERLAY).unwrap_or_default() {
@@ -808,10 +776,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
 
         // ---- Handle internal events (routing mostly) ----
         match *event {
-            Event::Internal(InternalEvent::RouteWindowEvent {
-                target,
-                ref mut event,
-            }) => {
+            Event::Internal(InternalEvent::RouteWindowEvent { target, ref mut event }) => {
                 // routing of `winit::WindowEvent`s to the corresponding window widget.
                 if target == self.state.id {
                     self.do_event(parent_ctx, &mut Event::WindowEvent(event.clone()), env);
@@ -821,10 +786,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                     return;
                 }
             }
-            Event::Internal(InternalEvent::RouteEvent {
-                target,
-                ref mut event,
-            }) => {
+            Event::Internal(InternalEvent::RouteEvent { target, ref mut event }) => {
                 if target == self.state.id {
                     // we reached the target, unwrap the inner event and restart
                     self.event(parent_ctx, event, env);
@@ -836,10 +798,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                 }
                 // otherwise, propagate the event (proceed with the regular event handling procedure)
             }
-            Event::Internal(InternalEvent::RoutePointerEvent {
-                target,
-                ref mut event,
-            }) => {
+            Event::Internal(InternalEvent::RoutePointerEvent { target, ref mut event }) => {
                 // routed pointer events follow the same logic as routed events (the only difference is the behavior of hit-test)
                 if target == self.state.id {
                     trace!("pointer event reached {:?}", self.state.id);
@@ -876,11 +835,9 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                 let child_init = self.state.children_initialized.get();
                 match (init, child_init) {
                     (false, _) => self.do_event(parent_ctx, &mut Event::Initialize, env),
-                    (true, false) => self.do_event(
-                        parent_ctx,
-                        &mut Event::Internal(InternalEvent::RouteInitialize),
-                        env,
-                    ),
+                    (true, false) => {
+                        self.do_event(parent_ctx, &mut Event::Internal(InternalEvent::RouteInitialize), env)
+                    }
                     _ => {}
                 }
                 self.state.initialized.set(true);
@@ -898,37 +855,48 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             return;
         };
 
-        event.with_local_coordinates(self.state.offset.get(), |event| {
-            match event {
-                Event::Pointer(p) => {
-                    match hit_test_helper(p, measurements.bounds, self.state.id, parent_ctx.focus_state.pointer_grab) {
-                        HitTestResult::Passed => {
-                            if !self.state.pointer_over.get() {
-                                self.state.pointer_over.set(true);
-                                self.do_event(parent_ctx, &mut Event::Pointer(PointerEvent {
+        event.with_local_coordinates(self.state.offset.get(), |event| match event {
+            Event::Pointer(p) => {
+                match hit_test_helper(
+                    p,
+                    measurements.bounds,
+                    self.state.id,
+                    parent_ctx.focus_state.pointer_grab,
+                ) {
+                    HitTestResult::Passed => {
+                        if !self.state.pointer_over.get() {
+                            self.state.pointer_over.set(true);
+                            self.do_event(
+                                parent_ctx,
+                                &mut Event::Pointer(PointerEvent {
                                     kind: PointerEventKind::PointerOver,
                                     ..*p
-                                }), env);
-                            }
-                            self.do_event(parent_ctx, event, env);
+                                }),
+                                env,
+                            );
                         }
-                        HitTestResult::Failed => {
-                            if self.state.pointer_over.get() {
-                                self.state.pointer_over.set(false);
-                                self.do_event(parent_ctx, &mut Event::Pointer(PointerEvent {
+                        self.do_event(parent_ctx, event, env);
+                    }
+                    HitTestResult::Failed => {
+                        if self.state.pointer_over.get() {
+                            self.state.pointer_over.set(false);
+                            self.do_event(
+                                parent_ctx,
+                                &mut Event::Pointer(PointerEvent {
                                     kind: PointerEventKind::PointerOut,
                                     ..*p
-                                }), env);
-                            }
-                        }
-                        HitTestResult::Skipped => {
-                            self.do_event(parent_ctx, event, env);
+                                }),
+                                env,
+                            );
                         }
                     }
+                    HitTestResult::Skipped => {
+                        self.do_event(parent_ctx, event, env);
+                    }
                 }
-                _ => {
-                    self.do_event(parent_ctx, event, env);
-                }
+            }
+            _ => {
+                self.do_event(parent_ctx, event, env);
             }
         });
     }
@@ -951,7 +919,7 @@ impl fmt::Debug for WidgetPod {
 
 impl<T: Widget + 'static> WidgetPod<T> {
     /// Creates a new `WidgetPod` wrapping the specified widget.
-    #[composable(uncached)]
+    #[composable]
     pub fn new(widget: T) -> WidgetPod<T> {
         let id = WidgetId::from_call_id(cache::current_call_id());
         // HACK: returns false on first call, true on following calls, so we can use that
@@ -1027,12 +995,7 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
 
     /// Computes the layout of this widget and its children. Returns the measurements, and whether
     /// the measurements have changed since last layout.
-    pub fn relayout(
-        &self,
-        constraints: BoxConstraints,
-        scale_factor: f64,
-        env: &Environment,
-    ) -> (Measurements, bool) {
+    pub fn relayout(&self, constraints: BoxConstraints, scale_factor: f64, env: &Environment) -> (Measurements, bool) {
         let mut ctx = LayoutCtx {
             scale_factor,
             changed: false,

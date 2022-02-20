@@ -11,7 +11,7 @@ pub struct Padding<W> {
 
 impl<W: Widget + 'static> Padding<W> {
     /// Creates a new widget with the specified padding.
-    #[composable(uncached)]
+    #[composable]
     pub fn new(padding: SideOffsets, inner: W) -> Padding<W> {
         Padding {
             padding,

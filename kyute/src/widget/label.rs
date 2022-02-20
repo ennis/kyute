@@ -1,7 +1,7 @@
 //! Text elements
 use crate::{
-    composable, env::Environment, event::Event, style::ColorRef, theme, BoxConstraints, EventCtx,
-    LayoutCtx, Measurements, PaintCtx, Point, Rect, Widget,
+    composable, env::Environment, event::Event, style::ColorRef, theme, BoxConstraints, EventCtx, LayoutCtx,
+    Measurements, PaintCtx, Point, Rect, Widget,
 };
 use kyute_shell::{drawing::FromSkia, skia as sk};
 use std::cell::RefCell;
@@ -22,7 +22,7 @@ pub struct Label {
 
 impl Label {
     /// Creates a new text label.
-    #[composable]
+    #[composable(cached)]
     pub fn new(text: String) -> Label {
         Label {
             style: TextStyle {
@@ -53,12 +53,7 @@ impl Widget for Label {
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, _constraints: BoxConstraints, env: &Environment) -> Measurements {
         //let font_name = "Consolas";
         let font_size = env.get(theme::LABEL_FONT_SIZE).unwrap().to_dips(ctx.scale_factor);
 

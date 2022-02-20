@@ -1,38 +1,37 @@
-use kyute::{application, composable, shell::application::Application, style::{ThemeData, UnitExt}, theme, widget::{Button, ConstrainedBox, Container, Flex, Grid, GridLength, Image, Label, Null}, Alignment, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, Widget, WidgetPod, Window, WidgetExt};
+use kyute::{
+    application, composable,
+    shell::application::Application,
+    style::UnitExt,
+    theme,
+    widget::{Container, Flex, Grid, GridLength, Image, Label, Null},
+    Alignment, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, Widget, WidgetExt, WidgetPod, Window,
+};
 use kyute_shell::{winit::window::WindowBuilder, AssetId};
 use std::sync::Arc;
 
-#[composable(uncached)]
+#[composable]
 fn fixed_size_widget(w: f64, h: f64, name: &str) -> impl Widget {
     // TODO "debug widget" that draws a background pattern, with a border
     Label::new(name.to_string()).fix_size(Size::new(w, h))
 }
 
-#[composable(uncached)]
+#[composable]
 fn grid_layout_example() -> impl Widget + Clone {
     let mut grid = Grid::with_rows_columns(
         [GridLength::Fixed(100.0), GridLength::Flex(1.0)],
-        [
-            GridLength::Fixed(100.0),
-            GridLength::Auto,
-            GridLength::Fixed(100.0),
-        ],
+        [GridLength::Fixed(100.0), GridLength::Auto, GridLength::Fixed(100.0)],
     );
 
     grid.add(0, 0, fixed_size_widget(50.0, 50.0, "(0,0)"));
     grid.add(0, 1, fixed_size_widget(50.0, 50.0, "(0,1)"));
     //grid.add(0, 2, fixed_size_widget(50.0, 50.0, "(0,2)"));
-    grid.add(
-        0,
-        2,
-        Image::from_uri_async("data/haniyasushin_keiki.jpg", Null),
-    );
+    grid.add(0, 2, Image::from_uri_async("data/haniyasushin_keiki.jpg", Null));
     grid.add(1, 0, fixed_size_widget(50.0, 50.0, "(1,0)"));
     grid.add(1, 1..=2, fixed_size_widget(150.0, 50.0, "(1,1)").centered());
     grid
 }
 
-#[composable(uncached)]
+#[composable]
 fn align_in_constrained_box() -> impl Widget + Clone {
     use kyute::style::*;
 

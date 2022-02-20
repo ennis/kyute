@@ -8,7 +8,7 @@ use std::{
     hash::{Hash, Hasher},
     io,
     marker::PhantomData,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, Mutex, Weak},
 };
 use thiserror::Error;
@@ -106,7 +106,7 @@ struct Resolvers {
 
 impl Resolvers {
     fn new() -> Resolvers {
-        let watch_handlers : Arc<Mutex<HashMap<PathBuf, WatchHandler>>> = Arc::new(Mutex::new(HashMap::new()));
+        let watch_handlers: Arc<Mutex<HashMap<PathBuf, WatchHandler>>> = Arc::new(Mutex::new(HashMap::new()));
         let watch_handlers_clone = watch_handlers.clone();
 
         let watcher = Mutex::new(
@@ -254,7 +254,7 @@ impl AssetLoader {
         &self,
         uri: &str,
         recursive: bool,
-        callback: impl FnMut(Event) + Send  + 'static,
+        callback: impl FnMut(Event) + Send + 'static,
     ) -> io::Result<WatchSubscription> {
         self.resolvers.watch_changes(uri, recursive, callback)
     }

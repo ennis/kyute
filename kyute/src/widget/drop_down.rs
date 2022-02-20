@@ -25,7 +25,7 @@ pub struct DropDown<T: Data + Display> {
 
 impl<T: Data + Display> DropDown<T> {
     /// Creates a new drop down with the specified choices.
-    #[composable(uncached)]
+    #[composable]
     pub fn new(choices: Vec<T>, selected_index: usize) -> DropDown<T> {
         let inner = Container::new(Label::new(format!("{}", choices[selected_index])))
             .min_height(theme::BUTTON_HEIGHT)
@@ -51,7 +51,7 @@ impl<T: Data + Display> DropDown<T> {
     }
 
     /// Returns whether TODO.
-    #[composable(uncached)]
+    #[composable]
     pub fn selected_item_changed(&self) -> Option<T> {
         self.selected_item_changed.value().map(|x| x.1)
     }

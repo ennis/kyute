@@ -5,7 +5,6 @@ use crate::{
     widget::{prelude::*, Container, Label},
     SideOffsets, Signal,
 };
-use tracing::trace;
 
 /// Button styling information.
 #[derive(Clone, Debug, Default)]
@@ -97,12 +96,7 @@ impl Widget for Button {
         }
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let m = self.inner.layout(ctx, constraints, env);
         m
     }

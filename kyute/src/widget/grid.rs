@@ -5,7 +5,6 @@ use std::{
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
     sync::Arc,
 };
-use tracing::trace;
 
 pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = EnvKey::new("kyute.show_grid_layout_lines");
 
@@ -212,24 +211,14 @@ impl Grid {
         self
     }
 
-    #[composable(uncached)]
-    pub fn with(
-        mut self,
-        row_span: impl GridSpan,
-        column_span: impl GridSpan,
-        widget: impl Widget + 'static,
-    ) -> Self {
+    #[composable]
+    pub fn with(mut self, row_span: impl GridSpan, column_span: impl GridSpan, widget: impl Widget + 'static) -> Self {
         self.add(row_span, column_span, widget);
         self
     }
 
-    #[composable(uncached)]
-    pub fn add(
-        &mut self,
-        row_span: impl GridSpan,
-        column_span: impl GridSpan,
-        widget: impl Widget + 'static,
-    ) {
+    #[composable]
+    pub fn add(&mut self, row_span: impl GridSpan, column_span: impl GridSpan, widget: impl Widget + 'static) {
         let row_range = row_span.resolve(self.rows.len());
         let column_range = column_span.resolve(self.columns.len());
 
@@ -238,13 +227,13 @@ impl Grid {
         let num_columns = self.columns.len();
         let extra_rows = row_range.end.checked_sub(num_rows).unwrap_or(0);
         let extra_columns = column_range.end.checked_sub(num_columns).unwrap_or(0);
-        for i in 0..extra_rows {
+        for _ in 0..extra_rows {
             self.rows.push(TrackSize {
                 min_size: self.row_template,
                 max_size: self.row_template,
             });
         }
-        for i in 0..extra_columns {
+        for _ in 0..extra_columns {
             self.columns.push(TrackSize {
                 min_size: self.column_template,
                 max_size: self.column_template,
@@ -258,15 +247,13 @@ impl Grid {
         });
     }
 
-    #[composable(uncached)]
+    #[composable]
     pub fn add_row(&mut self, widget: impl Widget + 'static) {
         self.add(self.rows.len(), .., widget);
     }
 
     fn items_in_track(&self, axis: TrackAxis, index: usize) -> impl Iterator<Item = &GridItem> {
-        self.items
-            .iter()
-            .filter(move |item| item.is_in_track(axis, index))
+        self.items.iter().filter(move |item| item.is_in_track(axis, index))
     }
 
     /// Computes the sizes of rows or columns.
@@ -315,10 +302,7 @@ impl Grid {
                 GridLength::Auto => {
                     for item in self.items_in_track(axis, i) {
                         let constraints = if let Some(column_layout) = column_layout {
-                            let w: f64 = column_layout[item.column_range.clone()]
-                                .iter()
-                                .map(|x| x.size)
-                                .sum();
+                            let w: f64 = column_layout[item.column_range.clone()].iter().map(|x| x.size).sum();
                             BoxConstraints::new(0.0..w, ..)
                         } else {
                             BoxConstraints::new(.., ..)
@@ -394,12 +378,7 @@ impl Widget for Grid {
         }
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         // first measure the width of the columns
         let (column_layout, width) =
             self.compute_track_sizes(ctx, env, TrackAxis::Column, constraints.max_width(), None);
@@ -416,14 +395,8 @@ impl Widget for Grid {
 
         // layout items
         for item in self.items.iter() {
-            let w: f64 = column_layout[item.column_range.clone()]
-                .iter()
-                .map(|x| x.size)
-                .sum();
-            let h: f64 = row_layout[item.row_range.clone()]
-                .iter()
-                .map(|x| x.size)
-                .sum();
+            let w: f64 = column_layout[item.column_range.clone()].iter().map(|x| x.size).sum();
+            let h: f64 = row_layout[item.row_range.clone()].iter().map(|x| x.size).sum();
 
             let constraints = BoxConstraints::loose(Size::new(w, h));
             item.widget.layout(ctx, constraints, env);
@@ -450,11 +423,7 @@ impl Widget for Grid {
             let column_layout = self.column_layout.borrow();
             let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
 
-            for x in column_layout
-                .iter()
-                .map(|x| x.pos)
-                .chain(std::iter::once(width))
-            {
+            for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width)) {
                 ctx.canvas.draw_line(
                     Point::new(x + 0.5, 0.5).to_skia(),
                     Point::new(x + 0.5, height + 0.5).to_skia(),
@@ -462,11 +431,7 @@ impl Widget for Grid {
                 );
             }
 
-            for y in row_layout
-                .iter()
-                .map(|x| x.pos)
-                .chain(std::iter::once(height))
-            {
+            for y in row_layout.iter().map(|x| x.pos).chain(std::iter::once(height)) {
                 ctx.canvas.draw_line(
                     Point::new(0.5, y + 0.5).to_skia(),
                     Point::new(width + 0.5, y + 0.5).to_skia(),

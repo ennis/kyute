@@ -66,7 +66,7 @@ impl Action {
         Self::new_inner(Some(shortcut))
     }
 
-    #[composable(uncached)]
+    #[composable]
     fn new_inner(shortcut: Option<Shortcut>) -> Action {
         let id: u32 = cache::once(|| ACTION_ID_COUNTER.next().try_into().unwrap());
         Action {
@@ -128,7 +128,7 @@ fn compare_menu_items(a: &Vec<MenuItem>, b: &Vec<MenuItem>) -> bool {
 }
 
 impl Menu {
-    #[composable(uncached)]
+    #[composable]
     pub fn new(items: Vec<MenuItem>) -> Menu {
         Menu { items }
     }

@@ -1,13 +1,13 @@
 use crate::{
     align_boxes, cache, composable,
-    core2::{FocusState, GpuResourceReferences},
+    core::{FocusState, GpuResourceReferences},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind},
     graal,
-    graal::{SwapchainImage, vk::Handle, MemoryLocation},
+    graal::{vk::Handle, MemoryLocation},
     region::Region,
     widget::{Action, Menu},
-    Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx,
-    Measurements, PaintCtx, Point, Rect, Size, Widget, WidgetPod,
+    Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, PaintCtx,
+    Point, Rect, Size, Widget, WidgetPod,
 };
 use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
@@ -23,9 +23,7 @@ use kyute_shell::{
 use std::{cell::RefCell, collections::HashMap, env, mem, sync::Arc, time::Instant};
 use tracing::trace;
 
-fn key_code_from_winit(
-    input: &winit::event::KeyboardInput,
-) -> (keyboard_types::Key, keyboard_types::Code) {
+fn key_code_from_winit(input: &winit::event::KeyboardInput) -> (keyboard_types::Key, keyboard_types::Code) {
     use keyboard_types::{Code, Key};
     let code = match input.scancode {
         0x0029 => Code::Backquote,
@@ -379,12 +377,8 @@ impl WindowState {
 
                 // send to popup menu target if any
                 if let Some(target) = self.focus_state.popup_target.take() {
-                    let mut content_ctx = EventCtx::new_subwindow(
-                        parent_ctx,
-                        self.scale_factor,
-                        window,
-                        &mut self.focus_state,
-                    );
+                    let mut content_ctx =
+                        EventCtx::new_subwindow(parent_ctx, self.scale_factor, window, &mut self.focus_state);
                     content_widget.event(
                         &mut content_ctx,
                         &mut Event::Internal(InternalEvent::RouteEvent {
@@ -403,9 +397,9 @@ impl WindowState {
                 None
             }
             WindowEvent::KeyboardInput {
-                device_id,
+                device_id: _,
                 input,
-                is_synthetic,
+                is_synthetic: _,
             } => {
                 let (key, code) = key_code_from_winit(&input);
                 Some(Event::Keyboard(KeyboardEvent {
@@ -421,21 +415,16 @@ impl WindowState {
                     is_composing: false,
                 }))
             }
-            WindowEvent::ModifiersChanged(mods) => {
+            WindowEvent::ModifiersChanged(_) => {
                 // TODO
                 //window_info.inputs.modifiers = mods;
 
                 None
             }
             WindowEvent::CursorMoved {
-                device_id,
-                position,
-                ..
+                device_id, position, ..
             } => {
-                let logical_position = Point::new(
-                    position.x * self.scale_factor,
-                    position.y * self.scale_factor,
-                );
+                let logical_position = Point::new(position.x * self.scale_factor, position.y * self.scale_factor);
                 let pointer_state = self.inputs.pointers.entry(*device_id).or_default();
                 pointer_state.position = logical_position;
                 Some(Event::Pointer(PointerEvent {
@@ -489,8 +478,7 @@ impl WindowState {
                         if last.device_id == *device_id
                             && last.button == button
                             && last.position == pointer_state.position
-                            && (click_time - last.time)
-                                < Application::instance().double_click_time() =>
+                            && (click_time - last.time) < Application::instance().double_click_time() =>
                     {
                         // same device, button, position, and within the platform specified double-click time
                         match state {
@@ -568,16 +556,9 @@ impl WindowState {
                     // If nothing is grabbing the pointer, the pointer event is delivered to a widget
                     // that passes the hit-test
                     if let Some(pointer_grab) = self.focus_state.pointer_grab {
-                        let mut content_ctx = EventCtx::new_subwindow(
-                            parent_ctx,
-                            self.scale_factor,
-                            window,
-                            &mut self.focus_state,
-                        );
-                        trace!(
-                            "routing pointer event to pointer-capturing widget {:?}",
-                            pointer_grab
-                        );
+                        let mut content_ctx =
+                            EventCtx::new_subwindow(parent_ctx, self.scale_factor, window, &mut self.focus_state);
+                        trace!("routing pointer event to pointer-capturing widget {:?}", pointer_grab);
 
                         content_widget.event(
                             &mut content_ctx,
@@ -589,26 +570,18 @@ impl WindowState {
                             env,
                         );
                     } else {
-                        let mut content_ctx = EventCtx::new_subwindow(
-                            parent_ctx,
-                            self.scale_factor,
-                            window,
-                            &mut self.focus_state,
-                        );
+                        let mut content_ctx =
+                            EventCtx::new_subwindow(parent_ctx, self.scale_factor, window, &mut self.focus_state);
                         // just forward to content, will do a hit-test
                         content_widget.event(&mut content_ctx, &mut event, env);
                     };
                 }
-                Event::Keyboard(ref k) => {
+                Event::Keyboard(_) => {
                     // keyboard events are delivered to the widget that has the focus.
                     // if no widget has focus, the event is dropped.
                     if let Some(focus) = self.focus_state.focus {
-                        let mut content_ctx = EventCtx::new_subwindow(
-                            parent_ctx,
-                            self.scale_factor,
-                            window,
-                            &mut self.focus_state,
-                        );
+                        let mut content_ctx =
+                            EventCtx::new_subwindow(parent_ctx, self.scale_factor, window, &mut self.focus_state);
                         content_widget.event(
                             &mut content_ctx,
                             &mut Event::Internal(InternalEvent::RouteEvent {
@@ -656,7 +629,7 @@ impl Window {
     /// Creates a new window.
     ///
     /// TODO: explain subtleties
-    #[composable(uncached)]
+    #[composable]
     pub fn new(window_builder: WindowBuilder, contents: impl Widget + 'static, menu: Option<Menu>) -> Window {
         // create the initial window state
         // we don't want to recreate it every time, so it only depends on the call ID.
@@ -710,9 +683,7 @@ impl Window {
                 let mut widgets = Vec::new();
                 self.contents.event(
                     &mut content_ctx,
-                    &mut Event::Internal(InternalEvent::Traverse {
-                        widgets: &mut widgets,
-                    }),
+                    &mut Event::Internal(InternalEvent::Traverse { widgets: &mut widgets }),
                     env,
                 );
                 widgets
@@ -757,8 +728,6 @@ impl Window {
             //---------------------------------------------------------------------------
             // setup skia for rendering to a GPU image
             let (swap_chain_width, swap_chain_height) = window.swap_chain_size();
-            // get the family of the graphics queue used by the context; needed by skia
-            let graphics_queue_family = device.graphics_queue().1;
 
             // skia may not support rendering directly to the swapchain image (for example, it doesn't seem to support BGRA8888_SRGB).
             // so allocate a separate image to use as a render target, then copy.
@@ -792,10 +761,7 @@ impl Window {
             // TODO: allow temporary borrows inside passes
             let scale_factor = window.window().scale_factor();
             let logical_size = window.window().inner_size().to_logical(scale_factor);
-            let window_bounds = Rect::new(
-                Point::origin(),
-                Size::new(logical_size.width, logical_size.height),
-            );
+            let window_bounds = Rect::new(Point::origin(), Size::new(logical_size.width, logical_size.height));
             let focus = window_state.focus_state.focus;
             let pointer_grab = window_state.focus_state.pointer_grab;
             let hot = window_state.focus_state.hot;
@@ -833,7 +799,7 @@ impl Window {
                     )
                 }
 
-                ui_render_pass.set_submit_callback(move |cctx, _, _queue| {
+                ui_render_pass.set_submit_callback(move |_cctx, _, _queue| {
                     // create skia BackendRenderTarget and Surface
                     let skia_image_info = skia_vk::ImageInfo {
                         image: skia_image.handle.as_raw() as *mut _,
@@ -860,10 +826,7 @@ impl Window {
                         skia::gpu::SurfaceOrigin::TopLeft,
                         skia::ColorType::RGBAF16Norm, // ???
                         skia::ColorSpace::new_srgb_linear(),
-                        Some(&skia::SurfaceProps::new(
-                            Default::default(),
-                            skia::PixelGeometry::RGBH,
-                        )),
+                        Some(&skia::SurfaceProps::new(Default::default(), skia::PixelGeometry::RGBH)),
                     )
                     .unwrap();
 
@@ -936,12 +899,9 @@ impl Widget for Window {
                 // create the window
                 tracing::trace!("creating window");
                 let mut window_state = self.window_state.borrow_mut();
-                let window = kyute_shell::window::Window::new(
-                    ctx.event_loop,
-                    window_state.window_builder.take().unwrap(),
-                    None,
-                )
-                .expect("failed to create window");
+                let window =
+                    kyute_shell::window::Window::new(ctx.event_loop, window_state.window_builder.take().unwrap(), None)
+                        .expect("failed to create window");
 
                 // register it to the AppCtx, necessary so that the event loop can route window events
                 // to this widget
@@ -972,12 +932,8 @@ impl Widget for Window {
                 let window_state = &mut *window_state; // hrmpf...
 
                 if let Some(window) = window_state.window.as_mut() {
-                    let mut content_ctx = EventCtx::new_subwindow(
-                        ctx,
-                        window_state.scale_factor,
-                        window,
-                        &mut window_state.focus_state,
-                    );
+                    let mut content_ctx =
+                        EventCtx::new_subwindow(ctx, window_state.scale_factor, window, &mut window_state.focus_state);
                     self.contents.event(&mut content_ctx, event, env);
                 } else {
                     //tracing::warn!("received window event before initialization: {:?}", event);
@@ -994,14 +950,11 @@ impl Widget for Window {
 
             let scale_factor = winit_window.scale_factor();
             let mut m_window = Measurements::new(Size::new(width, height).into());
-            let (m_content, layout_changed) = self.contents.relayout(
-                BoxConstraints::new(0.0..width, 0.0..height),
-                scale_factor,
-                &env,
-            );
+            let (m_content, layout_changed) =
+                self.contents
+                    .relayout(BoxConstraints::new(0.0..width, 0.0..height), scale_factor, &env);
             if layout_changed {
-                let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content)
-                    .round_to_pixel(scale_factor);
+                let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content).round_to_pixel(scale_factor);
                 self.contents.set_child_offset(offset);
             }
 
@@ -1011,19 +964,14 @@ impl Widget for Window {
         }
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: BoxConstraints, _env: &Environment) -> Measurements {
         Measurements {
             bounds: Default::default(),
             baseline: None,
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, _ctx: &mut PaintCtx, _bounds: Rect, _env: &Environment) {
         //self.contents.paint(ctx, bounds, env)
     }
 }

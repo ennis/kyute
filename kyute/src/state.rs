@@ -1,6 +1,5 @@
-use crate::{cache, composable, EventCtx, Key};
+use crate::{cache, composable, EventCtx};
 use std::cell::{Cell, RefCell};
-use std::future::Future;
 
 /// FIXME: verify that the automatic clone impl doesn't have sketchy implications w.r.t. cache invalidation
 #[derive(Clone, Debug)]
@@ -57,7 +56,7 @@ pub struct State<T> {
 }
 
 impl<T: Clone + 'static> State<T> {
-    #[composable(uncached)]
+    #[composable]
     pub fn new(init: impl FnOnce() -> T) -> State<T> {
         let key = cache::state(init);
         State { key }

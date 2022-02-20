@@ -1,6 +1,6 @@
 //! Description of paints.
 use crate::{
-    style::{Angle, ColorExpr},
+    style::{image_cache::IMAGE_CACHE, Angle, ColorExpr},
     Color, EnvKey, Environment, Offset, Rect,
 };
 use kyute_shell::{drawing::ToSkia, skia as sk, skia::gradient_shader::GradientShaderColors};
@@ -16,6 +16,12 @@ pub struct GradientStop {
     color: ColorExpr,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Deserialize)]
+pub enum RepeatMode {
+    Repeat,
+    NoRepeat,
+}
+
 /// Paint.
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(tag = "type")]
@@ -26,7 +32,9 @@ pub enum Paint {
     LinearGradient(LinearGradient),
     #[serde(rename = "image")]
     Image {
-        // TODO
+        uri: String,
+        repeat_x: RepeatMode,
+        repeat_y: RepeatMode,
     },
 }
 
@@ -85,8 +93,7 @@ impl Paint {
                             };
 
                             for j in 0..skip {
-                                positions[i + j] =
-                                    (prev + (next - prev) * j as f64 / skip as f64) as f32;
+                                positions[i + j] = (prev + (next - prev) * j as f64 / skip as f64) as f32;
                             }
                             i += skip;
                         }
@@ -114,8 +121,34 @@ impl Paint {
                 paint.set_anti_alias(true);
                 paint
             }
-            Paint::Image { .. } => {
-                todo!("images")
+            Paint::Image {
+                uri,
+                repeat_x,
+                repeat_y,
+            } => {
+                let image_cache = env.get(IMAGE_CACHE).unwrap();
+                if let Ok(image) = image_cache.load(uri) {
+                    let image: kyute_shell::drawing::Image = image;
+
+                    let tile_x = match *repeat_x {
+                        RepeatMode::Repeat => sk::TileMode::Repeat,
+                        RepeatMode::NoRepeat => sk::TileMode::Decal,
+                    };
+                    let tile_y = match *repeat_y {
+                        RepeatMode::Repeat => sk::TileMode::Repeat,
+                        RepeatMode::NoRepeat => sk::TileMode::Decal,
+                    };
+                    let sampling_options = sk::SamplingOptions::new(sk::FilterMode::Linear, sk::MipmapMode::None);
+                    let image_shader = image
+                        .to_skia()
+                        .to_shader((tile_x, tile_y), sampling_options, None)
+                        .unwrap();
+                    let mut paint = sk::Paint::default();
+                    paint.set_shader(image_shader);
+                    paint
+                } else {
+                    sk::Paint::default()
+                }
             }
         }
     }
@@ -123,17 +156,13 @@ impl Paint {
 
 impl From<Color> for Paint {
     fn from(color: Color) -> Self {
-        Paint::SolidColor {
-            color: color.into(),
-        }
+        Paint::SolidColor { color: color.into() }
     }
 }
 
 impl From<EnvKey<Color>> for Paint {
     fn from(color: EnvKey<Color>) -> Self {
-        Paint::SolidColor {
-            color: color.into(),
-        }
+        Paint::SolidColor { color: color.into() }
     }
 }
 

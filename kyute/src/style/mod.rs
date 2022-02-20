@@ -1,6 +1,7 @@
 //! Drawing code for GUI elements.
 mod border;
 mod box_style;
+pub mod image_cache;
 mod paint;
 mod theme;
 
@@ -12,7 +13,7 @@ use kyute_shell::{
 use std::str::FromStr;
 
 pub use border::{Border, BorderPosition, BorderStyle};
-pub use box_style::{BoxStyle, BoxShadow, BoxShadowParams};
+pub use box_style::{BoxShadow, BoxShadowParams, BoxStyle};
 pub use paint::{GradientStop, LinearGradient, Paint};
 pub use theme::{define_theme, ThemeData, ThemeLoadError};
 
@@ -324,10 +325,7 @@ impl ColorExpr {
 
 impl From<ColorRef> for ColorExpr {
     fn from(color: ColorRef) -> Self {
-        ColorExpr {
-            color,
-            modifier: None,
-        }
+        ColorExpr { color, modifier: None }
     }
 }
 

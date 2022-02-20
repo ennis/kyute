@@ -2,7 +2,11 @@
 //!
 //! Provides the `run_application` function that opens the main window and translates the incoming
 //! events from winit into the events expected by kyute.
-use crate::{core2::WidgetId, Cache, Environment, Event, InternalEvent, Widget, WidgetPod};
+use crate::{
+    core::WidgetId,
+    style::image_cache::{ImageCache, IMAGE_CACHE},
+    Cache, Environment, Event, InternalEvent, WidgetPod,
+};
 use kyute_shell::{
     winit,
     winit::{
@@ -12,17 +16,22 @@ use kyute_shell::{
 };
 use std::{
     collections::{hash_map::Entry, HashMap},
-    mem,
+    fmt, mem,
     sync::Arc,
 };
 use tracing::warn;
 
-//#[derive(Debug)]
 pub enum ExtEvent {
     /// Triggers a recomposition
     Recompose {
         cache_fn: Box<dyn FnOnce(&mut Cache) + Send>,
     },
+}
+
+impl fmt::Debug for ExtEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ExtEvent").finish()
+    }
 }
 
 /// Global application context. Contains stuff passed to all widget contexts (Event,Layout,Paint...)
@@ -106,9 +115,12 @@ fn eval_root_widget(
     root_widget
 }
 
-pub fn run(ui: fn() -> Arc<WidgetPod>, env: Environment) {
+pub fn run(ui: fn() -> Arc<WidgetPod>, mut env: Environment) {
     let event_loop = EventLoop::<ExtEvent>::with_user_event();
     let mut app_ctx = AppCtx::new(event_loop.create_proxy());
+
+    // setup env
+    env.set(IMAGE_CACHE, ImageCache::new());
 
     // setup and enter the tokio runtime
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");

@@ -1,8 +1,7 @@
 use crate::{
     composable,
     text::{FormattedText, FormattedTextParagraph},
-    BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
-    Rect, Size, Widget,
+    BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect, Size, Widget,
 };
 use kyute_shell::drawing::ToSkia;
 use std::cell::{Ref, RefCell};
@@ -17,7 +16,7 @@ pub struct Text {
 
 impl Text {
     /// Creates a new text element.
-    #[composable(uncached)]
+    #[composable]
     pub fn new(formatted_text: impl Into<FormattedText>) -> Text {
         let formatted_text = formatted_text.into();
         Text {
@@ -29,8 +28,7 @@ impl Text {
     /// Returns a reference to the formatted text paragraph.
     pub fn formatted_paragraph(&self) -> Ref<FormattedTextParagraph> {
         Ref::map(self.paragraph.borrow(), |x| {
-            x.as_ref()
-                .expect("`Text::formatted_paragraph` called before layout")
+            x.as_ref().expect("`Text::formatted_paragraph` called before layout")
         })
     }
 }
@@ -38,12 +36,7 @@ impl Text {
 impl Widget for Text {
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, _ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
         let available_width = constraints.max_width();
         //let available_height = constraints.max_height();
         let paragraph = self.formatted_text.format(available_width);
@@ -62,11 +55,9 @@ impl Widget for Text {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, _env: &Environment) {
         let mut paragraph = self.paragraph.borrow_mut();
         let paragraph = paragraph.as_mut().expect("paint called before layout");
-        paragraph
-            .0
-            .paint(&mut ctx.canvas, Point::origin().to_skia());
+        paragraph.0.paint(&mut ctx.canvas, Point::origin().to_skia());
     }
 }

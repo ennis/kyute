@@ -1,7 +1,7 @@
 use crate::{
     application::ExtEvent,
     cache,
-    widget::{prelude::*, Container, Null},
+    widget::{prelude::*, Null},
 };
 use kyute_shell::{application::Application, drawing::ToSkia};
 use std::task::Poll;
@@ -20,7 +20,7 @@ pub struct Image<Placeholder> {
 
 impl Image<Null> {
     /// Creates an image widget that displays the image from a specified asset URI.
-    #[composable(uncached)]
+    #[composable]
     pub fn from_uri(uri: &str) -> Image<Null> {
         let application = Application::instance();
         let image: kyute_shell::drawing::Image = application.asset_loader().load(uri).expect("failed to load image");
@@ -32,7 +32,7 @@ impl Image<Null> {
 }
 
 /// A composable function that returns true when the asset at the specified URI should be reloaded.
-#[composable(uncached)]
+#[composable]
 fn watch_file_changes(uri: &str) -> bool {
     let changed = cache::state(|| false);
     let event_loop_proxy = cache::event_loop_proxy();
@@ -41,9 +41,11 @@ fn watch_file_changes(uri: &str) -> bool {
         Application::instance()
             .asset_loader()
             .watch_changes(uri, false, move |_event| {
-                event_loop_proxy.send_event(ExtEvent::Recompose {
-                    cache_fn: Box::new(move |cache| cache.set_state(changed, true)),
-                });
+                event_loop_proxy
+                    .send_event(ExtEvent::Recompose {
+                        cache_fn: Box::new(move |cache| cache.set_state(changed, true)),
+                    })
+                    .unwrap();
             })
             .ok()
     });
@@ -54,7 +56,7 @@ fn watch_file_changes(uri: &str) -> bool {
 impl<Placeholder: Widget> Image<Placeholder> {
     /// Creates an image widget that loads the image at the specified URI asynchronously,
     /// and displays the image once it is loaded.
-    #[composable(uncached)]
+    #[composable]
     pub fn from_uri_async(uri: &str, placeholder: Placeholder) -> Image<Placeholder> {
         let application = Application::instance();
         let image_future = application

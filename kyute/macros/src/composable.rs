@@ -1,37 +1,29 @@
 use crate::CRATE;
 use proc_macro2::Ident;
 use quote::quote;
-use syn::{
-    parse::ParseStream,
-    punctuated::Punctuated,
-    spanned::Spanned,
-    FnArg,
-};
+use syn::{parse::ParseStream, punctuated::Punctuated, spanned::Spanned, FnArg};
 
 struct ComposableArgs {
-    uncached: bool,
+    cached: bool,
 }
 
 impl syn::parse::Parse for ComposableArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let idents = Punctuated::<Ident, syn::Token![,]>::parse_terminated(input)?;
 
-        let mut uncached = false;
+        let mut cached = false;
         for ident in idents {
-            if ident == "uncached" {
-                uncached = true;
+            if ident == "cached" {
+                cached = true;
             } else {
                 // TODO warn unrecognized attrib
             }
         }
-        Ok(ComposableArgs { uncached })
+        Ok(ComposableArgs { cached })
     }
 }
 
-pub fn generate_composable(
-    attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
+pub fn generate_composable(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // works only on trait declarations
     let mut fn_item: syn::ItemFn = syn::parse_macro_input!(item as syn::ItemFn);
     let attr_args: ComposableArgs = syn::parse_macro_input!(attr as ComposableArgs);
@@ -40,7 +32,7 @@ pub fn generate_composable(
     let attrs = &fn_item.attrs;
     let orig_block = &fn_item.block;
 
-    let altered_fn = if attr_args.uncached {
+    let altered_fn = if !attr_args.cached {
         let sig = &fn_item.sig;
         //let return_type = &fn_item.sig.output;
         //let debug_name = format!("scope for `{}`", fn_item.sig.ident);
@@ -54,27 +46,33 @@ pub fn generate_composable(
         }
     } else {
         // convert fn args to tuple
-        let args: Vec<_> = fn_item.sig
+        let args: Vec<_> = fn_item
+            .sig
             .inputs
             .iter_mut()
             .filter_map(|arg| match arg {
                 FnArg::Receiver(r) => {
                     // FIXME, methods could be cached composables, we just need `self` to be any+clone
-                    Some(syn::Error::new(r.span(), "methods cannot be cached `composable` functions: consider using `composable(uncached)`")
-                        .to_compile_error())
+                    Some(
+                        syn::Error::new(
+                            r.span(),
+                            "methods cannot be cached `composable(cached)` functions: consider using `composable`",
+                        )
+                        .to_compile_error(),
+                    )
                 }
                 FnArg::Typed(arg) => {
                     if let Some(pos) = arg.attrs.iter().position(|attr| attr.path.is_ident("uncached")) {
                         // skip uncached argument
                         arg.attrs.remove(pos);
-                        return None
+                        return None;
                     }
                     let pat = &arg.pat;
                     let val = quote! {
                         #pat.clone()
                     };
                     Some(val)
-                },
+                }
             })
             .collect();
 
@@ -92,6 +90,6 @@ pub fn generate_composable(
         }
     };
 
-    eprintln!("{}", altered_fn);
+    //eprintln!("{}", altered_fn);
     altered_fn.into()
 }

@@ -1,7 +1,7 @@
 //! Text editor widget.
 use crate::{
     composable,
-    core2::Widget,
+    core::Widget,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
     state::{Signal, State},
@@ -9,8 +9,8 @@ use crate::{
     text::FormattedText,
     theme,
     widget::{text::Text, Container},
-    BoxConstraints, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect,
-    SideOffsets, Size, WidgetPod,
+    BoxConstraints, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect, SideOffsets, Size,
+    WidgetPod,
 };
 use keyboard_types::KeyState;
 use kyute::text::TextPosition;
@@ -92,11 +92,8 @@ pub struct TextEdit {
 
 impl TextEdit {
     /// Creates a new `TextEdit` widget displaying the specified `FormattedText`.
-    #[composable(uncached)]
-    pub fn with_selection(
-        formatted_text: impl Into<FormattedText>,
-        selection: Selection,
-    ) -> TextEdit {
+    #[composable]
+    pub fn with_selection(formatted_text: impl Into<FormattedText>, selection: Selection) -> TextEdit {
         let formatted_text = formatted_text.into();
 
         trace!(
@@ -122,7 +119,7 @@ impl TextEdit {
     }
 
     /// Use if you don't care about the selection.
-    #[composable(uncached)]
+    #[composable]
     pub fn new(formatted_text: impl Into<FormattedText>) -> TextEdit {
         let selection = State::new(|| Selection::empty(0));
         let text_edit = Self::with_selection(formatted_text, selection.get());
@@ -131,39 +128,36 @@ impl TextEdit {
     }
 
     /// Returns whether TODO.
-    #[composable(uncached)]
+    #[composable]
     pub fn editing_finished(&self) -> Option<FormattedText> {
         self.editing_finished.value()
     }
 
     /// Returns whether the text has changed.
-    #[composable(uncached)]
+    #[composable]
     pub fn text_changed(&self) -> Option<FormattedText> {
         self.text_changed.value()
     }
 
-    #[composable(uncached)]
+    #[composable]
     pub fn selection_changed(&self) -> Option<Selection> {
         self.selection_changed.value()
     }
 
     /// Moves the cursor forward or backward. Returns the new selection.
     fn move_cursor(&self, movement: Movement, modify_selection: bool) -> Selection {
-        let offset = match movement {
-            Movement::Left => {
-                prev_grapheme_cluster(&self.formatted_text.plain_text, self.selection.end)
-                    .unwrap_or(self.selection.end)
-            }
-            Movement::Right => {
-                next_grapheme_cluster(&self.formatted_text.plain_text, self.selection.end)
-                    .unwrap_or(self.selection.end)
-            }
-            Movement::LeftWord | Movement::RightWord => {
-                // TODO word navigation (unicode word segmentation)
-                tracing::warn!("word navigation is unimplemented");
-                self.selection.end
-            }
-        };
+        let offset =
+            match movement {
+                Movement::Left => prev_grapheme_cluster(&self.formatted_text.plain_text, self.selection.end)
+                    .unwrap_or(self.selection.end),
+                Movement::Right => next_grapheme_cluster(&self.formatted_text.plain_text, self.selection.end)
+                    .unwrap_or(self.selection.end),
+                Movement::LeftWord | Movement::RightWord => {
+                    // TODO word navigation (unicode word segmentation)
+                    tracing::warn!("word navigation is unimplemented");
+                    self.selection.end
+                }
+            };
 
         if modify_selection {
             Selection {
@@ -217,10 +211,7 @@ impl TextEdit {
 
     fn notify_selection_changed(&self, ctx: &mut EventCtx, new_selection: Selection) {
         if new_selection != self.selection {
-            eprintln!(
-                "notify selection changed {:?}->{:?}",
-                self.selection, new_selection
-            );
+            eprintln!("notify selection changed {:?}->{:?}", self.selection, new_selection);
             self.selection_changed.signal(ctx, new_selection);
         }
     }
@@ -235,12 +226,7 @@ impl TextEdit {
 }
 
 impl Widget for TextEdit {
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.inner.layout(ctx, constraints, env)
     }
 
@@ -254,18 +240,14 @@ impl Widget for TextEdit {
         let selection_boxes = paragraph.rects_for_range(self.selection.min()..self.selection.max());
         for mut tb in selection_boxes {
             tb.rect.origin += offset;
-            ctx.draw_styled_box(
-                tb.rect,
-                &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)),
-                env,
-            );
+            ctx.draw_styled_box(tb.rect, &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)), env);
         }
 
         // TODO caret
         // -> move to helper function (format_text_edit): applies the format ranges, splits the text into blocks, returns a SkParagraph
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
         match event {
             Event::FocusGained => {
                 trace!("text edit: focus gained");
@@ -295,10 +277,7 @@ impl Widget for TextEdit {
                             let text_pos = self.text_position(p.position);
                             trace!("text edit: move cursor");
                             if self.selection != Selection::empty(text_pos.position) {
-                                self.notify_selection_changed(
-                                    ctx,
-                                    Selection::empty(text_pos.position),
-                                );
+                                self.notify_selection_changed(ctx, Selection::empty(text_pos.position));
                             }
                         }
                         ctx.request_redraw();
@@ -372,7 +351,7 @@ impl Widget for TextEdit {
                 KeyState::Up => {}
             },
 
-            Event::Composition(input) => {}
+            Event::Composition(_) => {}
             _ => {}
         }
     }

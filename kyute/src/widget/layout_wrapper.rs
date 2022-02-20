@@ -1,5 +1,5 @@
 use crate::{
-    core2::{HitTestResult, WindowPaintCtx},
+    core::{HitTestResult, WindowPaintCtx},
     event::{PointerEvent, PointerEventKind},
     widget::prelude::*,
     GpuFrameCtx,
@@ -100,12 +100,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         });
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let m = self.inner.layout(ctx, constraints, env);
         self.measurements.set(m);
         m

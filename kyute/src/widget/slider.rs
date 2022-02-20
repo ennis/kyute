@@ -8,7 +8,6 @@ use crate::{
     SideOffsets, Signal,
 };
 use std::cell::Cell;
-use tracing::trace;
 
 /// Utility class representing a slider track on which a knob can move.
 #[derive(Copy, Clone, Debug)]
@@ -18,10 +17,6 @@ struct SliderTrack {
 }
 
 impl SliderTrack {
-    fn new(start: Point, end: Point) -> SliderTrack {
-        SliderTrack { start, end }
-    }
-
     /// Returns the value that would be set if the cursor was at the given position.
     fn value_from_position(&self, pos: Point, min: f64, max: f64) -> f64 {
         /*let hkw = 0.5 * get_knob_width(track_width, divisions, min_knob_width);
@@ -88,7 +83,7 @@ impl Slider {
     /// * `min` - lower bound of the slider range
     /// * `max` - upper bound of the slider range
     /// * `initial` - initial value of the slider.
-    #[composable(uncached)]
+    #[composable]
     pub fn new(min: f64, max: f64, value: f64) -> Slider {
         Slider {
             // endpoints calculated during layout
@@ -120,17 +115,14 @@ impl Widget for Slider {
         std::any::type_name::<Self>()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
         match event {
             Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerOver | PointerEventKind::PointerOut => {
                     ctx.request_redraw();
                 }
                 PointerEventKind::PointerDown => {
-                    let new_value = self
-                        .track
-                        .get()
-                        .value_from_position(p.position, self.min, self.max);
+                    let new_value = self.track.get().value_from_position(p.position, self.min, self.max);
                     self.value_changed.signal(ctx, new_value);
                     ctx.capture_pointer();
                     ctx.request_focus();
@@ -138,10 +130,7 @@ impl Widget for Slider {
                 }
                 PointerEventKind::PointerMove => {
                     if ctx.is_capturing_pointer() {
-                        let new_value = self
-                            .track
-                            .get()
-                            .value_from_position(p.position, self.min, self.max);
+                        let new_value = self.track.get().value_from_position(p.position, self.min, self.max);
                         self.value_changed.signal(ctx, new_value);
                         ctx.request_redraw();
                     }
@@ -152,22 +141,14 @@ impl Widget for Slider {
         }
     }
 
-    fn layout(
-        &self,
-        _ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, _ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let height = env.get(theme::SLIDER_HEIGHT).unwrap();
         let knob_width = env.get(theme::SLIDER_KNOB_WIDTH).unwrap();
         let knob_height = env.get(theme::SLIDER_KNOB_HEIGHT).unwrap();
         let padding = SideOffsets::new_all_same(0.0);
 
         // fixed height
-        let size = Size::new(
-            constraints.max_width(),
-            constraints.constrain_height(height),
-        );
+        let size = Size::new(constraints.max_width(), constraints.constrain_height(height));
 
         // position the slider track inside the layout
         let inner_bounds = Rect::new(Point::origin(), size).inner_rect(padding);

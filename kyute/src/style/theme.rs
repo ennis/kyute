@@ -1,6 +1,6 @@
 //! Sets of environment keys loaded as a group.
 use crate::{EnvKey, EnvValue, Environment};
-use kyute_shell::{application::Application, asset::AssetLoadError, Asset, AssetId};
+use kyute_shell::Asset;
 use serde::de::DeserializeOwned;
 use serde_json as json;
 use std::{io, io::Read};
@@ -65,13 +65,8 @@ impl ThemeData {
         key: EnvKey<T>,
         env: &mut Environment,
     ) -> Result<(), ThemeLoadError> {
-        let map = self
-            .json
-            .as_object()
-            .ok_or(ThemeLoadError::InvalidJsonStructure)?;
-        let prop = map
-            .get(key.name())
-            .ok_or(ThemeLoadError::PropertyNotFound)?;
+        let map = self.json.as_object().ok_or(ThemeLoadError::InvalidJsonStructure)?;
+        let prop = map.get(key.name()).ok_or(ThemeLoadError::PropertyNotFound)?;
         let value = serde_json::from_value(prop.clone())?;
         env.set(key, value);
         Ok(())

@@ -14,7 +14,7 @@ pub struct TitledPane {
 
 impl TitledPane {
     /// Creates a new collapsible pane.
-    #[composable(uncached)]
+    #[composable]
     pub fn collapsible(
         title: impl Into<String>,
         initially_collapsed: bool,
@@ -26,7 +26,7 @@ impl TitledPane {
         pane
     }
 
-    #[composable(uncached)]
+    #[composable]
     fn new(collapsed: bool, title: String, content: impl Widget + 'static) -> TitledPane {
         let mut inner = Flex::new(Orientation::Vertical);
 

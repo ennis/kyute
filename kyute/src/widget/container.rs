@@ -18,7 +18,7 @@ pub struct Container<Content> {
 }
 
 impl<Content: Widget + 'static> Container<Content> {
-    #[composable(uncached)]
+    #[composable]
     pub fn new(content: Content) -> Container<Content> {
         Container {
             alignment: None,

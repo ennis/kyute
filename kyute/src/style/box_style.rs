@@ -157,22 +157,10 @@ impl BoxStyle {
             };
 
             let mut blur = sk::Paint::default();
-            let offset_x = params
-                .offset_x
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor);
-            let offset_y = params
-                .offset_y
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor);
-            let blur_radius = params
-                .blur_radius
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor);
-            let spread = params
-                .spread_radius
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor);
+            let offset_x = params.offset_x.resolve_or_default(env).to_dips(ctx.scale_factor);
+            let offset_y = params.offset_y.resolve_or_default(env).to_dips(ctx.scale_factor);
+            let blur_radius = params.blur_radius.resolve_or_default(env).to_dips(ctx.scale_factor);
+            let spread = params.spread_radius.resolve_or_default(env).to_dips(ctx.scale_factor);
             let color = params.color.resolve_or_default(env);
             blur.set_mask_filter(sk::MaskFilter::blur(
                 sk::BlurStyle::Normal,
@@ -182,14 +170,14 @@ impl BoxStyle {
             blur.set_color(color.to_skia().to_color());
 
             match box_shadow {
-                BoxShadow::Drop(params) => {
+                BoxShadow::Drop(_) => {
                     let mut shadow_bounds = bounds;
                     shadow_bounds.origin += Offset::new(offset_x, offset_y);
                     shadow_bounds = shadow_bounds.inflate(spread, spread);
                     let rrect = sk::RRect::new_rect_radii(shadow_bounds.to_skia(), &radii);
                     ctx.canvas.draw_rrect(rrect, &blur);
                 }
-                BoxShadow::Inset(params) => {
+                BoxShadow::Inset(_) => {
                     // TODO
                 }
             }

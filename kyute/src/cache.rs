@@ -20,7 +20,6 @@ use std::{
     rc::Rc,
     task::Poll,
 };
-use thiserror::Error;
 use tracing::{trace, warn};
 
 slotmap::new_key_type! {
@@ -182,10 +181,7 @@ impl CacheInner {
             return;
         }
 
-        let value = self.entries[key.key]
-            .value
-            .downcast_mut::<T>()
-            .expect("type mismatch");
+        let value = self.entries[key.key].value.downcast_mut::<T>().expect("type mismatch");
         *value = new_value;
         self.invalidate_dependents(key.key);
     }
@@ -320,8 +316,7 @@ impl CacheWriter {
                     i += len as usize;
                 }
                 Slot::Value {
-                    call_id: this_call_id,
-                    ..
+                    call_id: this_call_id, ..
                 } if this_call_id == call_id => {
                     return Some(i);
                 }
@@ -420,7 +415,13 @@ impl CacheWriter {
             match slot {
                 Slot::Value { key, .. } => {
                     let entry = self.cache.entries.get(key).expect("cache entry not found");
-                    trace!("removing cache entry cache_key={:?} depends={:?} call_id={:?}, call_node={:#?}", key, entry.dependents, entry.call_id, entry.call_node);
+                    trace!(
+                        "removing cache entry cache_key={:?} depends={:?} call_id={:?}, call_node={:#?}",
+                        key,
+                        entry.dependents,
+                        entry.call_id,
+                        entry.call_node
+                    );
                     self.cache.entries.remove(key).unwrap();
                 }
                 _ => {}
@@ -477,9 +478,7 @@ impl CacheWriter {
             dirty: Cell::new(false),
             value: Box::new(initial_value),
         });
-        self.cache
-            .slots
-            .insert(self.pos, Slot::Value { call_id, key });
+        self.cache.slots.insert(self.pos, Slot::Value { call_id, key });
         Key::from_entry_key(key)
     }
 
@@ -526,11 +525,7 @@ impl CacheWriter {
             //trace!("{:?} made dependent of {:?}", parent_state, key.key);
             entry.dependents.insert(parent_state);
         }
-        entry
-            .value
-            .downcast_ref::<T>()
-            .expect("unexpected type")
-            .clone()
+        entry.value.downcast_ref::<T>().expect("unexpected type").clone()
     }
 
     fn replace_value<T: 'static>(&mut self, key: Key<T>, new_value: T) -> T {
@@ -539,10 +534,7 @@ impl CacheWriter {
             //trace!("{:?} made dependent of {:?}", parent_state, key.key);
             entry.dependents.insert(parent_state);
         }
-        mem::replace(
-            entry.value.downcast_mut::<T>().expect("unexpected type"),
-            new_value,
-        )
+        mem::replace(entry.value.downcast_mut::<T>().expect("unexpected type"), new_value)
     }
 
     ///
@@ -651,9 +643,7 @@ impl Cache {
 fn with_comp_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
     CURRENT_CACHE_CONTEXT.with(|cx_cell| {
         let mut cx = cx_cell.borrow_mut();
-        let cx = cx
-            .as_mut()
-            .expect("function cannot called outside of `Cache::run`");
+        let cx = cx.as_mut().expect("function cannot called outside of `Cache::run`");
         f(cx)
     })
 }
@@ -735,10 +725,9 @@ fn state_inner<T: 'static, Init: FnOnce() -> T>(init: Init) -> CacheEntryInsertR
 
 /// TODO document
 #[track_caller]
-pub fn state<T: 'static>(init: impl FnOnce() -> T) -> Key<T> {
+pub fn state<T: 'static, Init: FnOnce() -> T>(init: Init) -> Key<T> {
     state_inner(init).key
 }
-
 
 //#[track_caller]
 //pub fn
@@ -755,11 +744,7 @@ where
         revision: usize,
     }
 
-    let CacheEntryInsertResult {
-        key: task_key,
-        inserted,
-        ..
-    } = state_inner::<Option<AsyncTaskEntry>, _>(|| None);
+    let task_key = state::<Option<AsyncTaskEntry>, _>(|| None);
 
     // if we requested a restart, abort the current running task
     let mut task = task_key.take();
@@ -839,12 +824,9 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
         let (result_entry, result_dirty) = with_comp_cx(move |cx| {
             let call_id = cx.id_stack.current();
             let call_node = cx.id_stack.current_call_node();
-            let args_changed = cx
-                .writer
-                .compare_and_update_value(call_id, args, call_node.clone());
+            let args_changed = cx.writer.compare_and_update_value(call_id, args, call_node.clone());
             let CacheEntryInsertResult { key, dirty, .. } =
-                cx.writer
-                    .get_or_insert_entry(call_id, call_node.clone(), || None);
+                cx.writer.get_or_insert_entry(call_id, call_node.clone(), || None);
             /* if args_changed {
                 trace!("memoize: recomputing because arguments have changed {:#?}", call_node);
             }
@@ -911,10 +893,7 @@ mod tests {
         for i in 0..3 {
             let mut writer = CacheWriter::new(cache);
             for &item in items.iter() {
-                eprintln!(
-                    " ==== Iteration {} - item {} =========================",
-                    i, item
-                );
+                eprintln!(" ==== Iteration {} - item {} =========================", i, item);
                 writer.start_group(CallId(item));
                 writer.compare_and_update_value(CallId(100), i, None);
                 writer.end_group();
@@ -962,10 +941,7 @@ mod tests {
         for i in 0..3 {
             let mut writer = CacheWriter::new(cache);
             for &item in items.iter() {
-                eprintln!(
-                    " ==== Iteration {} - item {} =========================",
-                    i, item
-                );
+                eprintln!(" ==== Iteration {} - item {} =========================", i, item);
                 writer.compare_and_update_value(CallId(100 + item), i, None);
             }
             //writer.dump();
@@ -1023,9 +999,7 @@ mod tests {
 
         for i in 0..10 {
             let num_items = rng.gen_range(0..10);
-            let items = (0..num_items)
-                .map(|_| rng.gen_range(0..10))
-                .collect::<Vec<_>>();
+            let items = (0..num_items).map(|_| rng.gen_range(0..10)).collect::<Vec<_>>();
 
             eprintln!("Items: {:?}", items);
 

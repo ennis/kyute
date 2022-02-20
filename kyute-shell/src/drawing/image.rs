@@ -1,8 +1,9 @@
 //! Wrapper around skia images.
-use crate::{asset::Asset, drawing::ToSkia};
-use skia_safe as sk;
+use crate::{
+    asset::Asset,
+    drawing::{Size, SizeI, ToSkia},
+};
 use std::{io, io::Read};
-use crate::drawing::{Size, SizeI};
 
 #[derive(Clone, Debug)]
 pub struct Image(skia_safe::Image);
@@ -28,7 +29,7 @@ impl Asset for Image {
 
     fn load(reader: &mut dyn Read) -> Result<Self, Self::LoadError> {
         let mut data = vec![];
-        reader.read_to_end(&mut data);
+        reader.read_to_end(&mut data)?;
         Self::load_from_bytes(&data)
     }
 

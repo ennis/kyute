@@ -13,7 +13,7 @@ pub struct SplitPane {
 
 impl SplitPane
 {
-    #[composable(uncached)]
+    #[composable]
     pub fn new(orientation: Orientation) -> SplitPane {
         let new_split_points = cache::state(|| None);
         SplitPane {
@@ -27,7 +27,7 @@ impl SplitPane
     /// Adds a new child widget.
     ///
     /// Note: this resets the split positions previously set with `split_points`.
-    #[composable(uncached)]
+    #[composable]
     pub fn push(&mut self, node: impl Widget + 'static) {
         self.nodes.push(WidgetPod::new(node));
     }

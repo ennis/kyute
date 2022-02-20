@@ -1,5 +1,4 @@
 use crate::{event::PointerEventKind, widget::prelude::*, Signal};
-use tracing::trace;
 
 #[derive(Clone)]
 pub struct Clickable<Content> {
@@ -8,7 +7,7 @@ pub struct Clickable<Content> {
 }
 
 impl<Content: Widget + 'static> Clickable<Content> {
-    #[composable(uncached)]
+    #[composable]
     pub fn new(content: Content) -> Clickable<Content> {
         Clickable {
             content,
@@ -56,12 +55,7 @@ impl<Content: Widget + 'static> Widget for Clickable<Content> {
         }
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.content.layout(ctx, constraints, env)
     }
 
