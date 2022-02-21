@@ -1,4 +1,4 @@
-use crate::{cache, composable, state::Signal, util::Counter, Data};
+use crate::{cache, composable, state::Signal, util::counter::Counter, Data};
 use std::{collections::HashMap, convert::TryInto};
 
 /// Keyboard shortcut.
@@ -7,10 +7,7 @@ use std::{collections::HashMap, convert::TryInto};
 pub struct Shortcut(kyute_shell::Shortcut);
 
 impl Shortcut {
-    pub const fn new(
-        modifiers: keyboard_types::Modifiers,
-        key: kyute_shell::ShortcutKey,
-    ) -> Shortcut {
+    pub const fn new(modifiers: keyboard_types::Modifiers, key: kyute_shell::ShortcutKey) -> Shortcut {
         Shortcut(kyute_shell::Shortcut::new(modifiers, key))
     }
 
@@ -149,10 +146,7 @@ impl Menu {
                 MenuItem::Separator => {
                     menu.add_separator();
                 }
-                MenuItem::Submenu {
-                    text,
-                    menu: submenu,
-                } => {
+                MenuItem::Submenu { text, menu: submenu } => {
                     menu.add_submenu(text, submenu.to_shell_menu());
                 }
             }

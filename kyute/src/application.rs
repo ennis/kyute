@@ -6,6 +6,7 @@ use crate::{
     asset::ASSET_LOADER,
     core::WidgetId,
     drawing::{ImageCache, IMAGE_CACHE},
+    util::fs_watch::{FileSystemWatcher, FILE_SYSTEM_WATCHER},
     AssetLoader, Cache, Environment, Event, InternalEvent, WidgetPod,
 };
 use kyute_shell::{
@@ -122,10 +123,14 @@ pub fn run(ui: fn() -> Arc<WidgetPod>, env_overrides: Environment) {
 
     // setup env
     let mut env = Environment::new();
+
     let asset_loader = AssetLoader::new();
+    env.set(ASSET_LOADER, asset_loader.clone());
     let image_cache = ImageCache::new(asset_loader.clone());
-    env.set(ASSET_LOADER, asset_loader);
     env.set(IMAGE_CACHE, image_cache);
+    let fs_watcher = FileSystemWatcher::new();
+    env.set(FILE_SYSTEM_WATCHER, fs_watcher);
+
     env = env.merged(env_overrides);
 
     // setup and enter the tokio runtime

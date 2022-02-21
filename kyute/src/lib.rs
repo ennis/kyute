@@ -15,7 +15,6 @@ mod core;
 mod drawing;
 mod layout;
 mod state;
-mod util;
 mod window;
 
 pub mod application;
@@ -26,6 +25,7 @@ pub mod region;
 pub mod style;
 pub mod text;
 pub mod theme;
+pub mod util;
 pub mod widget;
 
 pub use kyute_macros::{composable, Data};

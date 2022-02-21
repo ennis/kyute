@@ -51,6 +51,7 @@ impl_data_simple!(u128);
 impl_data_simple!(usize);
 impl_data_simple!(char);
 impl_data_simple!(bool);
+impl_data_simple!(std::path::PathBuf);
 impl_data_simple!(std::num::NonZeroI8);
 impl_data_simple!(std::num::NonZeroI16);
 impl_data_simple!(std::num::NonZeroI32);

@@ -1,7 +1,7 @@
 use crate::{
-    application::ExtEvent,
     cache, drawing,
     drawing::ToSkia,
+    util::fs_watch::watch_path,
     widget::{prelude::*, Null},
     AssetLoader,
 };
@@ -29,36 +29,13 @@ impl Image<Null> {
             contents: ImageContents::Image(image),
         }
     }
-}
 
-/// A composable function that returns true when the asset at the specified URI should be reloaded.
-#[composable]
-fn watch_file_changes(uri: &str) -> bool {
-    let changed = cache::state(|| false);
-    let event_loop_proxy = cache::event_loop_proxy();
-
-    cache::memoize(uri.to_owned(), || {
-        AssetLoader::instance()
-            .watch_changes(uri, false, move |_event| {
-                event_loop_proxy
-                    .send_event(ExtEvent::Recompose {
-                        cache_fn: Box::new(move |cache| cache.set_state(changed, true)),
-                    })
-                    .unwrap();
-            })
-            .ok()
-    });
-
-    changed.update(false)
-}
-
-impl<Placeholder: Widget> Image<Placeholder> {
     /// Creates an image widget that loads the image at the specified URI asynchronously,
     /// and displays the image once it is loaded.
     #[composable]
-    pub fn from_uri_async(uri: &str, placeholder: Placeholder) -> Image<Placeholder> {
+    pub fn from_uri_async(uri: &str) -> Image<Null> {
         let image_future = AssetLoader::instance().load_async::<drawing::Image>(uri);
-        let reload = watch_file_changes(uri);
+        let reload = watch_path(uri);
 
         let image = cache::run_async(
             async move {
@@ -74,6 +51,17 @@ impl<Placeholder: Widget> Image<Placeholder> {
                 contents: ImageContents::Image(image),
             },
             _ => Image {
+                contents: ImageContents::Placeholder(Null),
+            },
+        }
+    }
+
+    pub fn placeholder<Placeholder: Widget>(self, placeholder: Placeholder) -> Image<Placeholder> {
+        match self.contents {
+            ImageContents::Image(image) => Image {
+                contents: ImageContents::Image(image),
+            },
+            ImageContents::Placeholder(_) => Image {
                 contents: ImageContents::Placeholder(placeholder),
             },
         }

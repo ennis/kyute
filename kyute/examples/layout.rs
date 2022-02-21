@@ -24,7 +24,7 @@ fn grid_layout_example() -> impl Widget + Clone {
     grid.add(0, 0, fixed_size_widget(50.0, 50.0, "(0,0)"));
     grid.add(0, 1, fixed_size_widget(50.0, 50.0, "(0,1)"));
     //grid.add(0, 2, fixed_size_widget(50.0, 50.0, "(0,2)"));
-    grid.add(0, 2, Image::from_uri_async("data/haniyasushin_keiki.jpg", Null));
+    grid.add(0, 2, Image::from_uri_async("data/haniyasushin_keiki.jpg"));
     grid.add(1, 0, fixed_size_widget(50.0, 50.0, "(1,0)"));
     grid.add(1, 1..=2, fixed_size_widget(150.0, 50.0, "(1,1)").centered());
     grid
