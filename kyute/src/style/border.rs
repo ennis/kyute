@@ -1,13 +1,11 @@
 //! Border description.
 use crate::{
-    style::{BlendMode, Length, Paint, ValueRef},
-    Color, Environment, PaintCtx, Rect,
+    drawing::ToSkia,
+    style::{BlendMode, Length, Paint},
+    Color, Environment, PaintCtx, Rect, RectExt, ValueRef,
 };
 use approx::ulps_eq;
-use kyute_shell::{
-    drawing::{RectExt, ToSkia},
-    skia as sk,
-};
+use skia_safe as sk;
 
 /// Border reference position
 #[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
@@ -112,31 +110,17 @@ impl Border {
     }
 
     /// Draws the described border in the given paint context, around the specified bounds.
-    pub fn draw(
-        &self,
-        ctx: &mut PaintCtx,
-        bounds: Rect,
-        radii: [sk::Vector; 4],
-        env: &Environment,
-    ) {
+    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, radii: [sk::Vector; 4], env: &Environment) {
         let mut paint = self.paint.to_sk_paint(env, bounds);
         paint.set_style(sk::PaintStyle::Stroke);
         paint.set_blend_mode(self.blend_mode.to_skia());
         //paint.set_alpha_f(self.opacity as sk::scalar);
 
         let widths = [
-            self.widths[0]
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor) as sk::scalar,
-            self.widths[1]
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor) as sk::scalar,
-            self.widths[2]
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor) as sk::scalar,
-            self.widths[3]
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor) as sk::scalar,
+            self.widths[0].resolve_or_default(env).to_dips(ctx.scale_factor) as sk::scalar,
+            self.widths[1].resolve_or_default(env).to_dips(ctx.scale_factor) as sk::scalar,
+            self.widths[2].resolve_or_default(env).to_dips(ctx.scale_factor) as sk::scalar,
+            self.widths[3].resolve_or_default(env).to_dips(ctx.scale_factor) as sk::scalar,
         ];
         let uniform_border = widths.iter().all(|&w| ulps_eq!(w, widths[0]));
 
@@ -159,45 +143,32 @@ impl Border {
             // left
             if !ulps_eq!(widths[0], 0.0) {
                 paint.set_stroke_width(widths[0]);
-                ctx.canvas.draw_line(
-                    rect.top_left().to_skia(),
-                    rect.bottom_left().to_skia(),
-                    &paint,
-                );
+                ctx.canvas
+                    .draw_line(rect.top_left().to_skia(), rect.bottom_left().to_skia(), &paint);
             }
 
             // top
             if !ulps_eq!(widths[1], 0.0) {
                 paint.set_stroke_width(widths[1]);
-                ctx.canvas.draw_line(
-                    rect.top_left().to_skia(),
-                    rect.top_right().to_skia(),
-                    &paint,
-                );
+                ctx.canvas
+                    .draw_line(rect.top_left().to_skia(), rect.top_right().to_skia(), &paint);
             }
 
             // right
             if !ulps_eq!(widths[2], 0.0) {
                 paint.set_stroke_width(widths[2]);
-                ctx.canvas.draw_line(
-                    rect.top_right().to_skia(),
-                    rect.bottom_right().to_skia(),
-                    &paint,
-                );
+                ctx.canvas
+                    .draw_line(rect.top_right().to_skia(), rect.bottom_right().to_skia(), &paint);
             }
 
             // bottom
             if !ulps_eq!(widths[3], 0.0) {
                 paint.set_stroke_width(widths[3]);
-                ctx.canvas.draw_line(
-                    rect.bottom_left().to_skia(),
-                    rect.bottom_right().to_skia(),
-                    &paint,
-                );
+                ctx.canvas
+                    .draw_line(rect.bottom_left().to_skia(), rect.bottom_right().to_skia(), &paint);
             }
         } else {
-            if radii[0].is_zero() && radii[1].is_zero() && radii[2].is_zero() && radii[3].is_zero()
-            {
+            if radii[0].is_zero() && radii[1].is_zero() && radii[2].is_zero() && radii[3].is_zero() {
                 ctx.canvas.draw_rect(rect.to_skia(), &paint);
             } else {
                 let rrect = sk::RRect::new_rect_radii(rect.to_skia(), &radii);

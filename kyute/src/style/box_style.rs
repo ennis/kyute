@@ -1,8 +1,9 @@
 use crate::{
-    style::{border::Border, ColorRef, Length, Paint, ValueRef},
-    Environment, Offset, PaintCtx, Rect,
+    drawing::ToSkia,
+    style::{border::Border, ColorRef, Length, Paint},
+    Environment, Offset, PaintCtx, Rect, ValueRef,
 };
-use kyute_shell::{drawing::ToSkia, skia as sk};
+use skia_safe as sk;
 
 //--------------------------------------------------------------------------------------------------
 

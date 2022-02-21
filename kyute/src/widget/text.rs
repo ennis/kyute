@@ -1,9 +1,9 @@
 use crate::{
     composable,
+    drawing::ToSkia,
     text::{FormattedText, FormattedTextParagraph},
     BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect, Size, Widget,
 };
-use kyute_shell::drawing::ToSkia;
 use std::cell::{Ref, RefCell};
 
 /// Displays formatted text.

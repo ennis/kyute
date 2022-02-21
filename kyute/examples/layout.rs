@@ -1,12 +1,11 @@
 use kyute::{
     application, composable,
-    shell::application::Application,
-    style::UnitExt,
+    shell::{application::Application, winit::window::WindowBuilder},
     theme,
     widget::{Container, Flex, Grid, GridLength, Image, Label, Null},
-    Alignment, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, Widget, WidgetExt, WidgetPod, Window,
+    Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, UnitExt, Widget, WidgetExt,
+    WidgetPod, Window,
 };
-use kyute_shell::{winit::window::WindowBuilder, AssetId};
 use std::sync::Arc;
 
 #[composable]

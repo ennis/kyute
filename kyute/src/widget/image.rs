@@ -1,15 +1,16 @@
 use crate::{
     application::ExtEvent,
-    cache,
+    cache, drawing,
+    drawing::ToSkia,
     widget::{prelude::*, Null},
+    AssetLoader,
 };
-use kyute_shell::{application::Application, drawing::ToSkia};
 use std::task::Poll;
 use tracing::trace;
 
 #[derive(Clone)]
 enum ImageContents<Placeholder> {
-    Image(kyute_shell::drawing::Image),
+    Image(drawing::Image),
     Placeholder(Placeholder),
 }
 
@@ -22,8 +23,7 @@ impl Image<Null> {
     /// Creates an image widget that displays the image from a specified asset URI.
     #[composable]
     pub fn from_uri(uri: &str) -> Image<Null> {
-        let application = Application::instance();
-        let image: kyute_shell::drawing::Image = application.asset_loader().load(uri).expect("failed to load image");
+        let image: drawing::Image = AssetLoader::instance().load(uri).expect("failed to load image");
 
         Image {
             contents: ImageContents::Image(image),
@@ -38,8 +38,7 @@ fn watch_file_changes(uri: &str) -> bool {
     let event_loop_proxy = cache::event_loop_proxy();
 
     cache::memoize(uri.to_owned(), || {
-        Application::instance()
-            .asset_loader()
+        AssetLoader::instance()
             .watch_changes(uri, false, move |_event| {
                 event_loop_proxy
                     .send_event(ExtEvent::Recompose {
@@ -58,11 +57,7 @@ impl<Placeholder: Widget> Image<Placeholder> {
     /// and displays the image once it is loaded.
     #[composable]
     pub fn from_uri_async(uri: &str, placeholder: Placeholder) -> Image<Placeholder> {
-        let application = Application::instance();
-        let image_future = application
-            .asset_loader()
-            .load_async::<kyute_shell::drawing::Image>(uri);
-
+        let image_future = AssetLoader::instance().load_async::<drawing::Image>(uri);
         let reload = watch_file_changes(uri);
 
         let image = cache::run_async(

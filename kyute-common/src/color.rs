@@ -1,8 +1,8 @@
-use crate::drawing::{FromSkia, ToSkia};
+//use kyute_shell::drawing::{FromSkia, ToSkia};
 use palette::Shade;
 use std::{error::Error, fmt, marker::PhantomData};
 
-/// Color spec.
+/// Color spec, non-linear srgb.
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Color(palette::Srgba);
@@ -65,12 +65,7 @@ impl Color {
 
     /// TODO documentation
     pub const fn from_rgb_u8(red: u8, green: u8, blue: u8) -> Color {
-        Color::new(
-            (red as f64) / 255.0,
-            (green as f64) / 255.0,
-            (blue as f64) / 255.0,
-            1.0,
-        )
+        Color::new((red as f64) / 255.0, (green as f64) / 255.0, (blue as f64) / 255.0, 1.0)
     }
 
     pub const fn to_rgba_u8(&self) -> (u8, u8, u8, u8) {
@@ -80,6 +75,10 @@ impl Color {
             (self.0.color.blue * 255.0) as u8,
             (self.0.alpha * 255.0) as u8,
         )
+    }
+
+    pub const fn to_rgba(&self) -> (f32, f32, f32, f32) {
+        (self.0.color.red, self.0.color.green, self.0.color.blue, self.0.alpha)
     }
 
     /// TODO documentation
@@ -150,16 +149,10 @@ impl Color {
                 }
             }
             // #RGB, RGB
-            &[b'#', r, g, b] | &[r, g, b] => {
-                match (
-                    nibble_from_ascii(r),
-                    nibble_from_ascii(g),
-                    nibble_from_ascii(b),
-                ) {
-                    (Ok(r), Ok(g), Ok(b)) => Ok(Color::from_rgb_u8(r, g, b)),
-                    _ => Err(ColorParseError),
-                }
-            }
+            &[b'#', r, g, b] | &[r, g, b] => match (nibble_from_ascii(r), nibble_from_ascii(g), nibble_from_ascii(b)) {
+                (Ok(r), Ok(g), Ok(b)) => Ok(Color::from_rgb_u8(r, g, b)),
+                _ => Err(ColorParseError),
+            },
             // #RGBA, RGBA
             &[b'#', r, g, b, a] | &[r, g, b, a] => {
                 match (
@@ -174,34 +167,5 @@ impl Color {
             }
             _ => Err(ColorParseError),
         }
-    }
-}
-
-impl ToSkia for Color {
-    type Target = skia_safe::Color4f;
-
-    fn to_skia(&self) -> Self::Target {
-        skia_safe::Color4f {
-            r: self.0.red,
-            g: self.0.green,
-            b: self.0.blue,
-            a: self.0.alpha,
-        }
-    }
-}
-
-impl FromSkia for Color {
-    type Source = skia_safe::Color4f;
-
-    fn from_skia(value: Self::Source) -> Self {
-        Color(palette::Srgba {
-            color: palette::Srgb {
-                red: value.r,
-                green: value.g,
-                blue: value.b,
-                standard: PhantomData,
-            },
-            alpha: value.a,
-        })
     }
 }

@@ -1,9 +1,9 @@
 //! Text elements
 use crate::{
-    composable, env::Environment, event::Event, style::ColorRef, theme, BoxConstraints, EventCtx, LayoutCtx,
-    Measurements, PaintCtx, Point, Rect, Widget,
+    composable, drawing::FromSkia, env::Environment, event::Event, style::ColorRef, theme, BoxConstraints, EventCtx,
+    LayoutCtx, Measurements, PaintCtx, Point, Rect, Widget,
 };
-use kyute_shell::{drawing::FromSkia, skia as sk};
+use skia_safe as sk;
 use std::cell::RefCell;
 
 /// Style of a text label.

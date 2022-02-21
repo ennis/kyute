@@ -1,10 +1,8 @@
 //! Environment keys that control the visual aspect (theme) of common widgets.
 use crate::{
-    style::{Border, BoxShadow, BoxStyle, ColorExpr, Length, LinearGradient, UnitExt},
-    EnvKey, SideOffsets,
+    style::{Border, BoxShadow, BoxStyle, ColorExpr, LinearGradient},
+    Color, EnvKey, Environment, Length, SideOffsets, UnitExt,
 };
-use kyute::Environment;
-use kyute_shell::drawing::Color;
 
 pub const FONT_SIZE: EnvKey<f64> = EnvKey::new("kyute.theme.font_size"); // [14.0];
 pub const FONT_NAME: EnvKey<String> = EnvKey::new("kyute.theme.font_name");
@@ -15,34 +13,24 @@ pub const FRAME_BG_NORMAL_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.frame_
 pub const FRAME_BG_RAISED_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.frame_bg_raised_color"); // [Color::new(0.424, 0.424, 0.424, 1.0)];
 pub const FRAME_FOCUS_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.frame_focus_color"); // [Color::new(0.6, 0.6, 0.9, 1.0)];
 pub const FRAME_BORDER_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.frame_border_color"); // [Color::new(0.13,0.13,0.13,1.0)];
-pub const FRAME_OUTER_HIGHLIGHT_OPACITY: EnvKey<f64> =
-    EnvKey::new("kyute.theme.frame_outer_highlight_opacity"); // [0.15];
-pub const FRAME_EDGE_DARKENING_INTENSITY: EnvKey<f64> =
-    EnvKey::new("kyute.theme.frame_edge_darkening_intensity"); // [0.5];
-pub const BUTTON_TOP_HIGHLIGHT_INTENSITY: EnvKey<f64> =
-    EnvKey::new("kyute.theme.button_top_highlight_intensity"); // [0.2];
+pub const FRAME_OUTER_HIGHLIGHT_OPACITY: EnvKey<f64> = EnvKey::new("kyute.theme.frame_outer_highlight_opacity"); // [0.15];
+pub const FRAME_EDGE_DARKENING_INTENSITY: EnvKey<f64> = EnvKey::new("kyute.theme.frame_edge_darkening_intensity"); // [0.5];
+pub const BUTTON_TOP_HIGHLIGHT_INTENSITY: EnvKey<f64> = EnvKey::new("kyute.theme.button_top_highlight_intensity"); // [0.2];
 
-pub const BUTTON_BACKGROUND_TOP_COLOR: EnvKey<Color> =
-    EnvKey::new("kyute.theme.button_background_top_color"); // [Color::new(0.45, 0.45, 0.45, 1.0)];
-pub const BUTTON_BACKGROUND_BOTTOM_COLOR: EnvKey<Color> =
-    EnvKey::new("kyute.theme.button_background_bottom_color"); // [Color::new(0.40, 0.40, 0.40, 1.0)];
+pub const BUTTON_BACKGROUND_TOP_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.button_background_top_color"); // [Color::new(0.45, 0.45, 0.45, 1.0)];
+pub const BUTTON_BACKGROUND_BOTTOM_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.button_background_bottom_color"); // [Color::new(0.40, 0.40, 0.40, 1.0)];
 pub const BUTTON_BACKGROUND_TOP_COLOR_HOVER: EnvKey<Color> =
     EnvKey::new("kyute.theme.button_background_top_color.hover"); // [Color::new(0.45, 0.45, 0.45, 1.0)];
 pub const BUTTON_BACKGROUND_BOTTOM_COLOR_HOVER: EnvKey<Color> =
     EnvKey::new("kyute.theme.button_background_bottom_color.hover"); // [Color::new(0.40, 0.40, 0.40, 1.0)];
 
-pub const WIDGET_OUTER_GROOVE_BOTTOM_COLOR: EnvKey<Color> =
-    EnvKey::new("kyute.theme.widget_outer_groove_bottom_color");
-pub const WIDGET_OUTER_GROOVE_TOP_COLOR: EnvKey<Color> =
-    EnvKey::new("kyute.theme.widget_outer_groove_top_color");
+pub const WIDGET_OUTER_GROOVE_BOTTOM_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.widget_outer_groove_bottom_color");
+pub const WIDGET_OUTER_GROOVE_TOP_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.widget_outer_groove_top_color");
 
-pub const BUTTON_BORDER_BOTTOM_COLOR: EnvKey<Color> =
-    EnvKey::new("kyute.theme.button_border_bottom_color"); // [Color::new(0.1, 0.1, 0.1, 1.0)];
-pub const BUTTON_BORDER_TOP_COLOR: EnvKey<Color> =
-    EnvKey::new("kyute.theme.button_border_top_color"); // [Color::new(0.18, 0.18, 0.18, 1.0)];
+pub const BUTTON_BORDER_BOTTOM_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.button_border_bottom_color"); // [Color::new(0.1, 0.1, 0.1, 1.0)];
+pub const BUTTON_BORDER_TOP_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.button_border_top_color"); // [Color::new(0.18, 0.18, 0.18, 1.0)];
 pub const BUTTON_BORDER_RADIUS: EnvKey<f64> = EnvKey::new("kyute.theme.button_border_radius"); // [2.0];
-pub const BUTTON_LABEL_PADDING: EnvKey<SideOffsets> =
-    EnvKey::new("kyute.theme.button_label_padding"); // [SideOffsets::new(2.0, 5.0, 2.0, 5.0)];
+pub const BUTTON_LABEL_PADDING: EnvKey<SideOffsets> = EnvKey::new("kyute.theme.button_label_padding"); // [SideOffsets::new(2.0, 5.0, 2.0, 5.0)];
 pub const FLEX_SPACING: EnvKey<f64> = EnvKey::new("kyute.theme.flex_spacing"); // [2.0];
 pub const SLIDER_PADDING: EnvKey<SideOffsets> = EnvKey::new("kyute.theme.slider_padding"); // [SideOffsets::new_all_same(0.0)];
 pub const SLIDER_HEIGHT: EnvKey<f64> = EnvKey::new("kyute.theme.slider_height"); // [14.0];
@@ -55,12 +43,10 @@ pub const TEXT_EDIT_FONT_SIZE: EnvKey<f64> = EnvKey::new("kyute.theme.text_edit_
 pub const TEXT_EDIT_FONT_NAME: EnvKey<String> = EnvKey::new("kyute.theme.text_edit_font_name"); // ["Segoe UI"];
 pub const TEXT_EDIT_CARET_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.text_edit_caret_color"); // [Color::new(1.0,1.0,1.0,1.0)];
 pub const TEXT_EDIT_BORDER_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.text_edit_border_color"); // [Color::new(0.0,0.0,0.0,1.0)];
-pub const TEXT_EDIT_BACKGROUND_COLOR: EnvKey<Color> =
-    EnvKey::new("kyute.theme.text_edit_background_color"); // [Color::new(1.0,1.0,1.0,1.0)];
+pub const TEXT_EDIT_BACKGROUND_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.text_edit_background_color"); // [Color::new(1.0,1.0,1.0,1.0)];
 pub const TEXT_EDIT_BORDER_WIDTH: EnvKey<f64> = EnvKey::new("kyute.theme.text_edit_border_width"); // [1.0];
 pub const TEXT_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.text_color"); // [Color::new(0.96,0.96,0.96,1.0)];
-pub const SELECTED_TEXT_BACKGROUND_COLOR: EnvKey<Color> =
-    EnvKey::new("kyute.theme.selected_text_background_color"); // [Color::new(0.6,0.6,0.8,1.0)];
+pub const SELECTED_TEXT_BACKGROUND_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.selected_text_background_color"); // [Color::new(0.6,0.6,0.8,1.0)];
 pub const SELECTED_TEXT_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme.selected_text_color"); // [Color::new(1.0,1.0,1.0,1.0)];
 
 pub mod palette {
@@ -334,18 +320,16 @@ pub mod palette {
     pub const BLUE_GREY_A700: Color = Color::from_hex("#455a64"); // #455a64;
 }
 
+/// Keys for common colors.
 pub mod keys {
     use super::palette;
     use crate::{Color, EnvKey, Environment};
 
-    pub const UNDER_PAGE_BACKGROUND_COLOR: EnvKey<Color> =
-        EnvKey::new("kyute.theme-v2.under-page-background-color");
+    pub const UNDER_PAGE_BACKGROUND_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.under-page-background-color");
     pub const SHADOW_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.shadow-color");
-    pub const CONTROL_BACKGROUND_COLOR: EnvKey<Color> =
-        EnvKey::new("kyute.theme-v2.control-background-color");
+    pub const CONTROL_BACKGROUND_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.control-background-color");
     pub const CONTROL_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.control-color");
-    pub const CONTROL_BORDER_COLOR: EnvKey<Color> =
-        EnvKey::new("kyute.theme-v2.control-border-color");
+    pub const CONTROL_BORDER_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.control-border-color");
     pub const LABEL_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.label-color");
     pub const GROOVE_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.groove-color");
     pub const ALTERNATING_CONTENT_BACKGROUND_COLOR_A: EnvKey<Color> =
@@ -373,8 +357,7 @@ pub const BUTTON: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.button");
 /// Minimum height of a button.
 pub const BUTTON_HEIGHT: EnvKey<Length> = EnvKey::new("kyute.theme-v2.button-height");
 /// Position of the baseline of a button label.
-pub const BUTTON_LABEL_BASELINE: EnvKey<Length> =
-    EnvKey::new("kyute.theme-v2.button-label-baseline");
+pub const BUTTON_LABEL_BASELINE: EnvKey<Length> = EnvKey::new("kyute.theme-v2.button-label-baseline");
 /// Style of a slider track.
 pub const SLIDER_TRACK: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.slider-track");
 /// Font size of a label.
@@ -401,13 +384,7 @@ pub fn setup_default_style(env: &mut Environment) {
                 .stop(ColorExpr::darken(palette::LIGHT_BLUE_900, 0.02), Some(0.0))
                 .stop(ColorExpr::lighten(palette::LIGHT_BLUE_900, 0.02), Some(1.0)),
         )
-        .box_shadow(BoxShadow::drop(
-            0.dip(),
-            1.dip(),
-            1.dip(),
-            0.dip(),
-            keys::SHADOW_COLOR,
-        ))
+        .box_shadow(BoxShadow::drop(0.dip(), 1.dip(), 1.dip(), 0.dip(), keys::SHADOW_COLOR))
         .border(control_border.clone());
 
     env.set(DROP_DOWN, button_like_frame.clone());
@@ -416,9 +393,7 @@ pub fn setup_default_style(env: &mut Environment) {
 
     env.set(
         TEXT_EDIT,
-        BoxStyle::new()
-            .fill(keys::GROOVE_COLOR)
-            .border(control_border.clone()),
+        BoxStyle::new().fill(keys::GROOVE_COLOR).border(control_border.clone()),
     );
 
     env.set(

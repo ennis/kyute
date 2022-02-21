@@ -1,6 +1,5 @@
 //! Sets of environment keys loaded as a group.
-use crate::{EnvKey, EnvValue, Environment};
-use kyute_shell::Asset;
+use crate::{Asset, EnvKey, EnvValue, Environment};
 use serde::de::DeserializeOwned;
 use serde_json as json;
 use std::{io, io::Read};

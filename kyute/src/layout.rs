@@ -1,6 +1,5 @@
 //! Types and functions used for layouting widgets.
-use crate::{Data, Offset, Point, SideOffsets, Size};
-use kyute_shell::drawing::Rect;
+use crate::{Data, Offset, Point, Rect, SideOffsets, Size};
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -79,10 +78,7 @@ impl BoxConstraints {
     }
 
     pub fn tight(size: Size) -> BoxConstraints {
-        BoxConstraints {
-            min: size,
-            max: size,
-        }
+        BoxConstraints { min: size, max: size }
     }
 
     pub fn enforce(&self, other: BoxConstraints) -> BoxConstraints {
@@ -133,12 +129,8 @@ impl BoxConstraints {
     }*/
 
     pub fn constrain(&self, size: Size) -> Size {
-        Size::new(
-            self.constrain_width(size.width),
-            self.constrain_height(size.height),
-        )
+        Size::new(self.constrain_width(size.width), self.constrain_height(size.height))
     }
-
 
     pub fn constrain_width(&self, width: f64) -> f64 {
         width.max(self.min.width).min(self.max.width)
@@ -231,10 +223,7 @@ impl Default for Measurements {
 impl Measurements {
     /// Creates a new [`Layout`] with the given size, with no offset relative to its parent.
     pub fn new(bounds: Rect) -> Measurements {
-        Measurements {
-            bounds,
-            baseline: None,
-        }
+        Measurements { bounds, baseline: None }
     }
 
     /// Replaces the baseline of this node.

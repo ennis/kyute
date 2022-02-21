@@ -1,9 +1,11 @@
 //! Wrapper around skia images.
-use crate::{
-    asset::Asset,
-    drawing::{Size, SizeI, ToSkia},
+use crate::{asset::AssetLoadError, drawing::ToSkia, Asset, AssetLoader, EnvKey, SizeI};
+use std::{
+    collections::HashMap,
+    io,
+    io::Read,
+    sync::{Arc, Mutex},
 };
-use std::{io, io::Read};
 
 #[derive(Clone, Debug)]
 pub struct Image(skia_safe::Image);
@@ -46,3 +48,44 @@ impl Asset for Image {
         }
     }
 }
+#[derive(Clone)]
+struct Entry {
+    image: Image,
+}
+
+struct Inner {
+    entries: HashMap<String, Entry>,
+}
+
+#[derive(Clone)]
+pub struct ImageCache {
+    asset_loader: AssetLoader,
+    inner: Arc<Mutex<Inner>>,
+}
+
+impl ImageCache {
+    pub fn new(asset_loader: AssetLoader) -> ImageCache {
+        ImageCache {
+            asset_loader,
+            inner: Arc::new(Mutex::new(Inner {
+                entries: Default::default(),
+            })),
+        }
+    }
+
+    pub fn load(&self, uri: &str) -> Result<Image, AssetLoadError<io::Error>> {
+        let mut inner = self.inner.lock().unwrap();
+
+        if let Some(entry) = inner.entries.get(uri) {
+            return Ok(entry.image.clone());
+        }
+
+        let image = self.asset_loader.load::<Image>(uri)?;
+        inner.entries.insert(uri.to_owned(), Entry { image: image.clone() });
+        Ok(image)
+    }
+}
+
+impl_env_value!(ImageCache);
+
+pub const IMAGE_CACHE: EnvKey<ImageCache> = EnvKey::new("kyute.image-cache");

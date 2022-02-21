@@ -1,9 +1,12 @@
 //! Description of paints.
 use crate::{
-    style::{image_cache::IMAGE_CACHE, Angle, ColorExpr},
-    Color, EnvKey, Environment, Offset, Rect,
+    asset::ASSET_LOADER,
+    drawing::{ToSkia, IMAGE_CACHE},
+    style::ColorExpr,
+    Angle, Color, EnvKey, Environment, Offset, Rect,
 };
-use kyute_shell::{drawing::ToSkia, skia as sk, skia::gradient_shader::GradientShaderColors};
+use skia_safe as sk;
+use skia_safe::gradient_shader::GradientShaderColors;
 use std::fmt;
 
 /// Represents a gradient stop.
@@ -127,9 +130,8 @@ impl Paint {
                 repeat_y,
             } => {
                 let image_cache = env.get(IMAGE_CACHE).unwrap();
+                let asset_loader = env.get(ASSET_LOADER).unwrap();
                 if let Ok(image) = image_cache.load(uri) {
-                    let image: kyute_shell::drawing::Image = image;
-
                     let tile_x = match *repeat_x {
                         RepeatMode::Repeat => sk::TileMode::Repeat,
                         RepeatMode::NoRepeat => sk::TileMode::Decal,

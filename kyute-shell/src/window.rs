@@ -1,9 +1,7 @@
 //! Platform-specific window creation
-use crate::{application::Application, drawing::Point, error::Error, Menu};
-use graal::{vk, vk::Handle};
+use crate::{application::Application, error::Error, Menu};
+use graal::vk;
 use raw_window_handle::HasRawWindowHandle;
-use skia_safe::gpu::vk as skia_vk;
-use skia_vk::GetProcOf;
 use std::ptr;
 use windows::Win32::{
     Foundation::{BOOL, HINSTANCE, HWND, POINT},
@@ -107,46 +105,6 @@ impl<'a> DerefMut for WindowDrawContext<'a> {
     }
 }*/
 
-fn skia_get_proc_addr(of: skia_vk::GetProcOf) -> skia_vk::GetProcResult {
-    unsafe {
-        let entry = graal::get_vulkan_entry();
-        let instance = graal::get_vulkan_instance();
-
-        match of {
-            GetProcOf::Instance(instance, name) => entry
-                .get_instance_proc_addr(graal::vk::Instance::from_raw(instance as u64), name)
-                .unwrap()
-                as skia_vk::GetProcResult,
-            GetProcOf::Device(device, name) => instance
-                .get_device_proc_addr(graal::vk::Device::from_raw(device as u64), name)
-                .unwrap() as skia_vk::GetProcResult,
-        }
-    }
-}
-
-unsafe fn create_skia_vulkan_backend_context(
-    device: &graal::Device,
-) -> skia_safe::gpu::vk::BackendContext<'static> {
-    let vk_device = device.device.handle();
-    let vk_instance = graal::get_vulkan_instance().handle();
-    let vk_physical_device = device.physical_device();
-    let (vk_queue, vk_queue_family_index) = device.graphics_queue();
-    let instance_extensions = graal::get_instance_extensions();
-
-    let mut ctx = skia_vk::BackendContext::new_with_extensions(
-        vk_instance.as_raw() as *mut _,
-        vk_physical_device.as_raw() as *mut _,
-        vk_device.as_raw() as *mut _,
-        (vk_queue.as_raw() as *mut _, vk_queue_family_index as usize),
-        &skia_get_proc_addr,
-        instance_extensions,
-        &[],
-    );
-
-    ctx.set_max_api_version(skia_vk::Version::new(1, 0, 0));
-    ctx
-}
-
 /// Encapsulates a Win32 window and associated resources for drawing to it.
 pub struct Window {
     window: winit::window::Window,
@@ -158,8 +116,6 @@ pub struct Window {
     swap_chain: graal::Swapchain,
     swap_chain_width: u32,
     swap_chain_height: u32,
-    skia_backend_context: skia_safe::gpu::vk::BackendContext<'static>,
-    skia_recording_context: skia_safe::gpu::DirectContext,
 }
 
 impl Window {
@@ -194,28 +150,16 @@ impl Window {
         }
     }
 
-    /// Shows a context menu.
-    pub fn show_context_menu(&self, menu: Menu, at: Point) {
+    /// Shows a context menu at the specified pixel location.
+    pub fn show_context_menu(&self, menu: Menu, at: (i32, i32)) {
         unsafe {
             let hmenu = menu.into_hmenu();
-            let scale_factor = self.window.scale_factor();
+            /*let scale_factor = self.window.scale_factor();
             let x = at.x * scale_factor;
-            let y = at.y * scale_factor;
-            let mut point = POINT {
-                x: x as i32,
-                y: y as i32,
-            };
+            let y = at.y * scale_factor;*/
+            let mut point = POINT { x: at.0, y: at.1 };
             ClientToScreen(self.hwnd, &mut point);
-            if TrackPopupMenu(
-                hmenu,
-                TPM_LEFTALIGN,
-                point.x,
-                point.y,
-                0,
-                self.hwnd,
-                ptr::null(),
-            ) == BOOL::from(false)
-            {
+            if TrackPopupMenu(hmenu, TPM_LEFTALIGN, point.x, point.y, 0, self.hwnd, ptr::null()) == BOOL::from(false) {
                 tracing::warn!("failed to track popup menu");
             }
         }
@@ -251,14 +195,6 @@ impl Window {
     /// Returns the swap chain of this window.
     pub fn swap_chain(&self) -> &graal::Swapchain {
         &self.swap_chain
-    }
-
-    pub fn skia_backend_context(&self) -> &skia_safe::gpu::vk::BackendContext<'static> {
-        &self.skia_backend_context
-    }
-
-    pub fn skia_recording_context(&self) -> &skia_safe::gpu::DirectContext {
-        &self.skia_recording_context
     }
 
     /// Creates a new window from the options given in the provided [`WindowBuilder`].
@@ -334,14 +270,6 @@ impl Window {
         }
         let swap_chain = unsafe { device.create_swapchain(surface, swapchain_size) };
 
-        let skia_backend_context = unsafe { create_skia_vulkan_backend_context(device) };
-        let recording_context_options = skia_safe::gpu::ContextOptions::new();
-        let skia_recording_context = skia_safe::gpu::DirectContext::new_vulkan(
-            &skia_backend_context,
-            &recording_context_options,
-        )
-        .unwrap();
-
         let hinstance = window.hinstance() as HINSTANCE;
         let hwnd = window.hwnd() as HWND;
 
@@ -355,8 +283,6 @@ impl Window {
             swap_chain,
             swap_chain_width: swapchain_size.0,
             swap_chain_height: swapchain_size.1,
-            skia_backend_context,
-            skia_recording_context,
         };
 
         Ok(pw)

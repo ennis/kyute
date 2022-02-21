@@ -1,8 +1,8 @@
-use crate::{Data, Point, Rect};
-use kyute_shell::{
-    drawing::{Color, FromSkia, ToSkia},
-    skia as sk,
+use crate::{
+    drawing::{FromSkia, ToSkia},
+    Color, Data, Point, Rect,
 };
+use skia_safe as sk;
 use std::{
     cmp::Ordering,
     ops::{Bound, Range, RangeBounds},
@@ -248,11 +248,7 @@ impl TextRuns {
                 i
             }
             Err(i) => {
-                let prev_end = if i > 0 {
-                    self.runs[i - 1].range.end
-                } else {
-                    start
-                };
+                let prev_end = if i > 0 { self.runs[i - 1].range.end } else { start };
                 self.runs.insert(
                     i,
                     TextRun {
@@ -311,20 +307,12 @@ where
 }
 
 impl FormattedText {
-    pub fn with_attribute(
-        mut self,
-        range: impl RangeBounds<usize>,
-        attribute: impl Into<Attribute>,
-    ) -> FormattedText {
+    pub fn with_attribute(mut self, range: impl RangeBounds<usize>, attribute: impl Into<Attribute>) -> FormattedText {
         self.add_attribute(range, attribute);
         self
     }
 
-    pub fn add_attribute(
-        &mut self,
-        range: impl RangeBounds<usize>,
-        attribute: impl Into<Attribute>,
-    ) {
+    pub fn add_attribute(&mut self, range: impl RangeBounds<usize>, attribute: impl Into<Attribute>) {
         let range = resolve_range(range, self.plain_text.len());
         Arc::make_mut(&mut self.runs).merge_attribute(range, &attribute.into())
     }
@@ -342,8 +330,7 @@ impl FormattedText {
         let default_font_manager = sk::FontMgr::default();
         let mut font_collection = sk::textlayout::FontCollection::new();
         font_collection.set_default_font_manager(default_font_manager, "Consolas");
-        let mut builder =
-            sk::textlayout::ParagraphBuilder::new(&self.paragraph_style.0, font_collection);
+        let mut builder = sk::textlayout::ParagraphBuilder::new(&self.paragraph_style.0, font_collection);
 
         // computed text style
         let mut text_style = sk::textlayout::TextStyle::new();
@@ -521,10 +508,7 @@ mod tests {
                 },
                 TextRun {
                     range: 1..5,
-                    attributes: vec![
-                        Attribute::FontSize(40.0),
-                        Attribute::FontStyle(FontStyle::Italic)
-                    ]
+                    attributes: vec![Attribute::FontSize(40.0), Attribute::FontStyle(FontStyle::Italic)]
                 },
                 TextRun {
                     range: 5..10,
@@ -543,10 +527,7 @@ mod tests {
                 },
                 TextRun {
                     range: 1..5,
-                    attributes: vec![
-                        Attribute::FontSize(40.0),
-                        Attribute::FontStyle(FontStyle::Italic)
-                    ]
+                    attributes: vec![Attribute::FontSize(40.0), Attribute::FontStyle(FontStyle::Italic)]
                 },
                 /*TextRun {
                     range: 4..5,
@@ -558,10 +539,7 @@ mod tests {
                 },*/
                 TextRun {
                     range: 5..7,
-                    attributes: vec![
-                        Attribute::FontSize(40.0),
-                        Attribute::FontWeight(FontWeight::BOLD)
-                    ]
+                    attributes: vec![Attribute::FontSize(40.0), Attribute::FontWeight(FontWeight::BOLD)]
                 },
                 TextRun {
                     range: 7..10,

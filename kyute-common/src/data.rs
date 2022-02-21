@@ -168,10 +168,7 @@ impl<T0: Data, T1: Data, T2: Data> Data for (T0, T1, T2) {
 
 impl<T0: Data, T1: Data, T2: Data, T3: Data> Data for (T0, T1, T2, T3) {
     fn same(&self, other: &Self) -> bool {
-        self.0.same(&other.0)
-            && self.1.same(&other.1)
-            && self.2.same(&other.2)
-            && self.3.same(&other.3)
+        self.0.same(&other.0) && self.1.same(&other.1) && self.2.same(&other.2) && self.3.same(&other.3)
     }
 }
 
@@ -266,48 +263,6 @@ impl<T: Data> Data for std::ops::Bound<T> {
 impl<T: Data, const N: usize> Data for [T; N] {
     fn same(&self, other: &Self) -> bool {
         self.iter().zip(other.iter()).all(|(a, b)| a.same(b))
-    }
-}
-
-// Taken from druid
-#[cfg(feature = "imbl")]
-impl<A: Data> Data for imbl::Vector<A> {
-    fn same(&self, other: &Self) -> bool {
-        // if a vec is small enough that it doesn't require an allocation
-        // it is 'inline'; in this case a pointer comparison is meaningless.
-        if self.is_inline() {
-            self.len() == other.len() && self.iter().zip(other.iter()).all(|(a, b)| a.same(b))
-        } else {
-            self.ptr_eq(other)
-        }
-    }
-}
-
-#[cfg(feature = "imbl")]
-impl<K: Clone + 'static, V: Data, S: 'static> Data for imbl::HashMap<K, V, S> {
-    fn same(&self, other: &Self) -> bool {
-        self.ptr_eq(&other)
-    }
-}
-
-#[cfg(feature = "imbl")]
-impl<A: Data, S: 'static> Data for imbl::HashSet<A, S> {
-    fn same(&self, other: &Self) -> bool {
-        self.ptr_eq(&other)
-    }
-}
-
-#[cfg(feature = "imbl")]
-impl<K: Clone + 'static, V: Data> Data for imbl::OrdMap<K, V> {
-    fn same(&self, other: &Self) -> bool {
-        self.ptr_eq(&other)
-    }
-}
-
-#[cfg(feature = "imbl")]
-impl<A: Data> Data for imbl::OrdSet<A> {
-    fn same(&self, other: &Self) -> bool {
-        self.ptr_eq(&other)
     }
 }
 

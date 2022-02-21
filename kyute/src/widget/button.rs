@@ -1,9 +1,9 @@
 use crate::{
     event::PointerEventKind,
-    style::{BoxStyle, ColorRef, ValueRef},
+    style::{BoxStyle, ColorRef},
     theme,
     widget::{prelude::*, Container, Label},
-    SideOffsets, Signal,
+    SideOffsets, Signal, ValueRef,
 };
 
 /// Button styling information.

@@ -1,3 +1,5 @@
+use crate::{cache, EnvKey};
+pub use notify::Event;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::HashMap,
@@ -14,8 +16,6 @@ use std::{
 use thiserror::Error;
 use tokio::task;
 use tracing::trace;
-
-pub use notify::Event;
 
 #[derive(Copy, Clone, Debug)]
 pub struct AssetUri<'a> {
@@ -95,7 +95,7 @@ pub struct WatchSubscription(Arc<()>);
 struct WatchHandler {
     original_path: PathBuf,
     canonical_path: PathBuf,
-    callback: Box<dyn FnMut(Event) + Send>,
+    callback: Box<dyn FnMut(notify::Event) + Send>,
     subscription: Weak<()>,
 }
 
@@ -110,7 +110,7 @@ impl Resolvers {
         let watch_handlers_clone = watch_handlers.clone();
 
         let watcher = Mutex::new(
-            notify::recommended_watcher(move |res: notify::Result<Event>| {
+            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
                 match res {
                     Ok(event) => {
                         let mut handlers = watch_handlers_clone.lock().unwrap();
@@ -193,6 +193,8 @@ impl Resolvers {
     }
 }
 
+pub const ASSET_LOADER: EnvKey<AssetLoader> = EnvKey::new("kyute.asset-loader");
+
 #[derive(Clone)]
 pub struct AssetLoader {
     resolvers: Arc<Resolvers>,
@@ -203,6 +205,8 @@ impl Default for AssetLoader {
         AssetLoader::new()
     }
 }
+
+impl_env_value!(AssetLoader);
 
 #[derive(Debug, Error)]
 pub enum AssetLoadError<E: Error + fmt::Debug> {
@@ -217,6 +221,12 @@ impl AssetLoader {
         AssetLoader {
             resolvers: Arc::new(Resolvers::new()),
         }
+    }
+
+    pub fn instance() -> AssetLoader {
+        cache::environment()
+            .get(ASSET_LOADER)
+            .expect("could not find an AssetLoader instance in the current environment")
     }
 
     /// Loads an asset from an URI.

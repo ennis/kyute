@@ -3,7 +3,7 @@ use crate::{
     bloom::Bloom,
     cache,
     cache::Key,
-    call_key::CallId,
+    call_id::CallId,
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
     widget::{Align, ConstrainedBox},
@@ -50,7 +50,7 @@ impl LayoutCtx {
 
 // TODO make things private
 pub struct PaintCtx<'a> {
-    pub canvas: &'a mut kyute_shell::skia::Canvas,
+    pub canvas: &'a mut skia_safe::Canvas,
     pub id: WidgetId,
     pub window_bounds: Rect,
     pub focus: Option<WidgetId>,
@@ -309,6 +309,7 @@ impl<'a> EventCtx<'a> {
 
     pub fn track_popup_menu(&mut self, menu: kyute_shell::Menu, at: Point) {
         self.focus_state.popup_target = Some(self.id);
+        let at = ((at.x * self.scale_factor) as i32, (at.y * self.scale_factor) as i32);
         self.parent_window
             .as_mut()
             .expect("EventCtx::track_popup_menu called without a parent window")
@@ -693,7 +694,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
 
         ctx.canvas.save();
         ctx.canvas
-            .translate(kyute_shell::skia::Vector::new(offset.x as f32, offset.y as f32));
+            .translate(skia_safe::Vector::new(offset.x as f32, offset.y as f32));
 
         {
             let mut child_ctx = PaintCtx {

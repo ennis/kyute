@@ -1,5 +1,4 @@
-use crate::{cache, data::Data, style::Length, Color, SideOffsets};
-
+use crate::{cache, Color, Data, Length, SideOffsets};
 use std::{
     any::Any,
     collections::HashMap,
@@ -179,5 +178,54 @@ impl Environment {
             inner.parent = Some(self.0.clone())
         }
         with
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+
+/// Either a value or a reference to a value in an environment.
+#[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(untagged)]
+pub enum ValueRef<T> {
+    /// Inline value.
+    Inline(T),
+    /// Fetch the value from the environment.
+    #[serde(skip)]
+    Env(EnvKey<T>),
+}
+
+impl<T: EnvValue> ValueRef<T> {
+    pub fn resolve(&self, env: &Environment) -> Option<T> {
+        match self {
+            ValueRef::Inline(v) => Some(v.clone()),
+            ValueRef::Env(k) => env.get(*k),
+        }
+    }
+}
+
+impl<T: EnvValue + Default> ValueRef<T> {
+    pub fn resolve_or_default(&self, env: &Environment) -> T {
+        self.resolve(env).unwrap_or_default()
+    }
+}
+
+impl<T> From<T> for ValueRef<T> {
+    fn from(v: T) -> Self {
+        ValueRef::Inline(v)
+    }
+}
+
+impl<T> From<EnvKey<T>> for ValueRef<T> {
+    fn from(k: EnvKey<T>) -> Self {
+        ValueRef::Env(k)
+    }
+}
+
+impl<T> Default for ValueRef<T>
+where
+    T: Default,
+{
+    fn default() -> Self {
+        ValueRef::Inline(T::default())
     }
 }

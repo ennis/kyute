@@ -10,9 +10,7 @@ edition = "2018"
 # windowing
 anyhow = "1.0.43"
 winit = { path = "../ext/winit" }
-euclid = "0.22"   # basic 2D geometric types
-svgtypes = "0.5.0"  # SVG path parser and path segment definitions
-palette =  "0.5.0"   # colors
+#euclid = "0.22"   # basic 2D geometric types
 bitflags = "1.2.1"
 lazy_static = "1.4.0"
 keyboard-types = "0.6"
@@ -41,10 +39,7 @@ windows = { version = "0.29.0", features = ["Win32_Graphics_Direct2D",
     "Win32_Graphics_Imaging",
     "Win32_Graphics_Imaging_D2D",
     "std"] }
-skia-safe = { version = "0.43.0", features = ["vulkan", "textlayout"] }
 serde = { version = "1.0", optional = true }
-tokio = { version = "1.16.1", features = ["rt", "sync"] }
-notify = "5.0.0-pre.13"
 
 [features]
-serializing = ["serde", "palette/serializing"]
+serializing = ["serde"]

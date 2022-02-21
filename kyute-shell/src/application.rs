@@ -1,5 +1,4 @@
 //! Windows-specific UI stuff.
-use palette::encoding::pixel::RawPixel;
 use std::{
     cell::RefCell,
     ffi::OsString,
@@ -16,27 +15,21 @@ use windows::{
     Win32::{
         Graphics::{
             Direct2D::{
-                D2D1CreateFactory, ID2D1Device, ID2D1DeviceContext, ID2D1Factory1,
-                D2D1_DEBUG_LEVEL_WARNING, D2D1_FACTORY_OPTIONS, D2D1_FACTORY_TYPE_MULTI_THREADED,
+                D2D1CreateFactory, ID2D1Device, ID2D1DeviceContext, ID2D1Factory1, D2D1_DEBUG_LEVEL_WARNING,
+                D2D1_DEVICE_CONTEXT_OPTIONS_NONE, D2D1_FACTORY_OPTIONS, D2D1_FACTORY_TYPE_MULTI_THREADED,
             },
-            Direct3D::{D3D_FEATURE_LEVEL, D3D_FEATURE_LEVEL_11_1},
+            Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL, D3D_FEATURE_LEVEL_11_1},
             Direct3D11::{
-                D3D11CreateDevice, ID3D11Device5, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                D3D11_CREATE_DEVICE_DEBUG, D3D11_SDK_VERSION,
+                D3D11CreateDevice, ID3D11Device5, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_DEBUG,
+                D3D11_SDK_VERSION,
             },
-            DirectWrite::{DWriteCreateFactory, IDWriteFactory},
+            DirectWrite::{DWriteCreateFactory, IDWriteFactory, DWRITE_FACTORY_TYPE_SHARED},
             Dxgi::{CreateDXGIFactory2, IDXGIDevice, IDXGIFactory3},
             Imaging::{CLSID_WICImagingFactory2, D2D::IWICImagingFactory2},
         },
         System::Com::{CoCreateInstance, CoInitialize, CLSCTX_INPROC_SERVER},
         UI::Input::KeyboardAndMouse::GetDoubleClickTime,
     },
-};
-//use windows::core::IUnknown;
-use crate::AssetLoader;
-use windows::Win32::Graphics::{
-    Direct2D::D2D1_DEVICE_CONTEXT_OPTIONS_NONE, Direct3D::D3D_DRIVER_TYPE_HARDWARE,
-    DirectWrite::DWRITE_FACTORY_TYPE_SHARED,
 };
 
 /// Mutex-protected and ref-counted alias to `graal::Context`.
@@ -108,7 +101,6 @@ pub(crate) struct ApplicationImpl {
     // FIXME: it's far too easy to clone the ID2D11DeviceContext accidentally and use it in a thread-unsafe way: maybe create it on-the-fly instead?
     pub(crate) d2d_device_context: D2D1DeviceContext,
     pub(crate) wic_factory: WICImagingFactory2,
-    pub(crate) asset_loader: AssetLoader,
 }
 
 /// Encapsulates application-global services.
@@ -309,14 +301,10 @@ impl Application {
         // ---------- Create the Windows Imaging Component (WIC) factory ----------
         let wic_factory = unsafe {
             CoInitialize(ptr::null_mut()).unwrap();
-            let wic: IWICImagingFactory2 =
-                CoCreateInstance(&CLSID_WICImagingFactory2, None, CLSCTX_INPROC_SERVER)
-                    .expect("CoCreateInstance(CLSID_WICImagingFactory2) failed");
+            let wic: IWICImagingFactory2 = CoCreateInstance(&CLSID_WICImagingFactory2, None, CLSCTX_INPROC_SERVER)
+                .expect("CoCreateInstance(CLSID_WICImagingFactory2) failed");
             WICImagingFactory2(wic)
         };
-
-        // ---------- Asset loader ----------
-        let asset_loader = AssetLoader::default();
 
         let app_impl = ApplicationImpl {
             gpu_device,
@@ -329,7 +317,6 @@ impl Application {
             d2d_device,
             d2d_device_context,
             wic_factory,
-            asset_loader,
         };
 
         let app = Application(Arc::new(app_impl));
@@ -343,9 +330,9 @@ impl Application {
     /// Panics of no platform is active, or if called outside of the main thread, which is the thread
     /// that called `Platform::new`.
     pub fn instance() -> Application {
-        APPLICATION.with(|p| p.borrow().clone()).expect(
-            "either the platform instance was not initialized, or not calling from the main thread",
-        )
+        APPLICATION
+            .with(|p| p.borrow().clone())
+            .expect("either the platform instance was not initialized, or not calling from the main thread")
     }
 
     /// Deletes the application object and closes the associated services.
@@ -367,11 +354,6 @@ impl Application {
             let ms = GetDoubleClickTime();
             Duration::from_millis(ms as u64)
         }
-    }
-
-    /// Returns a reference to the asset loader instance.
-    pub fn asset_loader(&self) -> &AssetLoader {
-        &self.0.asset_loader
     }
 
     /// Returns the `graal::Device` instance.

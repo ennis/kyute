@@ -1,8 +1,10 @@
-use crate::widget::prelude::*;
-use kyute_shell::drawing::RoundToPixel;
+use crate::{
+    style::{BoxStyle, PaintCtxExt},
+    theme,
+    widget::prelude::*,
+    RoundToPixel,
+};
 use std::sync::Arc;
-use crate::style::{BoxStyle, PaintCtxExt};
-use crate::theme;
 
 pub fn main_axis_length(orientation: Orientation, size: Size) -> f64 {
     match orientation {
@@ -88,12 +90,7 @@ impl Widget for Flex {
         }
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let item_measures: Vec<Measurements> = self
             .items
             .iter()
@@ -118,8 +115,7 @@ impl Widget for Flex {
 
         for i in 0..self.items.len() {
             //eprintln!("flex {:?} item pos {}", self.axis, d);
-            let len = main_axis_length(self.axis_orientation, item_measures[i].size())
-                .round_to_pixel(ctx.scale_factor);
+            let len = main_axis_length(self.axis_orientation, item_measures[i].size()).round_to_pixel(ctx.scale_factor);
             let offset = match self.axis_orientation {
                 Orientation::Vertical => Offset::new(0.0, d),
                 Orientation::Horizontal => Offset::new(d, 0.0),

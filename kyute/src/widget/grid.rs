@@ -1,5 +1,4 @@
-use crate::{widget::prelude::*, EnvKey};
-use kyute_shell::drawing::{Color, ToSkia};
+use crate::{drawing::ToSkia, widget::prelude::*, Color, EnvKey};
 use std::{
     cell::RefCell,
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
@@ -413,7 +412,7 @@ impl Widget for Grid {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        use kyute_shell::skia as sk;
+        use skia_safe as sk;
         let height = bounds.size.height;
         let width = bounds.size.width;
 

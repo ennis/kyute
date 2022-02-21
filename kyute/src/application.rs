@@ -3,9 +3,10 @@
 //! Provides the `run_application` function that opens the main window and translates the incoming
 //! events from winit into the events expected by kyute.
 use crate::{
+    asset::ASSET_LOADER,
     core::WidgetId,
-    style::image_cache::{ImageCache, IMAGE_CACHE},
-    Cache, Environment, Event, InternalEvent, WidgetPod,
+    drawing::{ImageCache, IMAGE_CACHE},
+    AssetLoader, Cache, Environment, Event, InternalEvent, WidgetPod,
 };
 use kyute_shell::{
     winit,
@@ -115,12 +116,17 @@ fn eval_root_widget(
     root_widget
 }
 
-pub fn run(ui: fn() -> Arc<WidgetPod>, mut env: Environment) {
+pub fn run(ui: fn() -> Arc<WidgetPod>, env_overrides: Environment) {
     let event_loop = EventLoop::<ExtEvent>::with_user_event();
     let mut app_ctx = AppCtx::new(event_loop.create_proxy());
 
     // setup env
-    env.set(IMAGE_CACHE, ImageCache::new());
+    let mut env = Environment::new();
+    let asset_loader = AssetLoader::new();
+    let image_cache = ImageCache::new(asset_loader.clone());
+    env.set(ASSET_LOADER, asset_loader);
+    env.set(IMAGE_CACHE, image_cache);
+    env = env.merged(env_overrides);
 
     // setup and enter the tokio runtime
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");

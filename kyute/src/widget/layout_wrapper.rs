@@ -1,10 +1,10 @@
 use crate::{
     core::{HitTestResult, WindowPaintCtx},
+    drawing::ToSkia,
     event::{PointerEvent, PointerEventKind},
     widget::prelude::*,
     GpuFrameCtx,
 };
-use kyute_shell::drawing::ToSkia;
 use std::cell::Cell;
 
 #[derive(Clone)]

@@ -9,12 +9,11 @@ use crate::{
     text::FormattedText,
     theme,
     widget::{text::Text, Container},
-    BoxConstraints, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect, SideOffsets, Size,
+    BoxConstraints, Color, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect, SideOffsets, Size,
     WidgetPod,
 };
 use keyboard_types::KeyState;
 use kyute::text::TextPosition;
-use kyute_shell::drawing::Color;
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
 

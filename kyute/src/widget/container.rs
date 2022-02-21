@@ -1,7 +1,7 @@
 use crate::{
-    style::{BoxStyle, Length, PaintCtxExt, UnitExt, ValueRef},
+    style::{BoxStyle, PaintCtxExt},
     widget::{prelude::*, LayoutWrapper},
-    SideOffsets,
+    Length, SideOffsets, UnitExt, ValueRef,
 };
 
 #[derive(Clone)]
@@ -173,12 +173,7 @@ impl<Content: Widget> Widget for Container<Content> {
         self.content.event(ctx, event, env)
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        mut constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
         // First, measure the child, taking into account the mandatory padding
         let content_padding = self.content_padding.resolve(env).unwrap();
         let content_constraints = constraints.deflate(content_padding);
@@ -188,14 +183,8 @@ impl<Content: Widget> Widget for Container<Content> {
 
         // adjust content baseline so that `baseline = adjusted_content_baseline + padding.top`.
         if let Some(baseline) = self.baseline {
-            let baseline = (baseline.resolve(env).unwrap().to_dips(ctx.scale_factor)
-                - content_offset.y)
-                .max(0.0);
-            let offset = baseline
-                - content_size
-                    .baseline
-                    .unwrap_or(content_size.bounds.size.height)
-                    .round();
+            let baseline = (baseline.resolve(env).unwrap().to_dips(ctx.scale_factor) - content_offset.y).max(0.0);
+            let offset = baseline - content_size.baseline.unwrap_or(content_size.bounds.size.height).round();
             content_offset.y += offset;
             content_size.bounds.size.height += offset;
         }
@@ -215,16 +204,8 @@ impl<Content: Widget> Widget for Container<Content> {
             x.max(min).min(max)
         }
 
-        constraints.min.width = clamp(
-            content_size.width(),
-            constraints.min.width,
-            constraints.max.width,
-        );
-        constraints.min.height = clamp(
-            content_size.height(),
-            constraints.min.height,
-            constraints.max.height,
-        );
+        constraints.min.width = clamp(content_size.width(), constraints.min.width, constraints.max.width);
+        constraints.min.height = clamp(content_size.height(), constraints.min.height, constraints.max.height);
 
         // apply additional w/h sizing constraints to the container
         //let mut additional_constraints = BoxConstraints::new(..,..);
@@ -270,10 +251,8 @@ impl<Content: Widget> Widget for Container<Content> {
 
         // Place the contents inside the box according to alignment
         if let Some(alignment) = self.alignment {
-            let x = 0.5 * size.width * (1.0 + alignment.x)
-                - 0.5 * content_size.width() * (1.0 + alignment.x);
-            let y = 0.5 * size.height * (1.0 + alignment.y)
-                - 0.5 * content_size.height() * (1.0 + alignment.y);
+            let x = 0.5 * size.width * (1.0 + alignment.x) - 0.5 * content_size.width() * (1.0 + alignment.x);
+            let y = 0.5 * size.height * (1.0 + alignment.y) - 0.5 * content_size.height() * (1.0 + alignment.y);
             content_offset.x += x;
             content_offset.y += y;
         }
