@@ -1,11 +1,12 @@
 use crate::{
+    asset::AssetLoadError,
     cache, drawing,
     drawing::ToSkia,
     util::fs_watch::watch_path,
     widget::{prelude::*, Null},
     AssetLoader,
 };
-use std::task::Poll;
+use std::{io::Error, task::Poll};
 use tracing::trace;
 
 #[derive(Clone)]
@@ -36,12 +37,21 @@ impl Image<Null> {
     pub fn from_uri_async(uri: &str) -> Image<Null> {
         let image_future = AssetLoader::instance().load_async::<drawing::Image>(uri);
         let reload = watch_path(uri);
+        let uri = uri.to_owned();
 
         let image = cache::run_async(
             async move {
                 let image_result = image_future.await;
-                trace!("Image::from_uri_async {:?}", image_result);
-                image_result.ok()
+                match image_result {
+                    Ok(image) => {
+                        trace!("image `{}` successfully loaded", uri);
+                        Some(image)
+                    }
+                    Err(err) => {
+                        trace!("failed to load image `{}`: {}", uri, err);
+                        None
+                    }
+                }
             },
             reload,
         );

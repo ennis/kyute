@@ -1,4 +1,4 @@
-use crate::{drawing::ToSkia, widget::prelude::*, Color, EnvKey};
+use crate::{drawing::ToSkia, widget::prelude::*, Color, EnvKey, Length};
 use std::{
     cell::RefCell,
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
@@ -15,6 +15,17 @@ pub enum GridLength {
     Fixed(f64),
     /// Proportion of remaining space.
     Flex(f64),
+}
+
+impl From<Length> for GridLength {
+    fn from(length: Length) -> Self {
+        match length {
+            Length::Dip(dips) => GridLength::Fixed(dips),
+            _ => {
+                todo!("GridLength from Inches & Px")
+            }
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -146,13 +157,13 @@ impl Grid {
     }
 
     /// Creates a single-column grid.
-    pub fn column(width: GridLength) -> Grid {
-        Self::with_columns([width])
+    pub fn column(width: impl Into<GridLength>) -> Grid {
+        Self::with_columns([width.into()])
     }
 
     /// Creates a single-row grid.
-    pub fn row(height: GridLength) -> Grid {
-        Self::with_rows([height])
+    pub fn row(height: impl Into<GridLength>) -> Grid {
+        Self::with_rows([height.into()])
     }
 
     /// Returns the current number of rows

@@ -1,6 +1,7 @@
 use crate::widget::prelude::*;
 
 /// Null widget. Takes no space, ignores all events.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Null;
 
 impl Widget for Null {

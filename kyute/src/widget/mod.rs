@@ -14,9 +14,10 @@ mod layout_wrapper;
 mod menu;
 mod null;
 mod padding;
+mod separator;
 mod slider;
 mod text;
-mod textedit;
+mod text_edit;
 mod titled_pane;
 
 pub use align::Align;
@@ -35,13 +36,12 @@ pub use menu::{Action, Menu, MenuItem, Shortcut};
 pub use null::Null;
 pub use padding::Padding;
 pub use slider::Slider;
-pub use textedit::TextEdit;
+pub use text_edit::TextEdit;
 pub use titled_pane::TitledPane;
 
-use crate::{
-    BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Widget,
-};
+use crate::{BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Widget};
 
+// TODO move somewhere else
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Orientation {
     Horizontal,
@@ -67,12 +67,7 @@ impl<T: SingleChildWidget> Widget for T {
         self.child().event(ctx, event, env)
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.child().layout(ctx, constraints, env)
     }
 
@@ -111,7 +106,7 @@ impl<T: Controller> Widget for T {
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
-        composable, Orientation, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
-        PaintCtx, Point, Rect, Size, Widget, WidgetPod, Alignment
+        composable, Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
+        Orientation, PaintCtx, Point, Rect, Size, Widget, WidgetPod,
     };
 }

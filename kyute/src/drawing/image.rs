@@ -7,6 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// An image. Paper-thin wrapper around skia images.
 #[derive(Clone, Debug)]
 pub struct Image(skia_safe::Image);
 
@@ -57,6 +58,7 @@ struct Inner {
     entries: HashMap<String, Entry>,
 }
 
+/// Loads and caches images by URI.
 #[derive(Clone)]
 pub struct ImageCache {
     asset_loader: AssetLoader,

@@ -336,6 +336,7 @@ pub mod keys {
         EnvKey::new("kyute.theme-v2.alternating-content-background-color-a");
     pub const ALTERNATING_CONTENT_BACKGROUND_COLOR_B: EnvKey<Color> =
         EnvKey::new("kyute.theme-v2.alternating-content-background-color-b");
+    pub const SEPARATOR_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.separator-color");
 
     pub(crate) fn setup_default_colors(env: &mut Environment) {
         env.set(UNDER_PAGE_BACKGROUND_COLOR, palette::GREY_600);
@@ -347,6 +348,7 @@ pub mod keys {
         env.set(SHADOW_COLOR, palette::GREY_900.with_alpha(0.7));
         env.set(ALTERNATING_CONTENT_BACKGROUND_COLOR_A, palette::GREY_600);
         env.set(ALTERNATING_CONTENT_BACKGROUND_COLOR_A, palette::GREY_700);
+        env.set(SEPARATOR_COLOR, palette::GREY_700);
     }
 }
 

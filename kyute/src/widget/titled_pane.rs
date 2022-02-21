@@ -1,11 +1,11 @@
 use crate::{
     composable,
     state::State,
-    widget::{Clickable, Container, Flex, SingleChildWidget, Label},
-    Color, Orientation, SideOffsets, Widget,
+    widget::{separator::separator, Clickable, Container, Flex, Grid, GridLength, Image, Label, SingleChildWidget},
+    Color, Orientation, SideOffsets, Signal, Widget, WidgetExt,
 };
 
-/// A widget with a title TODO.
+/// A widget with a title.
 #[derive(Clone)]
 pub struct TitledPane {
     inner: Flex,
@@ -20,9 +20,9 @@ impl TitledPane {
         initially_collapsed: bool,
         content: impl Widget + 'static,
     ) -> TitledPane {
-        let state = State::new(|| initially_collapsed);
-        let pane = Self::new(state.get(), title.into(), content);
-        state.update(pane.collapsed_changed);
+        let collapsed_state = State::new(|| initially_collapsed);
+        let pane = Self::new(collapsed_state.get(), title.into(), content);
+        collapsed_state.update(pane.collapsed_changed());
         pane
     }
 
@@ -32,22 +32,27 @@ impl TitledPane {
 
         use kyute::style::*;
 
-        // Title bar
-        let title_bar = Clickable::new(Container::new(
-            Flex::horizontal().with(
-                Container::new(Label::new(title))
-                    .content_padding(SideOffsets::new_all_same(2.0))
-                    .box_style(BoxStyle::new().fill(Color::from_hex("#455574"))),
-            ),
-        ));
-
-        let collapsed_changed = if title_bar.clicked() {
-            Some(!collapsed)
+        let icon = Image::from_uri(if collapsed {
+            "data/icons/chevron-collapsed.png"
         } else {
-            None
-        };
+            "data/icons/chevron.png"
+        });
+
+        // Title bar
+        let title_bar = Clickable::new(
+            Container::new(
+                Grid::with_columns([GridLength::Fixed(20.0), GridLength::Fixed(3.0), GridLength::Flex(1.0)])
+                    .with(0, 0, icon)
+                    .with(0, 2, Label::new(title).centered()),
+            )
+            .content_padding(SideOffsets::new_all_same(2.0))
+            .box_style(BoxStyle::new().fill(Color::from_hex("#111111"))),
+        );
+
+        let collapsed_changed = if title_bar.clicked() { Some(!collapsed) } else { None };
 
         inner.push(title_bar);
+        inner.push(separator(Orientation::Horizontal));
 
         // Add contents if not collapsed
         if !collapsed {
@@ -61,7 +66,7 @@ impl TitledPane {
     }
 
     /// Returns whether the panel has been collapsed or expanded from user input.
-    pub fn collapsed_changed(&mut self) -> Option<bool> {
+    pub fn collapsed_changed(&self) -> Option<bool> {
         self.collapsed_changed
     }
 }

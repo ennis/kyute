@@ -23,7 +23,7 @@ serde_json = "1.0.78"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.16.1", features = ["rt", "sync", "time", "rt-multi-thread"] }
 notify = "5.0.0-pre.13"
-skia-safe = { version = "0.45.1", features = ["vulkan", "textlayout"] }
+skia-safe = { version = "0.47.0", features = ["vulkan", "textlayout"] }
 svgtypes = "0.8.0"  # SVG path parser and path segment definitions
 
 [dev-dependencies]

@@ -61,7 +61,8 @@ impl FontFamily {
 }
 
 /// Font styling options (normal, italic, or oblique).
-/// TODO "style" is very vague for what this represents. skia uses "slant", do the same?
+// NOTE: "style" may be a bit vague for what this represents: for example, skia uses "slant" instead.
+// Still, we choose to follow the name of the CSS property ("font-style").
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum FontStyle {
     Normal,
@@ -459,7 +460,6 @@ impl FormattedTextParagraph {
     }
 }
 
-// FIXME: Data impl blocked on skia-safe issue
 #[derive(Clone, Debug, Default)]
 pub struct ParagraphStyle(pub(crate) sk::textlayout::ParagraphStyle);
 
@@ -478,6 +478,12 @@ impl ParagraphStyle {
     pub fn text_alignment(mut self, align: sk::textlayout::TextAlign) -> Self {
         self.0.set_text_align(align);
         self
+    }
+}
+
+impl Data for ParagraphStyle {
+    fn same(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
     }
 }
 
