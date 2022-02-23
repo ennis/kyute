@@ -9,6 +9,40 @@ use std::{
     sync::Arc,
 };
 
+/// Text selection.
+///
+/// Start is the start of the selection, end is the end. The caret is at the end of the selection.
+/// Note that we don't necessarily have start <= end: a selection with start > end means that the
+/// user started the selection gesture from a later point in the text and then went back
+/// (right-to-left in LTR languages). In this case, the cursor will appear at the "beginning"
+/// (i.e. left, for LTR) of the selection.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Data)]
+pub struct Selection {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Selection {
+    pub fn min(&self) -> usize {
+        self.start.min(self.end)
+    }
+    pub fn max(&self) -> usize {
+        self.start.max(self.end)
+    }
+    pub fn is_empty(&self) -> bool {
+        self.start == self.end
+    }
+    pub fn empty(at: usize) -> Selection {
+        Selection { start: at, end: at }
+    }
+}
+
+impl Default for Selection {
+    fn default() -> Self {
+        Selection::empty(0)
+    }
+}
+
 /// Resolves a `RangeBounds` into a range in the range 0..len.
 pub fn resolve_range(range: impl RangeBounds<usize>, len: usize) -> Range<usize> {
     let start = match range.start_bound() {
@@ -424,7 +458,7 @@ impl FromSkia for TextAffinity {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Data)]
 pub struct TextPosition {
     pub position: usize,
     pub affinity: TextAffinity,
@@ -458,6 +492,11 @@ impl FormattedTextParagraph {
             affinity: TextAffinity::from_skia(tp.affinity),
         }
     }
+
+    // FIXME: it seems that the API of SkParagraph is currently very limited. For instance, there's no
+    // API to get the visual position of a glyph.
+    //
+    // Maybe bring back DirectWrite?
 }
 
 #[derive(Clone, Debug, Default)]

@@ -1,8 +1,10 @@
 use crate::{
-    style::{BoxStyle, PaintCtxExt},
+    style::{BoxStyle, PaintCtxExt, WidgetState},
     widget::{prelude::*, LayoutWrapper},
     Length, SideOffsets, UnitExt, ValueRef,
 };
+
+// FIXME: there's no way to force a child widget to stretch?
 
 #[derive(Clone)]
 pub struct Container<Content> {
@@ -14,6 +16,7 @@ pub struct Container<Content> {
     baseline: Option<ValueRef<Length>>,
     content_padding: ValueRef<SideOffsets>,
     box_style: ValueRef<BoxStyle>,
+    alternate_box_styles: Vec<(WidgetState, ValueRef<BoxStyle>)>,
     content: LayoutWrapper<Content>,
 }
 
@@ -29,6 +32,7 @@ impl<Content: Widget + 'static> Container<Content> {
             baseline: None,
             content_padding: Default::default(),
             box_style: BoxStyle::default().into(),
+            alternate_box_styles: vec![],
             content: LayoutWrapper::new(content),
         }
     }
@@ -166,6 +170,17 @@ impl<Content: Widget + 'static> Container<Content> {
     pub fn set_box_style(&mut self, box_style: impl Into<ValueRef<BoxStyle>>) {
         self.box_style = box_style.into();
     }
+
+    /// Adds an alternate style, which replaces the main style when the widget is in the specified state.
+    pub fn alternate_box_style(mut self, state: WidgetState, box_style: impl Into<ValueRef<BoxStyle>>) -> Self {
+        self.push_alternate_box_style(state, box_style);
+        self
+    }
+
+    /// Sets the overlay style, only active when the widget is in the specified state.
+    pub fn push_alternate_box_style(&mut self, state: WidgetState, box_style: impl Into<ValueRef<BoxStyle>>) {
+        self.alternate_box_styles.push((state, box_style.into()));
+    }
 }
 
 impl<Content: Widget> Widget for Container<Content> {
@@ -269,8 +284,35 @@ impl<Content: Widget> Widget for Container<Content> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        let style = self.box_style.resolve(env).unwrap();
-        ctx.draw_styled_box(bounds, &style, env);
+        let state = ctx.widget_state();
+
+        // check if there's a corresponding alternate style
+        let mut used_alt_style = false;
+        for (state_filter, alt_style) in self.alternate_box_styles.iter() {
+            if state.contains(*state_filter) {
+                let alt_style = alt_style.resolve(env).unwrap();
+                ctx.draw_styled_box(bounds, &alt_style, env);
+                used_alt_style = true;
+                break;
+            }
+        }
+
+        // fallback to main style
+        if !used_alt_style {
+            let style = self.box_style.resolve(env).unwrap();
+            ctx.draw_styled_box(bounds, &style, env);
+        }
+
         self.content.paint(ctx, bounds, env);
+
+        /*let overlay_box_style = self
+            .overlay_box_style
+            .as_ref()
+            .map(|(state, style)| (state, style.resolve(env).unwrap()));
+        if let Some((state, overlay)) = overlay_box_style {
+            if current_state.contains(*state) {
+                ctx.draw_styled_box(bounds, &overlay, env);
+            }
+        }*/
     }
 }

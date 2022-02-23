@@ -5,6 +5,7 @@ use crate::{
     Color, Environment, PaintCtx, Rect, RectExt, ValueRef,
 };
 use approx::ulps_eq;
+use kyute_common::Offset;
 use skia_safe as sk;
 
 /// Border reference position
@@ -40,6 +41,8 @@ pub struct Border {
     opacity: f64,
     blend_mode: BlendMode,
     enabled: bool,
+    offset_x: Length,
+    offset_y: Length,
 }
 
 impl Border {
@@ -56,6 +59,8 @@ impl Border {
             opacity: 1.0,
             blend_mode: BlendMode::SrcOver,
             enabled: true,
+            offset_x: Default::default(),
+            offset_y: Default::default(),
         }
     }
 
@@ -72,6 +77,16 @@ impl Border {
     pub fn center(width: impl Into<ValueRef<Length>>) -> Border {
         let width = width.into();
         Border::new(width, BorderPosition::Center)
+    }
+
+    pub fn offset_x(mut self, offset_x: impl Into<Length>) -> Self {
+        self.offset_x = offset_x.into();
+        self
+    }
+
+    pub fn offset_y(mut self, offset_y: impl Into<Length>) -> Self {
+        self.offset_y = offset_y.into();
+        self
     }
 
     /*pub fn move_inside(mut self, pos: impl Into<ValueRef<Length>>) -> Self {
@@ -111,6 +126,11 @@ impl Border {
 
     /// Draws the described border in the given paint context, around the specified bounds.
     pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, radii: [sk::Vector; 4], env: &Environment) {
+        let offset = Offset::new(
+            self.offset_x.to_dips(ctx.scale_factor),
+            self.offset_y.to_dips(ctx.scale_factor),
+        );
+        let bounds = bounds.translate(offset);
         let mut paint = self.paint.to_sk_paint(env, bounds);
         paint.set_style(sk::PaintStyle::Stroke);
         paint.set_blend_mode(self.blend_mode.to_skia());

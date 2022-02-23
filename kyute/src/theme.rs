@@ -1,8 +1,10 @@
 //! Environment keys that control the visual aspect (theme) of common widgets.
 use crate::{
     style::{Border, BoxShadow, BoxStyle, ColorExpr, LinearGradient},
+    theme::palette::GREY_900,
     Color, EnvKey, Environment, Length, SideOffsets, UnitExt,
 };
+use kyute_common::Offset;
 
 pub const FONT_SIZE: EnvKey<f64> = EnvKey::new("kyute.theme.font_size"); // [14.0];
 pub const FONT_NAME: EnvKey<String> = EnvKey::new("kyute.theme.font_name");
@@ -354,12 +356,19 @@ pub mod keys {
 
 /// Style of a drop down frame.
 pub const DROP_DOWN: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.drop-down");
+
 /// Style of a button frame.
 pub const BUTTON: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.button");
+/// Style of an active (pressed) button frame.
+pub const BUTTON_ACTIVE: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.button-active");
+/// Style of a hovered button frame.
+pub const BUTTON_HOVER: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.button-hover");
+
 /// Minimum height of a button.
 pub const BUTTON_HEIGHT: EnvKey<Length> = EnvKey::new("kyute.theme-v2.button-height");
 /// Position of the baseline of a button label.
 pub const BUTTON_LABEL_BASELINE: EnvKey<Length> = EnvKey::new("kyute.theme-v2.button-label-baseline");
+
 /// Style of a slider track.
 pub const SLIDER_TRACK: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.slider-track");
 /// Font size of a label.
@@ -373,13 +382,16 @@ pub const TEXT_EDIT_PADDING: EnvKey<SideOffsets> = EnvKey::new("kyute.theme-v2.t
 /// Style of a text edit frame.
 pub const TEXT_EDIT: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.text-edit");
 
+/// Style of a titled pane header.
+pub const TITLED_PANE_HEADER: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.titled-pane-header");
+
 pub fn setup_default_style(env: &mut Environment) {
     keys::setup_default_colors(env);
 
     let control_border = Border::inside(0.px()).paint(keys::CONTROL_BORDER_COLOR);
 
-    let button_like_frame = BoxStyle::new()
-        .radius(4.dip())
+    let blue_button_like_frame = BoxStyle::new()
+        .radius(3.dip())
         .fill(
             LinearGradient::new()
                 .angle(90.degrees())
@@ -389,9 +401,56 @@ pub fn setup_default_style(env: &mut Environment) {
         .box_shadow(BoxShadow::drop(0.dip(), 1.dip(), 1.dip(), 0.dip(), keys::SHADOW_COLOR))
         .border(control_border.clone());
 
-    env.set(DROP_DOWN, button_like_frame.clone());
+    {
+        let button_frame = BoxStyle::new()
+            .radius(3.dip())
+            .fill(
+                LinearGradient::new()
+                    .angle(90.degrees())
+                    .stop(ColorExpr::darken(palette::GREY_800, 0.02), Some(0.0))
+                    .stop(ColorExpr::lighten(palette::GREY_800, 0.02), Some(1.0)),
+            )
+            .border(Border::inside(0.px()).paint(palette::GREY_700).offset_y(1.px()))
+            .border(Border::inside(0.px()).paint(palette::GREY_900));
+        env.set(BUTTON, button_frame.clone());
+        env.set(BUTTON_ACTIVE, button_frame.clone());
+        env.set(DROP_DOWN, blue_button_like_frame.clone());
+    }
 
-    env.set(BUTTON, button_like_frame.clone());
+    {
+        let button_active_frame = BoxStyle::new()
+            .radius(3.dip())
+            .fill(
+                LinearGradient::new()
+                    .angle(90.degrees())
+                    .stop(ColorExpr::darken(palette::GREY_900, 0.02), Some(0.0))
+                    .stop(ColorExpr::lighten(palette::GREY_900, 0.02), Some(1.0)),
+            )
+            .border(Border::inside(0.px()).paint(palette::GREY_900));
+        env.set(BUTTON_ACTIVE, button_active_frame.clone());
+    }
+
+    {
+        let button_hover_frame = BoxStyle::new()
+            .radius(3.dip())
+            .fill(
+                LinearGradient::new()
+                    .angle(90.degrees())
+                    .stop(ColorExpr::darken(palette::GREY_700, 0.02), Some(0.0))
+                    .stop(ColorExpr::lighten(palette::GREY_700, 0.02), Some(1.0)),
+            )
+            .border(Border::inside(0.px()).paint(palette::GREY_700).offset_y(1.px()))
+            .border(Border::inside(0.px()).paint(palette::GREY_900));
+        env.set(BUTTON_HOVER, button_hover_frame.clone());
+    }
+
+    {
+        let header_frame = BoxStyle::new()
+            .radii(8.dip(), 8.dip(), 0.dip(), 0.dip())
+            .fill(palette::GREY_900)
+            .border(Border::inside(0.px()).paint(palette::GREY_800));
+        env.set(TITLED_PANE_HEADER, header_frame.clone());
+    }
 
     env.set(
         TEXT_EDIT,
@@ -402,8 +461,8 @@ pub fn setup_default_style(env: &mut Environment) {
         SLIDER_TRACK,
         BoxStyle::new()
             .radius(4.dip())
-            .fill(keys::GROOVE_COLOR)
-            .border(control_border.clone()),
+            .fill(palette::GREY_800)
+            .border(Border::inside(0.px()).paint(palette::GREY_900)),
     );
 
     let base_label_height = 15;

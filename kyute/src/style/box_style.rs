@@ -82,12 +82,14 @@ impl BoxShadow {
     }
 }
 
+struct StateMask {}
+
 /// Style of a container.
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct BoxStyle {
     border_radii: [ValueRef<Length>; 4],
     fill: Option<Paint>,
-    border: Option<Border>,
+    borders: Vec<Border>,
     box_shadow: Option<BoxShadow>,
 }
 
@@ -102,7 +104,7 @@ impl BoxStyle {
         BoxStyle {
             border_radii: [ValueRef::Inline(Length::Dip(0.0)); 4],
             fill: None,
-            border: None,
+            borders: vec![],
             box_shadow: None,
         }
     }
@@ -112,14 +114,32 @@ impl BoxStyle {
         BoxStyle {
             border_radii,
             fill: None,
-            border: None,
+            borders: vec![],
             box_shadow: None,
         }
     }
 
+    /// Specifies the radius of the 4 corners of the box.
     pub fn radius(mut self, radius: impl Into<ValueRef<Length>>) -> Self {
         let radius = radius.into();
         self.border_radii = [radius; 4];
+        self
+    }
+
+    /// Specifies the radius of each corner of the box separately.
+    pub fn radii(
+        mut self,
+        top_left: impl Into<ValueRef<Length>>,
+        top_right: impl Into<ValueRef<Length>>,
+        bottom_right: impl Into<ValueRef<Length>>,
+        bottom_left: impl Into<ValueRef<Length>>,
+    ) -> Self {
+        self.border_radii = [
+            top_left.into(),
+            top_right.into(),
+            bottom_right.into(),
+            bottom_left.into(),
+        ];
         self
     }
 
@@ -131,7 +151,7 @@ impl BoxStyle {
 
     /// Adds a border.
     pub fn border(mut self, border: Border) -> Self {
-        self.border = Some(border);
+        self.borders.push(border);
         self
     }
 
@@ -193,7 +213,7 @@ impl BoxStyle {
         }
 
         // borders
-        if let Some(ref border) = self.border {
+        for border in self.borders.iter() {
             border.draw(ctx, bounds, radii, env);
         }
     }

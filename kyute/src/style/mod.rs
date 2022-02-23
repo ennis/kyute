@@ -5,6 +5,7 @@ mod paint;
 mod theme;
 
 use crate::{drawing::ToSkia, env::Environment, Color, EnvKey, Length, PaintCtx, Rect, RectExt, UnitExt, ValueRef};
+use bitflags::bitflags;
 use skia_safe as sk;
 
 use crate::drawing::svg_path_to_skia;
@@ -12,6 +13,16 @@ pub use border::{Border, BorderPosition, BorderStyle};
 pub use box_style::{BoxShadow, BoxShadowParams, BoxStyle};
 pub use paint::{GradientStop, LinearGradient, Paint};
 pub use theme::{define_theme, ThemeData, ThemeLoadError};
+
+bitflags! {
+    #[derive(Default)]
+    pub struct WidgetState: u8 {
+        const DEFAULT = 0;
+        const FOCUS   = 1 << 0;
+        const ACTIVE  = 1 << 1;
+        const HOVER   = 1 << 2;
+    }
+}
 
 /// Describes a blending mode.
 // TODO move to crate::drawing?

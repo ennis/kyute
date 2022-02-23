@@ -603,6 +603,7 @@ impl Window {
                         invalid: &invalid,
                         hover: false,
                         measurements: Default::default(),
+                        active: false,
                     };
 
                     // TODO environment

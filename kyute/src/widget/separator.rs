@@ -11,9 +11,11 @@ pub fn separator(orientation: Orientation) -> impl Widget + Clone {
     match orientation {
         Orientation::Vertical => Container::new(Null)
             .fixed_width(2.px())
+            .centered()
             .box_style(BoxStyle::new().fill(theme::keys::SEPARATOR_COLOR)),
         Orientation::Horizontal => Container::new(Null)
             .fixed_height(2.px())
+            .centered()
             .box_style(BoxStyle::new().fill(theme::keys::SEPARATOR_COLOR)),
     }
 }

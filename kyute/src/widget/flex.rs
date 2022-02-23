@@ -52,6 +52,7 @@ pub struct Flex {
 }
 
 impl Flex {
+    #[deprecated(note = "use Grid::row() and Grid::column() instead")]
     pub fn new(axis_orientation: Orientation) -> Flex {
         Flex {
             axis_orientation,
@@ -59,10 +60,12 @@ impl Flex {
         }
     }
 
+    #[deprecated(note = "use Grid::row() and Grid::column() instead")]
     pub fn horizontal() -> Flex {
         Flex::new(Orientation::Horizontal)
     }
 
+    #[deprecated(note = "use Grid::row() and Grid::column() instead")]
     pub fn vertical() -> Flex {
         Flex::new(Orientation::Vertical)
     }

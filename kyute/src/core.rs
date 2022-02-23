@@ -6,6 +6,7 @@ use crate::{
     call_id::CallId,
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
+    style::WidgetState,
     widget::{Align, ConstrainedBox},
     Alignment, BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect,
     Size,
@@ -61,6 +62,7 @@ pub struct PaintCtx<'a> {
     pub invalid: &'a Region,
     pub hover: bool,
     pub measurements: Measurements,
+    pub active: bool,
 }
 
 impl<'a> PaintCtx<'a> {
@@ -75,9 +77,34 @@ impl<'a> PaintCtx<'a> {
         self.measurements
     }
 
-    ///
+    /// Returns whether the cursor is hovering the widget.
     pub fn is_hovering(&self) -> bool {
         self.hover
+    }
+
+    /// Returns whether the widget has focus.
+    pub fn has_focus(&self) -> bool {
+        self.focus == Some(self.id)
+    }
+
+    /// Returns whether the widget is active.
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
+    /// Returns the current widget state (a bitfield summary of `is_hovering`, `has_focus`, etc.)
+    pub fn widget_state(&self) -> WidgetState {
+        let mut state = WidgetState::default();
+        if self.is_hovering() {
+            state |= WidgetState::HOVER;
+        }
+        if self.has_focus() {
+            state |= WidgetState::FOCUS;
+        }
+        if self.is_active() {
+            state |= WidgetState::ACTIVE;
+        }
+        state
     }
 
     /*/// Returns the size of the node.
@@ -153,6 +180,12 @@ pub enum HitTestResult {
     Skipped,
 }
 
+/// Helper function to perform hit-test of a pointer event in the given bounds.
+///
+/// Returns:
+/// - Skipped: if the hit test was skipped, because the kind of pointer event ignores hit test (e.g. pointerout)
+/// - Passed:  if the pointer position fell in the given bounds
+/// - Failed:  otherwise
 fn hit_test_helper(
     pointer_event: &PointerEvent,
     bounds: Rect,
@@ -187,6 +220,7 @@ pub struct EventCtx<'a> {
     pub(crate) handled: bool,
     pub(crate) relayout: bool,
     pub(crate) redraw: bool,
+    active: Option<bool>,
 }
 
 impl<'a> EventCtx<'a> {
@@ -208,6 +242,7 @@ impl<'a> EventCtx<'a> {
             handled: false,
             relayout: false,
             redraw: false,
+            active: None,
         }
     }
 
@@ -233,6 +268,7 @@ impl<'a> EventCtx<'a> {
             handled: false,
             relayout: false,
             redraw: false,
+            active: None,
         }
     }
 
@@ -240,8 +276,8 @@ impl<'a> EventCtx<'a> {
     ///
     /// The behavior of hit-testing is as follows:
     /// - if the event is not a pointer event, the hit-test passes automatically
-    /// - otherwise, do the pointer event hit-test:
-    ///      - if the pointer
+    /// - otherwise, do the pointer event hit-test
+    ///     - TODO details
     ///
     /// The function returns whether the hit-test passed, and, if it was successful and the event
     /// was a pointer event, the pointer event with coordinates relative to the given sub-bounds.
@@ -288,6 +324,7 @@ impl<'a> EventCtx<'a> {
     }
 
     /// Returns whether the current node is capturing the pointer.
+    #[must_use]
     pub fn is_capturing_pointer(&self) -> bool {
         self.focus_state.pointer_grab == Some(self.id)
     }
@@ -317,6 +354,7 @@ impl<'a> EventCtx<'a> {
     }
 
     /// Returns whether the current node has the focus.
+    #[must_use]
     pub fn has_focus(&self) -> bool {
         self.focus_state.focus == Some(self.id)
     }
@@ -324,6 +362,11 @@ impl<'a> EventCtx<'a> {
     /// Signals that the passed event was handled and should not bubble up further.
     pub fn set_handled(&mut self) {
         self.handled = true;
+    }
+
+    /// Signals that the widget became active or inactive.
+    pub fn set_active(&mut self, active: bool) {
+        self.active = Some(active);
     }
 
     #[must_use]
@@ -364,6 +407,7 @@ impl<'a, 'b> GpuFrameCtx<'a, 'b> {
         self.frame
     }
 
+    #[must_use]
     pub fn measurements(&self) -> Measurements {
         self.measurements
     }
@@ -524,29 +568,49 @@ struct WidgetPodState {
     /// Weak ref to self as a `dyn Widget`, used to collect widgets in `InternalEvent::Traverse`
     //this: Weak<WidgetPodInner<dyn Widget>>,
     // TODO add a flag for paint invalidation?
+
     /// Unique ID of the widget.
     id: WidgetId,
+
     /// Position of this widget relative to its parent. Set by `WidgetPod::set_child_offset`.
     offset: Cell<Offset>,
+
     /// Cached layout result.
     layout_result: Cell<Option<LayoutResult>>,
+
     /// Indicates that this widget should be repainted.
     /// Set by `layout` if the layout has changed somehow, after event handling if `EventCtx::request_redraw` was called,
     /// and by `set_child_offset`.
     paint_invalid: Cell<bool>,
+
+    /// Bloom filter to filter child widgets.
+    ///
+    /// Reset on recomp, by design: the children might have changed after the recomp.
     child_filter: Cell<Option<Bloom<WidgetId>>>,
+
     /// Indicates that this widget has been initialized.
+    ///
+    /// Not reset on recomp (see the hack in Widget::new())
     initialized: Cell<bool>,
+
     /// Indicates that the children of this widget have been initialized.
+    ///
+    /// Reset on recomp, by design: there may be new children.
     children_initialized: Cell<bool>,
+
     /// Any pointer hovering this widget
     // FIXME: handle multiple pointers?
     // FIXME: this is destroyed on recomp, probably not what we want
     // FIXME: never mind that, this is invalidated on **relayouts**, this is totally broken
     pointer_over: Cell<bool>,
 
+    /// Whether the widget is active.
+    // FIXME: don't reset on recomp
+    active: Cell<bool>,
+
     /// The revision in which the WidgetPod was created.
     created: usize,
+
     /// Debugging: flag indicating whether this WidgetPod was recreated since the last
     /// debug paint.
     created_since_debug_paint: Cell<bool>,
@@ -612,8 +676,13 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             handled: false,
             relayout: false,
             redraw: false,
+            active: None,
         };
         self.widget.event(&mut ctx, event, env);
+
+        // -- update widget state from ctx
+
+        // relayout and redraws
         if ctx.relayout {
             //tracing::trace!(widget_id = ?self.state.id, "requested relayout");
             // relayout requested by the widget: invalidate cached measurements and offset
@@ -625,7 +694,12 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             self.state.paint_invalid.set(true);
         }
 
-        // propagate results to parent
+        // active flag
+        if let Some(active) = ctx.active {
+            self.state.active.set(active);
+        }
+
+        // -- propagate results to parent
         parent_ctx.relayout |= ctx.relayout;
         parent_ctx.redraw |= ctx.redraw;
         parent_ctx.handled = ctx.handled;
@@ -656,7 +730,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         measurements
     }
 
-    pub fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
+    pub fn paint(&self, parent_ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
         /*if !self.0.paint_invalid.get() {
             // no need to repaint
             return;
@@ -671,8 +745,8 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         };
         let size = measurements.size();
         // bounds of this widget in window space
-        let window_bounds = Rect::new(ctx.window_bounds.origin + offset, size);
-        if !ctx.invalid.intersects(window_bounds) {
+        let window_bounds = Rect::new(parent_ctx.window_bounds.origin + offset, size);
+        if !parent_ctx.invalid.intersects(window_bounds) {
             //tracing::trace!("not repainting valid region");
             // not invalidated, no need to redraw
             return;
@@ -686,29 +760,31 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         ).entered();*/
         // trace!(?ctx.scale_factor, ?ctx.inputs.pointers, ?window_bounds, "paint");
 
-        let hover = ctx
+        let hover = parent_ctx
             .inputs
             .pointers
             .iter()
             .any(|(_, state)| window_bounds.contains(state.position));
 
-        ctx.canvas.save();
-        ctx.canvas
+        parent_ctx.canvas.save();
+        parent_ctx
+            .canvas
             .translate(skia_safe::Vector::new(offset.x as f32, offset.y as f32));
 
         {
             let mut child_ctx = PaintCtx {
-                canvas: ctx.canvas,
+                canvas: parent_ctx.canvas,
                 window_bounds,
-                focus: ctx.focus,
-                pointer_grab: ctx.pointer_grab,
-                hot: ctx.hot,
-                inputs: ctx.inputs,
-                scale_factor: ctx.scale_factor,
+                focus: parent_ctx.focus,
+                pointer_grab: parent_ctx.pointer_grab,
+                hot: parent_ctx.hot,
+                inputs: parent_ctx.inputs,
+                scale_factor: parent_ctx.scale_factor,
                 id: self.state.id,
                 hover,
-                invalid: &ctx.invalid,
+                invalid: &parent_ctx.invalid,
                 measurements,
+                active: self.state.active.get(),
             };
             self.widget.paint(&mut child_ctx, Rect::new(Point::origin(), size), env);
         }
@@ -761,7 +837,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             }
         }*/
 
-        ctx.canvas.restore();
+        parent_ctx.canvas.restore();
         self.state.paint_invalid.set(false);
     }
 
@@ -939,6 +1015,7 @@ impl<T: Widget + 'static> WidgetPod<T> {
                 // we don't know if all children have been initialized
                 children_initialized: Cell::new(false),
                 pointer_over: Cell::new(false),
+                active: Cell::new(false),
                 created,
                 created_since_debug_paint: Cell::new(true),
             },

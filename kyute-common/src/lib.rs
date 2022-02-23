@@ -5,6 +5,7 @@ mod color;
 mod data;
 
 pub use crate::{color::Color, data::Data};
+use std::ops::Neg;
 
 /// The DIP (device-independent pixel) unit.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -125,6 +126,18 @@ pub enum Length {
     In(f64),
 }
 
+impl Neg for Length {
+    type Output = Length;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            Length::Px(v) => Length::Px(-v),
+            Length::Dip(v) => Length::Dip(-v),
+            Length::In(v) => Length::In(-v),
+        }
+    }
+}
+
 impl Length {
     /// Zero length.
     pub fn zero() -> Length {
@@ -143,6 +156,13 @@ impl Length {
 impl Default for Length {
     fn default() -> Self {
         Length::Dip(0.0)
+    }
+}
+
+/// By default, a naked i32 represents a dip.
+impl From<i32> for Length {
+    fn from(v: i32) -> Self {
+        Length::Dip(v as f64)
     }
 }
 

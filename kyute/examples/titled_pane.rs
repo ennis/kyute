@@ -1,6 +1,7 @@
 use kyute::{
     application, composable,
     shell::{application::Application, winit::window::WindowBuilder},
+    style::BoxStyle,
     theme,
     widget::{Container, Flex, Grid, GridLength, Image, Label, Null, TitledPane},
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, UnitExt, Widget, WidgetExt,
@@ -16,7 +17,8 @@ fn titled_pane_test() -> impl Widget + Clone {
     let mut v = Grid::column(400.dip());
     v.add_row(pane_1);
     v.add_row(pane_2);
-    v
+
+    Container::new(v)
 }
 
 #[composable]
