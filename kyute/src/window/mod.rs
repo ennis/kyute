@@ -3,7 +3,7 @@ mod skia;
 
 use crate::{
     align_boxes, cache, composable,
-    core::{FocusState, GpuResourceReferences},
+    core::{FocusState, GpuResourceReferences, WindowPaintCtx},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind},
     graal,
     graal::{vk::Handle, MemoryLocation},
@@ -11,7 +11,7 @@ use crate::{
     widget::{Action, Menu},
     window::skia::SkiaWindow,
     Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, PaintCtx,
-    Point, Rect, RoundToPixel, Size, Widget, WidgetPod,
+    Point, Rect, RoundToPixel, Size, Widget, WidgetIdentity, WidgetPod,
 };
 use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
@@ -374,6 +374,7 @@ impl WindowState {
 /// A window managed by kyute.
 #[derive(Clone)]
 pub struct Window {
+    widget_state: WidgetIdentity,
     window_state: Arc<RefCell<WindowState>>,
     contents: Arc<WidgetPod>,
 }
@@ -413,6 +414,7 @@ impl Window {
         // TODO update title, size, position, etc.
 
         Window {
+            widget_state: WidgetIdentity::new(),
             window_state,
             contents: Arc::new(WidgetPod::new(contents)),
         }
@@ -643,6 +645,10 @@ impl Window {
 }
 
 impl Widget for Window {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        Some(&self.widget_state)
+    }
+
     fn debug_name(&self) -> &str {
         std::any::type_name::<Self>()
     }
@@ -650,9 +656,15 @@ impl Widget for Window {
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         match event {
             Event::Initialize => {
-                // create the window
                 tracing::trace!("creating window");
                 let mut window_state = self.window_state.borrow_mut();
+
+                // skip if the window is already created
+                if window_state.window.is_some() {
+                    self.contents.event(ctx, event, env);
+                    return;
+                }
+
                 let window =
                     kyute_shell::window::Window::new(ctx.event_loop, window_state.window_builder.take().unwrap(), None)
                         .expect("failed to create window");

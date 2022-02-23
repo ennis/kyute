@@ -4,6 +4,7 @@
 #![feature(const_str_from_utf8)]
 #![feature(const_fn_floating_point_arithmetic)]
 #![feature(const_mut_refs)]
+#![feature(let_else)]
 
 extern crate self as kyute;
 
@@ -33,7 +34,10 @@ pub use kyute_macros::{composable, Data};
 pub use crate::{
     asset::{Asset, AssetId, AssetLoader, AssetUri},
     cache::{changed, environment, memoize, once, run_async, state, with_environment, Cache, Key},
-    core::{EventCtx, GpuFrameCtx, LayoutCtx, PaintCtx, Widget, WidgetExt, WidgetId, WidgetPod, SHOW_DEBUG_OVERLAY},
+    core::{
+        EventCtx, GpuFrameCtx, LayoutCtx, PaintCtx, Widget, WidgetExt, WidgetId, WidgetIdentity, WidgetPod,
+        SHOW_DEBUG_OVERLAY,
+    },
     env::{EnvKey, EnvValue, Environment, ValueRef},
     event::{Event, InputEvent, InternalEvent, PointerEvent, PointerEventKind},
     layout::{align_boxes, Alignment, BoxConstraints, Measurements},

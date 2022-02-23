@@ -1,5 +1,5 @@
 use crate::{
-    core::{HitTestResult, WindowPaintCtx},
+    core::{HitTestResult, WidgetIdentity, WindowPaintCtx},
     drawing::ToSkia,
     event::{PointerEvent, PointerEventKind},
     widget::prelude::*,
@@ -48,6 +48,11 @@ impl<W> LayoutWrapper<W> {
 }
 
 impl<W: Widget> Widget for LayoutWrapper<W> {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        // inherit the identity of the contents
+        self.inner.widget_identity()
+    }
+
     fn debug_name(&self) -> &str {
         self.inner.debug_name()
     }

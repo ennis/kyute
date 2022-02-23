@@ -1,5 +1,6 @@
 use crate::{
-    style::{BoxStyle, PaintCtxExt, WidgetState},
+    core::WidgetIdentity,
+    style::{BoxStyle, PaintCtxExt, VisualState},
     widget::{prelude::*, LayoutWrapper},
     Length, SideOffsets, UnitExt, ValueRef,
 };
@@ -16,7 +17,7 @@ pub struct Container<Content> {
     baseline: Option<ValueRef<Length>>,
     content_padding: ValueRef<SideOffsets>,
     box_style: ValueRef<BoxStyle>,
-    alternate_box_styles: Vec<(WidgetState, ValueRef<BoxStyle>)>,
+    alternate_box_styles: Vec<(VisualState, ValueRef<BoxStyle>)>,
     content: LayoutWrapper<Content>,
 }
 
@@ -172,18 +173,23 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Adds an alternate style, which replaces the main style when the widget is in the specified state.
-    pub fn alternate_box_style(mut self, state: WidgetState, box_style: impl Into<ValueRef<BoxStyle>>) -> Self {
+    pub fn alternate_box_style(mut self, state: VisualState, box_style: impl Into<ValueRef<BoxStyle>>) -> Self {
         self.push_alternate_box_style(state, box_style);
         self
     }
 
     /// Sets the overlay style, only active when the widget is in the specified state.
-    pub fn push_alternate_box_style(&mut self, state: WidgetState, box_style: impl Into<ValueRef<BoxStyle>>) {
+    pub fn push_alternate_box_style(&mut self, state: VisualState, box_style: impl Into<ValueRef<BoxStyle>>) {
         self.alternate_box_styles.push((state, box_style.into()));
     }
 }
 
 impl<Content: Widget> Widget for Container<Content> {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        // inherit the identity of the contents
+        self.content.widget_identity()
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.content.event(ctx, event, env)
     }
@@ -284,7 +290,7 @@ impl<Content: Widget> Widget for Container<Content> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        let state = ctx.widget_state();
+        let state = ctx.visual_state();
 
         // check if there's a corresponding alternate style
         let mut used_alt_style = false;

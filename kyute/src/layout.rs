@@ -7,7 +7,7 @@ use std::{
 };
 
 /// Box constraints.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct BoxConstraints {
     pub min: Size,
     pub max: Size,

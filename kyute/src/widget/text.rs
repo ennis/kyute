@@ -3,6 +3,7 @@ use crate::{
     drawing::ToSkia,
     text::{FormattedText, FormattedTextParagraph},
     BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect, Size, Widget,
+    WidgetIdentity,
 };
 use std::cell::{Ref, RefCell};
 
@@ -34,6 +35,11 @@ impl Text {
 }
 
 impl Widget for Text {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        // no need for a stable identity
+        None
+    }
+
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
     fn layout(&self, _ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {

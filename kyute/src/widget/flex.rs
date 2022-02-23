@@ -47,14 +47,17 @@ pub enum MainAxisSize {
 
 #[derive(Clone)]
 pub struct Flex {
+    state: WidgetIdentity,
     axis_orientation: Orientation,
     items: Vec<Arc<WidgetPod>>,
 }
 
 impl Flex {
     #[deprecated(note = "use Grid::row() and Grid::column() instead")]
+    #[composable]
     pub fn new(axis_orientation: Orientation) -> Flex {
         Flex {
+            state: WidgetIdentity::new(),
             axis_orientation,
             items: vec![],
         }
@@ -83,6 +86,10 @@ impl Flex {
 }
 
 impl Widget for Flex {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        Some(&self.state)
+    }
+
     fn debug_name(&self) -> &str {
         std::any::type_name::<Self>()
     }

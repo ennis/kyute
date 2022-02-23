@@ -1,11 +1,11 @@
 use crate::{
+    event::{PointerButton, PointerEventKind},
     theme,
     widget::{prelude::*, Container, Label},
     Data, SideOffsets, Signal,
 };
 use std::{convert::TryInto, fmt::Display};
 use tracing::trace;
-use crate::event::{PointerButton, PointerEventKind};
 
 #[derive(Clone, Debug, Data)]
 struct DropDownChoice<T: Data + Display> {
@@ -16,6 +16,7 @@ struct DropDownChoice<T: Data + Display> {
 /// Selects one option among choices with a drop-down menu.
 #[derive(Clone)]
 pub struct DropDown<T: Data + Display> {
+    state: WidgetIdentity,
     choices: Vec<DropDownChoice<T>>,
     //style: ValueRef<DropDownStyle>,
     selected_index: usize,
@@ -43,6 +44,7 @@ impl<T: Data + Display> DropDown<T> {
         }
 
         DropDown {
+            state: WidgetIdentity::new(),
             choices: choices_with_ids,
             selected_index,
             inner,
@@ -72,6 +74,10 @@ impl<T: Data + Display> DropDown<T> {
 }
 
 impl<T: Data + Display> Widget for DropDown<T> {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        Some(&self.state)
+    }
+
     fn debug_name(&self) -> &str {
         std::any::type_name::<Self>()
     }
@@ -105,12 +111,7 @@ impl<T: Data + Display> Widget for DropDown<T> {
         }
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.inner.layout(ctx, constraints, env)
     }
 

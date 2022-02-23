@@ -16,7 +16,7 @@ pub use theme::{define_theme, ThemeData, ThemeLoadError};
 
 bitflags! {
     #[derive(Default)]
-    pub struct WidgetState: u8 {
+    pub struct VisualState: u8 {
         const DEFAULT = 0;
         const FOCUS   = 1 << 0;
         const ACTIVE  = 1 << 1;

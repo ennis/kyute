@@ -10,7 +10,7 @@ use crate::{
     theme,
     widget::{text::Text, Container},
     BoxConstraints, Color, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect, SideOffsets, Size,
-    WidgetPod,
+    WidgetIdentity, WidgetPod,
 };
 use keyboard_types::KeyState;
 use kyute::text::TextPosition;
@@ -36,6 +36,8 @@ fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
 
 /// Text editor widget.
 pub struct TextEdit {
+    identity: WidgetIdentity,
+
     /// Input formatted text.
     formatted_text: FormattedText,
 
@@ -72,6 +74,7 @@ impl TextEdit {
             .content_padding(SideOffsets::new_all_same(2.0));
 
         TextEdit {
+            identity: WidgetIdentity::new(),
             formatted_text,
             selection,
             content_offset: Default::default(),
@@ -191,6 +194,10 @@ impl TextEdit {
 }
 
 impl Widget for TextEdit {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        Some(&self.identity)
+    }
+
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.inner.layout(ctx, constraints, env)
     }

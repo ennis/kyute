@@ -138,7 +138,7 @@ pub enum InternalEvent<'a> {
         event: winit::event::WindowEvent<'static>,
     },
     RouteRedrawRequest(WidgetId),
-    RouteInitialize,
+    //RouteInitialize,
     UpdateChildFilter {
         filter: &'a mut Bloom<WidgetId>,
     },
@@ -152,6 +152,7 @@ pub enum InternalEvent<'a> {
 /// Events.
 #[derive(Debug)]
 pub enum Event<'a> {
+    /// Event sent after recomposition.
     Initialize,
     FocusGained,
     FocusLost,

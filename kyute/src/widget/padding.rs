@@ -31,22 +31,18 @@ impl<W: Widget + 'static> Padding<W> {
 }
 
 impl<W: Widget> Widget for Padding<W> {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        self.inner.widget_identity()
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.inner.event(ctx, event, env);
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
-        let mut m = self
-            .inner
-            .layout(ctx, constraints.deflate(self.padding), env);
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        let mut m = self.inner.layout(ctx, constraints.deflate(self.padding), env);
         m.bounds = m.bounds.outer_rect(self.padding);
-        self.inner
-            .set_offset(Offset::new(self.padding.left, self.padding.top));
+        self.inner.set_offset(Offset::new(self.padding.left, self.padding.top));
         m
     }
 

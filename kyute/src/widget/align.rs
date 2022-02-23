@@ -40,16 +40,16 @@ impl<W: Widget + 'static> Align<W> {
 }
 
 impl<W: Widget> Widget for Align<W> {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        // inherit the identity of the contents
+        self.inner.widget_identity()
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.inner.event(ctx, event, env);
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         // measure child
         let child = self.inner.layout(ctx, constraints.loosen(), env);
 
@@ -68,10 +68,8 @@ impl<W: Widget> Widget for Align<W> {
         }
 
         // now place the child inside
-        let x = 0.5 * size.width * (1.0 + self.alignment.x)
-            - 0.5 * child.width() * (1.0 + self.alignment.x);
-        let y = 0.5 * size.height * (1.0 + self.alignment.y)
-            - 0.5 * child.height() * (1.0 + self.alignment.y);
+        let x = 0.5 * size.width * (1.0 + self.alignment.x) - 0.5 * child.width() * (1.0 + self.alignment.x);
+        let y = 0.5 * size.height * (1.0 + self.alignment.y) - 0.5 * child.height() * (1.0 + self.alignment.y);
         let baseline = child.baseline.map(|b| b + y);
 
         self.inner.set_offset(Offset::new(x, y));

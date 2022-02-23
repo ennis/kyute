@@ -29,16 +29,16 @@ impl<Inner: Widget + 'static> Baseline<Inner> {
 }
 
 impl<Inner: Widget> Widget for Baseline<Inner> {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        // inherit the identity of the contents
+        self.inner.widget_identity()
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.inner.event(ctx, event, env);
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let m = self.inner.layout(ctx, constraints, env);
         // baselines are not guaranteed to fall on a pixel boundary, round it manually
         // FIXME should do pixel snapping instead

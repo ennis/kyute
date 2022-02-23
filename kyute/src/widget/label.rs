@@ -1,7 +1,7 @@
 //! Text elements
 use crate::{
     composable, drawing::FromSkia, env::Environment, event::Event, style::ColorRef, theme, BoxConstraints, EventCtx,
-    LayoutCtx, Measurements, PaintCtx, Point, Rect, Widget,
+    LayoutCtx, Measurements, PaintCtx, Point, Rect, Widget, WidgetIdentity,
 };
 use skia_safe as sk;
 use std::cell::RefCell;
@@ -15,6 +15,7 @@ pub struct TextStyle {
 /// Simple text label.
 #[derive(Clone)]
 pub struct Label {
+    state: WidgetIdentity,
     style: TextStyle,
     text: String,
     text_blob: RefCell<Option<sk::TextBlob>>,
@@ -25,6 +26,7 @@ impl Label {
     #[composable(cached)]
     pub fn new(text: String) -> Label {
         Label {
+            state: WidgetIdentity::new(),
             style: TextStyle {
                 // by default, use LABEL_COLOR as the text color
                 color: theme::keys::LABEL_COLOR.into(),
@@ -47,6 +49,10 @@ impl Label {
 }
 
 impl Widget for Label {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        Some(&self.state)
+    }
+
     fn debug_name(&self) -> &str {
         std::any::type_name::<Self>()
     }

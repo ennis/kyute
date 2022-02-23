@@ -5,6 +5,10 @@ use crate::widget::prelude::*;
 pub struct Null;
 
 impl Widget for Null {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        None
+    }
+
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
     fn layout(&self, _ctx: &mut LayoutCtx, _constraints: BoxConstraints, _env: &Environment) -> Measurements {

@@ -128,6 +128,7 @@ struct GridTrackLayout {
 
 #[derive(Clone, Debug)]
 pub struct Grid {
+    state: WidgetIdentity,
     /// Column sizes.
     columns: Vec<TrackSize>,
     /// Row sizes.
@@ -146,6 +147,7 @@ pub struct Grid {
 impl Grid {
     pub fn new() -> Grid {
         Grid {
+            state: WidgetIdentity::new(),
             columns: vec![],
             rows: vec![],
             items: vec![],
@@ -189,6 +191,7 @@ impl Grid {
         columns: impl IntoIterator<Item = GridLength>,
     ) -> Grid {
         Grid {
+            state: WidgetIdentity::new(),
             columns: columns
                 .into_iter()
                 .map(|size| TrackSize {
@@ -382,6 +385,10 @@ impl Grid {
 }
 
 impl Widget for Grid {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        Some(&self.state)
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         for item in self.items.iter() {
             item.widget.event(ctx, event, env);

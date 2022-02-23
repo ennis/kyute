@@ -79,6 +79,10 @@ impl Image<Null> {
 }
 
 impl<Placeholder: Widget> Widget for Image<Placeholder> {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        None
+    }
+
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {

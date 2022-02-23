@@ -22,20 +22,17 @@ impl<W> ConstrainedBox<W> {
 }
 
 impl<W: Widget> Widget for ConstrainedBox<W> {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        self.inner.widget_identity()
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.inner.event(ctx, event, env);
     }
 
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let constraints = constraints.enforce(self.constraints);
-        self.inner
-            .layout(ctx, constraints, env)
-            .constrain(constraints)
+        self.inner.layout(ctx, constraints, env).constrain(constraints)
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {

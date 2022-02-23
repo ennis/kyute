@@ -1,13 +1,15 @@
 use crate::{
+    core::{WidgetIdentity, WindowPaintCtx},
     event::PointerEventKind,
-    style::{BoxStyle, ColorRef, WidgetState},
+    style::{BoxStyle, ColorRef, VisualState},
     theme,
     widget::{prelude::*, Container, Label},
-    SideOffsets, Signal, ValueRef,
+    GpuFrameCtx, SideOffsets, Signal, ValueRef,
 };
 
 #[derive(Clone)]
 pub struct Button {
+    state: WidgetIdentity,
     inner: Container<Label>,
     clicked: Signal<()>,
 }
@@ -17,13 +19,14 @@ impl Button {
     #[composable]
     pub fn new(label: String) -> Button {
         Button {
+            state: WidgetIdentity::new(),
             inner: Container::new(Label::new(label))
                 .min_height(theme::BUTTON_HEIGHT)
                 .content_padding(SideOffsets::new_all_same(5.0))
                 .baseline(theme::BUTTON_LABEL_BASELINE)
                 .box_style(theme::BUTTON)
-                .alternate_box_style(WidgetState::ACTIVE, theme::BUTTON_ACTIVE)
-                .alternate_box_style(WidgetState::HOVER, theme::BUTTON_HOVER),
+                .alternate_box_style(VisualState::ACTIVE, theme::BUTTON_ACTIVE)
+                .alternate_box_style(VisualState::HOVER, theme::BUTTON_HOVER),
             clicked: Signal::new(),
         }
     }
@@ -57,6 +60,10 @@ impl Button {
 }
 
 impl Widget for Button {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        Some(&self.state)
+    }
+
     fn debug_name(&self) -> &str {
         std::any::type_name::<Self>()
     }

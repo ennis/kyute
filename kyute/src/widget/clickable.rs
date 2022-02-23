@@ -32,6 +32,10 @@ impl<Content: Widget + 'static> Clickable<Content> {
 }
 
 impl<Content: Widget + 'static> Widget for Clickable<Content> {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        self.content.widget_identity()
+    }
+
     fn debug_name(&self) -> &str {
         std::any::type_name::<Self>()
     }

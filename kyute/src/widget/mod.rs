@@ -39,7 +39,9 @@ pub use slider::Slider;
 pub use text_edit::TextEdit;
 pub use titled_pane::TitledPane;
 
-use crate::{BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Widget};
+use crate::{
+    BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Widget, WidgetIdentity,
+};
 
 // TODO move somewhere else
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -63,6 +65,10 @@ pub trait SingleChildWidget {
 }
 
 impl<T: SingleChildWidget> Widget for T {
+    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+        self.child().widget_identity()
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.child().event(ctx, event, env)
     }
@@ -107,6 +113,6 @@ pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
         composable, Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
-        Orientation, PaintCtx, Point, Rect, Size, Widget, WidgetPod,
+        Orientation, PaintCtx, Point, Rect, Size, Widget, WidgetIdentity, WidgetPod,
     };
 }
