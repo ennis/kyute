@@ -596,27 +596,26 @@ impl fmt::Debug for WidgetId {
     }
 }
 
+// FIXME: replace with just a WidgetId
 #[derive(Clone, Debug)]
 pub struct WidgetIdentity {
     /// Unique ID of the widget.
     id: WidgetId,
 
-    /// Indicates that this widget has been initialized.
-    ///
-    /// Not reset on recomp (see the hack in WidgetState::new())
-    initialized: Cell<bool>,
-
     /// The revision in which the WidgetPod was created.
+    // TODO remove this? move to widgetpod?
     created: usize,
 
     /// Debugging: flag indicating whether this Widget was recreated since the last
     /// debug paint.
+    // TODO remove?
     created_since_debug_paint: Cell<bool>,
 
     /// Bloom filter to filter child widgets.
     ///
     /// Reset on recomp, by design: the children might have changed after the recomp.
-    /// FIXME: this could be in the widget identity, probably (so that it's cached)
+    // TODO remove this: store it in WidgetPod, and allow some widgets to cache
+    // the child filters if it is worth it
     child_filter: Cell<Option<Bloom<WidgetId>>>,
 }
 
@@ -628,16 +627,9 @@ impl WidgetIdentity {
         // derive the widget identity (it's ID) from the current call ID (i.e. the call stack).
         let id = WidgetId::from_call_id(cache::current_call_id());
 
-        // HACK: returns false on first call, true on following calls, so we can use that
-        // to determine whether the widget has been initialized.
-        // FIXME: if the widget is cached, then this will always be false!
-        let initialized = !cache::changed(());
         let created = cache::revision();
-
         WidgetIdentity {
             id,
-            initialized: Cell::new(initialized),
-            // we don't know if all children have been initialized
             created,
             created_since_debug_paint: Cell::new(true),
             child_filter: Cell::new(None),
@@ -926,8 +918,6 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             return;
         }
 
-        trace!("{} {:?}  -->  {:?}", self.widget.debug_name(), self.id(), event);
-
         // first, ensure that the child filter has been computed and the child widgets are initialized
         self.compute_child_filter(parent_ctx, env);
 
@@ -988,7 +978,12 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                 filter.extend(&child_filter);
                 return;
             }
-            Event::Internal(InternalEvent::RouteInitialize) | Event::Initialize => {
+            Event::Initialize => {
+                // directly pass to widget (bypass hit test)
+                self.do_event(parent_ctx, event, env);
+                return;
+            }
+            /*Event::Initialize => {
                 // Widgets without identity do not receive targeted events, so assume that init=true for those.
                 let init = self
                     .widget
@@ -1028,7 +1023,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                 }
                 self.state.children_initialized.set(true);
                 return;
-            }
+            }*/
             _ => {}
         }
 

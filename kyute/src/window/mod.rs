@@ -49,6 +49,8 @@ pub(crate) struct WindowState {
     last_click: Option<LastClick>,
     scale_factor: f64,
     invalid: Region,
+    prev_contents: Option<Arc<WidgetPod>>,
+    recomposed: bool,
 }
 
 impl WindowState {
@@ -398,6 +400,8 @@ impl Window {
                 last_click: None,
                 scale_factor: 1.0, // initialized during window creation
                 invalid: Default::default(),
+                prev_contents: None,
+                recomposed: true,
             }))
         });
 
@@ -410,6 +414,10 @@ impl Window {
                 window_state.menu = menu;
                 window_state.update_menu();
             }
+
+            // set the `recomposed` flag to indicate that we called `Window::new` and that the contents
+            // might have changed
+            window_state.recomposed = true;
         }
         // TODO update title, size, position, etc.
 
@@ -656,38 +664,44 @@ impl Widget for Window {
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         match event {
             Event::Initialize => {
-                tracing::trace!("creating window");
                 let mut window_state = self.window_state.borrow_mut();
 
                 // skip if the window is already created
                 if window_state.window.is_some() {
-                    self.contents.event(ctx, event, env);
-                    return;
+                    // if the window is created, and we haven't recomposed, don't send initialize
+                    if window_state.recomposed {
+                        self.contents.event(ctx, event, env);
+                        window_state.recomposed = false;
+                    }
+                } else {
+                    tracing::trace!("creating window");
+                    let window = kyute_shell::window::Window::new(
+                        ctx.event_loop,
+                        window_state.window_builder.take().unwrap(),
+                        None,
+                    )
+                    .expect("failed to create window");
+
+                    // create skia stuff
+                    let skia_window = SkiaWindow::new(window);
+
+                    // register it to the AppCtx, necessary so that the event loop can route window events
+                    // to this widget
+                    ctx.register_window(skia_window.window.id());
+
+                    let scale_factor = skia_window.window.window().scale_factor();
+                    let (width, height): (f64, f64) = skia_window.window.window().inner_size().into();
+                    // perform initial layout of contents
+                    self.contents
+                        .relayout(BoxConstraints::new(0.0..width, 0.0..height), scale_factor, env);
+
+                    // update window state
+                    window_state.scale_factor = scale_factor;
+                    window_state.window = Some(skia_window);
+
+                    // create the window menu
+                    window_state.update_menu();
                 }
-
-                let window =
-                    kyute_shell::window::Window::new(ctx.event_loop, window_state.window_builder.take().unwrap(), None)
-                        .expect("failed to create window");
-
-                // create skia stuff
-                let skia_window = SkiaWindow::new(window);
-
-                // register it to the AppCtx, necessary so that the event loop can route window events
-                // to this widget
-                ctx.register_window(skia_window.window.id());
-
-                let scale_factor = skia_window.window.window().scale_factor();
-                let (width, height): (f64, f64) = skia_window.window.window().inner_size().into();
-                // perform initial layout of contents
-                self.contents
-                    .relayout(BoxConstraints::new(0.0..width, 0.0..height), scale_factor, env);
-
-                // update window state
-                window_state.scale_factor = scale_factor;
-                window_state.window = Some(skia_window);
-
-                // create the window menu
-                window_state.update_menu();
             }
             Event::WindowEvent(window_event) => {
                 let mut window_state = self.window_state.borrow_mut();
