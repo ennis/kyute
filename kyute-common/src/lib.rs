@@ -1,11 +1,13 @@
 #![feature(const_fn_floating_point_arithmetic)]
-
 //! Basic types shared by kyute crates.
+
 mod color;
 mod data;
 
-pub use crate::{color::Color, data::Data};
 use std::ops::Neg;
+
+pub use crate::{color::Color, data::Data};
+pub use kyute_common_macros::Data;
 
 /// The DIP (device-independent pixel) unit.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -32,19 +34,22 @@ pub const PX: DipLength = DipLength::new(1.0);
 /// 2D size in dips.
 pub type Size = euclid::Size2D<f64, Dip>;
 /// 2D integer size in physical pixels.
-pub type SizeI = euclid::Size2D<i64, Px>;
+pub type SizeI = euclid::Size2D<i32, Px>;
 pub type PhysicalSize = euclid::Size2D<f64, Px>;
 
 /// Rectangle in dips
 pub type Rect = euclid::Rect<f64, Dip>;
+pub type RectI = euclid::Rect<i32, Px>;
 /// Offset in dips.
 pub type Offset = euclid::Vector2D<f64, Dip>;
 /// Point in dips.
 pub type Point = euclid::Point2D<f64, Dip>;
+pub type PointI = euclid::Point2D<i32, Px>;
 /// Point in physical pixel coordinates.
 pub type PhysicalPoint = euclid::Point2D<f64, Px>;
 /// Transform in dips.
-pub type Transform = euclid::Transform2D<f64, Dip, Dip>;
+pub type Transform<Src, Dst> = euclid::Transform2D<f64, Src, Dst>;
+pub type UnknownUnit = euclid::UnknownUnit;
 /// Side offsets (top,left,right,bottom lengths) in dips
 pub type SideOffsets = euclid::SideOffsets2D<f64, Dip>;
 
@@ -112,17 +117,18 @@ impl RectExt for Rect {
 }
 
 /// Length specification.
-#[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
-#[serde(tag = "unit", content = "value")]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serializing", serde(tag = "unit", content = "value"))]
 pub enum Length {
     /// Actual screen pixels (the actual physical size depends on the density of the screen).
-    #[serde(rename = "px")]
+    #[cfg_attr(feature = "serializing", serde(rename = "px"))]
     Px(f64),
     /// Device-independent pixels (DIPs), close to 1/96th of an inch.
-    #[serde(rename = "dip")]
+    #[cfg_attr(feature = "serializing", serde(rename = "dip"))]
     Dip(f64),
     /// Inches (logical inches? approximate inches?).
-    #[serde(rename = "in")]
+    #[cfg_attr(feature = "serializing", serde(rename = "in"))]
     In(f64),
 }
 

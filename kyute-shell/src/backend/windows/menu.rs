@@ -1,11 +1,10 @@
 use crate::{backend::windows::util::ToWide, Shortcut};
 use std::mem;
-use windows::Win32::{
-    Foundation::PWSTR,
-    UI::WindowsAndMessaging::{
-        AppendMenuW, CreateMenu, CreatePopupMenu, DestroyMenu, GetMenuInfo, SetMenuInfo, HMENU,
-        MENUINFO, MF_CHECKED, MF_DISABLED, MF_POPUP, MF_SEPARATOR, MF_STRING, MIM_STYLE,
-        MNS_NOTIFYBYPOS,
+use windows::{
+    core::PCWSTR,
+    Win32::UI::WindowsAndMessaging::{
+        AppendMenuW, CreateMenu, CreatePopupMenu, DestroyMenu, GetMenuInfo, SetMenuInfo, HMENU, MENUINFO, MF_CHECKED,
+        MF_DISABLED, MF_POPUP, MF_SEPARATOR, MF_STRING, MIM_STYLE, MNS_NOTIFYBYPOS,
     },
 };
 
@@ -30,10 +29,7 @@ impl Menu {
             // SAFETY: no particular requirements
             CreateMenu()
         };
-        Menu {
-            hmenu,
-            accels: vec![],
-        }
+        Menu { hmenu, accels: vec![] }
     }
 
     /// Creates a new menu.
@@ -49,10 +45,7 @@ impl Menu {
             hmenu
         };
 
-        Menu {
-            hmenu,
-            accels: vec![],
-        }
+        Menu { hmenu, accels: vec![] }
     }
 
     pub(crate) fn into_hmenu(self) -> HMENU {
@@ -61,14 +54,7 @@ impl Menu {
         hmenu
     }
 
-    pub fn add_item(
-        &mut self,
-        text: &str,
-        id: usize,
-        shortcut: Option<&Shortcut>,
-        checked: bool,
-        disabled: bool,
-    ) {
+    pub fn add_item(&mut self, text: &str, id: usize, shortcut: Option<&Shortcut>, checked: bool, disabled: bool) {
         // TODO: checked, disabled
         let text = if let Some(shortcut) = shortcut {
             format!("{}\t{}", text, shortcut.to_string())
@@ -85,12 +71,7 @@ impl Menu {
                 flags |= MF_DISABLED;
             }
             // SAFETY: TODO
-            AppendMenuW(
-                self.hmenu,
-                flags,
-                id,
-                PWSTR(text.to_wide().as_ptr() as *mut u16),
-            );
+            AppendMenuW(self.hmenu, flags, id, PCWSTR(text.to_wide().as_ptr()));
         };
     }
 
@@ -101,8 +82,8 @@ impl Menu {
             AppendMenuW(
                 self.hmenu,
                 MF_POPUP,
-                sub_hmenu as usize,
-                PWSTR(text.to_wide().as_ptr() as *mut u16),
+                sub_hmenu.0 as usize,
+                PCWSTR(text.to_wide().as_ptr()),
             );
         }
     }

@@ -214,7 +214,7 @@ impl Application {
                 // DriverType:
                 D3D_DRIVER_TYPE_HARDWARE,
                 // Software:
-                0,
+                None,
                 // Flags:
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG,
                 // pFeatureLevels:
@@ -231,7 +231,7 @@ impl Application {
                 &mut _d3d11_device_context,
             )?;
 
-            tracing::info!("Direct3D feature level: {}", feature_level);
+            tracing::info!("Direct3D feature level: {:?}", feature_level);
 
             (
                 D3D11Device(d3d11_device.unwrap().cast::<ID3D11Device5>().unwrap()),

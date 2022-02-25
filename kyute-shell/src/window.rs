@@ -210,7 +210,7 @@ impl Window {
         let app = Application::instance();
 
         if let Some(parent_window) = parent_window {
-            builder = builder.with_parent_window(parent_window.hwnd as *mut _);
+            builder = builder.with_parent_window(parent_window.hwnd.0 as *mut _);
         }
         let window = builder.build(event_loop).map_err(Error::Winit)?;
 
@@ -270,8 +270,8 @@ impl Window {
         }
         let swap_chain = unsafe { device.create_swapchain(surface, swapchain_size) };
 
-        let hinstance = window.hinstance() as HINSTANCE;
-        let hwnd = window.hwnd() as HWND;
+        let hinstance = HINSTANCE(window.hinstance() as isize);
+        let hwnd = HWND(window.hwnd() as isize);
 
         let pw = Window {
             window,

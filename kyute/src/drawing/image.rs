@@ -15,7 +15,7 @@ impl Image {
     /// Returns the size in pixels of the image.
     pub fn size(&self) -> SizeI {
         let s = self.0.dimensions();
-        SizeI::new(s.width as i64, s.height as i64)
+        SizeI::new(s.width as i32, s.height as i32)
     }
 }
 

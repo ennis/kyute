@@ -14,7 +14,7 @@
 
 //! Traits for handling value types.
 
-use crate::SideOffsets;
+use crate::{Offset, Point, Rect, SideOffsets};
 use std::{ptr, rc::Rc, sync::Arc};
 //use crate::style::StyleSet;
 
@@ -77,6 +77,9 @@ impl_data_simple!(std::net::SocketAddr);
 impl_data_simple!(std::ops::RangeFull);
 //impl_data_simple!(Color);
 impl_data_simple!(SideOffsets);
+impl_data_simple!(Rect);
+impl_data_simple!(Point);
+impl_data_simple!(Offset);
 
 //TODO: remove me!?
 impl_data_simple!(String);

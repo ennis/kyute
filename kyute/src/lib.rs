@@ -29,7 +29,7 @@ pub mod theme;
 pub mod util;
 pub mod widget;
 
-pub use kyute_macros::{composable, Data};
+pub use kyute_macros::composable;
 
 pub use crate::{
     asset::{Asset, AssetId, AssetLoader, AssetUri},

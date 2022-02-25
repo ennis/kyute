@@ -438,7 +438,7 @@ pub fn setup_default_style(env: &mut Environment) {
                     .stop(ColorExpr::lighten(palette::GREY_700, 0.02), Some(1.0)),
             )
             .border(Border::inside(0.px()).paint(palette::GREY_700).offset_y(1.px()))
-            .border(Border::inside(0.px()).paint(palette::GREY_900));
+            .border(Border::inside(0.px()).paint(palette::GREY_800));
         env.set(BUTTON_HOVER, button_hover_frame.clone());
     }
 
