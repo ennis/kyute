@@ -3,7 +3,7 @@ mod skia;
 
 use crate::{
     align_boxes, cache, composable,
-    core::{FocusState, GpuResourceReferences, WindowPaintCtx},
+    core::{FocusState, GpuResourceReferences},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind},
     graal,
     graal::{vk::Handle, MemoryLocation},
@@ -11,7 +11,7 @@ use crate::{
     widget::{Action, Menu},
     window::skia::SkiaWindow,
     Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, PaintCtx,
-    Point, Rect, RoundToPixel, Size, Widget, WidgetIdentity, WidgetPod,
+    Point, Rect, RoundToPixel, Size, Widget, WidgetId, WidgetPod,
 };
 use keyboard_types::KeyState;
 use kyute::GpuFrameCtx;
@@ -376,7 +376,7 @@ impl WindowState {
 /// A window managed by kyute.
 #[derive(Clone)]
 pub struct Window {
-    widget_state: WidgetIdentity,
+    id: WidgetId,
     window_state: Arc<RefCell<WindowState>>,
     contents: Arc<WidgetPod>,
 }
@@ -422,7 +422,7 @@ impl Window {
         // TODO update title, size, position, etc.
 
         Window {
-            widget_state: WidgetIdentity::new(),
+            id: WidgetId::here(),
             window_state,
             contents: Arc::new(WidgetPod::new(contents)),
         }
@@ -653,8 +653,8 @@ impl Window {
 }
 
 impl Widget for Window {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
-        Some(&self.widget_state)
+    fn widget_id(&self) -> Option<WidgetId> {
+        Some(self.id)
     }
 
     fn debug_name(&self) -> &str {

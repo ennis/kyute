@@ -40,9 +40,9 @@ impl<W: Widget + 'static> Align<W> {
 }
 
 impl<W: Widget> Widget for Align<W> {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+    fn widget_id(&self) -> Option<WidgetId> {
         // inherit the identity of the contents
-        self.inner.widget_identity()
+        self.inner.widget_id()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

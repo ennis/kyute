@@ -8,8 +8,7 @@ use crate::{
     region::Region,
     style::VisualState,
     widget::{Align, ConstrainedBox},
-    Alignment, BoxConstraints, Data, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect,
-    Size,
+    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, Size,
 };
 use kyute_macros::composable;
 use kyute_shell::{
@@ -479,7 +478,7 @@ impl<'a, 'b> GpuFrameCtx<'a, 'b> {
 /// Trait that defines the behavior of a widget.
 pub trait Widget {
     /// Returns the widget identity.
-    fn widget_identity(&self) -> Option<&WidgetIdentity>;
+    fn widget_id(&self) -> Option<WidgetId>;
 
     /// Implement to give a debug name to your widget. Used only for debugging.
     fn debug_name(&self) -> &str {
@@ -504,8 +503,8 @@ pub trait Widget {
 
 /// Arc'd widgets.
 impl<T: Widget + ?Sized> Widget for Arc<T> {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
-        Widget::widget_identity(&**self)
+    fn widget_id(&self) -> Option<WidgetId> {
+        Widget::widget_id(&**self)
     }
 
     fn debug_name(&self) -> &str {
@@ -588,6 +587,11 @@ impl WidgetId {
     pub(crate) fn from_call_id(call_id: CallId) -> WidgetId {
         WidgetId(call_id)
     }
+
+    #[composable]
+    pub fn here() -> WidgetId {
+        WidgetId(cache::current_call_id())
+    }
 }
 
 impl fmt::Debug for WidgetId {
@@ -596,7 +600,9 @@ impl fmt::Debug for WidgetId {
     }
 }
 
-// FIXME: replace with just a WidgetId
+pub type WidgetFilter = Bloom<WidgetId>;
+
+/*// FIXME: replace with just a WidgetId
 #[derive(Clone, Debug)]
 pub struct WidgetIdentity {
     /// Unique ID of the widget.
@@ -610,13 +616,6 @@ pub struct WidgetIdentity {
     /// debug paint.
     // TODO remove?
     created_since_debug_paint: Cell<bool>,
-
-    /// Bloom filter to filter child widgets.
-    ///
-    /// Reset on recomp, by design: the children might have changed after the recomp.
-    // TODO remove this: store it in WidgetPod, and allow some widgets to cache
-    // the child filters if it is worth it
-    child_filter: Cell<Option<Bloom<WidgetId>>>,
 }
 
 impl WidgetIdentity {
@@ -632,10 +631,10 @@ impl WidgetIdentity {
             id,
             created,
             created_since_debug_paint: Cell::new(true),
-            child_filter: Cell::new(None),
+            //child_filter: Cell::new(None),
         }
     }
-}
+}*/
 
 #[derive(Copy, Clone, Debug, Hash)]
 struct LayoutResult {
@@ -672,6 +671,9 @@ struct WidgetPodState {
     ///
     /// Reset on recomp, by design: there may be new children.
     children_initialized: Cell<bool>,
+
+    /// Bloom filter to filter child widgets.
+    child_filter: Cell<Option<WidgetFilter>>,
 }
 
 impl WidgetPodState {
@@ -692,38 +694,29 @@ pub struct WidgetPod<T: ?Sized = dyn Widget> {
 
 impl<T: Widget + ?Sized> WidgetPod<T> {
     fn compute_child_filter(&self, parent_ctx: &mut EventCtx, env: &Environment) -> Bloom<WidgetId> {
-        if let Some(identity) = self.widget.widget_identity() {
-            if let Some(filter) = identity.child_filter.get() {
-                // already computed
-                filter
-            } else {
-                //tracing::trace!("computing child filter");
-                let mut filter = Default::default();
-                self.do_event(
-                    parent_ctx,
-                    &mut Event::Internal(InternalEvent::UpdateChildFilter { filter: &mut filter }),
-                    env,
-                );
-                identity.child_filter.set(Some(filter));
-                filter
-            }
+        if let Some(filter) = self.state.child_filter.get() {
+            // already computed
+            filter
         } else {
-            Bloom::default()
+            //tracing::trace!("computing child filter");
+            let mut filter = Default::default();
+            self.do_event(
+                parent_ctx,
+                &mut Event::Internal(InternalEvent::UpdateChildFilter { filter: &mut filter }),
+                env,
+            );
+            self.state.child_filter.set(Some(filter));
+            filter
         }
     }
 
     /// Returns whether this widget may contain the specified widget as a child (direct or not).
     fn may_contain(&self, widget: WidgetId) -> bool {
-        if let Some(identity) = self.widget.widget_identity() {
-            if let Some(filter) = identity.child_filter.get() {
-                filter.may_contain(&widget)
-            } else {
-                warn!("`may_contain` called but child filter not initialized");
-                true
-            }
+        if let Some(filter) = self.state.child_filter.get() {
+            filter.may_contain(&widget)
         } else {
-            // identity-less widgets do not contain children.
-            false
+            warn!("`may_contain` called but child filter not initialized");
+            true
         }
     }
 
@@ -1096,7 +1089,8 @@ impl<T: Widget + 'static> WidgetPod<T> {
     /// Creates a new `WidgetPod` wrapping the specified widget.
     #[composable]
     pub fn new(widget: T) -> WidgetPod<T> {
-        let id = widget.widget_identity().map(|w| w.id);
+        let id = widget.widget_id();
+
         WidgetPod {
             state: WidgetPodState {
                 id,
@@ -1107,6 +1101,7 @@ impl<T: Widget + 'static> WidgetPod<T> {
                 pointer_over: Cell::new(false),
                 active: Cell::new(false),
                 layout_result: Cell::new(None),
+                child_filter: Cell::new(None),
             },
             widget,
         }

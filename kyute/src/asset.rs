@@ -1,5 +1,5 @@
 use crate::{cache, EnvKey};
-use notify::{Event, Watcher};
+use notify::Watcher;
 use std::{
     collections::HashMap,
     error::Error,

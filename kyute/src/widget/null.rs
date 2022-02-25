@@ -5,7 +5,7 @@ use crate::widget::prelude::*;
 pub struct Null;
 
 impl Widget for Null {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+    fn widget_id(&self) -> Option<WidgetId> {
         None
     }
 

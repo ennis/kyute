@@ -1,10 +1,8 @@
 //! Environment keys that control the visual aspect (theme) of common widgets.
 use crate::{
     style::{Border, BoxShadow, BoxStyle, ColorExpr, LinearGradient},
-    theme::palette::GREY_900,
     Color, EnvKey, Environment, Length, SideOffsets, UnitExt,
 };
-use kyute_common::Offset;
 
 pub const FONT_SIZE: EnvKey<f64> = EnvKey::new("kyute.theme.font_size"); // [14.0];
 pub const FONT_NAME: EnvKey<String> = EnvKey::new("kyute.theme.font_name");

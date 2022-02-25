@@ -22,8 +22,8 @@ impl<W> ConstrainedBox<W> {
 }
 
 impl<W: Widget> Widget for ConstrainedBox<W> {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
-        self.inner.widget_identity()
+    fn widget_id(&self) -> Option<WidgetId> {
+        self.inner.widget_id()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

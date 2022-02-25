@@ -1,15 +1,14 @@
 use crate::{
-    core::{WidgetIdentity, WindowPaintCtx},
     event::PointerEventKind,
     style::{BoxStyle, ColorRef, VisualState},
     theme,
     widget::{prelude::*, Container, Label},
-    GpuFrameCtx, SideOffsets, Signal, ValueRef,
+    SideOffsets, Signal, ValueRef,
 };
 
 #[derive(Clone)]
 pub struct Button {
-    state: WidgetIdentity,
+    id: WidgetId,
     inner: Container<Label>,
     clicked: Signal<()>,
 }
@@ -19,7 +18,7 @@ impl Button {
     #[composable]
     pub fn new(label: String) -> Button {
         Button {
-            state: WidgetIdentity::new(),
+            id: WidgetId::here(),
             inner: Container::new(Label::new(label))
                 .min_height(theme::BUTTON_HEIGHT)
                 .content_padding(SideOffsets::new_all_same(5.0))
@@ -60,8 +59,8 @@ impl Button {
 }
 
 impl Widget for Button {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
-        Some(&self.state)
+    fn widget_id(&self) -> Option<WidgetId> {
+        Some(self.id)
     }
 
     fn debug_name(&self) -> &str {

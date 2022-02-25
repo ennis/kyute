@@ -16,7 +16,7 @@ struct DropDownChoice<T: Data + Display> {
 /// Selects one option among choices with a drop-down menu.
 #[derive(Clone)]
 pub struct DropDown<T: Data + Display> {
-    state: WidgetIdentity,
+    id: WidgetId,
     choices: Vec<DropDownChoice<T>>,
     //style: ValueRef<DropDownStyle>,
     selected_index: usize,
@@ -44,7 +44,7 @@ impl<T: Data + Display> DropDown<T> {
         }
 
         DropDown {
-            state: WidgetIdentity::new(),
+            id: WidgetId::here(),
             choices: choices_with_ids,
             selected_index,
             inner,
@@ -74,8 +74,8 @@ impl<T: Data + Display> DropDown<T> {
 }
 
 impl<T: Data + Display> Widget for DropDown<T> {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
-        Some(&self.state)
+    fn widget_id(&self) -> Option<WidgetId> {
+        Some(self.id)
     }
 
     fn debug_name(&self) -> &str {

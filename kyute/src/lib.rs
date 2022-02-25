@@ -33,9 +33,10 @@ pub use kyute_macros::{composable, Data};
 
 pub use crate::{
     asset::{Asset, AssetId, AssetLoader, AssetUri},
+    bloom::Bloom,
     cache::{changed, environment, memoize, once, run_async, state, with_environment, Cache, Key},
     core::{
-        EventCtx, GpuFrameCtx, LayoutCtx, PaintCtx, Widget, WidgetExt, WidgetId, WidgetIdentity, WidgetPod,
+        EventCtx, GpuFrameCtx, LayoutCtx, PaintCtx, Widget, WidgetExt, WidgetFilter, WidgetId, WidgetPod,
         SHOW_DEBUG_OVERLAY,
     },
     env::{EnvKey, EnvValue, Environment, ValueRef},

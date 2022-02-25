@@ -29,9 +29,9 @@ impl<Inner: Widget + 'static> Baseline<Inner> {
 }
 
 impl<Inner: Widget> Widget for Baseline<Inner> {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+    fn widget_id(&self) -> Option<WidgetId> {
         // inherit the identity of the contents
-        self.inner.widget_identity()
+        self.inner.widget_id()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

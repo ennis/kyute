@@ -1,5 +1,4 @@
 use crate::{
-    core::WidgetIdentity,
     style::{BoxStyle, PaintCtxExt, VisualState},
     widget::{prelude::*, LayoutWrapper},
     Length, SideOffsets, UnitExt, ValueRef,
@@ -185,9 +184,9 @@ impl<Content: Widget + 'static> Container<Content> {
 }
 
 impl<Content: Widget> Widget for Container<Content> {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+    fn widget_id(&self) -> Option<WidgetId> {
         // inherit the identity of the contents
-        self.content.widget_identity()
+        self.content.widget_id()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

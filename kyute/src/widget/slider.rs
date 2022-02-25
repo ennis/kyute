@@ -67,7 +67,7 @@ impl Default for SliderTrack {
 }*/
 
 pub struct Slider {
-    state: WidgetIdentity,
+    id: WidgetId,
     track: Cell<SliderTrack>,
     value: f64,
     value_changed: Signal<f64>,
@@ -87,7 +87,7 @@ impl Slider {
     #[composable]
     pub fn new(min: f64, max: f64, value: f64) -> Slider {
         Slider {
-            state: WidgetIdentity::new(),
+            id: WidgetId::here(),
             track: Default::default(),
             value,
             value_changed: Signal::new(),
@@ -112,8 +112,8 @@ impl Slider {
 }
 
 impl Widget for Slider {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
-        Some(&self.state)
+    fn widget_id(&self) -> Option<WidgetId> {
+        Some(self.id)
     }
 
     fn debug_name(&self) -> &str {

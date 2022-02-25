@@ -47,7 +47,7 @@ pub enum MainAxisSize {
 
 #[derive(Clone)]
 pub struct Flex {
-    state: WidgetIdentity,
+    id: WidgetId,
     axis_orientation: Orientation,
     items: Vec<Arc<WidgetPod>>,
 }
@@ -57,7 +57,7 @@ impl Flex {
     #[composable]
     pub fn new(axis_orientation: Orientation) -> Flex {
         Flex {
-            state: WidgetIdentity::new(),
+            id: WidgetId::here(),
             axis_orientation,
             items: vec![],
         }
@@ -86,8 +86,8 @@ impl Flex {
 }
 
 impl Widget for Flex {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
-        Some(&self.state)
+    fn widget_id(&self) -> Option<WidgetId> {
+        Some(self.id)
     }
 
     fn debug_name(&self) -> &str {

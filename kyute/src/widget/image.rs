@@ -1,12 +1,11 @@
 use crate::{
-    asset::AssetLoadError,
     cache, drawing,
     drawing::ToSkia,
     util::fs_watch::watch_path,
     widget::{prelude::*, Null},
     AssetLoader,
 };
-use std::{io::Error, task::Poll};
+use std::task::Poll;
 use tracing::trace;
 
 #[derive(Clone)]
@@ -79,7 +78,7 @@ impl Image<Null> {
 }
 
 impl<Placeholder: Widget> Widget for Image<Placeholder> {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
+    fn widget_id(&self) -> Option<WidgetId> {
         None
     }
 

@@ -2,6 +2,7 @@ use crate::{event::PointerEventKind, widget::prelude::*, Signal};
 
 #[derive(Clone)]
 pub struct Clickable<Content> {
+    id: WidgetId,
     content: Content,
     clicked: Signal<()>,
 }
@@ -10,6 +11,7 @@ impl<Content: Widget + 'static> Clickable<Content> {
     #[composable]
     pub fn new(content: Content) -> Clickable<Content> {
         Clickable {
+            id: WidgetId::here(),
             content,
             clicked: Signal::new(),
         }
@@ -32,8 +34,8 @@ impl<Content: Widget + 'static> Clickable<Content> {
 }
 
 impl<Content: Widget + 'static> Widget for Clickable<Content> {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
-        self.content.widget_identity()
+    fn widget_id(&self) -> Option<WidgetId> {
+        Some(self.id)
     }
 
     fn debug_name(&self) -> &str {

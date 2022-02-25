@@ -1,6 +1,7 @@
-use crate::{drawing::ToSkia, widget::prelude::*, Color, EnvKey, Length};
+use crate::{bloom::Bloom, drawing::ToSkia, widget::prelude::*, Color, EnvKey, InternalEvent, Length, WidgetId};
+use kyute::WidgetFilter;
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
     sync::Arc,
 };
@@ -128,7 +129,7 @@ struct GridTrackLayout {
 
 #[derive(Clone, Debug)]
 pub struct Grid {
-    state: WidgetIdentity,
+    id: WidgetId,
     /// Column sizes.
     columns: Vec<TrackSize>,
     /// Row sizes.
@@ -142,12 +143,20 @@ pub struct Grid {
 
     row_layout: RefCell<Vec<GridTrackLayout>>,
     column_layout: RefCell<Vec<GridTrackLayout>>,
+
+    cached_child_filter: Cell<Option<Bloom<WidgetId>>>,
 }
 
 impl Grid {
+    /// Invalidate the cached child widget filter.
+    fn invalidate_child_filter(&self) {
+        self.cached_child_filter.set(None);
+    }
+
+    /// Creates a new grid, initially without any row or column definitions.
     pub fn new() -> Grid {
         Grid {
-            state: WidgetIdentity::new(),
+            id: WidgetId::here(),
             columns: vec![],
             rows: vec![],
             items: vec![],
@@ -155,6 +164,7 @@ impl Grid {
             column_template: GridLength::Auto,
             row_layout: RefCell::new(vec![]),
             column_layout: RefCell::new(vec![]),
+            cached_child_filter: Cell::new(None),
         }
     }
 
@@ -191,7 +201,7 @@ impl Grid {
         columns: impl IntoIterator<Item = GridLength>,
     ) -> Grid {
         Grid {
-            state: WidgetIdentity::new(),
+            id: WidgetId::here(),
             columns: columns
                 .into_iter()
                 .map(|size| TrackSize {
@@ -211,6 +221,7 @@ impl Grid {
             column_template: GridLength::Auto,
             row_layout: RefCell::new(vec![]),
             column_layout: RefCell::new(vec![]),
+            cached_child_filter: Cell::new(None),
         }
     }
 
@@ -258,6 +269,8 @@ impl Grid {
             column_range,
             widget: Arc::new(WidgetPod::new(widget)),
         });
+
+        self.invalidate_child_filter()
     }
 
     #[composable]
@@ -385,13 +398,34 @@ impl Grid {
 }
 
 impl Widget for Grid {
-    fn widget_identity(&self) -> Option<&WidgetIdentity> {
-        Some(&self.state)
+    fn widget_id(&self) -> Option<WidgetId> {
+        Some(self.id)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        for item in self.items.iter() {
-            item.widget.event(ctx, event, env);
+        match event {
+            Event::Internal(InternalEvent::UpdateChildFilter { filter }) => {
+                // intercept the UpdateChildFilter event to return the cached filter instead
+                // of recalculating it
+                if let Some(ref cached_filter) = self.cached_child_filter.get() {
+                    filter.extend(cached_filter);
+                } else {
+                    let mut child_filter = WidgetFilter::new();
+                    for item in self.items.iter() {
+                        let mut e = Event::Internal(InternalEvent::UpdateChildFilter {
+                            filter: &mut child_filter,
+                        });
+                        item.widget.event(ctx, &mut e, env);
+                    }
+                    self.cached_child_filter.set(Some(child_filter));
+                    filter.extend(&child_filter);
+                }
+            }
+            event => {
+                for item in self.items.iter() {
+                    item.widget.event(ctx, event, env);
+                }
+            }
         }
     }
 

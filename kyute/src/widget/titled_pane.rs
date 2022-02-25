@@ -2,8 +2,8 @@ use crate::{
     composable,
     state::State,
     theme,
-    widget::{separator::separator, Clickable, Container, Flex, Grid, GridLength, Image, Label, SingleChildWidget},
-    Alignment, Color, Orientation, SideOffsets, Signal, Widget, WidgetExt,
+    widget::{separator::separator, Clickable, Container, Grid, GridLength, Image, Label, SingleChildWidget},
+    Alignment, Orientation, SideOffsets, Widget, WidgetExt,
 };
 
 /// A widget with a title.
