@@ -5,7 +5,7 @@ mod svg_path;
 pub use image::{Image, ImageCache, IMAGE_CACHE};
 pub(crate) use svg_path::svg_path_to_skia;
 
-use crate::{Color, Offset, Point, Rect, Size};
+use crate::{Color, Offset, Point, PointI, Rect, Size};
 use skia_safe as sk;
 
 /// Types that can be converted to their skia equivalent.

@@ -18,6 +18,11 @@ use windows::Win32::Graphics::DirectWrite::{
 };
 
 pub use formatted_text::FormattedText;
+pub use paragraph::{
+    FontFace, GlyphMaskData, GlyphMaskFormat, GlyphOffset, GlyphRun, GlyphRunAnalysis, GlyphRunDrawingEffects,
+    HitTestMetrics, HitTestPoint, HitTestTextPosition, LineMetrics, Paragraph, RasterizationOptions, Renderer,
+    TextMetrics,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

@@ -769,12 +769,17 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
     pub fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         // FIXME also check the environment when checking the validity of a cached layout.
         // if the layout that we calculated is valid, return it
+        // FIXME grids call layout twice, which makes this kind of caching useless
         if let Some(layout) = self.state.layout_result.get() {
             if layout.constraints == constraints {
+                //trace!("using cached layout");
                 return layout.measurements;
-            }
+            } /*else {
+                  trace!("constraints mismatch {:?} {:?}", layout.constraints, constraints);
+              }*/
         }
 
+        //trace!("recalculating layout");
         let measurements = self.widget.layout(ctx, constraints, env);
         /*tracing::trace!(
             "layout[{}-{:?}]: {:?}",

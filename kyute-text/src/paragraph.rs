@@ -2,16 +2,19 @@ use crate::{
     count_until_utf16, count_utf16, factory::dwrite_factory, formatted_text::FormattedText, Attribute, Error,
     FontStyle, FontWeight, ToDirectWrite, ToWString,
 };
-use kyute_common::{Data, Point, PointI, Rect, RectI, Size, SizeI, Transform, UnknownUnit};
+use kyute_common::{Color, Data, Point, PointI, Rect, RectI, Size, SizeI, Transform, UnknownUnit};
 use std::{
+    any::Any,
+    cell::RefCell,
     ffi::c_void,
+    mem,
     mem::MaybeUninit,
     ops::Range,
     ptr,
     sync::{Arc, Mutex},
 };
 use windows::{
-    core::{implement, IUnknown, HRESULT, PCWSTR},
+    core::{implement, IUnknown, IUnknownImpl, Interface, ToImpl, HRESULT, PCWSTR},
     Win32::{
         Foundation::{BOOL, ERROR_INSUFFICIENT_BUFFER, RECT},
         Graphics::{
@@ -21,9 +24,10 @@ use windows::{
             },
             DirectWrite::{
                 DWRITE_TEXTURE_ALIASED_1x1, DWRITE_TEXTURE_CLEARTYPE_3x1, IDWriteFactory7, IDWriteFontFace,
-                IDWriteGlyphRunAnalysis, IDWriteInlineObject, IDWritePixelSnapping_Impl, IDWriteTextFormat3,
-                IDWriteTextLayout, IDWriteTextLayout3, IDWriteTextRenderer, IDWriteTextRenderer_Impl,
-                DWRITE_FONT_STRETCH, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_NORMAL,
+                IDWriteGlyphRunAnalysis, IDWriteInlineObject, IDWriteNumberSubstitution,
+                IDWriteNumberSubstitution_Impl, IDWritePixelSnapping_Impl, IDWriteTextFormat3, IDWriteTextLayout,
+                IDWriteTextLayout3, IDWriteTextRenderer, IDWriteTextRenderer_Impl, DWRITE_FONT_STRETCH,
+                DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_GLYPH_OFFSET,
                 DWRITE_GLYPH_RUN, DWRITE_GLYPH_RUN_DESCRIPTION, DWRITE_HIT_TEST_METRICS, DWRITE_LINE_METRICS,
                 DWRITE_MATRIX, DWRITE_MEASURING_MODE, DWRITE_MEASURING_MODE_NATURAL,
                 DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL, DWRITE_STRIKETHROUGH, DWRITE_TEXTURE_TYPE,
@@ -272,25 +276,39 @@ impl Paragraph {
         }
     }
 
-    pub fn get_rasterized_glyph_runs(&self, scale_factor: f64, origin: Point) -> Vec<GlyphRun> {
-        let transform = Transform::identity();
-
-        let mut output_glyph_runs = Vec::new();
-
-        let renderer: IDWriteTextRenderer = DWriteRendererProxy {
-            scale_factor,
-            transform,
-            output_glyph_runs: &mut output_glyph_runs,
-        }
-        .into();
-
+    /// Draws the paragraph with the specified renderer.
+    ///
+    /// This function calls `draw_glyph_run` on the provided renderer for each glyph run in the paragraph.
+    pub fn draw(
+        &self,
+        origin: Point,
+        renderer: &mut dyn Renderer,
+        default_drawing_effects: &GlyphRunDrawingEffects,
+    ) -> Result<(), Error> {
         unsafe {
+            // DANGER ZONE: erase lifetime on renderer
+            // TODO: not sure that this is entirely safe
+            let renderer = renderer as *mut dyn Renderer;
+            let renderer = mem::transmute(renderer);
+
+            let dwrite_renderer: IDWriteTextRenderer = DWriteRendererProxy {
+                renderer,
+                default_drawing_effects,
+            }
+            .into();
             self.layout
-                .Draw(ptr::null(), renderer, origin.x as f32, origin.y as f32)
+                .Draw(ptr::null(), dwrite_renderer, origin.x as f32, origin.y as f32)?
         };
 
-        output_glyph_runs
+        Ok(())
     }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum RasterizationOptions {
+    Bilevel,
+    Grayscale,
+    Subpixel,
 }
 
 #[derive(Clone, Debug)]
@@ -300,30 +318,234 @@ pub struct FontFace {
 
 #[derive(Copy, Clone, Debug)]
 pub struct GlyphOffset {
-    advance_offset: f32,
-    ascender_offset: f32,
+    pub advance_offset: f32,
+    pub ascender_offset: f32,
 }
 
+impl ToDirectWrite for Transform<UnknownUnit, UnknownUnit> {
+    type Target = DWRITE_MATRIX;
+
+    fn to_dwrite(&self) -> Self::Target {
+        DWRITE_MATRIX {
+            m11: self.m11 as f32,
+            m12: self.m12 as f32,
+            m21: self.m21 as f32,
+            m22: self.m22 as f32,
+            dx: self.m31 as f32,
+            dy: self.m32 as f32,
+        }
+    }
+}
+
+fn to_dwrite_texture_type(rasterization_options: RasterizationOptions) -> DWRITE_TEXTURE_TYPE {
+    match rasterization_options {
+        RasterizationOptions::Bilevel => DWRITE_TEXTURE_ALIASED_1x1,
+        RasterizationOptions::Grayscale => DWRITE_TEXTURE_CLEARTYPE_3x1,
+        RasterizationOptions::Subpixel => DWRITE_TEXTURE_CLEARTYPE_3x1,
+    }
+}
+
+/// Format of a rasterized glyph mask.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum GlyphMaskFormat {
+    // 3 bytes per pixel, RGB subpixel mask
+    Rgb8,
+    // one byte per pixel, alpha mask
+    Alpha8,
+}
+
+/// Pixel data of a rasterized glyph run.
 #[derive(Debug)]
-pub struct GlyphRun {
-    alpha_texture: Vec<u8>,
-    bounds: RectI,
+pub struct GlyphMaskData {
+    size: SizeI,
+    format: GlyphMaskFormat,
+    data: Vec<u8>,
 }
 
-/// Trait for rendering a series of glyph runs
+impl GlyphMaskData {
+    /// Returns the size of this mask.
+    pub fn size(&self) -> SizeI {
+        self.size
+    }
+
+    /// Returns a reference to the pixel data.
+    pub fn data(&self) -> &[u8] {
+        self.data.as_slice()
+    }
+
+    /// Returns the format of the mask data.
+    pub fn format(&self) -> GlyphMaskFormat {
+        self.format
+    }
+}
+
+/// Information needed to draw a glyph run.
+///
+/// Contains rendering information calculated after taking into account a text transform and the
+/// render target scale factor.
+pub struct GlyphRunAnalysis {
+    analysis: IDWriteGlyphRunAnalysis,
+}
+
+impl GlyphRunAnalysis {
+    /// Returns the bounds of rasterized glyph run.
+    pub fn raster_bounds(&self, options: RasterizationOptions) -> RectI {
+        let texture_type = to_dwrite_texture_type(options);
+        unsafe {
+            let bounds: RECT = self.analysis.GetAlphaTextureBounds(texture_type).unwrap();
+            RectI::new(
+                PointI::new(bounds.left, bounds.top),
+                SizeI::new(bounds.right - bounds.left, bounds.bottom - bounds.top),
+            )
+        }
+    }
+
+    /// Rasterizes the glyph run.
+    ///
+    /// The glyph run may be empty (contains no glyphs), in which case this function returns `None`.
+    /// Apparently DirectWrite sometimes produces runs with no glyphs in them. Maybe they are whitespace runs?
+    pub fn rasterize(&self, options: RasterizationOptions) -> Option<GlyphMaskData> {
+        let texture_type = to_dwrite_texture_type(options);
+
+        unsafe {
+            let bounds: RECT = self.analysis.GetAlphaTextureBounds(texture_type).unwrap();
+            let width = bounds.right - bounds.left;
+            let height = bounds.bottom - bounds.top;
+
+            if width == 0 || height == 0 {
+                // nothing to render
+                return None;
+            }
+
+            // create the rendering params (using the default settings for the primary monitor)
+            // TODO: per-monitor rendering params
+            let rendering_params = dwrite_factory()
+                .CreateRenderingParams()
+                .expect("CreateRenderingParams failed");
+
+            // fetch gamma params
+            let mut blend_gamma = 0.0f32;
+            let mut blend_enhanced_contrast = 0.0f32;
+            let mut blend_clear_type_level = 0.0f32;
+            self.analysis
+                .GetAlphaBlendParams(
+                    rendering_params,
+                    &mut blend_gamma,
+                    &mut blend_enhanced_contrast,
+                    &mut blend_clear_type_level,
+                )
+                .unwrap();
+
+            eprintln!(
+                "alpha blend params {} {} {}",
+                blend_gamma, blend_enhanced_contrast, blend_clear_type_level
+            );
+
+            let buffer_size = match texture_type {
+                DWRITE_TEXTURE_ALIASED_1x1 => (width * height) as usize,
+                DWRITE_TEXTURE_CLEARTYPE_3x1 => (3 * width * height) as usize,
+                _ => unreachable!(),
+            };
+
+            let mut data = Vec::with_capacity(buffer_size);
+            self.analysis
+                .CreateAlphaTexture(texture_type, &bounds, data.as_mut_ptr(), buffer_size as u32)
+                .expect("CreateAlphaTexture failed");
+            data.set_len(buffer_size);
+
+            let format = match texture_type {
+                DWRITE_TEXTURE_ALIASED_1x1 => GlyphMaskFormat::Alpha8,
+                DWRITE_TEXTURE_CLEARTYPE_3x1 => GlyphMaskFormat::Rgb8,
+                _ => unreachable!(),
+            };
+
+            Some(GlyphMaskData {
+                size: SizeI::new(width, height),
+                format,
+                data,
+            })
+        }
+    }
+}
+
+/// Information about a glyph run: glyph indices, advances and so on.
+#[derive(Clone, Debug)]
+pub struct GlyphRun<'a> {
+    client_drawing_context: *const c_void,
+    baseline_origin_x: f32,
+    baseline_origin_y: f32,
+    measuring_mode: DWRITE_MEASURING_MODE,
+    glyph_run: &'a DWRITE_GLYPH_RUN,
+    glyph_run_description: &'a DWRITE_GLYPH_RUN_DESCRIPTION,
+    // TODO: analysis cache?
+    analysis: RefCell<Option<IDWriteGlyphRunAnalysis>>,
+}
+
+impl<'a> GlyphRun<'a> {
+    /// Creates a `GlyphRunAnalysis` object containing rendering information for the given scale factor and transformation.
+    pub fn create_glyph_run_analysis(
+        &self,
+        scale_factor: f64,
+        transform: &Transform<UnknownUnit, UnknownUnit>,
+    ) -> GlyphRunAnalysis {
+        let transform = transform.to_dwrite();
+        let analysis: IDWriteGlyphRunAnalysis = unsafe {
+            dwrite_factory()
+                .CreateGlyphRunAnalysis(
+                    self.glyph_run,
+                    scale_factor as f32,
+                    &transform,
+                    DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL,
+                    self.measuring_mode,
+                    self.baseline_origin_x,
+                    self.baseline_origin_y,
+                )
+                .expect("CreateGlyphRunAnalysis failed")
+        };
+        GlyphRunAnalysis { analysis }
+    }
+}
+
+/// Drawing parameters passed to `draw_glyph_run`.
+#[derive(Clone, Debug)]
+pub struct GlyphRunDrawingEffects {
+    /// The color of the glyph run.
+    pub color: Color,
+    // TODO application-defined drawing effects
+}
+
+impl Default for GlyphRunDrawingEffects {
+    fn default() -> Self {
+        GlyphRunDrawingEffects {
+            color: Color::new(0.0, 0.0, 0.0, 1.0),
+        }
+    }
+}
+
+/// Trait for rendering a series of glyph runs.
 pub trait Renderer {
-    /// Draw a glyph run
-    fn draw_glyph_run(&mut self, glyph_run: &GlyphRun);
+    /// Draw a glyph run.
+    // TODO error handling?
+    fn draw_glyph_run(&mut self, glyph_run: &GlyphRun, drawing_effects: &GlyphRunDrawingEffects);
 
     /// Returns the current text transformation.
     fn transform(&self) -> Transform<UnknownUnit, UnknownUnit>;
+
+    /// Returns the scale factor (Physical pixels per DIP).
+    fn scale_factor(&self) -> f64;
 }
 
+/// Drawing attributes passed to IDWriteTextLayout (via SetDrawingEffect).
+// FIXME: `#[implement(IUnknown)]` doesn't work for now, so instead implement a random-ass interface without any methods
+#[implement(IDWriteNumberSubstitution)]
+struct GlyphRunDrawingEffectsWrapper(GlyphRunDrawingEffects);
+impl IDWriteNumberSubstitution_Impl for GlyphRunDrawingEffectsWrapper {}
+
+/// Custom IDWriteTextRenderer. Delegates to a `Renderer` instance.
 #[implement(IDWriteTextRenderer)]
 struct DWriteRendererProxy {
-    scale_factor: f64,
-    transform: Transform<UnknownUnit, UnknownUnit>,
-    output_glyph_runs: *mut Vec<GlyphRun>,
+    default_drawing_effects: *const GlyphRunDrawingEffects,
+    renderer: *mut dyn Renderer,
 }
 
 impl IDWritePixelSnapping_Impl for DWriteRendererProxy {
@@ -332,19 +554,19 @@ impl IDWritePixelSnapping_Impl for DWriteRendererProxy {
     }
 
     fn GetCurrentTransform(&self, clientdrawingcontext: *const c_void) -> ::windows::core::Result<DWRITE_MATRIX> {
-        let transform = DWRITE_MATRIX {
-            m11: self.transform.m11 as f32,
-            m12: self.transform.m12 as f32,
-            m21: self.transform.m21 as f32,
-            m22: self.transform.m22 as f32,
-            dx: self.transform.m31 as f32,
-            dy: self.transform.m32 as f32,
+        let transform = unsafe {
+            // SAFETY: ensured by lifetime of DWriteRendererProxy in Paragraph::draw
+            (&mut *self.renderer).transform()
         };
-        Ok(transform)
+        Ok(transform.to_dwrite())
     }
 
     fn GetPixelsPerDip(&self, clientdrawingcontext: *const c_void) -> ::windows::core::Result<f32> {
-        Ok(self.scale_factor as f32)
+        let scale_factor = unsafe {
+            // SAFETY: ensured by lifetime of DWriteRendererProxy in Paragraph::draw
+            (&mut *self.renderer).scale_factor()
+        };
+        Ok(scale_factor as f32)
     }
 }
 
@@ -360,59 +582,28 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
         clientdrawingeffect: &Option<IUnknown>,
     ) -> ::windows::core::Result<()> {
         unsafe {
-            let transform = DWRITE_MATRIX {
-                m11: self.transform.m11 as f32,
-                m12: self.transform.m12 as f32,
-                m21: self.transform.m21 as f32,
-                m22: self.transform.m22 as f32,
-                dx: self.transform.m31 as f32,
-                dy: self.transform.m32 as f32,
+            let glyph_run = GlyphRun {
+                client_drawing_context: clientdrawingcontext,
+                baseline_origin_x: baselineoriginx,
+                baseline_origin_y: baselineoriginy,
+                measuring_mode: measuringmode,
+                // SAFETY: only borrowed for the duration of the function; cannot escape through `Renderer::draw_glyph_run` because of lifetime bound.
+                glyph_run: &*glyphrun,
+                glyph_run_description: &*glyphrundescription,
+                analysis: RefCell::new(None),
             };
 
-            let glyph_run_analysis: IDWriteGlyphRunAnalysis = dwrite_factory().CreateGlyphRunAnalysis(
-                glyphrun,
-                self.scale_factor as f32,
-                &transform,
-                DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL,
-                measuringmode,
-                baselineoriginx,
-                baselineoriginy,
-            )?;
-
-            let bounds: RECT = glyph_run_analysis.GetAlphaTextureBounds(DWRITE_TEXTURE_CLEARTYPE_3x1)?;
-            let width = bounds.right - bounds.left;
-            let height = bounds.bottom - bounds.top;
-            let rendering_params = dwrite_factory()
-                .CreateRenderingParams()
-                .expect("CreateRenderingParams failed");
-
-            let mut blend_gamma = 0.0f32;
-            let mut blend_enhanced_contrast = 0.0f32;
-            let mut blend_clear_type_level = 0.0f32;
-            glyph_run_analysis.GetAlphaBlendParams(
-                rendering_params,
-                &mut blend_gamma,
-                &mut blend_enhanced_contrast,
-                &mut blend_clear_type_level,
-            )?;
-
-            let buffer_size = (3 * width * height) as usize;
-            let mut alpha_texture = Vec::with_capacity(buffer_size);
-            glyph_run_analysis.CreateAlphaTexture(
-                DWRITE_TEXTURE_CLEARTYPE_3x1,
-                &bounds,
-                alpha_texture.as_mut_ptr(),
-                buffer_size as u32,
-            )?;
-            alpha_texture.set_len(buffer_size);
-
-            (&mut *self.output_glyph_runs).push(GlyphRun {
-                alpha_texture,
-                bounds: RectI::new(
-                    PointI::new(bounds.left, bounds.top),
-                    SizeI::new(bounds.right - bounds.left, bounds.bottom - bounds.top),
-                ),
-            });
+            if let Some(client_drawing_effect) = clientdrawingeffect {
+                // SAFETY: the only drawing effect passed here is an instance of DWriteRendererProxy.
+                // TODO erase this disgrace once `implement(IUnknown)` works.
+                let whatever: IDWriteNumberSubstitution = client_drawing_effect.cast().unwrap();
+                let drawing_effects: &mut GlyphRunDrawingEffectsWrapper = ToImpl::to_impl(&whatever);
+                // SAFETY: drawing effect lives as long as the draw call
+                (&mut *self.renderer).draw_glyph_run(&glyph_run, &drawing_effects.0);
+            } else {
+                // SAFETY: drawing effect lives as long as the draw call
+                (&mut *self.renderer).draw_glyph_run(&glyph_run, &*self.default_drawing_effects);
+            };
 
             Ok(())
         }
@@ -495,7 +686,7 @@ impl FormattedText {
             // TODO locale name?
 
             // default format
-            let default_font_family = "Arial".to_wstring();
+            let default_font_family = "Segoe UI".to_wstring();
             let locale_name = "".to_wstring();
             let format = dwrite_factory()
                 .CreateTextFormat(
@@ -563,6 +754,11 @@ impl FormattedText {
 
                 if let Some(fs) = font_style {
                     layout.SetFontStyle(fs.to_dwrite(), range);
+                }
+
+                if let Some(color) = color {
+                    let effect: IUnknown = GlyphRunDrawingEffectsWrapper(GlyphRunDrawingEffects { color }).into();
+                    layout.SetDrawingEffect(effect, range);
                 }
             }
 

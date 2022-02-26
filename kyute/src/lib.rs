@@ -53,6 +53,6 @@ pub use kyute_shell::graal;
 
 // re-export basic types from kyute-common
 pub use kyute_common::{
-    Angle, Color, Data, Dip, Length, Offset, PhysicalPoint, PhysicalSize, Point, Px, Rect, RectExt, RoundToPixel,
-    SideOffsets, Size, SizeI, Transform, UnitExt, DIP, PX,
+    Angle, Color, Data, Dip, Length, Offset, PhysicalPoint, PhysicalSize, Point, PointI, Px, Rect, RectExt, RectI,
+    RoundToPixel, SideOffsets, Size, SizeI, Transform, UnitExt, DIP, PX,
 };
