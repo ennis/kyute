@@ -17,8 +17,8 @@ mod padding;
 mod separator;
 mod slider;
 mod text;
-mod text2;
 mod text_edit;
+//mod text_v1;
 mod titled_pane;
 
 pub use align::Align;
@@ -38,7 +38,7 @@ pub use null::Null;
 pub use padding::Padding;
 pub use separator::separator;
 pub use slider::Slider;
-pub use text2::Text2;
+pub use text::Text;
 pub use text_edit::TextEdit;
 pub use titled_pane::TitledPane;
 

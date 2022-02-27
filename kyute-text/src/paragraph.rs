@@ -1,6 +1,6 @@
 use crate::{
     count_until_utf16, count_utf16, factory::dwrite_factory, formatted_text::FormattedText, Attribute, Error,
-    FontStyle, FontWeight, ToDirectWrite, ToWString,
+    FontStyle, FontWeight, TextAffinity, TextPosition, ToDirectWrite, ToWString,
 };
 use kyute_common::{Color, Data, Point, PointI, Rect, RectI, Size, SizeI, Transform, UnknownUnit};
 use std::{
@@ -58,17 +58,27 @@ fn to_dwrite_text_range(text: &str, range: Range<usize>) -> DWRITE_TEXT_RANGE {
 #[derive(Copy, Clone, Debug, PartialEq, Data)]
 pub struct HitTestMetrics {
     /// Text position in UTF-8 code units (bytes).
-    pub text_position: usize,
+    pub text_position: TextPosition,
     pub length: usize,
     pub bounds: Rect,
 }
 
 impl HitTestMetrics {
-    pub(crate) fn from_dwrite(metrics: &DWRITE_HIT_TEST_METRICS, text: &str) -> HitTestMetrics {
+    pub(crate) fn from_dwrite(metrics: &DWRITE_HIT_TEST_METRICS, text: &str, is_trailing: bool) -> HitTestMetrics {
         // convert utf16 code unit offset to utf8
         //dbg!(metrics.textPosition);
         let text_position = count_until_utf16(text, metrics.textPosition as usize);
         let length = count_until_utf16(&text[text_position..], metrics.length as usize);
+
+        let text_position = TextPosition {
+            position: text_position,
+            affinity: if is_trailing {
+                TextAffinity::Downstream
+            } else {
+                TextAffinity::Upstream
+            },
+        };
+
         HitTestMetrics {
             text_position,
             length,
@@ -83,8 +93,9 @@ impl HitTestMetrics {
 /// Return value of [TextLayout::hit_test_point].
 #[derive(Copy, Clone, Debug, PartialEq, Data)]
 pub struct HitTestPoint {
-    pub is_trailing_hit: bool,
-    pub metrics: HitTestMetrics,
+    pub is_inside: bool,
+    // use idx instead of position to better disambiguate "character index in the text string" and "position on screen"
+    pub idx: usize,
 }
 
 /// Return value of [TextLayout::hit_test_text_position].
@@ -140,23 +151,37 @@ impl From<DWRITE_LINE_METRICS> for LineMetrics {
 }
 
 impl Paragraph {
-    pub fn hit_test_point(&self, point: Point) -> Result<HitTestPoint, Error> {
+    pub fn hit_test_point(&self, point: Point) -> HitTestPoint {
         unsafe {
+            // influenced by piet-direct2d (https://github.com/linebender/piet/blob/f6abb8720f4a5e952c9ed028a6213f6b10974a0b/piet-direct2d/src/text.rs#L381)
             let mut is_trailing_hit = false.into();
             let mut is_inside = false.into();
             let mut metrics = MaybeUninit::<DWRITE_HIT_TEST_METRICS>::uninit();
-            self.layout.HitTestPoint(
-                point.x as f32,
-                point.y as f32,
-                &mut is_trailing_hit,
-                &mut is_inside,
-                metrics.as_mut_ptr(),
-            )?;
+            self.layout
+                .HitTestPoint(
+                    point.x as f32,
+                    point.y as f32,
+                    &mut is_trailing_hit,
+                    &mut is_inside,
+                    metrics.as_mut_ptr(),
+                )
+                .expect("HitTestPoint failed");
+            let metrics = metrics.assume_init();
+            let is_trailing_hit = is_trailing_hit.as_bool();
+            let is_inside = is_inside.as_bool();
 
-            Ok(HitTestPoint {
-                is_trailing_hit: is_trailing_hit.as_bool(),
-                metrics: HitTestMetrics::from_dwrite(&metrics.assume_init(), &self.text),
-            })
+            // if hit test reports a hit on the trailing side of the grapheme cluster, skip to the next position
+            // (we return the cursor position, not the character position)
+            let idx_utf16 = if is_trailing_hit {
+                metrics.textPosition + metrics.length
+            } else {
+                metrics.textPosition
+            } as usize;
+
+            // utf8 cursor pos
+            let idx = count_until_utf16(&self.text, idx_utf16);
+
+            HitTestPoint { is_inside, idx }
         }
     }
 
@@ -169,37 +194,44 @@ impl Paragraph {
         }
     }
 
-    pub fn hit_test_text_position(&self, text_position: usize) -> Result<HitTestTextPosition, Error> {
+    pub fn hit_test_text_position(&self, text_position: TextPosition) -> HitTestTextPosition {
         // convert the text position to an utf-16 offset (inspired by piet-direct2d).
-        let pos_utf16 = count_utf16(&self.text[0..text_position]);
+        let pos_utf16 = count_utf16(&self.text[0..text_position.position]);
 
         unsafe {
             let mut point_x = 0.0f32;
             let mut point_y = 0.0f32;
             let mut metrics = MaybeUninit::<DWRITE_HIT_TEST_METRICS>::uninit();
-            self.layout.HitTestTextPosition(
-                pos_utf16 as u32,
-                false,
-                &mut point_x,
-                &mut point_y,
-                metrics.as_mut_ptr(),
-            )?;
+            let is_trailing_hit = match text_position.affinity {
+                TextAffinity::Upstream => false,
+                TextAffinity::Downstream => true,
+            };
 
-            Ok(HitTestTextPosition {
-                metrics: HitTestMetrics::from_dwrite(&metrics.assume_init(), &self.text),
+            self.layout
+                .HitTestTextPosition(
+                    pos_utf16 as u32,
+                    false,
+                    &mut point_x,
+                    &mut point_y,
+                    metrics.as_mut_ptr(),
+                )
+                .expect("HitTestTextPosition failed");
+
+            HitTestTextPosition {
+                metrics: HitTestMetrics::from_dwrite(&metrics.assume_init(), &self.text, is_trailing_hit),
                 point: Point::new(point_x as f64, point_y as f64),
-            })
+            }
         }
     }
 
-    pub fn hit_test_text_range(&self, text_range: Range<usize>, origin: &Point) -> Result<Vec<HitTestMetrics>, Error> {
+    pub fn hit_test_text_range(&self, text_range: Range<usize>, origin: Point) -> Vec<HitTestMetrics> {
         unsafe {
             // convert range to UTF16
             let text_position = count_utf16(&self.text[0..text_range.start]);
             let text_length = count_utf16(&self.text[text_range]);
 
             // first call to determine the count
-            let text_metrics = self.layout.GetMetrics()?;
+            let text_metrics = self.layout.GetMetrics().expect("GetMetrics failed");
 
             // "A good value to use as an initial value for maxHitTestMetricsCount
             // may be calculated from the following equation:
@@ -224,25 +256,27 @@ impl Paragraph {
                     // reallocate with sufficient space
                     metrics = Vec::with_capacity(actual_metrics_count as usize);
                     max_metrics_count = actual_metrics_count;
-                    self.layout.HitTestTextRange(
-                        text_position as u32,
-                        text_length as u32,
-                        origin.x as f32,
-                        origin.y as f32,
-                        metrics.as_mut_ptr(),
-                        max_metrics_count,
-                        &mut actual_metrics_count,
-                    )?;
+                    self.layout
+                        .HitTestTextRange(
+                            text_position as u32,
+                            text_length as u32,
+                            origin.x as f32,
+                            origin.y as f32,
+                            metrics.as_mut_ptr(),
+                            max_metrics_count,
+                            &mut actual_metrics_count,
+                        )
+                        .expect("HitTestTextRange failed");
                 } else {
-                    return Err(e.into());
+                    panic!("HitTestTextRange failed");
                 }
             }
 
             metrics.set_len(actual_metrics_count as usize);
-            Ok(metrics
+            metrics
                 .into_iter()
-                .map(|m| HitTestMetrics::from_dwrite(&m, &self.text))
-                .collect())
+                .map(|m| HitTestMetrics::from_dwrite(&m, &self.text, true))
+                .collect()
         }
     }
 
@@ -436,10 +470,10 @@ impl GlyphRunAnalysis {
                 )
                 .unwrap();
 
-            eprintln!(
+            /*eprintln!(
                 "alpha blend params {} {} {}",
                 blend_gamma, blend_enhanced_contrast, blend_clear_type_level
-            );
+            );*/
 
             let buffer_size = match texture_type {
                 DWRITE_TEXTURE_ALIASED_1x1 => (width * height) as usize,
@@ -645,39 +679,6 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
     }
 }
 
-/*#[implement(ID2D1SimplifiedGeometrySink)]
-struct GeometrySink {}
-
-impl GeometrySink {
-    pub unsafe fn SetFillMode(&self, fillmode: D2D1_FILL_MODE) {
-        todo!()
-    }
-
-    pub unsafe fn SetSegmentFlags(&self, vertexflags: D2D1_PATH_SEGMENT) {
-        todo!()
-    }
-
-    pub unsafe fn BeginFigure(&self, startpoint: D2D_POINT_2F, figurebegin: D2D1_FIGURE_BEGIN) {
-        todo!()
-    }
-
-    pub unsafe fn AddLines(&self, points: *const D2D_POINT_2F, pointscount: u32) {
-        todo!()
-    }
-
-    pub unsafe fn AddBeziers(&self, beziers: *const D2D1_BEZIER_SEGMENT, bezierscount: u32) {
-        todo!()
-    }
-
-    pub unsafe fn EndFigure(&self, figureend: D2D1_FIGURE_END) {
-        todo!()
-    }
-
-    pub unsafe fn Close(&self) -> ::windows::core::Result<()> {
-        todo!()
-    }
-}*/
-
 impl FormattedText {
     pub fn create_paragraph(&self, layout_box_size: Size) -> Paragraph {
         unsafe {
@@ -688,14 +689,19 @@ impl FormattedText {
             // default format
             let default_font_family = "Segoe UI".to_wstring();
             let locale_name = "".to_wstring();
+
+            let paragraph_font_style = self.paragraph_style.font_style.to_dwrite();
+            let paragraph_font_weight = self.paragraph_style.font_weight.to_dwrite();
+            let paragraph_text_alignment = self.paragraph_style.text_alignment.to_dwrite();
+
             let format = dwrite_factory()
                 .CreateTextFormat(
                     PCWSTR(default_font_family.as_ptr()),
                     None,
-                    DWRITE_FONT_WEIGHT_NORMAL,
-                    DWRITE_FONT_STYLE_NORMAL,
+                    paragraph_font_weight,
+                    paragraph_font_style,
                     DWRITE_FONT_STRETCH_NORMAL,
-                    14.0,
+                    self.paragraph_style.font_size as f32,
                     PCWSTR(locale_name.as_ptr()),
                 )
                 .expect("CreateTextFormat failed");
@@ -709,6 +715,8 @@ impl FormattedText {
                     layout_box_size.height as f32,
                 )
                 .expect("CreateTextLayout failed");
+
+            layout.SetTextAlignment(paragraph_text_alignment);
 
             // apply style ranges
             for run in self.runs.runs.iter() {

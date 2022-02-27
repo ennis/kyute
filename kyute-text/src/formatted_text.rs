@@ -1,4 +1,4 @@
-use crate::{resolve_range, Attribute, TextAlignment};
+use crate::{resolve_range, Attribute, FontStyle, FontWeight, TextAlignment};
 use kyute_common::Data;
 use std::{
     cmp::Ordering,
@@ -144,9 +144,24 @@ impl TextRuns {
     }
 }
 
-#[derive(Clone, Debug, Default, Data)]
+#[derive(Clone, Debug, Data)]
 pub struct ParagraphStyle {
     pub text_alignment: TextAlignment,
+    pub font_style: FontStyle,
+    pub font_weight: FontWeight,
+    pub font_size: f64,
+}
+
+impl Default for ParagraphStyle {
+    fn default() -> Self {
+        // FIXME get the defaults from the system settings
+        ParagraphStyle {
+            text_alignment: TextAlignment::Leading,
+            font_style: FontStyle::Normal,
+            font_weight: FontWeight::NORMAL,
+            font_size: 14.0,
+        }
+    }
 }
 
 /// Text with formatting information.
@@ -178,14 +193,68 @@ where
 }
 
 impl FormattedText {
-    pub fn with_attribute(mut self, range: impl RangeBounds<usize>, attribute: impl Into<Attribute>) -> FormattedText {
+    pub fn new(text: Arc<str>) -> FormattedText {
+        FormattedText {
+            plain_text: text,
+            runs: Arc::new(TextRuns { runs: vec![] }),
+            paragraph_style: Default::default(),
+        }
+    }
+
+    /// Returns a new formatted text object with the specified attribute applied on the range of characters.
+    pub fn attribute(mut self, range: impl RangeBounds<usize>, attribute: impl Into<Attribute>) -> FormattedText {
         self.add_attribute(range, attribute);
         self
     }
 
+    /// Adds the specified attribute on the range of characters.
     pub fn add_attribute(&mut self, range: impl RangeBounds<usize>, attribute: impl Into<Attribute>) {
         let range = resolve_range(range, self.plain_text.len());
         Arc::make_mut(&mut self.runs).merge_attribute(range, &attribute.into())
+    }
+
+    /// Returns a new formatted text object with the specified font size set.
+    pub fn font_size(mut self, font_size: f64) -> FormattedText {
+        self.set_font_size(font_size);
+        self
+    }
+
+    /// Sets the font size.
+    pub fn set_font_size(&mut self, font_size: f64) {
+        self.paragraph_style.font_size = font_size;
+    }
+
+    /// Returns a new formatted text object with the specified font style set.
+    pub fn font_style(mut self, font_style: FontStyle) -> FormattedText {
+        self.set_font_style(font_style);
+        self
+    }
+
+    /// Sets the font style.
+    pub fn set_font_style(&mut self, font_style: FontStyle) {
+        self.paragraph_style.font_style = font_style;
+    }
+
+    /// Returns a new formatted text object with the specified font weight set.
+    pub fn font_weight(mut self, font_weight: FontWeight) -> FormattedText {
+        self.set_font_weight(font_weight);
+        self
+    }
+
+    /// Sets the font weight.
+    pub fn set_font_weight(&mut self, font_weight: FontWeight) {
+        self.paragraph_style.font_weight = font_weight;
+    }
+
+    /// Returns a new formatted text object with the specified text alignment set.
+    pub fn text_alignment(mut self, alignment: TextAlignment) -> FormattedText {
+        self.set_text_alignment(alignment);
+        self
+    }
+
+    /// Sets the font weight.
+    pub fn set_text_alignment(&mut self, alignment: TextAlignment) {
+        self.paragraph_style.text_alignment = alignment;
     }
 
     pub fn with_paragraph_style(mut self, style: ParagraphStyle) -> Self {
@@ -196,58 +265,4 @@ impl FormattedText {
     pub fn set_paragraph_style(&mut self, style: ParagraphStyle) {
         self.paragraph_style = style;
     }
-
-    /*/// Layouts the text into a paragraph.
-    pub fn format(&self, width: f64) -> Paragraph {
-
-
-
-        let default_font_manager = sk::FontMgr::default();
-        let mut font_collection = sk::textlayout::FontCollection::new();
-        font_collection.set_default_font_manager(default_font_manager, "Consolas");
-        let mut builder = sk::textlayout::ParagraphBuilder::new(&self.paragraph_style.0, font_collection);
-
-        // computed text style
-        let mut text_style = sk::textlayout::TextStyle::new();
-        for run in self.runs.runs.iter() {
-            text_style.clone_from(&self.paragraph_style.0.text_style());
-            for attr in run.attributes.iter() {
-                match *attr {
-                    Attribute::FontSize(fs) => {
-                        text_style.set_font_size(fs as sk::scalar);
-                    }
-                    Attribute::FontFamily(ref family) => {
-                        text_style.set_font_families(&[family.0.as_ref()]);
-                    }
-                    Attribute::FontStyle(fs) => {
-                        let current_font_style = text_style.font_style();
-                        text_style.set_font_style(sk::FontStyle::new(
-                            current_font_style.weight(),
-                            current_font_style.width(),
-                            fs.to_skia(),
-                        ));
-                    }
-                    Attribute::FontWeight(fw) => {
-                        let current_font_style = text_style.font_style();
-                        text_style.set_font_style(sk::FontStyle::new(
-                            sk::font_style::Weight::from(fw.0 as i32),
-                            current_font_style.width(),
-                            current_font_style.slant(),
-                        ));
-                    }
-                    Attribute::Color(color) => {
-                        text_style.set_color(color.to_skia().to_color());
-                    }
-                }
-            }
-            builder.push_style(&text_style);
-            builder.add_text(&self.plain_text[run.range.start..run.range.end]);
-            builder.pop();
-        }
-
-        let mut paragraph = builder.build();
-        // layout the paragraph
-        paragraph.layout(width as sk::scalar);
-        FormattedTextParagraph(paragraph)
-    }*/
 }

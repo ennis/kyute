@@ -1,20 +1,16 @@
 use crate::{cache, EnvKey};
-use notify::Watcher;
 use std::{
-    collections::HashMap,
     error::Error,
-    fmt, fs,
+    fmt,
     fs::File,
     future::Future,
     hash::{Hash, Hasher},
     io,
     marker::PhantomData,
-    path::PathBuf,
-    sync::{Arc, Mutex, Weak},
+    sync::Arc,
 };
 use thiserror::Error;
 use tokio::task;
-use tracing::trace;
 
 /// URI for an asset.
 ///

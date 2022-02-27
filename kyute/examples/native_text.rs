@@ -2,24 +2,23 @@ use kyute::{
     application, composable,
     shell::{application::Application, winit::window::WindowBuilder},
     style::BoxStyle,
+    text::FormattedText,
     theme,
     widget::{Container, Flex, Grid, GridLength, Image, Label, Null, TitledPane},
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Point, Size, UnitExt, Widget,
     WidgetExt, WidgetPod, Window,
 };
 
-use kyute_text::FormattedText;
-
-use kyute::widget::Text2;
+use kyute::widget::Text;
 use std::sync::Arc;
 
 #[composable(cached)]
 fn native_text_test() -> impl Widget + Clone {
-    let text = FormattedText::from("Initially collapsed")
-        .with_attribute(0..5, kyute_text::Attribute::Color(Color::new(0.7, 0.7, 0.7, 1.0)))
-        .with_attribute(.., kyute_text::Attribute::FontSize(15.0));
+    let text = FormattedText::from("⬤⬤⬤⬤⬤⬤⬤⬤⬤⬤⬤⬤")
+        .attribute(0..6, kyute_text::Attribute::Color(Color::from_hex("#DDDDDD")))
+        .attribute(.., kyute_text::Attribute::FontSize(15.0));
 
-    let text_widget = Text2::new(text);
+    let text_widget = Text::new(text);
 
     /*let paragraph = text.create_paragraph(Size::new(500.0, 500.0));
     let glyph_runs = paragraph.get_rasterized_glyph_runs(1.0, Point::origin());

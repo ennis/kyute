@@ -141,6 +141,9 @@ const fn const_subslice<T>(mut s: &[T], range: Range<usize>) -> &[T] {
     s
 }
 
+/// Keyboard shortcut
+/// FIXME: does it have to be in kyute-shell? there's nothing platform specific here?
+/// (there might be, at some point)
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Shortcut {
     /// Modifier (e.g. the `Ctrl` in `Ctrl+Z`).

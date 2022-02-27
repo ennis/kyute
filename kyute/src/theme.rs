@@ -379,6 +379,8 @@ pub const TEXT_EDIT_HEIGHT: EnvKey<Length> = EnvKey::new("kyute.theme-v2.text-ed
 pub const TEXT_EDIT_PADDING: EnvKey<SideOffsets> = EnvKey::new("kyute.theme-v2.text-edit-padding");
 /// Style of a text edit frame.
 pub const TEXT_EDIT: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.text-edit");
+/// Color of text edit carets.
+pub const CARET_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.caret-color");
 
 /// Style of a titled pane header.
 pub const TITLED_PANE_HEADER: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.titled-pane-header");
@@ -469,6 +471,7 @@ pub fn setup_default_style(env: &mut Environment) {
     env.set(BUTTON_HEIGHT, (base_label_height + 6).dip());
     env.set(TEXT_EDIT_WIDTH, 200.dip());
     env.set(TEXT_EDIT_PADDING, SideOffsets::new_all_same(2.0));
+    env.set(CARET_COLOR, palette::GREY_300);
 
     env.set(SLIDER_TRACK_Y, 9.0);
     env.set(SLIDER_TRACK_HEIGHT, 4.0);

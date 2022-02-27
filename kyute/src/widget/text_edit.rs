@@ -2,18 +2,20 @@
 use crate::{
     composable,
     core::Widget,
+    drawing::ToSkia,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
     state::{Signal, State},
     style::{BoxStyle, PaintCtxExt},
-    text::{FormattedText, Selection},
+    text::{FormattedText, Selection, TextAffinity, TextPosition},
     theme,
-    widget::{text::Text, Container},
+    widget::{Container, Text},
     BoxConstraints, Color, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect, SideOffsets, Size,
     WidgetId, WidgetPod,
 };
 use keyboard_types::KeyState;
-use kyute::text::TextPosition;
+use skia_safe as sk;
+use std::sync::Arc;
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
 
@@ -50,18 +52,35 @@ pub struct TextEdit {
     /// The size of the content area
     content_size: Size,
 
-    editing_finished: Signal<FormattedText>,
-    text_changed: Signal<FormattedText>,
+    editing_finished: Signal<Arc<str>>,
+    text_changed: Signal<Arc<str>>,
     selection_changed: Signal<Selection>,
 
     inner: WidgetPod<Container<Text>>,
 }
 
+/// Helper function that creates a new string with the text under `selection` replaced by the specified string.
+///
+/// Returns the edited string and the new selection that results from the editing operation.
+fn edit_text(text: &str, selection: Selection, replace_with: &str) -> (Arc<str>, Selection) {
+    let min = selection.min();
+    let max = selection.max();
+    // FIXME don't copy to a string just to call `replace_range`
+    let mut string = text.to_string();
+    string.replace_range(min..max, replace_with);
+    let text = Arc::from(string);
+    (text, Selection::empty(min + replace_with.len()))
+}
+
 impl TextEdit {
     /// Creates a new `TextEdit` widget displaying the specified `FormattedText`.
     #[composable]
-    pub fn with_selection(formatted_text: impl Into<FormattedText>, selection: Selection) -> TextEdit {
+    pub fn with_selection(formatted_text: impl Into<FormattedText>, mut selection: Selection) -> TextEdit {
         let formatted_text = formatted_text.into();
+
+        // clamp selection
+        selection.start = selection.start.min(formatted_text.plain_text.len());
+        selection.end = selection.end.min(formatted_text.plain_text.len());
 
         trace!(
             "TextEdit::with_selection: {:?}, {:?}",
@@ -97,13 +116,13 @@ impl TextEdit {
 
     /// Returns whether TODO.
     #[composable]
-    pub fn editing_finished(&self) -> Option<FormattedText> {
+    pub fn editing_finished(&self) -> Option<Arc<str>> {
         self.editing_finished.value()
     }
 
     /// Returns whether the text has changed.
     #[composable]
-    pub fn text_changed(&self) -> Option<FormattedText> {
+    pub fn text_changed(&self) -> Option<Arc<str>> {
         self.text_changed.value()
     }
 
@@ -171,10 +190,13 @@ impl TextEdit {
         self.state.selection.end = self.state.text.len();
     }*/
 
-    /// Returns the position in the text (character offset) that is closest to the given point.
+    /// Returns the position in the text (character offset between grapheme clusters) that is closest to the given point.
     fn text_position(&self, pos: Point) -> TextPosition {
-        let paragraph = self.inner.contents().formatted_paragraph();
-        paragraph.glyph_text_position(pos - self.inner.content_offset())
+        let paragraph = self.inner.widget().contents().paragraph();
+        TextPosition {
+            position: paragraph.hit_test_point(pos - self.inner.widget().content_offset()).idx,
+            affinity: TextAffinity::Upstream,
+        }
     }
 
     fn notify_selection_changed(&self, ctx: &mut EventCtx, new_selection: Selection) {
@@ -184,11 +206,11 @@ impl TextEdit {
         }
     }
 
-    fn notify_text_changed(&self, ctx: &mut EventCtx, new_text: FormattedText) {
+    fn notify_text_changed(&self, ctx: &mut EventCtx, new_text: Arc<str>) {
         self.text_changed.signal(ctx, new_text);
     }
 
-    fn notify_editing_finished(&self, ctx: &mut EventCtx, new_text: FormattedText) {
+    fn notify_editing_finished(&self, ctx: &mut EventCtx, new_text: Arc<str>) {
         self.editing_finished.signal(ctx, new_text);
     }
 }
@@ -207,16 +229,31 @@ impl Widget for TextEdit {
         self.inner.paint(ctx, bounds, env);
 
         // paint the selection over it
-        let offset = self.inner.content_offset();
-        let paragraph = self.inner.contents().formatted_paragraph();
-        let selection_boxes = paragraph.rects_for_range(self.selection.min()..self.selection.max());
+        let offset = self.inner.widget().content_offset();
+        let paragraph = self.inner.widget().contents().paragraph();
+        let selection_boxes =
+            paragraph.hit_test_text_range(self.selection.min()..self.selection.max(), Point::origin());
         for mut tb in selection_boxes {
-            tb.rect.origin += offset;
-            ctx.draw_styled_box(tb.rect, &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)), env);
+            tb.bounds.origin += offset;
+            ctx.draw_styled_box(tb.bounds, &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)), env);
         }
 
-        // TODO caret
-        // -> move to helper function (format_text_edit): applies the format ranges, splits the text into blocks, returns a SkParagraph
+        // paint the caret
+        if ctx.has_focus() {
+            let caret_hit_test = paragraph.hit_test_text_position(TextPosition {
+                position: self.selection.end,
+                affinity: TextAffinity::Downstream,
+            });
+
+            //dbg!(caret_hit_test);
+            let caret_color = env.get(theme::CARET_COLOR).unwrap();
+            let paint = sk::Paint::new(caret_color.to_skia(), None);
+            let pos = caret_hit_test.point + offset;
+            ctx.canvas.draw_rect(
+                Rect::new(pos.floor(), Size::new(1.0, caret_hit_test.metrics.bounds.size.height)).to_skia(),
+                &paint,
+            );
+        }
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
@@ -227,9 +264,10 @@ impl Widget for TextEdit {
             }
             Event::FocusLost => {
                 trace!("text edit: focus lost");
-                //let pos = self.state.selection.end;
-                //self.set_cursor(pos);
-                //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                let pos = self.selection.end;
+                if self.selection.start != self.selection.end {
+                    self.notify_selection_changed(ctx, Selection { start: pos, end: pos })
+                }
                 ctx.request_redraw();
             }
             Event::Pointer(p) => {
@@ -261,15 +299,13 @@ impl Widget for TextEdit {
                         if ctx.is_capturing_pointer() {
                             trace!("text edit: move cursor");
                             let text_pos = self.text_position(p.position);
-                            if self.selection.end != text_pos.position {
-                                self.notify_selection_changed(
-                                    ctx,
-                                    Selection {
-                                        start: self.selection.start,
-                                        end: text_pos.position,
-                                    },
-                                )
-                            }
+                            self.notify_selection_changed(
+                                ctx,
+                                Selection {
+                                    start: self.selection.start,
+                                    end: text_pos.position,
+                                },
+                            );
                             ctx.request_redraw();
                         }
                     }
@@ -283,39 +319,44 @@ impl Widget for TextEdit {
                 KeyState::Down => match k.key {
                     keyboard_types::Key::Backspace => {
                         trace!("text edit: backspace");
-                        //if self.state.selection.is_empty() {
-                        //    self.move_cursor(Movement::Left, true);
-                        //}
-                        //self.insert("");
-                        //ctx.emit_action(TextEditAction::TextChanged(self.state.text.clone()));
-                        //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        let selection = if self.selection.is_empty() {
+                            self.move_cursor(Movement::Left, true)
+                        } else {
+                            self.selection
+                        };
+                        let (new_text, new_selection) = edit_text(&self.formatted_text.plain_text, selection, "");
+                        self.notify_text_changed(ctx, new_text);
+                        self.notify_selection_changed(ctx, new_selection);
                         ctx.request_relayout();
                     }
                     keyboard_types::Key::Delete => {
                         trace!("text edit: delete");
-                        //if self.state.selection.is_empty() {
-                        //    self.move_cursor(Movement::Right, true);
-                        //}
-                        //self.insert("");
-                        //ctx.emit_action(TextEditAction::TextChanged(self.state.text.clone()));
-                        //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        let selection = if self.selection.is_empty() {
+                            self.move_cursor(Movement::Right, true)
+                        } else {
+                            self.selection
+                        };
+                        let (new_text, new_selection) = edit_text(&self.formatted_text.plain_text, selection, "");
+                        self.notify_text_changed(ctx, new_text);
+                        self.notify_selection_changed(ctx, new_selection);
                         ctx.request_relayout();
                     }
                     keyboard_types::Key::ArrowLeft => {
-                        self.move_cursor(Movement::Left, k.modifiers.contains(Modifiers::SHIFT));
+                        let selection = self.move_cursor(Movement::Left, k.modifiers.contains(Modifiers::SHIFT));
+                        self.notify_selection_changed(ctx, selection);
                         ctx.request_redraw();
                     }
                     keyboard_types::Key::ArrowRight => {
-                        self.move_cursor(Movement::Right, k.modifiers.contains(Modifiers::SHIFT));
+                        let selection = self.move_cursor(Movement::Right, k.modifiers.contains(Modifiers::SHIFT));
+                        self.notify_selection_changed(ctx, selection);
                         ctx.request_redraw();
                     }
                     keyboard_types::Key::Character(ref c) => {
                         // reject control characters (handle in KeyDown instead)
                         trace!("insert {:?}", c);
-                        //trace!("text edit: character {}", c);
-                        //self.insert(&c);
-                        //ctx.emit_action(TextEditAction::TextChanged(self.state.text.clone()));
-                        //ctx.emit_action(TextEditAction::SelectionChanged(self.state.selection));
+                        let (new_text, new_selection) = edit_text(&self.formatted_text.plain_text, self.selection, c);
+                        self.notify_text_changed(ctx, new_text);
+                        self.notify_selection_changed(ctx, new_selection);
                         ctx.request_relayout();
                     }
                     _ => {}

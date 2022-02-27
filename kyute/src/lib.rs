@@ -24,7 +24,6 @@ pub mod cache;
 pub mod event;
 pub mod region;
 pub mod style;
-pub mod text;
 pub mod theme;
 pub mod util;
 pub mod widget;
@@ -48,6 +47,7 @@ pub use crate::{
 };
 
 pub use kyute_shell as shell;
+pub use kyute_text as text;
 // re-export graal
 pub use kyute_shell::graal;
 

@@ -131,7 +131,7 @@ impl ToWString for str {
 /// Describes a font weight.
 ///
 /// It is a value between 1 and 1000, based on the CSS [`font-weight`](https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight) property.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Data)]
 #[repr(transparent)]
 pub struct FontWeight(pub u16);
 
@@ -172,7 +172,7 @@ impl FontFamily {
 /// Font styling options (normal, italic, or oblique).
 // NOTE: "style" may be a bit vague for what this represents: for example, skia uses "slant" instead.
 // Still, we choose to follow the name of the CSS property ("font-style").
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Data)]
 pub enum FontStyle {
     Normal,
     Italic,

@@ -13,7 +13,7 @@ use crate::{
     Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, PaintCtx,
     Point, Rect, RoundToPixel, Size, Widget, WidgetId, WidgetPod,
 };
-use keyboard_types::KeyState;
+use keyboard_types::{KeyState, Modifiers};
 use kyute::GpuFrameCtx;
 use kyute_shell::{
     application::Application,
@@ -158,10 +158,21 @@ impl WindowState {
                     is_composing: false,
                 }))
             }
-            WindowEvent::ModifiersChanged(_) => {
-                // TODO
-                //window_info.inputs.modifiers = mods;
-
+            WindowEvent::ModifiersChanged(mods) => {
+                let mut modifiers = Modifiers::empty();
+                if mods.ctrl() {
+                    modifiers |= Modifiers::CONTROL;
+                }
+                if mods.shift() {
+                    modifiers |= Modifiers::SHIFT;
+                }
+                if mods.alt() {
+                    modifiers |= Modifiers::ALT;
+                }
+                if mods.logo() {
+                    modifiers |= Modifiers::SUPER;
+                }
+                self.inputs.modifiers = modifiers;
                 None
             }
             WindowEvent::CursorMoved {
@@ -293,6 +304,8 @@ impl WindowState {
             //------------------------------------------------
             // Send event
 
+            let mut old_focus = self.focus_state.focus;
+
             match event {
                 Event::Pointer(ref pointer_event) => {
                     // Pointer events are delivered to the node that is currently grabbing the pointer.
@@ -331,6 +344,7 @@ impl WindowState {
                     // keyboard events are delivered to the widget that has the focus.
                     // if no widget has focus, the event is dropped.
                     if let Some(focus) = self.focus_state.focus {
+                        // TODO: helper function to send an event to a target
                         let mut content_ctx = EventCtx::new_subwindow(
                             parent_ctx,
                             self.scale_factor,
@@ -352,7 +366,35 @@ impl WindowState {
                 }
             };
 
-            // TODO handle focus gained/lost
+            if old_focus != self.focus_state.focus {
+                let new_focus = self.focus_state.focus;
+                trace!("focus changed");
+
+                let mut content_ctx =
+                    EventCtx::new_subwindow(parent_ctx, self.scale_factor, &mut window.window, &mut self.focus_state);
+
+                if let Some(old_focus) = old_focus {
+                    content_widget.event(
+                        &mut content_ctx,
+                        &mut Event::Internal(InternalEvent::RouteEvent {
+                            target: old_focus,
+                            event: Box::new(Event::FocusLost),
+                        }),
+                        env,
+                    );
+                }
+
+                if let Some(new_focus) = new_focus {
+                    content_widget.event(
+                        &mut content_ctx,
+                        &mut Event::Internal(InternalEvent::RouteEvent {
+                            target: new_focus,
+                            event: Box::new(Event::FocusGained),
+                        }),
+                        env,
+                    );
+                }
+            }
         }
     }
 
@@ -484,7 +526,7 @@ impl Window {
                 scale_factor: window_state.scale_factor,
             };
             for widget in widgets.iter() {
-                widget.gpu_frame(&mut gpu_ctx);
+                widget.widget().gpu_frame(&mut gpu_ctx);
             }
             let resource_references = gpu_ctx.resource_references;
 

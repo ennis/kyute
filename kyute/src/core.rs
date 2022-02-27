@@ -1113,7 +1113,7 @@ impl<T: Widget + 'static> WidgetPod<T> {
     }
 }
 
-impl<T: Widget + ?Sized> Deref for WidgetPod<T> {
+/*impl<T: Widget + ?Sized> Deref for WidgetPod<T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.widget
@@ -1124,7 +1124,7 @@ impl<T: Widget + ?Sized> DerefMut for WidgetPod<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.widget
     }
-}
+}*/
 
 /*// TODO remove this once we have unsized coercions
 impl<T: Widget + 'static> From<WidgetPod<T>> for WidgetPod {
