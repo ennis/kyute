@@ -16,7 +16,6 @@ fn popup_test() -> impl Widget + Clone {
 
     let contents = Image::from_uri("data/bonjour.jpg");
     let popup = Popup::new(Container::new(contents));
-
     if button.clicked() {
         trace!("button clicked");
         // launch popup?

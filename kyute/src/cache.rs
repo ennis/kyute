@@ -4,6 +4,7 @@ use crate::{
     call_id::{CallId, CallIdStack, CallNode},
     Data, Environment,
 };
+use keyboard_types::Key::Call;
 use kyute_shell::winit::event_loop::EventLoopProxy;
 use slotmap::SlotMap;
 use std::{
@@ -153,7 +154,7 @@ impl<T: Default + 'static> Key<T> {
 struct CacheInner {
     /// The call tree, represented as an array of slots.
     slots: Vec<Slot>,
-    ///
+    /// Cache entries.
     entries: SlotMap<CacheEntryKey, StateEntry>,
     /// The number of times `Cache::run` has been called.
     revision: usize,
@@ -274,6 +275,15 @@ impl CacheWriter {
             state_stack: vec![],
         };
         writer.start_group(CallId(0));
+
+        // setup root cache entry
+        // the root cache entry is there to detect whether any state entry in the cache
+        // has been invalidated during invalidation
+        let CacheEntryInsertResult {
+            key: root_cache_key, ..
+        } = writer.get_or_insert_entry(CallId(0), None, || ());
+        writer.state_stack.push(root_cache_key.key);
+        writer.cache.entries[root_cache_key.key].dirty.set(false);
         writer
     }
 
@@ -287,11 +297,16 @@ impl CacheWriter {
     }
 
     /// Finishes writing to the cache, returns the updated cache object.
-    pub fn finish(mut self) -> CacheInner {
+    fn finish(mut self) -> (CacheInner, bool) {
+        let root_state_key = self.state_stack.pop().expect("unbalanced state scopes");
+        let should_rerun = self.cache.entries.get(root_state_key).unwrap().dirty.get();
+        if should_rerun {
+            trace!("cache: state entry invalidated, will re-run");
+        }
         self.end_group();
         assert!(self.group_stack.is_empty(), "unbalanced groups");
         assert_eq!(self.pos, self.cache.slots.len());
-        self.cache
+        (self.cache, should_rerun)
     }
 
     /// Finds a slot with the specified key in the current group, starting from the current position.
@@ -601,33 +616,48 @@ impl Cache {
             // We can't put a reference type in a TLS.
             // As a workaround, use the classic sleight of hand:
             // temporarily move our internals out of self and into the TLS, and move it back to self once we've finished.
+
             let mut inner = self.cache.take().unwrap();
-            inner.revision += 1;
+            let mut result;
 
-            // start writing to the cache
-            let writer = CacheWriter::new(inner);
+            loop {
+                inner.revision += 1;
 
-            // initialize the TLS cache context (which contains the cache table writer and the call key stack that maintains
-            // unique IDs for each cached function call).
-            let cx = CacheContext {
-                event_loop_proxy,
-                id_stack: CallIdStack::new(),
-                writer,
-                env: env.clone(),
-            };
-            cx_cell.borrow_mut().replace(cx);
+                // start writing to the cache
+                let writer = CacheWriter::new(inner);
 
-            // run the function
-            let result = function();
+                // initialize the TLS cache context (which contains the cache table writer and the call key stack that maintains
+                // unique IDs for each cached function call).
+                let cx = CacheContext {
+                    event_loop_proxy: event_loop_proxy.clone(),
+                    id_stack: CallIdStack::new(),
+                    writer,
+                    env: env.clone(),
+                };
 
-            // finish writing to the cache
-            let cx = cx_cell.borrow_mut().take().unwrap();
-            // check that calls to CallKeyStack::enter and exit are balanced
-            assert!(cx.id_stack.is_empty(), "unbalanced CallKeyStack");
+                cx_cell.borrow_mut().replace(cx);
 
-            // finalize cache writer and put the internals back
-            self.cache.replace(cx.writer.finish());
+                // run the function
+                result = function();
 
+                // finish writing to the cache
+                let cx = cx_cell.borrow_mut().take().unwrap();
+                // check that calls to CallKeyStack::enter and exit are balanced
+                assert!(cx.id_stack.is_empty(), "unbalanced CallKeyStack");
+
+                let (cache, should_rerun) = cx.writer.finish();
+                inner = cache;
+
+                if should_rerun {
+                    // internal state within the cache is not consistent, run again
+                    continue;
+                }
+
+                break;
+            }
+
+            // put the internals back
+            self.cache.replace(inner);
             result
         })
     }

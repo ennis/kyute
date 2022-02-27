@@ -159,7 +159,7 @@ pub fn run(ui: fn() -> Arc<WidgetPod>, env_overrides: Environment) {
                         );
                     }
                 } else {
-                    tracing::warn!("unregistered window id: {:?}", window_id);
+                    warn!("unregistered window id: {:?}", window_id);
                 }
             }
             // --- RECOMPOSITION -------------------------------------------------------------------
@@ -168,14 +168,6 @@ pub fn run(ui: fn() -> Arc<WidgetPod>, env_overrides: Environment) {
                 // Re-evaluate the root widget.
                 // If no state variable in the cache has changed (because of an event), then it will simply
                 // return the same root widget.
-
-                // TODO: this is broken: recomp should run in a loop until stabilized (root cache entry not dirty)
-
-                // 1st eval: run event handlers
-                // 2nd eval: reflect new state of UI
-                //tracing::trace!("1st recomp");
-                eval_root_widget(&mut app_ctx, elwt, &env, ui);
-                //tracing::trace!("2nd recomp");
                 root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
             }
             // --- EXT EVENTS ----------------------------------------------------------------------
@@ -196,7 +188,7 @@ pub fn run(ui: fn() -> Arc<WidgetPod>, env_overrides: Environment) {
                         &env,
                     )
                 } else {
-                    tracing::warn!("unregistered window id: {:?}", window_id);
+                    warn!("unregistered window id: {:?}", window_id);
                 }
             }
             _ => (),

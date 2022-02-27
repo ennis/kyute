@@ -9,6 +9,9 @@
 extern crate self as kyute;
 
 #[macro_use]
+extern crate tracing;
+
+#[macro_use]
 mod env;
 mod bloom;
 mod call_id;

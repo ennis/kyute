@@ -1,9 +1,10 @@
 use crate::{
+    cache,
     event::PointerEventKind,
     style::{BoxStyle, ColorRef, VisualState},
     theme,
     widget::{prelude::*, Container, Label},
-    SideOffsets, Signal, ValueRef,
+    SideOffsets, Signal, State, ValueRef,
 };
 
 #[derive(Clone)]
@@ -11,12 +12,16 @@ pub struct Button {
     id: WidgetId,
     inner: Container<Label>,
     clicked: Signal<()>,
+    // FIXME: I just want for the flag value to be retained across recomps; design something simpler
+    active: (bool, cache::Key<bool>),
 }
 
 impl Button {
     /// Creates a new button with the specified label.
     #[composable]
     pub fn new(label: String) -> Button {
+        trace!("button created");
+        let active = cache::state(|| false);
         Button {
             id: WidgetId::here(),
             inner: Container::new(Label::new(label))
@@ -24,9 +29,10 @@ impl Button {
                 .content_padding(SideOffsets::new_all_same(5.0))
                 .baseline(theme::BUTTON_LABEL_BASELINE)
                 .box_style(theme::BUTTON)
-                .alternate_box_style(VisualState::ACTIVE, theme::BUTTON_ACTIVE)
+                .alternate_box_style(VisualState::ACTIVE | VisualState::HOVER, theme::BUTTON_ACTIVE)
                 .alternate_box_style(VisualState::HOVER, theme::BUTTON_HOVER),
             clicked: Signal::new(),
+            active: (active.get(), active),
         }
     }
 
@@ -71,15 +77,17 @@ impl Widget for Button {
         match event {
             Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerDown => {
-                    //trace!("button clicked");
+                    trace!("button clicked");
                     ctx.request_focus();
                     ctx.request_redraw();
                     ctx.set_handled();
-                    ctx.set_active(true);
+                    ctx.capture_pointer();
+                    ctx.set_state(self.active.1, true);
                 }
                 PointerEventKind::PointerUp => {
+                    trace!("button pointerup");
                     ctx.request_redraw();
-                    ctx.set_active(false);
+                    ctx.set_state(self.active.1, false);
                     self.clicked.signal(ctx, ());
                 }
                 PointerEventKind::PointerOver => {
@@ -89,7 +97,6 @@ impl Widget for Button {
                 PointerEventKind::PointerOut => {
                     //trace!("button PointerOut");
                     ctx.request_redraw();
-                    ctx.set_active(false);
                 }
                 _ => {}
             },
@@ -107,6 +114,9 @@ impl Widget for Button {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        if self.active.0 {
+            ctx.active = true;
+        }
         self.inner.paint(ctx, bounds, env)
     }
 }

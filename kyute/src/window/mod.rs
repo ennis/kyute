@@ -20,6 +20,7 @@ use kyute_shell::{
     winit,
     winit::{
         event::{DeviceId, WindowEvent},
+        platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
         window::WindowBuilder,
     },
 };
@@ -60,7 +61,6 @@ impl WindowState {
     /// It also updates various states that are tracked across WindowEvents, such as:
     /// - the current pointer position
     /// - information about the last click, for double-click handling
-    /// -
     fn process_window_event(
         &mut self,
         parent_ctx: &mut EventCtx,
@@ -289,22 +289,17 @@ impl WindowState {
 
         if let Some(mut event) = event {
             //------------------------------------------------
-            // force release pointer grab on pointer up
-            match event {
-                Event::Pointer(PointerEvent {
-                    kind: PointerEventKind::PointerUp,
-                    ..
-                }) => {
-                    //trace!("forcing release of pointer grab");
-                    self.focus_state.pointer_grab = None;
-                }
-                _ => {}
-            }
-
-            //------------------------------------------------
             // Send event
 
             let mut old_focus = self.focus_state.focus;
+
+            let pointer_grab_auto_release = match event {
+                Event::Pointer(PointerEvent {
+                    kind: PointerEventKind::PointerUp,
+                    ..
+                }) => true,
+                _ => false,
+            };
 
             match event {
                 Event::Pointer(ref pointer_event) => {
@@ -366,6 +361,15 @@ impl WindowState {
                 }
             };
 
+            //------------------------------------------------
+            // force release pointer grab on pointer up
+            if pointer_grab_auto_release {
+                //trace!("forcing release of pointer grab");
+                self.focus_state.pointer_grab = None;
+            }
+
+            //------------------------------------------------
+            // signal focus changes
             if old_focus != self.focus_state.focus {
                 let new_focus = self.focus_state.focus;
                 trace!("focus changed");
@@ -717,12 +721,15 @@ impl Widget for Window {
                     }
                 } else {
                     tracing::trace!("creating window");
-                    let window = kyute_shell::window::Window::new(
-                        ctx.event_loop,
-                        window_state.window_builder.take().unwrap(),
-                        None,
-                    )
-                    .expect("failed to create window");
+                    let mut window_builder = window_state.window_builder.take().unwrap();
+
+                    // set parent window
+                    if let Some(ref mut parent_window) = ctx.parent_window {
+                        window_builder = window_builder.with_owner_window(parent_window.window().hwnd() as *mut _);
+                    }
+
+                    let window = kyute_shell::window::Window::new(ctx.event_loop, window_builder, None)
+                        .expect("failed to create window");
 
                     // create skia stuff
                     let skia_window = SkiaWindow::new(window);
