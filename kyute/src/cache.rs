@@ -89,7 +89,7 @@ impl<T> fmt::Debug for Key<T> {
 impl<T: Data + 'static> Key<T> {
     /// Returns the value of the cache entry and replaces it by the default value.
     pub fn update(&self, new_value: T) -> T {
-        with_comp_cx(|cx| {
+        with_cache_cx(|cx| {
             let prev_value = cx.writer.replace_value(*self, new_value.clone());
             if !prev_value.same(&new_value) {
                 cx.writer.invalidate_dependents(*self);
@@ -111,7 +111,7 @@ impl<T: 'static> Key<T> {
     /// Returns the value of the cache entry and replaces it by the default value.
     /// Always invalidates.
     pub fn replace(&self, new_value: T) -> T {
-        with_comp_cx(|cx| {
+        with_cache_cx(|cx| {
             let prev_value = cx.writer.replace_value(*self, new_value);
             cx.writer.invalidate_dependents(*self);
             prev_value
@@ -121,7 +121,7 @@ impl<T: 'static> Key<T> {
     pub fn set(&self, new_value: T) {
         // TODO idea: log the call sites that invalidated the cache, for debugging
         // e.g. `state entry @ (call site) invalidated because of (state entries), because of manual invalidation @ (call site) OR invalidated externally`
-        with_comp_cx(|cx| {
+        with_cache_cx(|cx| {
             cx.writer.set_value(*self, new_value);
             cx.writer.invalidate_dependents(*self);
         })
@@ -130,7 +130,7 @@ impl<T: 'static> Key<T> {
     pub fn set_without_invalidation(&self, new_value: T) {
         // TODO idea: log the call sites that invalidated the cache, for debugging
         // e.g. `state entry @ (call site) invalidated because of (state entries), because of manual invalidation @ (call site) OR invalidated externally `
-        with_comp_cx(|cx| {
+        with_cache_cx(|cx| {
             cx.writer.set_value(*self, new_value);
         })
     }
@@ -138,7 +138,7 @@ impl<T: 'static> Key<T> {
 
 impl<T: Clone + 'static> Key<T> {
     pub fn get(&self) -> T {
-        with_comp_cx(|cx| cx.writer.get_value(*self))
+        with_cache_cx(|cx| cx.writer.get_value(*self))
     }
 }
 
@@ -640,7 +640,7 @@ impl Cache {
 
 //--------------------------------------------------------------------------------------------------
 
-fn with_comp_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
+fn with_cache_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
     CURRENT_CACHE_CONTEXT.with(|cx_cell| {
         let mut cx = cx_cell.borrow_mut();
         let cx = cx.as_mut().expect("function cannot called outside of `Cache::run`");
@@ -650,24 +650,24 @@ fn with_comp_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
 
 /// Returns the current call identifier.
 pub fn current_call_id() -> CallId {
-    with_comp_cx(|cx| cx.id_stack.current())
+    with_cache_cx(|cx| cx.id_stack.current())
 }
 
 /// Returns the current revision.
 pub fn revision() -> usize {
-    with_comp_cx(|cx| cx.writer.cache.revision)
+    with_cache_cx(|cx| cx.writer.cache.revision)
 }
 
 /// Must be called inside `Cache::run`.
 #[track_caller]
 fn enter(index: usize) {
     let location = Location::caller();
-    with_comp_cx(move |cx| cx.id_stack.enter(location, index));
+    with_cache_cx(move |cx| cx.id_stack.enter(location, index));
 }
 
 /// Must be called inside `Cache::run`.
 fn exit() {
-    with_comp_cx(move |cx| cx.id_stack.exit());
+    with_cache_cx(move |cx| cx.id_stack.exit());
 }
 
 /// Enters a
@@ -681,17 +681,17 @@ pub fn scoped<R>(index: usize, f: impl FnOnce() -> R) -> R {
 }
 
 pub fn environment() -> Environment {
-    with_comp_cx(|cx| cx.env.clone())
+    with_cache_cx(|cx| cx.env.clone())
 }
 
 #[track_caller]
 pub fn with_environment<R>(env: Environment, f: impl FnOnce() -> R) -> R {
-    let parent_env = with_comp_cx(|cx| {
+    let parent_env = with_cache_cx(|cx| {
         let merged_env = cx.env.merged(env);
         mem::replace(&mut cx.env, merged_env)
     });
     let r = scoped(0, f);
-    with_comp_cx(|cx| {
+    with_cache_cx(|cx| {
         cx.env = parent_env;
     });
     r
@@ -700,7 +700,7 @@ pub fn with_environment<R>(env: Environment, f: impl FnOnce() -> R) -> R {
 #[track_caller]
 pub fn changed<T: Data>(value: T) -> bool {
     let location = Location::caller();
-    with_comp_cx(move |cx| {
+    with_cache_cx(move |cx| {
         cx.id_stack.enter(location, 0);
         let key = cx.id_stack.current();
         let node = cx.id_stack.current_call_node();
@@ -713,7 +713,7 @@ pub fn changed<T: Data>(value: T) -> bool {
 #[track_caller]
 fn state_inner<T: 'static, Init: FnOnce() -> T>(init: Init) -> CacheEntryInsertResult<T> {
     let location = Location::caller();
-    with_comp_cx(move |cx| {
+    with_cache_cx(move |cx| {
         cx.id_stack.enter(location, 0);
         let call_id = cx.id_stack.current();
         let node = cx.id_stack.current_call_node();
@@ -769,7 +769,7 @@ where
     } = scoped(revision, || state_inner(|| Poll::Pending));
 
     if inserted || restart {
-        with_comp_cx(|cx| {
+        with_cache_cx(|cx| {
             let el = cx.event_loop_proxy.clone();
 
             // spawn task that will set the value
@@ -795,12 +795,12 @@ where
 #[track_caller]
 pub fn group<R>(f: impl FnOnce() -> R) -> R {
     let location = Location::caller();
-    with_comp_cx(|cx| {
+    with_cache_cx(|cx| {
         cx.id_stack.enter(location, 0);
         cx.writer.start_group(cx.id_stack.current())
     });
     let r = f();
-    with_comp_cx(|cx| {
+    with_cache_cx(|cx| {
         cx.writer.end_group();
         cx.id_stack.exit();
     });
@@ -808,20 +808,20 @@ pub fn group<R>(f: impl FnOnce() -> R) -> R {
 }
 
 pub fn skip_to_end_of_group() {
-    with_comp_cx(|cx| {
+    with_cache_cx(|cx| {
         cx.writer.skip_until_end_of_group();
     })
 }
 
 pub fn event_loop_proxy() -> EventLoopProxy<ExtEvent> {
-    with_comp_cx(|cx| cx.event_loop_proxy.clone())
+    with_cache_cx(|cx| cx.event_loop_proxy.clone())
 }
 
 /// Memoizes the result of a function at this call site.
 #[track_caller]
 pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T) -> T {
     group(move || {
-        let (result_entry, result_dirty) = with_comp_cx(move |cx| {
+        let (result_entry, result_dirty) = with_cache_cx(move |cx| {
             let call_id = cx.id_stack.current();
             let call_node = cx.id_stack.current_call_node();
             let args_changed = cx.writer.compare_and_update_value(call_id, args, call_node.clone());
@@ -837,11 +837,11 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
         });
 
         if result_dirty {
-            with_comp_cx(|cx| {
+            with_cache_cx(|cx| {
                 cx.writer.start_state(result_entry);
             });
             let result = f();
-            with_comp_cx(|cx| {
+            with_cache_cx(|cx| {
                 cx.writer.end_state();
                 cx.writer.set_value(result_entry, Some(result));
             });

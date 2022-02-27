@@ -51,6 +51,7 @@ impl<T: Clone + 'static> Signal<T> {
     }
 }
 
+#[derive(Clone)]
 pub struct State<T> {
     key: cache::Key<T>,
 }

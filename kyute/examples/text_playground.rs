@@ -43,7 +43,7 @@ fn text_playground() -> impl Widget + Clone {
     let row = grid.row_count();
     grid.add(row, 0, Label::new("Custom font size".to_string()));
     let custom_font_size = State::new(|| 14.0);
-    let custom_font_size_slider = Slider::new(14.0, 80.0, custom_font_size.get());
+    let custom_font_size_slider = Slider::new(3.0, 80.0, custom_font_size.get());
     if let Some(value) = custom_font_size_slider.value_changed() {
         custom_font_size.set(value);
     }

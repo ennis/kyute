@@ -21,7 +21,7 @@ use std::{
     fmt, mem,
     sync::Arc,
 };
-use tracing::warn;
+use tracing::{trace, warn};
 
 pub enum ExtEvent {
     /// Triggers a recomposition

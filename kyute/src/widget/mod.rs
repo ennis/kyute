@@ -19,6 +19,7 @@ mod slider;
 mod text;
 mod text_edit;
 //mod text_v1;
+mod popup;
 mod titled_pane;
 
 pub use align::Align;
@@ -36,6 +37,7 @@ pub use layout_wrapper::LayoutWrapper;
 pub use menu::{Action, Menu, MenuItem, Shortcut};
 pub use null::Null;
 pub use padding::Padding;
+pub use popup::Popup;
 pub use separator::separator;
 pub use slider::Slider;
 pub use text::Text;

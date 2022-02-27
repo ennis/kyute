@@ -921,38 +921,41 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
 
         // ---- Handle internal events (routing mostly) ----
         match *event {
-            Event::Internal(InternalEvent::RouteWindowEvent { target, ref mut event }) => {
+            Event::Internal(InternalEvent::RouteWindowEvent {
+                target,
+                event: ref mut window_event,
+            }) => {
                 // routing of `winit::WindowEvent`s to the corresponding window widget.
                 if Some(target) == self.state.id {
-                    self.do_event(parent_ctx, &mut Event::WindowEvent(event.clone()), env);
-                    return;
+                    self.do_event(parent_ctx, &mut Event::WindowEvent(window_event.clone()), env);
+                } else if self.may_contain(target) {
+                    self.do_event(parent_ctx, event, env);
                 }
-                if !self.may_contain(target) {
-                    return;
-                }
+                return;
             }
             Event::Internal(InternalEvent::RouteEvent { target, ref mut event }) => {
                 if Some(target) == self.state.id {
                     // we reached the target, unwrap the inner event and restart
                     self.event(parent_ctx, event, env);
-                    return;
+                } else if self.may_contain(target) {
+                    self.do_event(parent_ctx, event, env);
                 }
-                if !self.may_contain(target) {
-                    // skip if the current widget doesn't contain the target
-                    return;
-                }
-                // otherwise, propagate the event (proceed with the regular event handling procedure)
+                return;
             }
-            Event::Internal(InternalEvent::RoutePointerEvent { target, ref mut event }) => {
+            Event::Internal(InternalEvent::RoutePointerEvent {
+                target,
+                event: ref mut pointer_event,
+            }) => {
                 // routed pointer events follow the same logic as routed events (the only difference is the behavior of hit-test)
                 if Some(target) == self.state.id {
-                    trace!("pointer event reached {:?}", target);
-                    self.event(parent_ctx, &mut Event::Pointer(*event), env);
-                    return;
+                    //trace!("pointer event reached {:?}", target);
+                    self.event(parent_ctx, &mut Event::Pointer(*pointer_event), env);
+                } else if self.may_contain(target) {
+                    event.with_local_coordinates(self.state.offset.get(), |event| {
+                        self.do_event(parent_ctx, event, env);
+                    });
                 }
-                if !self.may_contain(target) {
-                    return;
-                }
+                return;
             }
             Event::Internal(InternalEvent::Traverse { ref mut widgets }) => {
                 // T: ?Sized
@@ -962,11 +965,10 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             Event::Internal(InternalEvent::RouteRedrawRequest(target)) => {
                 if Some(target) == self.state.id {
                     self.do_event(parent_ctx, &mut Event::WindowRedrawRequest, env);
-                    return;
+                } else if self.may_contain(target) {
+                    self.do_event(parent_ctx, event, env);
                 }
-                if !self.may_contain(target) {
-                    return;
-                }
+                return;
             }
             Event::Internal(InternalEvent::UpdateChildFilter { ref mut filter }) => {
                 if let Some(id) = self.state.id {
