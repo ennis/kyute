@@ -25,6 +25,7 @@ pub enum JustifyItems {
     Start,
     End,
     Center,
+    // TODO currently ignored
     Stretch,
 }
 
@@ -33,6 +34,7 @@ pub enum AlignItems {
     Start,
     End,
     Center,
+    // TODO currently ignored
     Stretch,
     Baseline,
 }
@@ -144,7 +146,7 @@ impl GridSpan for RangeFull {
 struct GridTrackLayout {
     pos: f64,
     size: f64,
-    baseline: f64,
+    baseline: Option<f64>,
 }
 
 struct ComputeTrackSizeResult {
@@ -233,6 +235,14 @@ impl Grid {
 
     pub fn with_rows(rows: impl IntoIterator<Item = GridLength>) -> Grid {
         Self::with_rows_columns(rows, [])
+    }
+
+    pub fn push_row_definition(&mut self, size: impl Into<GridLength>) {
+        let size = size.into();
+        self.rows.push(TrackSize {
+            min_size: size,
+            max_size: size,
+        });
     }
 
     pub fn with_rows_columns(
@@ -372,7 +382,7 @@ impl Grid {
 
         let mut base_size = vec![0.0; num_tracks];
         let mut growth_limit = vec![0.0; num_tracks];
-        let mut baselines = vec![0.0; num_tracks];
+        let mut baselines = vec![None; num_tracks];
 
         // for each track, update base_size and growth limit
         for i in 0..num_tracks {
@@ -390,22 +400,22 @@ impl Grid {
                     } else {
                         BoxConstraints::new(.., ..)
                     };
+                    // FIXME: nothing prevents the widget to return an infinite size
+                    // Q: is it the responsibility of the widget to handle unbounded constraints?
                     let natural_size = item.widget.layout(layout_ctx, constraints, env);
                     natural_sizes.push(natural_size);
                 }
             }
 
-            let max_natural_baseline: f64 = natural_sizes
-                .iter()
-                .filter_map(|m| m.baseline)
-                .reduce(f64::max)
-                .unwrap_or(0.0);
+            let max_natural_baseline: Option<f64> = natural_sizes.iter().filter_map(|m| m.baseline).reduce(f64::max);
             baselines[i] = max_natural_baseline;
 
             // adjust sizes for baseline alignment
-            if axis == TrackAxis::Row && self.align_items == AlignItems::Baseline {
-                for nat_size in natural_sizes.iter_mut() {
-                    nat_size.bounds.size.height += max_natural_baseline - nat_size.baseline.unwrap_or(0.0);
+            if let Some(max_natural_baseline) = max_natural_baseline {
+                if axis == TrackAxis::Row && self.align_items == AlignItems::Baseline {
+                    for nat_size in natural_sizes.iter_mut() {
+                        nat_size.bounds.size.height += max_natural_baseline - nat_size.baseline.unwrap_or(0.0);
+                    }
                 }
             }
 
@@ -444,46 +454,47 @@ impl Grid {
         }
 
         // Maximize non-flex tracks, on the "free space", which is the available space minus
-        // the space already taken by the fixed- and auto-sized element, and the gutter gaps
+        // the space already taken by the fixed- and auto-sized element, and the gutter gaps.
         let mut free_space = available_space - base_size.iter().sum::<f64>() - (num_gutters as f64) * gap;
         for i in 0..tracks.len() {
-            let delta = growth_limit[i] - base_size[i];
-            if delta > 0.0 {
-                if free_space > delta {
-                    base_size[i] = growth_limit[i];
-                    free_space -= delta;
-                } else {
-                    base_size[i] += free_space;
-                    free_space = 0.0;
-                    break;
+            // only maximize tracks with finite growth limits (otherwise flex tracks would take up all the space)
+            if growth_limit[i].is_finite() {
+                let delta = growth_limit[i] - base_size[i];
+                if delta > 0.0 {
+                    if free_space > delta {
+                        base_size[i] = growth_limit[i];
+                        free_space -= delta;
+                    } else {
+                        base_size[i] += free_space;
+                        free_space = 0.0;
+                        break;
+                    }
                 }
             }
         }
 
-        // distribute remaining spaces to flex tracks
-        let mut flex_total = 0.0;
-        for t in tracks {
-            match t.max_size {
-                GridLength::Flex(x) => flex_total += x,
-                _ => {}
-            }
-        }
-        for i in 0..num_tracks {
-            match tracks[i].max_size {
-                GridLength::Flex(x) => {
-                    let fr = x / flex_total;
-                    base_size[i] = base_size[i].max(fr * free_space);
+        // Distribute remaining spaces to flex tracks if the remaining free space is finite.
+        // Otherwise they keep their assigned base sizes.
+        if free_space.is_finite() {
+            let mut flex_total = 0.0;
+            for t in tracks {
+                match t.max_size {
+                    GridLength::Flex(x) => flex_total += x,
+                    _ => {}
                 }
-                _ => {}
+            }
+            for i in 0..num_tracks {
+                match tracks[i].max_size {
+                    GridLength::Flex(x) => {
+                        let fr = x / flex_total;
+                        base_size[i] = base_size[i].max(fr * free_space);
+                    }
+                    _ => {}
+                }
             }
         }
 
-        /*tracing::trace!(
-            "{:?} base_size={:?}, growth_limit={:?}",
-            axis,
-            base_size,
-            growth_limit
-        );*/
+        //tracing::trace!("{:?} base_size={:?}, growth_limit={:?}", axis, base_size, growth_limit);
 
         // grid line positions
         let mut layout = Vec::with_capacity(num_tracks);
@@ -565,27 +576,43 @@ impl Widget for Grid {
             let constraints = BoxConstraints::loose(Size::new(w, h));
             let item_measure = item.widget.layout(ctx, constraints, env);
 
+            //eprintln!("item_measure({})={:?}", item.widget.widget().debug_name(), item_measure);
+
             let mut x = column_layout[item.column_range.start].pos;
             let mut y = row_layout[item.row_range.start].pos;
-            let baseline = row_layout[item.row_range.start].baseline;
+            let row_baseline = row_layout[item.row_range.start].baseline;
+            //eprintln!("row baseline={:?}", row_baseline);
 
             // position item inside the cell according to alignment mode
-            y += match self.align_items {
-                AlignItems::Start => 0.0,
-                AlignItems::End => h - item_measure.size().height,
-                AlignItems::Center => 0.5 * (h - item_measure.size().height),
-                AlignItems::Stretch => {
-                    // TODO handle stretch by modifying constraints
-                    0.0
-                }
+            match self.align_items {
+                AlignItems::End => y += h - item_measure.size().height,
+                AlignItems::Center => y += 0.5 * (h - item_measure.size().height),
                 AlignItems::Baseline => {
-                    // align to max baseline
-                    // NOTE: we assume that the baseline doesn't vary between the minimal measurements
-                    // obtained during row layout and the measurement with the final constraints.
-                    baseline - item_measure.baseline.unwrap_or(item_measure.height())
+                    if let Some(baseline) = item_measure.baseline {
+                        // NOTE: normally if any item in the row has a baseline, then the row itself
+                        // should have a baseline as well (row_baseline shouldn't be empty)
+                        if let Some(row_baseline) = row_baseline {
+                            // NOTE: we assume that the baseline doesn't vary between the minimal measurements
+                            // obtained during row layout and the measurement with the final constraints.
+                            y += row_baseline - baseline;
+                        }
+                    }
                 }
+                _ => {}
             };
 
+            // position item inside the cell according to alignment mode
+            match self.justify_items {
+                JustifyItems::End => x += w - item_measure.size().width,
+                JustifyItems::Center => x += 0.5 * (w - item_measure.size().width),
+                _ => {}
+            };
+
+            /*eprintln!(
+                "item offset({})={:?}",
+                item.widget.widget().debug_name(),
+                Offset::new(x, y)
+            );*/
             item.widget.set_child_offset(Offset::new(x, y));
         }
 

@@ -288,6 +288,8 @@ impl WindowState {
         };
 
         if let Some(mut event) = event {
+            //trace!("window event {:?}", event);
+
             //------------------------------------------------
             // Send event
 
@@ -357,7 +359,7 @@ impl WindowState {
                     }
                 }
                 _ => {
-                    tracing::warn!("unhandled processed window event {:?}", event)
+                    warn!("unhandled processed window event {:?}", event)
                 }
             };
 

@@ -3,6 +3,7 @@ use crate::{
     composable, drawing::FromSkia, env::Environment, event::Event, style::ColorRef, theme, BoxConstraints, EventCtx,
     LayoutCtx, Measurements, PaintCtx, Point, Rect, Widget, WidgetId,
 };
+use kyute_common::Data;
 use skia_safe as sk;
 use std::cell::RefCell;
 
@@ -24,14 +25,14 @@ pub struct Label {
 impl Label {
     /// Creates a new text label.
     #[composable(cached)]
-    pub fn new(text: String) -> Label {
+    pub fn new(text: impl Into<String> + Data) -> Label {
         Label {
             id: WidgetId::here(),
             style: TextStyle {
                 // by default, use LABEL_COLOR as the text color
                 color: theme::keys::LABEL_COLOR.into(),
             },
-            text,
+            text: text.into(),
             text_blob: RefCell::new(None),
         }
     }

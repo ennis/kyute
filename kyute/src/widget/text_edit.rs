@@ -15,6 +15,7 @@ use crate::{
 };
 use keyboard_types::KeyState;
 use kyute_common::Data;
+use kyute_text::Attribute;
 use skia_safe as sk;
 use std::{error::Error, fmt, marker::PhantomData, str::FromStr, sync::Arc};
 use tracing::trace;
@@ -401,11 +402,48 @@ pub trait Formatter<T> {
     fn parse(&self, text: &str) -> Result<T, anyhow::Error>;
 }
 
+/// Formatter for a floating point number value.
+pub struct NumberFormatter;
+
+impl Formatter<f64> for NumberFormatter {
+    fn format(&self, value: &f64) -> FormattedText {
+        format!("{}", value).into()
+    }
+
+    fn format_partial_input(&self, text: &str) -> FormattedText {
+        match text.parse::<f64>() {
+            Ok(_) => text.into(),
+            Err(_) => {
+                // highlight in red if not a valid number
+                FormattedText::from(text).attribute(.., Attribute::Color(Color::from_hex("#DC143C")))
+            }
+        }
+    }
+
+    fn validate_partial_input(&self, text: &str) -> ValidationResult {
+        match text.parse::<f64>() {
+            Ok(_) => ValidationResult::Valid,
+            Err(_) => ValidationResult::Invalid,
+        }
+    }
+
+    fn parse(&self, text: &str) -> Result<f64, anyhow::Error> {
+        Ok(text.parse::<f64>()?)
+    }
+}
+
 /// A text edit widget with validated input.
 pub struct TextInput<T> {
     text_edit: TextEdit,
     new_value: Option<T>,
     _phantom: PhantomData<T>,
+}
+
+impl TextInput<f64> {
+    #[composable]
+    pub fn number(value: f64) -> TextInput<f64> {
+        Self::new(value, NumberFormatter)
+    }
 }
 
 impl<T> TextInput<T>

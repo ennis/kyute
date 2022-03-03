@@ -4,18 +4,44 @@ use crate::{
     widget::{prelude::*, Container, Label},
     Data, SideOffsets, Signal,
 };
-use std::{convert::TryInto, fmt::Display};
-use tracing::trace;
+use std::{
+    convert::TryInto,
+    fmt::{Debug, Display},
+};
 
-#[derive(Clone, Debug, Data)]
-struct DropDownChoice<T: Data + Display> {
+#[derive(Clone, Debug)]
+struct DropDownChoice<T> {
     value: T,
+    name: String,
     item_id: u16,
+}
+
+/// Formatter for drop-down options.
+pub trait Formatter<T> {
+    fn format(&self, value: &T) -> String;
+}
+
+/// Drop-down formatter that uses the Display impl of a type.
+pub struct DisplayFormatter;
+
+impl<T: Display> Formatter<T> for DisplayFormatter {
+    fn format(&self, value: &T) -> String {
+        format!("{}", value)
+    }
+}
+
+/// Drop-down formatter that uses the Debug impl of a type.
+pub struct DebugFormatter;
+
+impl<T: Debug> Formatter<T> for DebugFormatter {
+    fn format(&self, value: &T) -> String {
+        format!("{:?}", value)
+    }
 }
 
 /// Selects one option among choices with a drop-down menu.
 #[derive(Clone)]
-pub struct DropDown<T: Data + Display> {
+pub struct DropDown<T> {
     id: WidgetId,
     choices: Vec<DropDownChoice<T>>,
     //style: ValueRef<DropDownStyle>,
@@ -24,11 +50,22 @@ pub struct DropDown<T: Data + Display> {
     inner: Container<Label>,
 }
 
-impl<T: Data + Display> DropDown<T> {
+impl<T: Clone + PartialEq + 'static> DropDown<T> {
+    #[composable]
+    pub fn with_selected(choices: Vec<T>, selected: T, formatter: impl Formatter<T>) -> DropDown<T> {
+        let selected_index = choices
+            .iter()
+            .position(|x| x == &selected)
+            .expect("selected value was not in the list of choices");
+        DropDown::with_selected_index(choices, selected_index, formatter)
+    }
+}
+
+impl<T: Clone + 'static> DropDown<T> {
     /// Creates a new drop down with the specified choices.
     #[composable]
-    pub fn new(choices: Vec<T>, selected_index: usize) -> DropDown<T> {
-        let inner = Container::new(Label::new(format!("{}", choices[selected_index])))
+    pub fn with_selected_index(choices: Vec<T>, selected_index: usize, formatter: impl Formatter<T>) -> DropDown<T> {
+        let inner = Container::new(Label::new(formatter.format(&choices[selected_index])))
             .min_height(theme::BUTTON_HEIGHT)
             .baseline(theme::BUTTON_LABEL_BASELINE)
             .content_padding(SideOffsets::new_all_same(5.0))
@@ -37,8 +74,10 @@ impl<T: Data + Display> DropDown<T> {
         // create menu IDs for each choice
         let mut choices_with_ids = Vec::new();
         for (i, choice) in choices.into_iter().enumerate() {
+            let name = formatter.format(&choice);
             choices_with_ids.push(DropDownChoice {
                 value: choice,
+                name,
                 item_id: i.try_into().unwrap(),
             })
         }
@@ -61,19 +100,13 @@ impl<T: Data + Display> DropDown<T> {
     fn create_context_menu(&self) -> kyute_shell::Menu {
         let mut menu = kyute_shell::Menu::new_popup();
         for choice in self.choices.iter() {
-            menu.add_item(
-                &format!("{}", choice.value),
-                choice.item_id as usize,
-                None,
-                false,
-                false,
-            );
+            menu.add_item(&choice.name, choice.item_id as usize, None, false, false);
         }
         menu
     }
 }
 
-impl<T: Data + Display> Widget for DropDown<T> {
+impl<T: Clone + 'static> Widget for DropDown<T> {
     fn widget_id(&self) -> Option<WidgetId> {
         Some(self.id)
     }
@@ -85,8 +118,9 @@ impl<T: Data + Display> Widget for DropDown<T> {
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
         match event {
             Event::Pointer(p) => match p.kind {
-                PointerEventKind::PointerDown if p.button == Some(PointerButton::RIGHT) => {
+                PointerEventKind::PointerDown if p.button == Some(PointerButton::LEFT) => {
                     // show the context menu
+                    trace!("dropdown PointerDown {:?}", p.position);
                     ctx.track_popup_menu(self.create_context_menu(), p.window_position);
                     ctx.request_redraw();
                     ctx.set_handled();

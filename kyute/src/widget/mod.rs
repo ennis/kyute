@@ -5,7 +5,7 @@ mod button;
 mod clickable;
 mod constrained;
 mod container;
-mod drop_down;
+pub mod drop_down;
 mod flex;
 pub mod grid;
 mod image;

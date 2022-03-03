@@ -787,6 +787,16 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             self.state.id,
             measurements
         );*/
+
+        if !measurements.size().width.is_finite() || !measurements.size().height.is_finite() {
+            warn!(
+                "layout[{:?}({})] returned non-finite measurements: {:?}",
+                self.state.id,
+                self.widget.debug_name(),
+                measurements
+            );
+        }
+
         let result = LayoutResult {
             constraints,
             measurements,

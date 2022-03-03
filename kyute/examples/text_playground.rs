@@ -47,6 +47,14 @@ fn text_playground() -> impl Widget + Clone {
         });
     }
 
+    // TODO:
+    // - widgets:     `on_*` methods for easier event handling
+    // - grid:        push_row_definition, push_column_definition
+    // - grid:        GridRow, GridColumn types
+    // - grid:        named rows and columns
+    // - composable:  `#[state]` statement attribute.
+    // - composable:  `#[identifiable(expr)]` statement attribute.
+
     {
         let row = grid.row_count();
         grid.add(row, 0, Label::new("Custom font size".to_string()));
@@ -64,37 +72,8 @@ fn text_playground() -> impl Widget + Clone {
         let row = grid.row_count();
         grid.add(row, 0, Label::new("Validated text input".to_string()));
 
-        struct NumberFormatter;
-
-        impl Formatter<f64> for NumberFormatter {
-            fn format(&self, value: &f64) -> FormattedText {
-                format!("{}", value).into()
-            }
-
-            fn format_partial_input(&self, text: &str) -> FormattedText {
-                match text.parse::<f64>() {
-                    Ok(_) => text.into(),
-                    Err(_) => {
-                        // highlight in red if not a valid number
-                        FormattedText::from(text).attribute(.., Attribute::Color(Color::from_hex("#DC143C")))
-                    }
-                }
-            }
-
-            fn validate_partial_input(&self, text: &str) -> ValidationResult {
-                match text.parse::<f64>() {
-                    Ok(_) => ValidationResult::Valid,
-                    Err(_) => ValidationResult::Invalid,
-                }
-            }
-
-            fn parse(&self, text: &str) -> Result<f64, Error> {
-                Ok(text.parse::<f64>()?)
-            }
-        }
-
         let mut input_value = State::new(|| 0.0);
-        let text_input = TextInput::new(input_value.get(), NumberFormatter);
+        let text_input = TextInput::number(input_value.get());
         if let Some(value) = text_input.value_changed() {
             info!("input value changed: {:.6}", value);
             input_value.set(value);
