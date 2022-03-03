@@ -1,6 +1,8 @@
 use crate::{
-    count_until_utf16, count_utf16, factory::dwrite_factory, formatted_text::FormattedText, Attribute, Error,
-    FontStyle, FontWeight, TextAffinity, TextPosition, ToDirectWrite, ToWString,
+    count_until_utf16, count_utf16,
+    factory::dwrite_factory,
+    formatted_text::{FormattedText, ParagraphStyle},
+    Attribute, Error, FontStyle, FontWeight, TextAffinity, TextAlignment, TextPosition, ToDirectWrite, ToWString,
 };
 use kyute_common::{Color, Data, Point, PointI, Rect, RectI, Size, SizeI, Transform, UnknownUnit};
 use std::{
@@ -682,28 +684,54 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
 }
 
 impl FormattedText {
-    pub fn create_paragraph(&self, layout_box_size: Size) -> Paragraph {
+    pub fn create_paragraph(&self, layout_box_size: Size, default_paragraph_style: &ParagraphStyle) -> Paragraph {
         unsafe {
             let text_wide = self.plain_text.to_wstring();
 
-            // TODO locale name?
-
-            // default format
-            let default_font_family = "Segoe UI".to_wstring();
+            // FIXME get last-resort defaults from system settings
+            const DEFAULT_FONT_FAMILY: &str = "Segoe UI";
+            const DEFAULT_FONT_SIZE: f64 = 14.0;
             let locale_name = "".to_wstring();
 
-            let paragraph_font_style = self.paragraph_style.font_style.to_dwrite();
-            let paragraph_font_weight = self.paragraph_style.font_weight.to_dwrite();
-            let paragraph_text_alignment = self.paragraph_style.text_alignment.to_dwrite();
+            let paragraph_font_family = self
+                .paragraph_style
+                .font_family
+                .as_deref()
+                .or(default_paragraph_style.font_family.as_deref())
+                .unwrap_or(DEFAULT_FONT_FAMILY)
+                .to_wstring();
+            let paragraph_font_style = self
+                .paragraph_style
+                .font_style
+                .or(default_paragraph_style.font_style)
+                .unwrap_or(FontStyle::Normal)
+                .to_dwrite();
+            let paragraph_font_weight = self
+                .paragraph_style
+                .font_weight
+                .or(default_paragraph_style.font_weight)
+                .unwrap_or(FontWeight::NORMAL)
+                .to_dwrite();
+            let paragraph_text_alignment = self
+                .paragraph_style
+                .text_alignment
+                .or(default_paragraph_style.text_alignment)
+                .unwrap_or(TextAlignment::Leading)
+                .to_dwrite();
+            let paragraph_font_size = self
+                .paragraph_style
+                .font_size
+                .or(default_paragraph_style.font_size)
+                .unwrap_or(DEFAULT_FONT_SIZE);
 
             let format = dwrite_factory()
                 .CreateTextFormat(
-                    PCWSTR(default_font_family.as_ptr()),
+                    PCWSTR(paragraph_font_family.as_ptr()),
                     None,
                     paragraph_font_weight,
                     paragraph_font_style,
                     DWRITE_FONT_STRETCH_NORMAL,
-                    self.paragraph_style.font_size as f32,
+                    paragraph_font_size as f32,
                     PCWSTR(locale_name.as_ptr()),
                 )
                 .expect("CreateTextFormat failed");

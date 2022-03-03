@@ -17,7 +17,7 @@ use windows::Win32::Graphics::DirectWrite::{
     DWRITE_TEXT_ALIGNMENT_TRAILING,
 };
 
-pub use formatted_text::FormattedText;
+pub use formatted_text::{FormattedText, ParagraphStyle};
 pub use paragraph::{
     FontFace, GlyphMaskData, GlyphMaskFormat, GlyphOffset, GlyphRun, GlyphRunAnalysis, GlyphRunDrawingEffects,
     HitTestMetrics, HitTestPoint, HitTestTextPosition, LineMetrics, Paragraph, RasterizationOptions, Renderer,

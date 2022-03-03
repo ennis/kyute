@@ -20,7 +20,6 @@ impl Button {
     /// Creates a new button with the specified label.
     #[composable]
     pub fn new(label: String) -> Button {
-        trace!("button created");
         let active = cache::state(|| false);
         Button {
             id: WidgetId::here(),
@@ -77,7 +76,6 @@ impl Widget for Button {
         match event {
             Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerDown => {
-                    trace!("button clicked");
                     ctx.request_focus();
                     ctx.request_redraw();
                     ctx.set_handled();
@@ -85,7 +83,6 @@ impl Widget for Button {
                     ctx.set_state(self.active.1, true);
                 }
                 PointerEventKind::PointerUp => {
-                    trace!("button pointerup");
                     ctx.request_redraw();
                     ctx.set_state(self.active.1, false);
                     self.clicked.signal(ctx, ());

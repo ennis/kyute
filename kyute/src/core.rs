@@ -933,10 +933,19 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                 }
                 return;
             }
-            Event::Internal(InternalEvent::RouteEvent { target, ref mut event }) => {
+            Event::Internal(InternalEvent::RouteEvent {
+                target,
+                event: ref mut inner_event,
+            }) => {
                 if Some(target) == self.state.id {
+                    /*trace!(
+                        "RouteEvent: {:?} reached {:?} ({})",
+                        inner_event,
+                        target,
+                        self.widget.debug_name()
+                    );*/
                     // we reached the target, unwrap the inner event and restart
-                    self.event(parent_ctx, event, env);
+                    self.event(parent_ctx, inner_event, env);
                 } else if self.may_contain(target) {
                     self.do_event(parent_ctx, event, env);
                 }

@@ -1,5 +1,5 @@
 use crate::{resolve_range, Attribute, FontStyle, FontWeight, TextAlignment};
-use kyute_common::Data;
+use kyute_common::{Color, Data};
 use std::{
     cmp::Ordering,
     ops::{Range, RangeBounds},
@@ -146,20 +146,21 @@ impl TextRuns {
 
 #[derive(Clone, Debug, Data)]
 pub struct ParagraphStyle {
-    pub text_alignment: TextAlignment,
-    pub font_style: FontStyle,
-    pub font_weight: FontWeight,
-    pub font_size: f64,
+    pub text_alignment: Option<TextAlignment>,
+    pub font_style: Option<FontStyle>,
+    pub font_weight: Option<FontWeight>,
+    pub font_size: Option<f64>,
+    pub font_family: Option<String>,
 }
 
 impl Default for ParagraphStyle {
     fn default() -> Self {
-        // FIXME get the defaults from the system settings
         ParagraphStyle {
-            text_alignment: TextAlignment::Leading,
-            font_style: FontStyle::Normal,
-            font_weight: FontWeight::NORMAL,
-            font_size: 14.0,
+            text_alignment: None,
+            font_style: None,
+            font_weight: None,
+            font_size: None,
+            font_family: None,
         }
     }
 }
@@ -221,7 +222,7 @@ impl FormattedText {
 
     /// Sets the font size.
     pub fn set_font_size(&mut self, font_size: f64) {
-        self.paragraph_style.font_size = font_size;
+        self.paragraph_style.font_size = Some(font_size);
     }
 
     /// Returns a new formatted text object with the specified font style set.
@@ -232,7 +233,7 @@ impl FormattedText {
 
     /// Sets the font style.
     pub fn set_font_style(&mut self, font_style: FontStyle) {
-        self.paragraph_style.font_style = font_style;
+        self.paragraph_style.font_style = Some(font_style);
     }
 
     /// Returns a new formatted text object with the specified font weight set.
@@ -243,7 +244,7 @@ impl FormattedText {
 
     /// Sets the font weight.
     pub fn set_font_weight(&mut self, font_weight: FontWeight) {
-        self.paragraph_style.font_weight = font_weight;
+        self.paragraph_style.font_weight = Some(font_weight);
     }
 
     /// Returns a new formatted text object with the specified text alignment set.
@@ -254,7 +255,18 @@ impl FormattedText {
 
     /// Sets the font weight.
     pub fn set_text_alignment(&mut self, alignment: TextAlignment) {
-        self.paragraph_style.text_alignment = alignment;
+        self.paragraph_style.text_alignment = Some(alignment);
+    }
+
+    /// Sets the font family.
+    pub fn font_family(mut self, font_family: &str) -> FormattedText {
+        self.set_font_family(font_family);
+        self
+    }
+
+    /// Sets the font family.
+    pub fn set_font_family(&mut self, font_family: &str) {
+        self.paragraph_style.font_family = Some(font_family.to_owned())
     }
 
     pub fn with_paragraph_style(mut self, style: ParagraphStyle) -> Self {

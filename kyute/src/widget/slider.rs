@@ -211,7 +211,7 @@ impl Widget for Slider {
         ctx.draw_styled_box(track_bounds, &style, env);
 
         Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
-            .fill(theme::keys::CONTROL_COLOR)
+            .fill(theme::keys::CONTROL_BORDER_COLOR)
             .draw(ctx, knob_bounds, env);
     }
 }

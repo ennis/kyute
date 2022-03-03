@@ -109,12 +109,21 @@ impl<T: 'static> Key<T> {
         }
     }
 
-    /// Returns the value of the cache entry and replaces it by the default value.
+    /// Returns the value of the cache entry and replaces it by the given value.
     /// Always invalidates.
     pub fn replace(&self, new_value: T) -> T {
         with_cache_cx(|cx| {
             let prev_value = cx.writer.replace_value(*self, new_value);
             cx.writer.invalidate_dependents(*self);
+            prev_value
+        })
+    }
+
+    /// Returns the value of the cache entry and replaces it by the default value.
+    /// Does not invalidate the dependent entries.
+    pub fn replace_without_invalidation(&self, new_value: T) -> T {
+        with_cache_cx(|cx| {
+            let prev_value = cx.writer.replace_value(*self, new_value);
             prev_value
         })
     }
@@ -147,6 +156,11 @@ impl<T: Default + 'static> Key<T> {
     /// Returns the value of the cache entry and replaces it by the default value.
     pub fn take(&self) -> T {
         self.replace(T::default())
+    }
+
+    /// Returns the value of the cache entry and replaces it by the default value. Does not invalidate dependent entries.
+    pub fn take_without_invalidation(&self) -> T {
+        self.replace_without_invalidation(T::default())
     }
 }
 
@@ -203,7 +217,11 @@ impl CacheInner {
             return;
         }*/
         let entry = &self.entries[entry_key];
-        //trace!("invalidate_dependents_recursive: {:?} node={:#?}", entry_key, entry.call_node);
+        /*trace!(
+            "invalidate_dependents_recursive: {:?} node={:#?}",
+            entry_key,
+            entry.call_node
+        );*/
         //if !entry.dirty.replace(true) {
         entry.dirty.set(true);
         for &d in entry.dependents.iter() {
@@ -777,7 +795,7 @@ where
     let task_key = state::<Option<AsyncTaskEntry>, _>(|| None);
 
     // if we requested a restart, abort the current running task
-    let mut task = task_key.take();
+    let mut task = task_key.take_without_invalidation();
 
     let revision = if let Some(ref mut task) = task {
         if restart {
@@ -818,7 +836,7 @@ where
         });
     }
 
-    task_key.set(task);
+    task_key.set_without_invalidation(task);
     result_key.get()
 }
 

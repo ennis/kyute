@@ -4,7 +4,8 @@ use crate::{
 };
 use kyute_common::{Color, RectI, Transform, UnknownUnit};
 use kyute_text::{
-    FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, RasterizationOptions,
+    FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
+    RasterizationOptions,
 };
 use skia_safe as sk;
 use std::{
@@ -199,7 +200,9 @@ impl Widget for Text {
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
         let available_width = constraints.max_width();
         //let available_height = constraints.max_height();
-        let paragraph = self.formatted_text.create_paragraph(constraints.max);
+        let paragraph = self
+            .formatted_text
+            .create_paragraph(constraints.max, &ParagraphStyle::default());
 
         // measure the paragraph
         let metrics = paragraph.metrics();
