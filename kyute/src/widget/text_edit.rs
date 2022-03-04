@@ -10,14 +10,13 @@ use crate::{
     text::{FormattedText, Selection, TextAffinity, TextPosition},
     theme,
     widget::{Container, Text},
-    BoxConstraints, Color, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect, SideOffsets, Size,
+    BoxConstraints, Color, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect, SideOffsets, Size,
     WidgetId, WidgetPod,
 };
 use keyboard_types::KeyState;
-use kyute_common::Data;
 use kyute_text::Attribute;
 use skia_safe as sk;
-use std::{error::Error, fmt, marker::PhantomData, str::FromStr, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
 
@@ -47,12 +46,6 @@ pub struct TextEdit {
 
     /// Current selection.
     selection: Selection,
-
-    /// The offset to the content area
-    content_offset: Offset,
-
-    /// The size of the content area
-    content_size: Size,
 
     editing_finished: Signal<Arc<str>>,
     text_changed: Signal<Arc<str>>,
@@ -98,8 +91,6 @@ impl TextEdit {
             id: WidgetId::here(),
             formatted_text,
             selection,
-            content_offset: Default::default(),
-            content_size: Default::default(),
             selection_changed: Signal::new(),
             editing_finished: Signal::new(),
             text_changed: Signal::new(),
@@ -498,6 +489,14 @@ where
     /// Returns whether the current value has changed.
     pub fn value_changed(&self) -> Option<T> {
         self.new_value.clone()
+    }
+
+    /// Runs the function when the value has changed.
+    pub fn on_value_changed(self, f: impl FnOnce(T)) -> Self {
+        if let Some(v) = self.new_value.clone() {
+            f(v);
+        }
+        self
     }
 }
 

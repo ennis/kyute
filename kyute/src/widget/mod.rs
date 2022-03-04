@@ -20,6 +20,7 @@ mod text;
 mod text_edit;
 //mod text_v1;
 mod popup;
+mod thumb;
 mod titled_pane;
 
 pub use align::Align;

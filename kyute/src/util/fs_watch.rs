@@ -51,7 +51,7 @@ impl FileSystemWatcher {
                             }
                         }
                     }
-                    Err(e) => tracing::error!("watch error: {}", e),
+                    Err(e) => error!("watch error: {}", e),
                 }
             })
             .expect("failed to create filesystem watcher"),
@@ -101,7 +101,7 @@ impl FileSystemWatcher {
             if w.subscription.strong_count() > 0 {
                 true
             } else {
-                tracing::trace!("removing watcher for path `{:?}`", p);
+                trace!("removing watcher for path `{:?}`", p);
                 watcher.unwatch(&w.original_path);
                 false
             }
@@ -114,7 +114,7 @@ impl FileSystemWatcher {
             callback: Box::new(callback),
             subscription: Arc::downgrade(&subscription_token),
         };
-        tracing::trace!(
+        trace!(
             "watching `{}` (`{}`)",
             handler.original_path.display(),
             handler.canonical_path.display()

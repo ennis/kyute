@@ -82,8 +82,6 @@ impl BoxShadow {
     }
 }
 
-struct StateMask {}
-
 /// Style of a container.
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct BoxStyle {

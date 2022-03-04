@@ -16,13 +16,7 @@ use kyute_shell::{
     graal::{ash::vk, BufferId, ImageId},
     winit::{event_loop::EventLoopWindowTarget, window::WindowId},
 };
-use std::{
-    cell::Cell,
-    fmt,
-    hash::Hash,
-    ops::{Deref, DerefMut, RangeBounds},
-    sync::Arc,
-};
+use std::{cell::Cell, fmt, hash::Hash, ops::RangeBounds, sync::Arc};
 use tracing::{trace, warn};
 
 pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.show_debug_overlay");
@@ -667,11 +661,6 @@ struct WidgetPodState {
     // FIXME: don't reset on recomp
     active: Cell<bool>,
 
-    /// Indicates that the children of this widget have been initialized.
-    ///
-    /// Reset on recomp, by design: there may be new children.
-    children_initialized: Cell<bool>,
-
     /// Bloom filter to filter child widgets.
     child_filter: Cell<Option<WidgetFilter>>,
 }
@@ -1121,8 +1110,6 @@ impl<T: Widget + 'static> WidgetPod<T> {
                 id,
                 offset: Cell::new(Offset::zero()),
                 paint_invalid: Cell::new(true),
-                // we don't know if all children have been initialized
-                children_initialized: Cell::new(false),
                 pointer_over: Cell::new(false),
                 active: Cell::new(false),
                 layout_result: Cell::new(None),

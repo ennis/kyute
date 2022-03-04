@@ -1,7 +1,32 @@
 use crate::CRATE;
-use proc_macro2::Ident;
-use quote::quote;
-use syn::{parse::ParseStream, punctuated::Punctuated, spanned::Spanned, FnArg};
+use proc_macro::{Diagnostic, Level};
+use proc_macro2::{Ident, Span, TokenStream};
+use quote::{quote, ToTokens};
+use syn::{
+    parse::ParseStream,
+    punctuated::Punctuated,
+    spanned::Spanned,
+    visit_mut::{visit_stmt_mut, VisitMut},
+    Attribute, BareFnArg, BinOp, Binding, Block, BoundLifetimes, ConstParam, Constraint, Data, DataEnum, DataStruct,
+    DataUnion, DeriveInput, Expr, ExprArray, ExprAssign, ExprAssignOp, ExprAsync, ExprAwait, ExprBinary, ExprBlock,
+    ExprBox, ExprBreak, ExprCall, ExprCast, ExprClosure, ExprContinue, ExprField, ExprForLoop, ExprGroup, ExprIf,
+    ExprIndex, ExprLet, ExprLit, ExprLoop, ExprMacro, ExprMatch, ExprParen, ExprPath, ExprRange, ExprReference,
+    ExprRepeat, ExprReturn, ExprStruct, ExprTry, ExprTryBlock, ExprTuple, ExprType, ExprUnary, ExprUnsafe, ExprWhile,
+    ExprYield, Field, FieldPat, FieldValue, Fields, FieldsNamed, FieldsUnnamed, File, FnArg, ForeignItem,
+    ForeignItemFn, ForeignItemMacro, ForeignItemStatic, ForeignItemType, GenericArgument, GenericMethodArgument,
+    GenericParam, Generics, ImplItem, ImplItemConst, ImplItemMacro, ImplItemMethod, ImplItemType, Index, Item,
+    ItemConst, ItemEnum, ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMacro2, ItemMod, ItemStatic,
+    ItemStruct, ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Label, Lifetime, LifetimeDef, Lit, LitBool,
+    LitByte, LitByteStr, LitChar, LitFloat, LitInt, LitStr, Local, Macro, MacroDelimiter, Member, Meta, MetaList,
+    MetaNameValue, MethodTurbofish, NestedMeta, ParenthesizedGenericArguments, Pat, PatBox, PatIdent, PatLit, PatMacro,
+    PatOr, PatPath, PatRange, PatReference, PatRest, PatSlice, PatStruct, PatTuple, PatTupleStruct, PatType, PatWild,
+    Path, PathArguments, PathSegment, PredicateEq, PredicateLifetime, PredicateType, QSelf, RangeLimits, Receiver,
+    ReturnType, Signature, Stmt, TraitBound, TraitBoundModifier, TraitItem, TraitItemConst, TraitItemMacro,
+    TraitItemMethod, TraitItemType, Type, TypeArray, TypeBareFn, TypeGroup, TypeImplTrait, TypeInfer, TypeMacro,
+    TypeNever, TypeParam, TypeParamBound, TypeParen, TypePath, TypePtr, TypeReference, TypeSlice, TypeTraitObject,
+    TypeTuple, UnOp, UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree, Variadic, Variant, VisCrate, VisPublic,
+    VisRestricted, Visibility, WhereClause, WherePredicate,
+};
 
 struct ComposableArgs {
     cached: bool,
@@ -23,6 +48,67 @@ impl syn::parse::Parse for ComposableArgs {
     }
 }
 
+/// Extract `#[state]` attribute.
+fn extract_state_attr(attrs: &mut Vec<Attribute>) -> bool {
+    if let Some(pos) = attrs.iter().position(|attr| attr.path.is_ident("state")) {
+        if !attrs[pos].tokens.is_empty() {
+            Diagnostic::spanned(
+                attrs[pos].tokens.span().unwrap(),
+                Level::Warning,
+                "unknown tokens on `state` attribute",
+            )
+            .emit();
+        }
+        // remove the attr
+        attrs.remove(pos);
+        true
+    } else {
+        false
+    }
+}
+
+struct LocalStateCollector {
+    visited_first_non_state_stmt: bool,
+    locals: Vec<Local>,
+}
+
+impl LocalStateCollector {
+    fn new() -> LocalStateCollector {
+        LocalStateCollector {
+            visited_first_non_state_stmt: false,
+            locals: vec![],
+        }
+    }
+}
+
+impl VisitMut for LocalStateCollector {
+    fn visit_stmt_mut(&mut self, stmt: &mut Stmt) {
+        match stmt {
+            Stmt::Local(local) => {
+                if extract_state_attr(&mut local.attrs) {
+                    if self.visited_first_non_state_stmt {
+                        Diagnostic::spanned(
+                            local.span().unwrap(),
+                            Level::Error,
+                            "`#[state]` bindings must come before any other statement in a composable function",
+                        )
+                        .emit();
+                    } else {
+                        self.locals.push(local.clone());
+                    }
+                } else {
+                    self.visited_first_non_state_stmt = true;
+                }
+            }
+            _ => {
+                self.visited_first_non_state_stmt = true;
+            }
+        }
+
+        visit_stmt_mut(self, stmt);
+    }
+}
+
 pub fn generate_composable(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // works only on trait declarations
     let mut fn_item: syn::ItemFn = syn::parse_macro_input!(item as syn::ItemFn);
@@ -30,7 +116,81 @@ pub fn generate_composable(attr: proc_macro::TokenStream, item: proc_macro::Toke
 
     let vis = &fn_item.vis;
     let attrs = &fn_item.attrs;
-    let orig_block = &fn_item.block;
+    let fn_block = &mut fn_item.block;
+
+    // collect `#[state] let mut state = <initializer>;` statements
+    let mut state_collector = LocalStateCollector::new();
+    state_collector.visit_block_mut(fn_block);
+    // remove state statements from the main block
+    let num_state_locals = state_collector.locals.len();
+    fn_block.stmts.drain(0..num_state_locals);
+
+    // create prologue statements: load state vars from cache
+    let mut prologue = TokenStream::new();
+    let mut epilogue = TokenStream::new();
+
+    for (i, local) in state_collector.locals.iter().enumerate() {
+        // name of the `cache::Key` variable
+        let state_ident = syn::Ident::new(&format!("__state_{}", i), Span::call_site());
+
+        let pat = &local.pat;
+
+        // name of the variable containing the value of the state
+        let var_ident = match local.pat {
+            Pat::Ident(ref pat_ident) => {
+                let ident = &pat_ident.ident;
+                quote! { #ident }
+            }
+            Pat::Type(ref pat_type) => match *pat_type.pat {
+                Pat::Ident(ref pat_ident) => {
+                    let ident = &pat_ident.ident;
+                    quote! { #ident }
+                }
+                _ => {
+                    Diagnostic::spanned(
+                        local.pat.span().unwrap(),
+                        Level::Error,
+                        "unsupported pattern in state binding",
+                    )
+                    .emit();
+                    quote! { () }
+                }
+            },
+            _ => {
+                Diagnostic::spanned(
+                    local.pat.span().unwrap(),
+                    Level::Error,
+                    "unsupported pattern in state binding",
+                )
+                .emit();
+                quote! { () }
+            }
+        };
+
+        // state initializer
+        let init = if let Some((_, ref init)) = local.init {
+            quote! { #init }
+        } else {
+            Diagnostic::spanned(
+                local.span().unwrap(),
+                Level::Error,
+                "state binding must have an initializer",
+            )
+            .emit();
+            quote! { () }
+        };
+
+        quote! {
+            let #state_ident = ::#CRATE::cache::state(|| #init);
+            let #pat = #state_ident.get();
+        }
+        .to_tokens(&mut prologue);
+
+        quote! {
+            #state_ident.update(#var_ident);
+        }
+        .to_tokens(&mut epilogue);
+    }
 
     let altered_fn = if !attr_args.cached {
         let sig = &fn_item.sig;
@@ -39,9 +199,12 @@ pub fn generate_composable(attr: proc_macro::TokenStream, item: proc_macro::Toke
         quote! {
             #[track_caller]
             #(#attrs)* #vis #sig {
-                ::#CRATE::cache::scoped(0, move || {
-                    #orig_block
-                })
+                #prologue
+                let __result = ::#CRATE::cache::scoped(0, || {
+                    #fn_block
+                });
+                #epilogue
+                __result
             }
         }
     } else {
@@ -53,13 +216,13 @@ pub fn generate_composable(attr: proc_macro::TokenStream, item: proc_macro::Toke
             .filter_map(|arg| match arg {
                 FnArg::Receiver(r) => {
                     // FIXME, methods could be cached composables, we just need `self` to be any+clone
-                    Some(
-                        syn::Error::new(
-                            r.span(),
-                            "methods cannot be cached `composable(cached)` functions: consider using `composable`",
-                        )
-                        .to_compile_error(),
+                    Diagnostic::spanned(
+                        r.span().unwrap(),
+                        Level::Error,
+                        "methods cannot be cached `composable(cached)` functions: consider using `composable`",
                     )
+                    .emit();
+                    Some(quote! { self.clone() })
                 }
                 FnArg::Typed(arg) => {
                     if let Some(pos) = arg.attrs.iter().position(|attr| attr.path.is_ident("uncached")) {
@@ -83,9 +246,12 @@ pub fn generate_composable(attr: proc_macro::TokenStream, item: proc_macro::Toke
         quote! {
             #[track_caller]
             #(#attrs)* #vis #sig {
-                ::#CRATE::cache::memoize((#(#args,)*), move || {
-                    #orig_block
-                })
+                #prologue
+                let __result = ::#CRATE::cache::memoize((#(#args,)*), || {
+                    #fn_block
+                });
+                #epilogue
+                __result
             }
         }
     };

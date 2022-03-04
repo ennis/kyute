@@ -130,7 +130,6 @@ impl Paint {
                 repeat_y,
             } => {
                 let image_cache = env.get(IMAGE_CACHE).unwrap();
-                let asset_loader = env.get(ASSET_LOADER).unwrap();
                 if let Ok(image) = image_cache.load(uri) {
                     let tile_x = match *repeat_x {
                         RepeatMode::Repeat => sk::TileMode::Repeat,

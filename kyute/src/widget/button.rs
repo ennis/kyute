@@ -1,10 +1,10 @@
 use crate::{
     cache,
     event::PointerEventKind,
-    style::{BoxStyle, ColorRef, VisualState},
+    style::{BoxStyle, VisualState},
     theme,
     widget::{prelude::*, Container, Label},
-    Color, SideOffsets, Signal, State, ValueRef,
+    Color, SideOffsets, Signal, ValueRef,
 };
 
 #[derive(Clone)]
@@ -60,6 +60,14 @@ impl Button {
     /// Returns whether this button has been clicked.
     pub fn clicked(&self) -> bool {
         self.clicked.signalled()
+    }
+
+    /// Runs the function when the button has been clicked.
+    pub fn on_clicked(self, f: impl FnOnce()) -> Self {
+        if self.clicked.signalled() {
+            f()
+        }
+        self
     }
 }
 

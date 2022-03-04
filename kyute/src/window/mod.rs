@@ -50,7 +50,6 @@ pub(crate) struct WindowState {
     last_click: Option<LastClick>,
     scale_factor: f64,
     invalid: Region,
-    prev_contents: Option<Arc<WidgetPod>>,
     recomposed: bool,
 }
 
@@ -293,8 +292,7 @@ impl WindowState {
 
             //------------------------------------------------
             // Send event
-
-            let mut old_focus = self.focus_state.focus;
+            let old_focus = self.focus_state.focus;
 
             let pointer_grab_auto_release = match event {
                 Event::Pointer(PointerEvent {
@@ -449,7 +447,6 @@ impl Window {
                 last_click: None,
                 scale_factor: 1.0, // initialized during window creation
                 invalid: Default::default(),
-                prev_contents: None,
                 recomposed: true,
             }))
         });

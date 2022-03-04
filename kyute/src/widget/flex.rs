@@ -63,7 +63,7 @@ impl Flex {
         }
     }
 
-    #[deprecated(note = "use Grid::row() and Grid::column() instead")]
+    /*#[deprecated(note = "use Grid::row() and Grid::column() instead")]
     pub fn horizontal() -> Flex {
         Flex::new(Orientation::Horizontal)
     }
@@ -71,7 +71,7 @@ impl Flex {
     #[deprecated(note = "use Grid::row() and Grid::column() instead")]
     pub fn vertical() -> Flex {
         Flex::new(Orientation::Vertical)
-    }
+    }*/
 
     #[composable]
     pub fn with(mut self, widget: impl Widget + 'static) -> Self {

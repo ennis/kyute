@@ -2,7 +2,7 @@ use crate::{
     event::{PointerButton, PointerEventKind},
     theme,
     widget::{prelude::*, Container, Label},
-    Data, SideOffsets, Signal,
+    SideOffsets, Signal,
 };
 use std::{
     convert::TryInto,
@@ -44,8 +44,6 @@ impl<T: Debug> Formatter<T> for DebugFormatter {
 pub struct DropDown<T> {
     id: WidgetId,
     choices: Vec<DropDownChoice<T>>,
-    //style: ValueRef<DropDownStyle>,
-    selected_index: usize,
     selected_item_changed: Signal<(usize, T)>,
     inner: Container<Label>,
 }
@@ -85,16 +83,21 @@ impl<T: Clone + 'static> DropDown<T> {
         DropDown {
             id: WidgetId::here(),
             choices: choices_with_ids,
-            selected_index,
             inner,
             selected_item_changed: Signal::new(),
         }
     }
 
     /// Returns whether TODO.
-    #[composable]
     pub fn selected_item_changed(&self) -> Option<T> {
         self.selected_item_changed.value().map(|x| x.1)
+    }
+
+    pub fn on_selected_item_changed(self, f: impl FnOnce(T)) -> Self {
+        if let Some(item) = self.selected_item_changed() {
+            f(item)
+        }
+        self
     }
 
     fn create_context_menu(&self) -> kyute_shell::Menu {

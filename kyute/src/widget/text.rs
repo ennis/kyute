@@ -1,6 +1,6 @@
 use crate::{
     composable, drawing::ToSkia, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx,
-    Point, Rect, Size, Widget, WidgetId,
+    Point, Rect, Widget, WidgetId,
 };
 use kyute_common::{Color, RectI, Transform, UnknownUnit};
 use kyute_text::{
@@ -20,7 +20,7 @@ pub struct Text {
     /// Input formatted text.
     formatted_text: FormattedText,
     /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
-    paragraph: RefCell<Option<kyute_text::Paragraph>>,
+    paragraph: RefCell<Option<Paragraph>>,
     run_masks: RefCell<Option<Arc<Vec<GlyphMaskImage>>>>,
 }
 
@@ -83,35 +83,33 @@ impl GlyphMaskImage {
         }
 
         // upload RGBA data to a skia image
-        unsafe {
-            let alpha_data = sk::Data::new_copy(&rgba_buf);
-            let mask = match data.format() {
-                GlyphMaskFormat::Rgb8 => sk::Image::from_raster_data(
-                    &sk::ImageInfo::new(
-                        sk::ISize::new(bounds.width(), bounds.height()),
-                        sk::ColorType::RGB888x,
-                        sk::AlphaType::Unknown,
-                        None,
-                    ),
-                    alpha_data,
-                    row_bytes,
-                )
-                .expect("ImageInfo::new failed"),
-                GlyphMaskFormat::Alpha8 => sk::Image::from_raster_data(
-                    &sk::ImageInfo::new(
-                        sk::ISize::new(bounds.width(), bounds.height()),
-                        sk::ColorType::Alpha8,
-                        sk::AlphaType::Unknown,
-                        None,
-                    ),
-                    alpha_data,
-                    row_bytes,
-                )
-                .expect("ImageInfo::new failed"),
-            };
+        let alpha_data = sk::Data::new_copy(&rgba_buf);
+        let mask = match data.format() {
+            GlyphMaskFormat::Rgb8 => sk::Image::from_raster_data(
+                &sk::ImageInfo::new(
+                    sk::ISize::new(bounds.width(), bounds.height()),
+                    sk::ColorType::RGB888x,
+                    sk::AlphaType::Unknown,
+                    None,
+                ),
+                alpha_data,
+                row_bytes,
+            )
+            .expect("ImageInfo::new failed"),
+            GlyphMaskFormat::Alpha8 => sk::Image::from_raster_data(
+                &sk::ImageInfo::new(
+                    sk::ISize::new(bounds.width(), bounds.height()),
+                    sk::ColorType::Alpha8,
+                    sk::AlphaType::Unknown,
+                    None,
+                ),
+                alpha_data,
+                row_bytes,
+            )
+            .expect("ImageInfo::new failed"),
+        };
 
-            GlyphMaskImage { bounds, mask }
-        }
+        GlyphMaskImage { bounds, mask }
     }
 }
 
@@ -204,23 +202,19 @@ impl Widget for Text {
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
-        //let available_width = constraints.max_width();
-        //let available_height = constraints.max_height();
+    fn layout(&self, _ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
         let paragraph = self
             .formatted_text
             .create_paragraph(constraints.max, &ParagraphStyle::default());
 
         // measure the paragraph
         let metrics = paragraph.metrics();
-        //let text_width = metrics.bounds.width();
-        //let text_height = metrics.bounds.height();
         let baseline = paragraph
             .line_metrics()
             .first()
             .map(|line| line.baseline)
             .unwrap_or(0.0);
-        let size = constraints.constrain(metrics.bounds.size); // TODO?
+        let size = constraints.constrain(metrics.bounds.size);
 
         // stash the laid out paragraph for rendering
         self.paragraph.replace(Some(paragraph));
@@ -237,7 +231,7 @@ impl Widget for Text {
         let paragraph = paragraph.as_mut().expect("paint called before layout");
 
         // FIXME: actually cache run masks somehow
-        let mut runs = self.run_masks.borrow_mut();
+        let runs = self.run_masks.borrow_mut();
 
         if runs.is_none() {
             let mut renderer = Renderer { ctx, masks: vec![] };

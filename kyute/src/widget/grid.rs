@@ -1,8 +1,7 @@
 use crate::{
-    align_boxes, bloom::Bloom, drawing::ToSkia, widget::prelude::*, Color, EnvKey, InternalEvent, Length, WidgetId,
+    bloom::Bloom, drawing::ToSkia, widget::prelude::*, Color, Data, EnvKey, InternalEvent, Length, RoundToPixel,
+    WidgetFilter, WidgetId,
 };
-use kyute::WidgetFilter;
-use kyute_common::RoundToPixel;
 use std::{
     cell::{Cell, RefCell},
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
@@ -58,7 +57,7 @@ pub enum GridLength {
     Flex(f64),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Data)]
 pub enum JustifyItems {
     Start,
     End,
@@ -67,7 +66,7 @@ pub enum JustifyItems {
     Stretch,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Data)]
 pub enum AlignItems {
     Start,
     End,
@@ -210,7 +209,7 @@ impl<'a> From<RangeToInclusive<usize>> for GridSpan<'a> {
 }
 
 impl<'a> From<RangeFull> for GridSpan<'a> {
-    fn from(v: RangeFull) -> Self {
+    fn from(_: RangeFull) -> Self {
         GridSpan::RangeFull
     }
 }

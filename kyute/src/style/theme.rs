@@ -5,7 +5,7 @@ use serde_json as json;
 use std::{io, io::Read};
 use thiserror::Error;
 
-/// Compile time snake to kebab-case 🥙
+/*/// Compile time snake to kebab-case 🥙
 const fn comptime_snake_to_kebab<const LEN: usize>(s: &str) -> [u8; LEN] {
     let s = s.as_bytes();
     let mut data = [0u8; LEN];
@@ -18,7 +18,7 @@ const fn comptime_snake_to_kebab<const LEN: usize>(s: &str) -> [u8; LEN] {
         i += 1;
     }
     data
-}
+}*/
 
 #[derive(Debug, Error)]
 pub enum ThemeLoadError {

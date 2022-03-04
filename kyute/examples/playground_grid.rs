@@ -1,4 +1,3 @@
-use anyhow::Error;
 use kyute::{
     application, cache, composable,
     shell::{application::Application, winit::window::WindowBuilder},
@@ -25,7 +24,16 @@ fn fixed_size_widget(w: f64, h: f64, name: impl Into<String> + Data) -> impl Wid
 }
 
 #[composable(cached)]
-fn playground_grid() -> impl Widget + Clone {
+fn playground_grid(test: usize) -> impl Widget + Clone {
+    #[state]
+    let mut row_count = 2usize;
+    #[state]
+    let mut column_count = 2usize;
+    #[state]
+    let mut align_items = AlignItems::Start;
+    #[state]
+    let mut justify_items = JustifyItems::Start;
+
     let mut grid = Grid::with_column_definitions([
         GridTrackDefinition::new(GridLength::Fixed(200.0)),
         GridTrackDefinition::new(GridLength::Fixed(5.0)),
@@ -36,85 +44,78 @@ fn playground_grid() -> impl Widget + Clone {
     // row count
     let mut row = 0;
 
-    let mut row_count = State::new(|| 2usize);
-    let mut column_count = State::new(|| 2usize);
-    let mut align_items = State::new(|| AlignItems::Start);
-    let mut justify_items = State::new(|| JustifyItems::Start);
-
     {
-        let input = TextInput::number(row_count.get() as f64);
-        if let Some(v) = input.value_changed() {
-            row_count.set(v as usize);
-        }
         grid.add_item(row, 0, Label::new("Row count"));
-        grid.add_item(row, 2, input);
+        grid.add_item(
+            row,
+            2,
+            TextInput::number(row_count as f64).on_value_changed(|v| row_count = v as usize),
+        );
         row += 1;
     }
 
     {
-        let input = TextInput::number(column_count.get() as f64);
-        if let Some(v) = input.value_changed() {
-            column_count.set(v as usize);
-        }
         grid.add_item(row, 0, Label::new("Column count"));
-        grid.add_item(row, 2, input);
+        grid.add_item(
+            row,
+            2,
+            TextInput::number(column_count as f64).on_value_changed(|v| column_count = v as usize),
+        );
         row += 1;
     }
 
     {
-        let drop_down = DropDown::with_selected(
-            align_items.get(),
-            vec![
-                AlignItems::Start,
-                AlignItems::End,
-                AlignItems::Center,
-                AlignItems::Stretch,
-                AlignItems::Baseline,
-            ],
-            drop_down::DebugFormatter,
-        );
-        if let Some(align) = drop_down.selected_item_changed() {
-            align_items.set(align);
-        }
         grid.add_item(row, 0, Label::new("Item alignment"));
-        grid.add_item(row, 2, drop_down);
+        grid.add_item(
+            row,
+            2,
+            DropDown::with_selected(
+                align_items,
+                vec![
+                    AlignItems::Start,
+                    AlignItems::End,
+                    AlignItems::Center,
+                    AlignItems::Stretch,
+                    AlignItems::Baseline,
+                ],
+                drop_down::DebugFormatter,
+            )
+            .on_selected_item_changed(|align| align_items = align),
+        );
         row += 1;
     }
 
     {
-        let drop_down = DropDown::with_selected(
-            justify_items.get(),
-            vec![
-                JustifyItems::Start,
-                JustifyItems::End,
-                JustifyItems::Center,
-                JustifyItems::Stretch,
-            ],
-            drop_down::DebugFormatter,
-        );
-        if let Some(justify) = drop_down.selected_item_changed() {
-            justify_items.set(justify);
-        }
         grid.add_item(row, 0, Label::new("Item justify"));
-        grid.add_item(row, 2, drop_down);
+        grid.add_item(
+            row,
+            2,
+            DropDown::with_selected(
+                justify_items,
+                vec![
+                    JustifyItems::Start,
+                    JustifyItems::End,
+                    JustifyItems::Center,
+                    JustifyItems::Stretch,
+                ],
+                drop_down::DebugFormatter,
+            )
+            .on_selected_item_changed(|justify| justify_items = justify),
+        );
         row += 1;
     }
 
-    eprintln!(
-        "rows,columns = ({},{})",
-        row_count.get() as usize,
-        column_count.get() as usize
-    );
+    eprintln!("rows,columns = ({},{})", row_count, column_count);
 
-    let row_defs = vec![GridLength::Flex(1.0).into(); row_count.get() as usize];
-    let column_defs = vec![GridLength::Flex(1.0).into(); column_count.get() as usize];
+    let row_defs = vec![GridLength::Flex(1.0).into(); row_count];
+    let column_defs = vec![GridLength::Flex(1.0).into(); column_count];
 
     let mut play_grid = Grid::with_rows_columns(row_defs, column_defs)
-        .align_items(align_items.get())
-        .justify_items(justify_items.get());
+        .align_items(align_items)
+        .justify_items(justify_items);
 
-    for i in 0..row_count.get() {
-        for j in 0..column_count.get() {
+    for i in 0..row_count {
+        for j in 0..column_count {
             play_grid.add_item(i, j, Label::new("hello"))
         }
     }
@@ -128,7 +129,7 @@ fn playground_grid() -> impl Widget + Clone {
 fn ui_root() -> Arc<WidgetPod> {
     Arc::new(WidgetPod::new(Window::new(
         WindowBuilder::new().with_title("Grid playground"),
-        playground_grid(),
+        playground_grid(0),
         None,
     )))
 }

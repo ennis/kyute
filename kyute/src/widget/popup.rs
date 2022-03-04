@@ -1,13 +1,6 @@
-use crate::{
-    cache,
-    event::{PointerButton, PointerEventKind},
-    theme,
-    widget::{prelude::*, Container, Label},
-    Data, SideOffsets, Signal, State, Window,
-};
+use crate::{cache, widget::prelude::*, Window};
 use kyute_shell::winit::window::WindowBuilder;
 use std::{convert::TryInto, fmt::Display};
-use tracing::trace;
 
 /// Pop-up window with contents.
 #[derive(Clone)]
