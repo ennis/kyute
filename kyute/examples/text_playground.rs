@@ -6,8 +6,9 @@ use kyute::{
     text::{Attribute, FormattedText},
     theme,
     widget::{
-        grid::AlignItems, Container, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit,
-        TextInput, TitledPane, ValidationResult,
+        grid::{AlignItems, GridTrackDefinition},
+        Container, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit, TextInput,
+        TitledPane, ValidationResult,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Point, Size, State, UnitExt, Widget,
     WidgetExt, WidgetPod, Window,
@@ -31,15 +32,19 @@ fn text_edit(font_size: f64, grid: &mut Grid) {
     }
 
     let row = grid.row_count();
-    grid.add(row, 0, label);
-    grid.add(row, 2, text_edit);
+    grid.add_item(row, 0, label);
+    grid.add_item(row, 2, text_edit);
 }
 
 #[composable(cached)]
 fn text_playground() -> impl Widget + Clone {
     let base_font_size = 14.0;
-    let mut grid = Grid::with_columns([GridLength::Fixed(200.0), GridLength::Fixed(5.0), GridLength::Flex(1.0)])
-        .align_items(AlignItems::Baseline);
+    let mut grid = Grid::with_column_definitions([
+        GridTrackDefinition::new(GridLength::Fixed(200.0)),
+        GridTrackDefinition::new(GridLength::Fixed(5.0)),
+        GridTrackDefinition::new(GridLength::Flex(1.0)),
+    ])
+    .align_items(AlignItems::Baseline);
 
     for i in 0..6 {
         cache::scoped(i, || {
@@ -57,20 +62,20 @@ fn text_playground() -> impl Widget + Clone {
 
     {
         let row = grid.row_count();
-        grid.add(row, 0, Label::new("Custom font size".to_string()));
+        grid.add_item(row, 0, Label::new("Custom font size".to_string()));
         let custom_font_size = State::new(|| 14.0);
         let custom_font_size_slider = Slider::new(3.0, 80.0, custom_font_size.get());
         if let Some(value) = custom_font_size_slider.value_changed() {
             custom_font_size.set(value);
         }
-        grid.add(row, 2, custom_font_size_slider);
+        grid.add_item(row, 2, custom_font_size_slider);
         text_edit(custom_font_size.get(), &mut grid);
     }
 
     // text input test
     {
         let row = grid.row_count();
-        grid.add(row, 0, Label::new("Validated text input".to_string()));
+        grid.add_item(row, 0, Label::new("Validated text input".to_string()));
 
         let mut input_value = State::new(|| 0.0);
         let text_input = TextInput::number(input_value.get());
@@ -78,7 +83,7 @@ fn text_playground() -> impl Widget + Clone {
             info!("input value changed: {:.6}", value);
             input_value.set(value);
         }
-        grid.add(row, 2, text_input);
+        grid.add_item(row, 2, text_input);
     }
 
     Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))

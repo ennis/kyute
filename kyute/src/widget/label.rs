@@ -1,67 +1,60 @@
 //! Text elements
 use crate::{
-    composable, drawing::FromSkia, env::Environment, event::Event, style::ColorRef, theme, BoxConstraints, EventCtx,
-    LayoutCtx, Measurements, PaintCtx, Point, Rect, Widget, WidgetId,
+    composable, drawing::FromSkia, env::Environment, event::Event, style::ColorRef, theme, widget::Text,
+    BoxConstraints, Color, Data, EventCtx, LayoutCtx, Measurements, PaintCtx, Point, Rect, Widget, WidgetId,
 };
-use kyute_common::Data;
+use kyute_text::FormattedText;
 use skia_safe as sk;
 use std::cell::RefCell;
 
 /// Style of a text label.
 #[derive(Copy, Clone, Debug)]
-pub struct TextStyle {
-    pub color: ColorRef,
-}
+pub struct TextStyle {}
 
 /// Simple text label.
 #[derive(Clone)]
 pub struct Label {
-    id: WidgetId,
-    style: TextStyle,
-    text: String,
-    text_blob: RefCell<Option<sk::TextBlob>>,
+    text: Text,
+    color: Color,
 }
 
 impl Label {
     /// Creates a new text label.
     #[composable(cached)]
     pub fn new(text: impl Into<String> + Data) -> Label {
+        let text = text.into();
+        let color = theme::keys::LABEL_COLOR.get().unwrap();
         Label {
-            id: WidgetId::here(),
-            style: TextStyle {
-                // by default, use LABEL_COLOR as the text color
-                color: theme::keys::LABEL_COLOR.into(),
-            },
-            text: text.into(),
-            text_blob: RefCell::new(None),
+            text: Text::new(FormattedText::new(text.into())),
+            color,
         }
     }
 
     /// Sets the color of the label.
-    pub fn color(mut self, color: impl Into<ColorRef>) -> Self {
+    pub fn color(mut self, color: Color) -> Self {
         self.set_color(color);
         self
     }
 
     /// Sets the color of the label.
-    pub fn set_color(&mut self, color: impl Into<ColorRef>) {
-        self.style.color = color.into();
+    pub fn set_color(&mut self, color: Color) {
+        self.color = color;
     }
 }
 
 impl Widget for Label {
     fn widget_id(&self) -> Option<WidgetId> {
-        Some(self.id)
+        self.text.widget_id()
     }
 
-    fn debug_name(&self) -> &str {
-        std::any::type_name::<Self>()
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.text.event(ctx, event, env)
     }
 
-    fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.text.layout(ctx, constraints, env)
 
-    fn layout(&self, ctx: &mut LayoutCtx, _constraints: BoxConstraints, env: &Environment) -> Measurements {
-        //let font_name = "Consolas";
+        /*//let font_name = "Consolas";
         let font_size = env.get(theme::LABEL_FONT_SIZE).unwrap().to_dips(ctx.scale_factor);
 
         let mut font: sk::Font = sk::Font::new(sk::Typeface::default(), Some(font_size as f32));
@@ -81,12 +74,13 @@ impl Widget for Label {
         Measurements {
             bounds: Rect::new(Point::origin(), size),
             baseline: Some(baseline), // TODO
-        }
+        }*/
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, _env: &Environment) {
-        let text_blob = self.text_blob.borrow();
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+        self.text.paint(ctx, bounds, env);
 
+        /*let text_blob = self.text_blob.borrow();
         if let Some(ref text_blob) = &*text_blob {
             let mut paint: sk::Paint = sk::Paint::new(sk::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
             paint.set_anti_alias(true);
@@ -97,6 +91,6 @@ impl Widget for Label {
             );
         } else {
             tracing::warn!("text layout wasn't calculated before paint")
-        }
+        }*/
     }
 }

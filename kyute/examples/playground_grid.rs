@@ -7,7 +7,7 @@ use kyute::{
     theme,
     widget::{
         drop_down,
-        grid::{AlignItems, JustifyItems},
+        grid::{AlignItems, GridTrackDefinition, JustifyItems},
         Container, DropDown, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit, TextInput,
         TitledPane, ValidationResult,
     },
@@ -26,24 +26,28 @@ fn fixed_size_widget(w: f64, h: f64, name: impl Into<String> + Data) -> impl Wid
 
 #[composable(cached)]
 fn playground_grid() -> impl Widget + Clone {
-    let mut grid = Grid::with_columns([GridLength::Fixed(200.0), GridLength::Fixed(5.0), GridLength::Flex(1.0)])
-        .align_items(AlignItems::Baseline);
+    let mut grid = Grid::with_column_definitions([
+        GridTrackDefinition::new(GridLength::Fixed(200.0)),
+        GridTrackDefinition::new(GridLength::Fixed(5.0)),
+        GridTrackDefinition::new(GridLength::Flex(1.0)),
+    ])
+    .align_items(AlignItems::Baseline);
 
     // row count
     let mut row = 0;
 
-    let row_count = State::new(|| 2usize);
-    let column_count = State::new(|| 2usize);
-    let align_items = State::new(|| AlignItems::Start);
-    let justify_items = State::new(|| JustifyItems::Start);
+    let mut row_count = State::new(|| 2usize);
+    let mut column_count = State::new(|| 2usize);
+    let mut align_items = State::new(|| AlignItems::Start);
+    let mut justify_items = State::new(|| JustifyItems::Start);
 
     {
         let input = TextInput::number(row_count.get() as f64);
         if let Some(v) = input.value_changed() {
             row_count.set(v as usize);
         }
-        grid.add(row, 0, Label::new("Row count"));
-        grid.add(row, 2, input);
+        grid.add_item(row, 0, Label::new("Row count"));
+        grid.add_item(row, 2, input);
         row += 1;
     }
 
@@ -52,13 +56,14 @@ fn playground_grid() -> impl Widget + Clone {
         if let Some(v) = input.value_changed() {
             column_count.set(v as usize);
         }
-        grid.add(row, 0, Label::new("Column count"));
-        grid.add(row, 2, input);
+        grid.add_item(row, 0, Label::new("Column count"));
+        grid.add_item(row, 2, input);
         row += 1;
     }
 
     {
         let drop_down = DropDown::with_selected(
+            align_items.get(),
             vec![
                 AlignItems::Start,
                 AlignItems::End,
@@ -66,33 +71,32 @@ fn playground_grid() -> impl Widget + Clone {
                 AlignItems::Stretch,
                 AlignItems::Baseline,
             ],
-            align_items.get(),
             drop_down::DebugFormatter,
         );
         if let Some(align) = drop_down.selected_item_changed() {
             align_items.set(align);
         }
-        grid.add(row, 0, Label::new("Item alignment"));
-        grid.add(row, 2, drop_down);
+        grid.add_item(row, 0, Label::new("Item alignment"));
+        grid.add_item(row, 2, drop_down);
         row += 1;
     }
 
     {
         let drop_down = DropDown::with_selected(
+            justify_items.get(),
             vec![
                 JustifyItems::Start,
                 JustifyItems::End,
                 JustifyItems::Center,
                 JustifyItems::Stretch,
             ],
-            justify_items.get(),
             drop_down::DebugFormatter,
         );
         if let Some(justify) = drop_down.selected_item_changed() {
             justify_items.set(justify);
         }
-        grid.add(row, 0, Label::new("Item justify"));
-        grid.add(row, 2, drop_down);
+        grid.add_item(row, 0, Label::new("Item justify"));
+        grid.add_item(row, 2, drop_down);
         row += 1;
     }
 
@@ -102,8 +106,8 @@ fn playground_grid() -> impl Widget + Clone {
         column_count.get() as usize
     );
 
-    let row_defs = vec![GridLength::Flex(1.0); row_count.get() as usize];
-    let column_defs = vec![GridLength::Flex(1.0); column_count.get() as usize];
+    let row_defs = vec![GridLength::Flex(1.0).into(); row_count.get() as usize];
+    let column_defs = vec![GridLength::Flex(1.0).into(); column_count.get() as usize];
 
     let mut play_grid = Grid::with_rows_columns(row_defs, column_defs)
         .align_items(align_items.get())
@@ -111,11 +115,11 @@ fn playground_grid() -> impl Widget + Clone {
 
     for i in 0..row_count.get() {
         for j in 0..column_count.get() {
-            play_grid.add(i, j, fixed_size_widget(50.0, 50.0, "hello"))
+            play_grid.add_item(i, j, Label::new("hello"))
         }
     }
 
-    grid.add(row, 2, Container::new(play_grid).fixed_height(700.dip()));
+    grid.add_item(row, 2, Container::new(play_grid).fixed_height(700.dip()));
 
     Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))
 }

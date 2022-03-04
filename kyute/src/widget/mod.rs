@@ -30,7 +30,7 @@ pub use constrained::ConstrainedBox;
 pub use container::Container;
 pub use drop_down::DropDown;
 pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
-pub use grid::{Grid, GridLength};
+pub use grid::{Grid, GridLength, GridRow, GridSpan};
 pub use image::Image;
 pub use label::Label;
 pub use layout_wrapper::LayoutWrapper;

@@ -52,19 +52,19 @@ pub struct DropDown<T> {
 
 impl<T: Clone + PartialEq + 'static> DropDown<T> {
     #[composable]
-    pub fn with_selected(choices: Vec<T>, selected: T, formatter: impl Formatter<T>) -> DropDown<T> {
+    pub fn with_selected(selected: T, choices: Vec<T>, formatter: impl Formatter<T>) -> DropDown<T> {
         let selected_index = choices
             .iter()
             .position(|x| x == &selected)
             .expect("selected value was not in the list of choices");
-        DropDown::with_selected_index(choices, selected_index, formatter)
+        DropDown::with_selected_index(selected_index, choices, formatter)
     }
 }
 
 impl<T: Clone + 'static> DropDown<T> {
     /// Creates a new drop down with the specified choices.
     #[composable]
-    pub fn with_selected_index(choices: Vec<T>, selected_index: usize, formatter: impl Formatter<T>) -> DropDown<T> {
+    pub fn with_selected_index(selected_index: usize, choices: Vec<T>, formatter: impl Formatter<T>) -> DropDown<T> {
         let inner = Container::new(Label::new(formatter.format(&choices[selected_index])))
             .min_height(theme::BUTTON_HEIGHT)
             .baseline(theme::BUTTON_LABEL_BASELINE)

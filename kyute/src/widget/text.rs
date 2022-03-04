@@ -11,15 +11,17 @@ use skia_safe as sk;
 use std::{
     cell::{Ref, RefCell},
     ptr,
+    sync::Arc,
 };
 
 /// Displays formatted text.
+#[derive(Clone)]
 pub struct Text {
     /// Input formatted text.
     formatted_text: FormattedText,
     /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
     paragraph: RefCell<Option<kyute_text::Paragraph>>,
-    run_masks: RefCell<Option<Vec<GlyphMaskImage>>>,
+    run_masks: RefCell<Option<Arc<Vec<GlyphMaskImage>>>>,
 }
 
 impl Text {
@@ -50,7 +52,7 @@ struct GlyphMaskImage {
 
 impl GlyphMaskImage {
     pub fn new(bounds: RectI, data: GlyphMaskData) -> GlyphMaskImage {
-        let (src_bpp, dst_bpp) = match data.format() {
+        let (_src_bpp, dst_bpp) = match data.format() {
             GlyphMaskFormat::Rgb8 => (3usize, 4usize),
             GlyphMaskFormat::Alpha8 => (1usize, 1usize),
         };
@@ -139,8 +141,6 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
         if let Some(mask) = analysis.rasterize(raster_opts) {
             let mask_image = GlyphMaskImage::new(bounds, mask);
             let color = drawing_effects.color;
-            let x = bounds.origin.x as f32 * self.ctx.scale_factor as f32;
-            let y = bounds.origin.y as f32 * self.ctx.scale_factor as f32;
 
             let apply_mask_effect = sk::RuntimeEffect::make_for_blender(LCD_MASK_BLENDER_SKSL, None).unwrap();
 
@@ -174,9 +174,16 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
 
             let mut paint = sk::Paint::new(color.to_skia(), None);
             paint.set_blender(mask_blender);
-            self.ctx
-                .canvas
-                .draw_image(&mask_image.mask, sk::Point::new(x, y), Some(&paint));
+
+            self.ctx.canvas.save();
+            let inv_scale_factor = 1.0 / self.ctx.scale_factor as f32;
+            self.ctx.canvas.scale((inv_scale_factor, inv_scale_factor));
+            self.ctx.canvas.draw_image(
+                &mask_image.mask,
+                sk::Point::new(bounds.origin.x as sk::scalar, bounds.origin.y as sk::scalar),
+                Some(&paint),
+            );
+            self.ctx.canvas.restore();
         }
     }
 
@@ -198,7 +205,7 @@ impl Widget for Text {
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
-        let available_width = constraints.max_width();
+        //let available_width = constraints.max_width();
         //let available_height = constraints.max_height();
         let paragraph = self
             .formatted_text
@@ -206,13 +213,14 @@ impl Widget for Text {
 
         // measure the paragraph
         let metrics = paragraph.metrics();
-        let text_height = metrics.bounds.height();
+        //let text_width = metrics.bounds.width();
+        //let text_height = metrics.bounds.height();
         let baseline = paragraph
             .line_metrics()
             .first()
             .map(|line| line.baseline)
             .unwrap_or(0.0);
-        let size = Size::new(available_width, constraints.constrain_height(text_height)); // TODO?
+        let size = constraints.constrain(metrics.bounds.size); // TODO?
 
         // stash the laid out paragraph for rendering
         self.paragraph.replace(Some(paragraph));

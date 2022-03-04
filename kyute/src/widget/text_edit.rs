@@ -223,7 +223,7 @@ impl Widget for TextEdit {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.inner.layout(ctx, constraints, env)
+        self.inner.layout(ctx, constraints.tighten(), env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {

@@ -178,7 +178,8 @@ impl WindowState {
             WindowEvent::CursorMoved {
                 device_id, position, ..
             } => {
-                let logical_position = Point::new(position.x * self.scale_factor, position.y * self.scale_factor);
+                let logical_position: (f64, f64) = position.to_logical::<f64>(self.scale_factor).into();
+                let logical_position = Point::new(logical_position.0, logical_position.1);
                 let pointer_state = self.inputs.pointers.entry(*device_id).or_default();
                 pointer_state.position = logical_position;
                 Some(Event::Pointer(PointerEvent {
@@ -647,6 +648,7 @@ impl Window {
                     invalid.add_rect(window_bounds);
 
                     // clear to default bg color
+                    canvas.scale((scale_factor as sk::scalar, scale_factor as sk::scalar));
                     canvas.clear(sk::Color4f::new(0.0, 0.0, 0.0, 1.0));
 
                     let mut paint_ctx = PaintCtx {
@@ -741,7 +743,12 @@ impl Widget for Window {
                     ctx.register_window(skia_window.window.id());
 
                     let scale_factor = skia_window.window.window().scale_factor();
-                    let (width, height): (f64, f64) = skia_window.window.window().inner_size().into();
+                    let (width, height): (f64, f64) = skia_window
+                        .window
+                        .window()
+                        .inner_size()
+                        .to_logical::<f64>(scale_factor)
+                        .into();
                     // perform initial layout of contents
                     self.contents
                         .relayout(BoxConstraints::new(0.0..width, 0.0..height), scale_factor, env);
@@ -782,9 +789,8 @@ impl Widget for Window {
         let mut window_state = self.window_state.borrow_mut();
         if let Some(ref mut skia_window) = window_state.window {
             let winit_window = skia_window.window.window();
-            let (width, height): (f64, f64) = winit_window.inner_size().into();
-
             let scale_factor = winit_window.scale_factor();
+            let (width, height): (f64, f64) = winit_window.inner_size().to_logical::<f64>(scale_factor).into();
             let mut m_window = Measurements::new(Size::new(width, height).into());
             let (m_content, layout_changed) =
                 self.contents

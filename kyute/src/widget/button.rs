@@ -4,7 +4,7 @@ use crate::{
     style::{BoxStyle, ColorRef, VisualState},
     theme,
     widget::{prelude::*, Container, Label},
-    SideOffsets, Signal, State, ValueRef,
+    Color, SideOffsets, Signal, State, ValueRef,
 };
 
 #[derive(Clone)]
@@ -47,13 +47,13 @@ impl Button {
     }
 
     /// Sets the text color of this button.
-    pub fn text_color(mut self, color: impl Into<ColorRef>) -> Button {
+    pub fn text_color(mut self, color: Color) -> Button {
         self.set_text_color(color);
         self
     }
 
     /// Sets the text color of this button.
-    pub fn set_text_color(&mut self, color: impl Into<ColorRef>) {
+    pub fn set_text_color(&mut self, color: Color) {
         self.inner.contents_mut().set_color(color);
     }
 

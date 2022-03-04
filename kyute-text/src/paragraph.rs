@@ -40,6 +40,7 @@ use windows::{
 };
 
 /// A laid-out block of text.
+#[derive(Clone)]
 pub struct Paragraph {
     layout: IDWriteTextLayout,
     text: Arc<str>,

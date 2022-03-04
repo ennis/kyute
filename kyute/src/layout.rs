@@ -77,6 +77,23 @@ impl BoxConstraints {
         }
     }
 
+    pub fn tighten(&self) -> BoxConstraints {
+        let w = if self.max.width.is_finite() {
+            self.max.width
+        } else {
+            self.min.width
+        };
+        let h = if self.max.height.is_finite() {
+            self.max.height
+        } else {
+            self.min.height
+        };
+        BoxConstraints {
+            min: Size::new(w, h),
+            max: self.max,
+        }
+    }
+
     pub fn tight(size: Size) -> BoxConstraints {
         BoxConstraints { min: size, max: size }
     }

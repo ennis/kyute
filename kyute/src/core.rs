@@ -1113,7 +1113,6 @@ impl fmt::Debug for WidgetPod {
 
 impl<T: Widget + 'static> WidgetPod<T> {
     /// Creates a new `WidgetPod` wrapping the specified widget.
-    #[composable]
     pub fn new(widget: T) -> WidgetPod<T> {
         let id = widget.widget_id();
 

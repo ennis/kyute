@@ -2,6 +2,7 @@ use crate::{
     align_boxes, bloom::Bloom, drawing::ToSkia, widget::prelude::*, Color, EnvKey, InternalEvent, Length, WidgetId,
 };
 use kyute::WidgetFilter;
+use kyute_common::RoundToPixel;
 use std::{
     cell::{Cell, RefCell},
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
@@ -10,6 +11,43 @@ use std::{
 
 pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = EnvKey::new("kyute.show_grid_layout_lines");
 
+/// Description of a grid track (row or column).
+#[derive(Clone, Debug, PartialEq)]
+pub struct GridTrackDefinition {
+    /// Track length.
+    min_size: GridLength,
+    max_size: GridLength,
+    /// Optional track name.
+    pub name: Option<String>,
+}
+
+impl GridTrackDefinition {
+    pub fn new(length: impl Into<GridLength>) -> GridTrackDefinition {
+        let length = length.into();
+        GridTrackDefinition {
+            min_size: length,
+            max_size: length,
+            name: None,
+        }
+    }
+
+    pub fn named(name: impl Into<String>, length: impl Into<GridLength>) -> GridTrackDefinition {
+        let length = length.into();
+        GridTrackDefinition {
+            min_size: length,
+            max_size: length,
+            name: Some(name.into()),
+        }
+    }
+}
+
+impl From<GridLength> for GridTrackDefinition {
+    fn from(length: GridLength) -> Self {
+        GridTrackDefinition::new(length)
+    }
+}
+
+/// Length of a grid track.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum GridLength {
     /// Size to content.
@@ -48,12 +86,6 @@ impl From<Length> for GridLength {
             }
         }
     }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct TrackSize {
-    min_size: GridLength,
-    max_size: GridLength,
 }
 
 /// Orientation of a grid track.
@@ -96,52 +128,6 @@ impl GridItem {
     }
 }
 
-pub trait GridSpan {
-    fn resolve(&self, len: usize) -> Range<usize>;
-}
-
-impl GridSpan for usize {
-    fn resolve(&self, _len: usize) -> Range<usize> {
-        *self..*self + 1
-    }
-}
-
-impl GridSpan for Range<usize> {
-    fn resolve(&self, _len: usize) -> Range<usize> {
-        self.clone()
-    }
-}
-
-impl GridSpan for RangeInclusive<usize> {
-    fn resolve(&self, _len: usize) -> Range<usize> {
-        *self.start()..*self.end() + 1
-    }
-}
-
-impl GridSpan for RangeFrom<usize> {
-    fn resolve(&self, len: usize) -> Range<usize> {
-        self.start..len
-    }
-}
-
-impl GridSpan for RangeTo<usize> {
-    fn resolve(&self, _len: usize) -> Range<usize> {
-        0..self.end
-    }
-}
-
-impl GridSpan for RangeToInclusive<usize> {
-    fn resolve(&self, _len: usize) -> Range<usize> {
-        0..(self.end + 1)
-    }
-}
-
-impl GridSpan for RangeFull {
-    fn resolve(&self, len: usize) -> Range<usize> {
-        0..len
-    }
-}
-
 #[derive(Clone, Debug)]
 struct GridTrackLayout {
     pos: f64,
@@ -154,13 +140,129 @@ struct ComputeTrackSizeResult {
     size: f64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GridSpan<'a> {
+    Single(usize),
+    Range(Range<usize>),
+    RangeTo(RangeTo<usize>),
+    RangeFrom(RangeFrom<usize>),
+    RangeInclusive(RangeInclusive<usize>),
+    RangeToInclusive(RangeToInclusive<usize>),
+    RangeFull,
+    Named(&'a str),
+}
+
+impl<'a> GridSpan<'a> {
+    fn resolve(&self, track_definitions: &[GridTrackDefinition]) -> Range<usize> {
+        match self {
+            GridSpan::Single(v) => *v..*v + 1,
+            GridSpan::Range(v) => v.clone(),
+            GridSpan::RangeTo(v) => 0..v.end,
+            GridSpan::RangeFrom(v) => v.start..track_definitions.len(),
+            GridSpan::RangeInclusive(v) => *v.start()..*v.end() + 1,
+            GridSpan::RangeToInclusive(v) => 0..(v.end + 1),
+            GridSpan::RangeFull => 0..track_definitions.len(),
+            GridSpan::Named(name) => {
+                let track = track_definitions
+                    .iter()
+                    .position(|t| t.name.as_deref().map(|n| n == *name).unwrap_or(false))
+                    .expect("no such named track in grid");
+                track..track + 1
+            }
+        }
+    }
+}
+
+impl<'a> From<usize> for GridSpan<'a> {
+    fn from(v: usize) -> Self {
+        GridSpan::Single(v)
+    }
+}
+
+impl<'a> From<Range<usize>> for GridSpan<'a> {
+    fn from(v: Range<usize>) -> Self {
+        GridSpan::Range(v)
+    }
+}
+
+impl<'a> From<RangeTo<usize>> for GridSpan<'a> {
+    fn from(v: RangeTo<usize>) -> Self {
+        GridSpan::RangeTo(v)
+    }
+}
+
+impl<'a> From<RangeFrom<usize>> for GridSpan<'a> {
+    fn from(v: RangeFrom<usize>) -> Self {
+        GridSpan::RangeFrom(v)
+    }
+}
+
+impl<'a> From<RangeInclusive<usize>> for GridSpan<'a> {
+    fn from(v: RangeInclusive<usize>) -> Self {
+        GridSpan::RangeInclusive(v)
+    }
+}
+
+impl<'a> From<RangeToInclusive<usize>> for GridSpan<'a> {
+    fn from(v: RangeToInclusive<usize>) -> Self {
+        GridSpan::RangeToInclusive(v)
+    }
+}
+
+impl<'a> From<RangeFull> for GridSpan<'a> {
+    fn from(v: RangeFull) -> Self {
+        GridSpan::RangeFull
+    }
+}
+
+impl<'a> From<&'a str> for GridSpan<'a> {
+    fn from(v: &'a str) -> Self {
+        GridSpan::Named(v)
+    }
+}
+
+struct GridRowItem<'a> {
+    column: GridSpan<'a>,
+    widget: Arc<WidgetPod>,
+}
+
+/// Represents a row of widgets to be inserted in a grid.
+pub struct GridRow<'a> {
+    items: Vec<GridRowItem<'a>>,
+}
+
+impl<'a> GridRow<'a> {
+    pub fn new() -> GridRow<'a> {
+        GridRow { items: vec![] }
+    }
+
+    #[composable]
+    pub fn add(&mut self, column: impl Into<GridSpan<'a>>, widget: impl Widget + 'static) {
+        self.items.push(GridRowItem {
+            column: column.into(),
+            widget: Arc::new(WidgetPod::new(widget)),
+        })
+    }
+}
+
+impl<W> From<W> for GridRow<'static>
+where
+    W: Widget + 'static,
+{
+    fn from(widget: W) -> Self {
+        let mut row = GridRow::new();
+        row.add(.., widget);
+        row
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Grid {
     id: WidgetId,
     /// Column sizes.
-    columns: Vec<TrackSize>,
+    column_definitions: Vec<GridTrackDefinition>,
     /// Row sizes.
-    rows: Vec<TrackSize>,
+    row_definitions: Vec<GridTrackDefinition>,
     /// List of grid items: widgets positioned inside the grid.
     items: Vec<GridItem>,
 
@@ -194,8 +296,8 @@ impl Grid {
     pub fn new() -> Grid {
         Grid {
             id: WidgetId::here(),
-            columns: vec![],
-            rows: vec![],
+            column_definitions: vec![],
+            row_definitions: vec![],
             items: vec![],
             row_template: GridLength::Auto,
             column_template: GridLength::Auto,
@@ -210,61 +312,52 @@ impl Grid {
     }
 
     /// Creates a single-column grid.
-    pub fn column(width: impl Into<GridLength>) -> Grid {
-        Self::with_columns([width.into()])
+    pub fn column(width: impl Into<GridTrackDefinition>) -> Grid {
+        Self::with_column_definitions([width.into()])
     }
 
     /// Creates a single-row grid.
-    pub fn row(height: impl Into<GridLength>) -> Grid {
-        Self::with_rows([height.into()])
+    pub fn row(height: impl Into<GridTrackDefinition>) -> Grid {
+        Self::with_row_definitions([height.into()])
     }
 
     /// Returns the current number of rows
     pub fn row_count(&self) -> usize {
-        self.rows.len()
+        self.row_definitions.len()
     }
 
     /// Returns the current number of columns
     pub fn column_count(&self) -> usize {
-        self.columns.len()
+        self.column_definitions.len()
     }
 
-    pub fn with_columns(columns: impl IntoIterator<Item = GridLength>) -> Grid {
+    pub fn with_column_definitions(columns: impl IntoIterator<Item = GridTrackDefinition>) -> Grid {
         Self::with_rows_columns([], columns)
     }
 
-    pub fn with_rows(rows: impl IntoIterator<Item = GridLength>) -> Grid {
+    pub fn with_row_definitions(rows: impl IntoIterator<Item = GridTrackDefinition>) -> Grid {
         Self::with_rows_columns(rows, [])
     }
 
-    pub fn push_row_definition(&mut self, size: impl Into<GridLength>) {
-        let size = size.into();
-        self.rows.push(TrackSize {
-            min_size: size,
-            max_size: size,
-        });
+    /// Appends a new row to this grid.
+    pub fn push_row_definition(&mut self, def: GridTrackDefinition) {
+        self.row_definitions.push(def);
     }
 
+    /// Appends a new column to this grid.
+    pub fn push_column_definition(&mut self, def: GridTrackDefinition) {
+        self.column_definitions.push(def);
+    }
+
+    /// Creates a new grid with the specified rows and columns.
     pub fn with_rows_columns(
-        rows: impl IntoIterator<Item = GridLength>,
-        columns: impl IntoIterator<Item = GridLength>,
+        rows: impl IntoIterator<Item = GridTrackDefinition>,
+        columns: impl IntoIterator<Item = GridTrackDefinition>,
     ) -> Grid {
         Grid {
             id: WidgetId::here(),
-            columns: columns
-                .into_iter()
-                .map(|size| TrackSize {
-                    min_size: size,
-                    max_size: size,
-                })
-                .collect(),
-            rows: rows
-                .into_iter()
-                .map(|size| TrackSize {
-                    min_size: size,
-                    max_size: size,
-                })
-                .collect(),
+            column_definitions: columns.into_iter().collect(),
+            row_definitions: rows.into_iter().collect(),
             items: vec![],
             row_template: GridLength::Auto,
             column_template: GridLength::Auto,
@@ -278,21 +371,25 @@ impl Grid {
         }
     }
 
+    /// Sets the size of the gap between rows.
     pub fn row_gap(mut self, gap: impl Into<Length>) -> Self {
         self.row_gap = gap.into();
         self
     }
 
+    /// Sets the size of the gap between columns.
     pub fn column_gap(mut self, gap: impl Into<Length>) -> Self {
         self.column_gap = gap.into();
         self
     }
 
+    /// Sets the template for implicit row definitions.
     pub fn row_template(mut self, size: GridLength) -> Self {
         self.row_template = size;
         self
     }
 
+    /// Sets the template for implicit column definitions.
     pub fn column_template(mut self, size: GridLength) -> Self {
         self.column_template = size;
         self
@@ -308,47 +405,75 @@ impl Grid {
         self
     }
 
+    // TODO remove? rename to `item()`
     #[composable]
-    pub fn with(mut self, row_span: impl GridSpan, column_span: impl GridSpan, widget: impl Widget + 'static) -> Self {
-        self.add(row_span, column_span, widget);
+    pub fn with_item<'a>(
+        mut self,
+        row_span: impl Into<GridSpan<'a>>,
+        column_span: impl Into<GridSpan<'a>>,
+        widget: impl Widget + 'static,
+    ) -> Self {
+        self.add_item(row_span, column_span, widget);
         self
     }
 
     #[composable]
-    pub fn add(&mut self, row_span: impl GridSpan, column_span: impl GridSpan, widget: impl Widget + 'static) {
-        let row_range = row_span.resolve(self.rows.len());
-        let column_range = column_span.resolve(self.columns.len());
+    pub fn add_item<'a>(
+        &mut self,
+        row_span: impl Into<GridSpan<'a>>,
+        column_span: impl Into<GridSpan<'a>>,
+        widget: impl Widget + 'static,
+    ) {
+        let widget = Arc::new(WidgetPod::new(widget));
+        self.push_item_inner(row_span, column_span, widget);
+    }
+
+    #[composable]
+    fn push_item_inner<'a>(
+        &mut self,
+        row_span: impl Into<GridSpan<'a>>,
+        column_span: impl Into<GridSpan<'a>>,
+        widget: Arc<WidgetPod>,
+    ) {
+        let row_range = row_span.into().resolve(&self.row_definitions);
+        let column_range = column_span.into().resolve(&self.column_definitions);
 
         // add rows/columns as required
-        let num_rows = self.rows.len();
-        let num_columns = self.columns.len();
+        let num_rows = self.row_definitions.len();
+        let num_columns = self.column_definitions.len();
         let extra_rows = row_range.end.checked_sub(num_rows).unwrap_or(0);
         let extra_columns = column_range.end.checked_sub(num_columns).unwrap_or(0);
         for _ in 0..extra_rows {
-            self.rows.push(TrackSize {
+            self.row_definitions.push(GridTrackDefinition {
                 min_size: self.row_template,
                 max_size: self.row_template,
+                name: None,
             });
         }
         for _ in 0..extra_columns {
-            self.columns.push(TrackSize {
+            self.column_definitions.push(GridTrackDefinition {
                 min_size: self.column_template,
                 max_size: self.column_template,
+                name: None,
             });
         }
 
         self.items.push(GridItem {
             row_range,
             column_range,
-            widget: Arc::new(WidgetPod::new(widget)),
+            widget,
         });
 
         self.invalidate_child_filter()
     }
 
     #[composable]
-    pub fn add_row(&mut self, widget: impl Widget + 'static) {
-        self.add(self.rows.len(), .., widget);
+    pub fn add_row<'a>(&mut self, row: impl Into<GridRow<'a>>) {
+        let row = row.into();
+        let row_index = self.row_definitions.len();
+        for item in row.items {
+            self.push_item_inner(row_index, item.column, item.widget)
+        }
     }
 
     fn items_in_track(&self, axis: TrackAxis, index: usize) -> impl Iterator<Item = &GridItem> {
@@ -368,8 +493,8 @@ impl Grid {
         column_layout: Option<&[GridTrackLayout]>,
     ) -> ComputeTrackSizeResult {
         let tracks = match axis {
-            TrackAxis::Row => &self.rows[..],
-            TrackAxis::Column => &self.columns[..],
+            TrackAxis::Row => &self.row_definitions[..],
+            TrackAxis::Column => &self.column_definitions[..],
         };
 
         let gap = match axis {
@@ -613,7 +738,8 @@ impl Widget for Grid {
                 item.widget.widget().debug_name(),
                 Offset::new(x, y)
             );*/
-            item.widget.set_child_offset(Offset::new(x, y));
+            item.widget
+                .set_child_offset(Offset::new(x, y).round_to_pixel(ctx.scale_factor));
         }
 
         self.row_layout.replace(row_layout);

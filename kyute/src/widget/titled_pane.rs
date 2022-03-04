@@ -2,7 +2,10 @@ use crate::{
     composable,
     state::State,
     theme,
-    widget::{separator::separator, Clickable, Container, Grid, GridLength, Image, Label, SingleChildWidget},
+    widget::{
+        grid::GridTrackDefinition, separator::separator, Clickable, Container, Grid, GridLength, Image, Label,
+        SingleChildWidget,
+    },
     Alignment, Orientation, SideOffsets, Widget, WidgetExt,
 };
 
@@ -42,14 +45,14 @@ impl TitledPane {
         // Title bar
         let title_bar = Clickable::new(
             Container::new(
-                Grid::with_columns([
-                    GridLength::Fixed(20.0),
-                    GridLength::Fixed(3.0),
-                    GridLength::Flex(1.0),
-                    GridLength::Fixed(20.0),
+                Grid::with_column_definitions([
+                    GridTrackDefinition::new(GridLength::Fixed(20.0)),
+                    GridTrackDefinition::new(GridLength::Fixed(3.0)),
+                    GridTrackDefinition::new(GridLength::Flex(1.0)),
+                    GridTrackDefinition::new(GridLength::Fixed(20.0)),
                 ])
-                .with(0, 0, icon)
-                .with(0, 2, Label::new(title).aligned(Alignment::CENTER_LEFT)),
+                .with_item(0, 0, icon)
+                .with_item(0, 2, Label::new(title).aligned(Alignment::CENTER_LEFT)),
             )
             .content_padding(SideOffsets::new_all_same(2.0))
             .box_style(theme::TITLED_PANE_HEADER),
@@ -57,12 +60,12 @@ impl TitledPane {
 
         let collapsed_changed = if title_bar.clicked() { Some(!collapsed) } else { None };
 
-        inner.add_row(title_bar);
-        inner.add_row(separator(Orientation::Horizontal));
+        inner.add_item(inner.row_count(), 0, title_bar);
+        inner.add_item(inner.row_count(), 0, separator(Orientation::Horizontal));
 
         // Add contents if not collapsed
         if !collapsed {
-            inner.add_row(content);
+            inner.add_item(inner.row_count(), 0, content);
         }
 
         TitledPane {

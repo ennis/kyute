@@ -22,7 +22,7 @@ fn popup_test() -> impl Widget + Clone {
         popup.show();
     }
 
-    Grid::new().with(0, 0, button).with(0, 0, popup)
+    Grid::new().with_item(0, 0, button).with_item(0, 0, popup)
 }
 
 #[composable]

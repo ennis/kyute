@@ -3,6 +3,7 @@ use crate::{
     widget::{prelude::*, LayoutWrapper},
     Length, SideOffsets, UnitExt, ValueRef,
 };
+use kyute_common::RoundToPixel;
 
 // FIXME: there's no way to force a child widget to stretch?
 
@@ -276,6 +277,9 @@ impl<Content: Widget> Widget for Container<Content> {
             content_offset.x += x;
             content_offset.y += y;
         }
+
+        // finally, round to pixel boundaries
+        content_offset = content_offset.round_to_pixel(ctx.scale_factor);
 
         self.content.set_offset(content_offset);
 
