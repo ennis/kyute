@@ -48,7 +48,7 @@ impl LayoutCtx {
 pub struct PaintCtx<'a> {
     pub canvas: &'a mut skia_safe::Canvas,
     pub id: Option<WidgetId>,
-    pub window_transform: Transform,
+    //pub window_transform: Transform,
     pub focus: Option<WidgetId>,
     pub pointer_grab: Option<WidgetId>,
     pub hot: Option<WidgetId>,
@@ -56,21 +56,11 @@ pub struct PaintCtx<'a> {
     pub scale_factor: f64,
     pub invalid: &'a Region,
     pub hover: bool,
-    pub measurements: Measurements,
+    //pub measurements: Measurements,
     pub active: bool,
 }
 
 impl<'a> PaintCtx<'a> {
-    /// Returns the bounds of the node.
-    pub fn bounds(&self) -> Rect {
-        self.measurements.bounds
-    }
-
-    /// Returns the measurements computed during layout.
-    pub fn measurements(&self) -> Measurements {
-        self.measurements
-    }
-
     /// Returns whether the cursor is hovering the widget.
     pub fn is_hovering(&self) -> bool {
         self.hover
@@ -105,7 +95,7 @@ impl<'a> PaintCtx<'a> {
         state
     }
 
-    ///
+    /*///
     pub fn with_transform<R>(
         &mut self,
         transform: Transform,
@@ -132,7 +122,7 @@ impl<'a> PaintCtx<'a> {
         let result = f(&mut transformed_ctx);
         transformed_ctx.canvas.restore();
         result
-    }
+    }*/
 
     /*/// Returns the size of the node.
     pub fn size(&self) -> Size {
@@ -516,7 +506,8 @@ pub trait Widget {
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements;
 
     /// Paints the widget in the given context.
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment);
+    // TODO: remove "measurements" from ctx, pass transform and local bounds to
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment);
 
     /// Called only for native window widgets.
     fn window_paint(&self, _ctx: &mut WindowPaintCtx) {}
@@ -543,8 +534,8 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::layout(&**self, ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        Widget::paint(&**self, ctx, bounds, env)
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+        Widget::paint(&**self, ctx, bounds, transform, env)
     }
 
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {
@@ -835,12 +826,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         measurements
     }
 
-    pub fn paint(&self, parent_ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
-        /*if !self.0.paint_invalid.get() {
-            // no need to repaint
-            return;
-        }*/
-
+    pub fn paint(&self, parent_ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
         let local_transform = self.state.transform.get();
         let measurements = if let Some(layout_result) = self.state.layout_result.get() {
             layout_result.measurements
@@ -866,21 +852,20 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         ).entered();*/
         // trace!(?ctx.scale_factor, ?ctx.inputs.pointers, ?window_bounds, "paint");
 
-        let window_transform = local_transform.then(&parent_ctx.window_transform);
-        let inv_window_transform = window_transform.inverse().unwrap();
+        let child_transform = local_transform.then(&transform);
+        let inv_child_transform = child_transform.inverse().unwrap();
 
         let hover = parent_ctx.inputs.pointers.iter().any(|(_, state)| {
-            let local_pointer_pos = inv_window_transform.transform_point(state.position);
+            let local_pointer_pos = inv_child_transform.transform_point(state.position);
             measurements.bounds.contains(local_pointer_pos)
         });
 
         parent_ctx.canvas.save();
-        parent_ctx.canvas.concat(&local_transform.to_skia());
+        //parent_ctx.canvas.concat(&local_transform.to_skia());
 
         {
             let mut child_ctx = PaintCtx {
                 canvas: parent_ctx.canvas,
-                window_transform,
                 focus: parent_ctx.focus,
                 pointer_grab: parent_ctx.pointer_grab,
                 hot: parent_ctx.hot,
@@ -889,10 +874,10 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                 id: self.id(),
                 hover,
                 invalid: &parent_ctx.invalid,
-                measurements,
                 active: self.state.active.get(),
             };
-            self.widget.paint(&mut child_ctx, measurements.bounds, env);
+            self.widget
+                .paint(&mut child_ctx, measurements.bounds, child_transform, env);
         }
 
         /*if !env.get(SHOW_DEBUG_OVERLAY).unwrap_or_default() {

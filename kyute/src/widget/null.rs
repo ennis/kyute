@@ -15,5 +15,5 @@ impl Widget for Null {
         Measurements::default()
     }
 
-    fn paint(&self, _ctx: &mut PaintCtx, _bounds: Rect, _env: &Environment) {}
+    fn paint(&self, _ctx: &mut PaintCtx, _bounds: Rect, _transform: Transform, _env: &Environment) {}
 }

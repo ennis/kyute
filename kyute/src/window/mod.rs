@@ -652,7 +652,6 @@ impl Window {
                     let mut paint_ctx = PaintCtx {
                         canvas,
                         id,
-                        window_transform: Transform::identity(),
                         focus,
                         pointer_grab,
                         hot,
@@ -660,13 +659,12 @@ impl Window {
                         scale_factor,
                         invalid: &invalid,
                         hover: false,
-                        measurements: Default::default(),
                         active: false,
                     };
 
                     // TODO environment
                     //tracing::trace!("window redraw");
-                    contents.paint(&mut paint_ctx, window_bounds, &env);
+                    contents.paint(&mut paint_ctx, window_bounds, Transform::identity(), &env);
                     surface.flush_and_submit();
                 });
 
@@ -811,7 +809,7 @@ impl Widget for Window {
         }
     }
 
-    fn paint(&self, _ctx: &mut PaintCtx, _bounds: Rect, _env: &Environment) {
+    fn paint(&self, _ctx: &mut PaintCtx, _bounds: Rect, _transform: Transform, _env: &Environment) {
         //self.contents.paint(ctx, bounds, env)
     }
 }

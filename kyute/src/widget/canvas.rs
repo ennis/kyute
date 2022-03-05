@@ -63,9 +63,9 @@ impl Widget for Canvas {
         Measurements::new(Rect::new(Point::origin(), Size::new(width, height)))
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
         for (_, item) in self.items.iter() {
-            item.paint(ctx, bounds, env)
+            item.paint(ctx, bounds, transform, env)
         }
     }
 }

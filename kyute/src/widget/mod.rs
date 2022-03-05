@@ -48,7 +48,9 @@ pub use text_edit::{Formatter, TextEdit, TextInput, ValidationResult};
 pub use thumb::Thumb;
 pub use titled_pane::TitledPane;
 
-use crate::{BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Widget, WidgetId};
+use crate::{
+    BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Transform, Widget, WidgetId,
+};
 
 // TODO move somewhere else
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -84,8 +86,8 @@ impl<T: SingleChildWidget> Widget for T {
         self.child().layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        self.child().paint(ctx, bounds, env);
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+        self.child().paint(ctx, bounds, transform, env);
     }
 }
 
@@ -120,6 +122,6 @@ pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
         composable, Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
-        Orientation, PaintCtx, Point, Rect, Size, Widget, WidgetId, WidgetPod,
+        Orientation, PaintCtx, Point, Rect, Size, Transform, Widget, WidgetId, WidgetPod,
     };
 }

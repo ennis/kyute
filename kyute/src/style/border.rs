@@ -2,10 +2,9 @@
 use crate::{
     drawing::ToSkia,
     style::{BlendMode, Length, Paint},
-    Color, Environment, PaintCtx, Rect, RectExt, ValueRef,
+    Color, Environment, Offset, PaintCtx, Rect, RectExt, Transform, ValueRef,
 };
 use approx::ulps_eq;
-use kyute_common::Offset;
 use skia_safe as sk;
 
 /// Border reference position
@@ -125,7 +124,14 @@ impl Border {
     }
 
     /// Draws the described border in the given paint context, around the specified bounds.
-    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, radii: [sk::Vector; 4], env: &Environment) {
+    pub fn draw(
+        &self,
+        ctx: &mut PaintCtx,
+        bounds: Rect,
+        radii: [sk::Vector; 4],
+        transform: Transform,
+        env: &Environment,
+    ) {
         let offset = Offset::new(
             self.offset_x.to_dips(ctx.scale_factor),
             self.offset_y.to_dips(ctx.scale_factor),
@@ -155,6 +161,9 @@ impl Border {
             }
             BorderPosition::Center => bounds,
         };
+
+        ctx.canvas.save();
+        ctx.canvas.set_matrix(&transform.to_skia().into());
 
         if !uniform_border {
             // draw lines, ignore radii
@@ -195,5 +204,7 @@ impl Border {
                 ctx.canvas.draw_rrect(rrect, &paint);
             }
         }
+
+        ctx.canvas.restore();
     }
 }

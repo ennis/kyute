@@ -152,10 +152,10 @@ impl<T: Clone + 'static> Widget for DropDown<T> {
         self.inner.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
         //let style = self.style.resolve(env).unwrap();
         //let box_style = style.box_style.resolve(env).unwrap();
         //let label_color = style.label_color.resolve(env).unwrap();
-        self.inner.paint(ctx, bounds, env);
+        self.inner.paint(ctx, bounds, transform, env);
     }
 }

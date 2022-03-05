@@ -522,7 +522,7 @@ impl<'a> GlyphRun<'a> {
     /// Creates a `GlyphRunAnalysis` object containing rendering information for the given scale factor and transformation.
     pub fn create_glyph_run_analysis(&self, scale_factor: f64, transform: &Transform) -> GlyphRunAnalysis {
         let transform = transform.to_dwrite();
-        eprintln!("transform={:?}", transform);
+        //eprintln!("transform={:?}", transform);
         let analysis: IDWriteGlyphRunAnalysis = unsafe {
             dwrite_factory()
                 .CreateGlyphRunAnalysis(

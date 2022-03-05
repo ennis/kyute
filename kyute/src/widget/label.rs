@@ -1,7 +1,11 @@
 //! Text elements
 use crate::{
-    composable, env::Environment, event::Event, theme, widget::Text, BoxConstraints, Color, Data, EventCtx, LayoutCtx,
-    Measurements, PaintCtx, Rect, Widget, WidgetId,
+    composable,
+    env::Environment,
+    event::Event,
+    theme,
+    widget::{prelude::*, Text},
+    Color, Data,
 };
 use kyute_text::FormattedText;
 
@@ -75,8 +79,8 @@ impl Widget for Label {
         }*/
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        self.text.paint(ctx, bounds, env);
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+        self.text.paint(ctx, bounds, transform, env);
 
         /*let text_blob = self.text_blob.borrow();
         if let Some(ref text_blob) = &*text_blob {

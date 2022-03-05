@@ -115,6 +115,7 @@ impl GlyphMaskImage {
 
 struct Renderer<'a, 'b> {
     ctx: &'a mut PaintCtx<'b>,
+    transform: Transform,
     masks: Vec<(RectI, GlyphMaskData)>,
 }
 
@@ -133,7 +134,7 @@ half4 main(vec4 src, vec4 dst) {
 
 impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
     fn draw_glyph_run(&mut self, glyph_run: &GlyphRun, drawing_effects: &GlyphRunDrawingEffects) {
-        let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.ctx.window_transform);
+        let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.transform);
         let raster_opts = RasterizationOptions::Subpixel;
         let bounds = analysis.raster_bounds(raster_opts);
         if let Some(mask) = analysis.rasterize(raster_opts) {
@@ -173,8 +174,7 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
             let mut paint = sk::Paint::new(color.to_skia(), None);
             paint.set_blender(mask_blender);
 
-            self.ctx.canvas.save();
-            self.ctx.canvas.reset_matrix();
+            //self.ctx.canvas.save();
             //let inv_scale_factor = 1.0 / self.ctx.scale_factor as f32;
             //self.ctx.canvas.scale((inv_scale_factor, inv_scale_factor));
             self.ctx.canvas.draw_image(
@@ -182,13 +182,12 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
                 sk::Point::new(bounds.origin.x as sk::scalar, bounds.origin.y as sk::scalar),
                 Some(&paint),
             );
-            self.ctx.canvas.restore();
+            //self.ctx.canvas.restore();
         }
     }
 
     fn transform(&self) -> Transform {
-        // trace!("window transform: {:?}", self.ctx.window_transform);
-        self.ctx.window_transform
+        self.transform
     }
 
     fn scale_factor(&self) -> f64 {
@@ -227,7 +226,7 @@ impl Widget for Text {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, _env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, transform: Transform, _env: &Environment) {
         //----------------------------------
         let mut paragraph = self.paragraph.borrow_mut();
         let paragraph = paragraph.as_mut().expect("paint called before layout");
@@ -236,7 +235,11 @@ impl Widget for Text {
         let runs = self.run_masks.borrow_mut();
 
         if runs.is_none() {
-            let mut renderer = Renderer { ctx, masks: vec![] };
+            let mut renderer = Renderer {
+                ctx,
+                transform,
+                masks: vec![],
+            };
             // FIXME: should be a point in absolute coords?
             paragraph.draw(
                 Point::origin(),

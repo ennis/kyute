@@ -9,9 +9,8 @@ use crate::{
     style::{BoxStyle, PaintCtxExt},
     text::{FormattedText, Selection, TextAffinity, TextPosition},
     theme,
-    widget::{Container, Text},
-    BoxConstraints, Color, Data, EventCtx, LayoutCtx, Measurements, Offset, PaintCtx, Point, Rect, SideOffsets, Size,
-    WidgetId, WidgetPod,
+    widget::{prelude::*, Container, Text},
+    Color, Data, SideOffsets,
 };
 use keyboard_types::KeyState;
 use kyute_text::Attribute;
@@ -217,9 +216,9 @@ impl Widget for TextEdit {
         self.inner.layout(ctx, constraints.tighten(), env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
         // paint the text
-        self.inner.paint(ctx, bounds, env);
+        self.inner.paint(ctx, bounds, transform, env);
 
         // paint the selection over it
         let offset = self.inner.widget().content_offset();
@@ -228,7 +227,12 @@ impl Widget for TextEdit {
             paragraph.hit_test_text_range(self.selection.min()..self.selection.max(), Point::origin());
         for mut tb in selection_boxes {
             tb.bounds.origin += offset;
-            ctx.draw_styled_box(tb.bounds, &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)), env);
+            ctx.draw_styled_box(
+                tb.bounds,
+                &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)),
+                transform,
+                env,
+            );
         }
 
         // paint the caret
@@ -242,10 +246,13 @@ impl Widget for TextEdit {
             let caret_color = env.get(theme::CARET_COLOR).unwrap();
             let paint = sk::Paint::new(caret_color.to_skia(), None);
             let pos = caret_hit_test.point + offset;
+            ctx.canvas.save();
+            ctx.canvas.set_matrix(&transform.to_skia().into());
             ctx.canvas.draw_rect(
                 Rect::new(pos.floor(), Size::new(1.0, caret_hit_test.metrics.bounds.size.height)).to_skia(),
                 &paint,
             );
+            ctx.canvas.restore();
         }
     }
 
@@ -513,7 +520,7 @@ impl<T> Widget for TextInput<T> {
         self.text_edit.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        self.text_edit.paint(ctx, bounds, env)
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+        self.text_edit.paint(ctx, bounds, transform, env)
     }
 }

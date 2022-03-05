@@ -35,7 +35,7 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
         self.inner.layout(ctx, constraints, env).constrain(constraints)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        self.inner.paint(ctx, bounds, env)
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+        self.inner.paint(ctx, bounds, transform, env)
     }
 }

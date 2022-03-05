@@ -762,7 +762,7 @@ impl Widget for Grid {
         measurements
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
         use skia_safe as sk;
         let height = bounds.size.height;
         let width = bounds.size.width;
@@ -792,7 +792,7 @@ impl Widget for Grid {
 
         // draw grid items
         for item in self.items.iter() {
-            item.widget.paint(ctx, bounds, env);
+            item.widget.paint(ctx, bounds, transform, env);
         }
     }
 }

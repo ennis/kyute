@@ -98,12 +98,13 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
         match self.contents {
             ImageContents::Image(ref img) => {
+                ctx.canvas.set_matrix(&transform.to_skia().into());
                 ctx.canvas.draw_image(img.to_skia(), Point::origin().to_skia(), None);
             }
-            ImageContents::Placeholder(ref placeholder) => placeholder.paint(ctx, bounds, env),
+            ImageContents::Placeholder(ref placeholder) => placeholder.paint(ctx, bounds, transform, env),
         }
     }
 }

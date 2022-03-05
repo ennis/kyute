@@ -4,11 +4,14 @@ mod box_style;
 mod paint;
 mod theme;
 
-use crate::{drawing::ToSkia, env::Environment, Color, EnvKey, Length, PaintCtx, Rect, RectExt, UnitExt, ValueRef};
+use crate::{
+    drawing::{svg_path_to_skia, ToSkia},
+    env::Environment,
+    Color, EnvKey, Length, PaintCtx, Rect, RectExt, Transform, UnitExt, ValueRef,
+};
 use bitflags::bitflags;
 use skia_safe as sk;
 
-use crate::drawing::svg_path_to_skia;
 pub use border::{Border, BorderPosition, BorderStyle};
 pub use box_style::{BoxShadow, BoxShadowParams, BoxStyle};
 pub use paint::{GradientStop, LinearGradient, Paint};
@@ -209,12 +212,13 @@ impl Path {
         self
     }
 
-    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
         // fill
         if let Some(ref brush) = self.fill {
-            let mut paint = brush.to_sk_paint(env, ctx.bounds());
+            let mut paint = brush.to_sk_paint(env, bounds);
             paint.set_style(sk::PaintStyle::Fill);
             ctx.canvas.save();
+            ctx.canvas.set_matrix(&transform.to_skia().into());
             ctx.canvas.translate(bounds.top_left().to_skia());
             ctx.canvas.draw_path(&self.path, &paint);
             ctx.canvas.restore();
@@ -222,9 +226,10 @@ impl Path {
 
         // stroke
         if let Some(ref stroke) = self.stroke {
-            let mut paint = stroke.to_sk_paint(env, ctx.bounds());
+            let mut paint = stroke.to_sk_paint(env, bounds);
             paint.set_style(sk::PaintStyle::Stroke);
             ctx.canvas.save();
+            ctx.canvas.set_matrix(&transform.to_skia().into());
             ctx.canvas.translate(bounds.top_left().to_skia());
             ctx.canvas.draw_path(&self.path, &paint);
             ctx.canvas.restore();
@@ -259,11 +264,11 @@ impl CornerLengths for f32 {
 
 //--------------------------------------------------------------------------------------------------
 pub trait PaintCtxExt {
-    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, env: &Environment);
+    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, transform: Transform, env: &Environment);
 }
 
 impl<'a> PaintCtxExt for PaintCtx<'a> {
-    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, env: &Environment) {
-        box_style.draw(self, bounds, env)
+    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, transform: Transform, env: &Environment) {
+        box_style.draw(self, bounds, transform, env)
     }
 }

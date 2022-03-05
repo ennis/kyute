@@ -118,10 +118,10 @@ impl Widget for Button {
         m
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
         if self.active.0 {
             ctx.active = true;
         }
-        self.inner.paint(ctx, bounds, env)
+        self.inner.paint(ctx, bounds, transform, env)
     }
 }

@@ -111,11 +111,10 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         m
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
-        // TODO fix duplication between ctx.measurements and bounds
-        ctx.with_transform(self.offset.get().to_transform(), self.measurements.get(), |ctx| {
-            self.inner.paint(ctx, ctx.measurements.bounds, env);
-        });
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+        let child_transform = self.offset.get().to_transform().then(&transform);
+        self.inner
+            .paint(ctx, self.measurements.get().bounds, child_transform, env);
     }
 
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {

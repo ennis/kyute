@@ -143,16 +143,17 @@ impl Widget for Flex {
         Measurements::new(Rect::new(Point::origin(), size).round_to_pixel(ctx.scale_factor))
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
         ctx.draw_styled_box(
             bounds,
             &BoxStyle::new().fill(theme::keys::CONTROL_BACKGROUND_COLOR),
+            transform,
             env,
         );
 
         for item in self.items.iter() {
             // eprintln!("flex {:?} paint item {:?}", self.axis, item.child_offset());
-            item.paint(ctx, bounds, env);
+            item.paint(ctx, bounds, transform, env);
         }
     }
 }
