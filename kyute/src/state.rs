@@ -49,6 +49,10 @@ impl<T: Clone + 'static> Signal<T> {
         self.fetch_value();
         self.value.borrow().clone()
     }
+
+    pub fn map<U>(&self, f: impl FnOnce(T) -> U) -> Option<U> {
+        self.value().map(f)
+    }
 }
 
 #[derive(Clone)]

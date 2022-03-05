@@ -1,6 +1,7 @@
 use crate::{widget::prelude::*, Dip, Transform};
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct Canvas {
     id: WidgetId,
     transform: Transform,

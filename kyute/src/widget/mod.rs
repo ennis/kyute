@@ -45,7 +45,7 @@ pub use separator::separator;
 pub use slider::Slider;
 pub use text::Text;
 pub use text_edit::{Formatter, TextEdit, TextInput, ValidationResult};
-pub use thumb::Thumb;
+pub use thumb::{DragController, Thumb};
 pub use titled_pane::TitledPane;
 
 use crate::{

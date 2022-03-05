@@ -7,8 +7,8 @@ use kyute::{
     theme,
     widget::{
         grid::{AlignItems, GridTrackDefinition},
-        Canvas, Container, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit, TextInput,
-        TitledPane, ValidationResult,
+        Canvas, Container, DragController, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text,
+        TextEdit, TextInput, Thumb, TitledPane, ValidationResult,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Offset, Orientation, Point, Size, State, UnitExt,
     Widget, WidgetExt, WidgetPod, Window,
@@ -24,6 +24,8 @@ fn canvas_playground() -> impl Widget + Clone {
     let mut offset = Offset::zero();
     #[state]
     let mut scale = 1.0;
+    #[state]
+    let mut tmp_offset = Offset::zero();
 
     let mut grid = Grid::with_column_definitions([
         GridTrackDefinition::new(GridLength::Fixed(200.0)),
@@ -42,10 +44,17 @@ fn canvas_playground() -> impl Widget + Clone {
     grid.add_item(2, 2, TextInput::number(scale).on_value_changed(|s| scale = s));
 
     let mut canvas = Canvas::new();
-    canvas.set_transform(offset.to_transform().then_scale(scale, scale));
+    let canvas_transform = offset.to_transform().then_scale(scale, scale);
+    let inv_transform = canvas_transform.inverse().unwrap();
+    canvas.set_transform(canvas_transform);
     canvas.add_item(Offset::new(0.0, 0.0), Label::new("Artist: 少女理論観測所"));
 
-    grid.add_item(3, .., canvas.fix_height(800.0));
+    // make a draggable canvas
+    let mut drag_controller = DragController::new(canvas)
+        .on_started(|| tmp_offset = offset)
+        .on_delta(|delta| offset = tmp_offset + inv_transform.transform_vector(delta));
+
+    grid.add_item(3, .., drag_controller.fix_height(800.0));
 
     Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))
 }
