@@ -277,6 +277,8 @@ pub struct Grid {
     row_layout: RefCell<Vec<GridTrackLayout>>,
     column_layout: RefCell<Vec<GridTrackLayout>>,
 
+    // FIXME this is ugly, there's probably the same problem with the child filter
+    cached_layout: Arc<Cell<Option<(BoxConstraints, Measurements)>>>,
     cached_child_filter: Cell<Option<Bloom<WidgetId>>>,
 }
 
@@ -293,6 +295,7 @@ impl Grid {
 
     /// Creates a new grid, initially without any row or column definitions.
     pub fn new() -> Grid {
+        trace!("Grid::new()");
         Grid {
             id: WidgetId::here(),
             column_definitions: vec![],
@@ -306,6 +309,7 @@ impl Grid {
             justify_items: JustifyItems::Start,
             row_layout: RefCell::new(vec![]),
             column_layout: RefCell::new(vec![]),
+            cached_layout: Arc::new(Cell::new(None)),
             cached_child_filter: Cell::new(None),
         }
     }
@@ -353,6 +357,7 @@ impl Grid {
         rows: impl IntoIterator<Item = GridTrackDefinition>,
         columns: impl IntoIterator<Item = GridTrackDefinition>,
     ) -> Grid {
+        trace!("Grid::new()");
         Grid {
             id: WidgetId::here(),
             column_definitions: columns.into_iter().collect(),
@@ -366,6 +371,7 @@ impl Grid {
             justify_items: JustifyItems::Start,
             row_layout: RefCell::new(vec![]),
             column_layout: RefCell::new(vec![]),
+            cached_layout: Arc::new(Cell::new(None)),
             cached_child_filter: Cell::new(None),
         }
     }
@@ -670,6 +676,13 @@ impl Widget for Grid {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        // try to use the cached layout first
+        if let Some((prev_constraints, measurements)) = self.cached_layout.get() {
+            if prev_constraints == constraints {
+                return measurements;
+            }
+        }
+
         // first measure the width of the columns
         let ComputeTrackSizeResult {
             layout: column_layout,
@@ -743,7 +756,10 @@ impl Widget for Grid {
 
         self.row_layout.replace(row_layout);
         self.column_layout.replace(column_layout);
-        Measurements::new(Rect::new(Point::origin(), Size::new(width, height)))
+
+        let measurements = Measurements::new(Rect::new(Point::origin(), Size::new(width, height)));
+        self.cached_layout.set(Some((constraints, measurements)));
+        measurements
     }
 
     fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {

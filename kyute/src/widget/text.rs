@@ -133,7 +133,7 @@ half4 main(vec4 src, vec4 dst) {
 
 impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
     fn draw_glyph_run(&mut self, glyph_run: &GlyphRun, drawing_effects: &GlyphRunDrawingEffects) {
-        let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &Transform::identity());
+        let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.ctx.window_transform);
         let raster_opts = RasterizationOptions::Subpixel;
         let bounds = analysis.raster_bounds(raster_opts);
         if let Some(mask) = analysis.rasterize(raster_opts) {
@@ -174,8 +174,9 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
             paint.set_blender(mask_blender);
 
             self.ctx.canvas.save();
-            let inv_scale_factor = 1.0 / self.ctx.scale_factor as f32;
-            self.ctx.canvas.scale((inv_scale_factor, inv_scale_factor));
+            self.ctx.canvas.reset_matrix();
+            //let inv_scale_factor = 1.0 / self.ctx.scale_factor as f32;
+            //self.ctx.canvas.scale((inv_scale_factor, inv_scale_factor));
             self.ctx.canvas.draw_image(
                 &mask_image.mask,
                 sk::Point::new(bounds.origin.x as sk::scalar, bounds.origin.y as sk::scalar),
@@ -185,8 +186,9 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
         }
     }
 
-    fn transform(&self) -> Transform<UnknownUnit, UnknownUnit> {
-        Transform::identity()
+    fn transform(&self) -> Transform {
+        // trace!("window transform: {:?}", self.ctx.window_transform);
+        self.ctx.window_transform
     }
 
     fn scale_factor(&self) -> f64 {

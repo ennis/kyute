@@ -52,9 +52,8 @@ impl fmt::Debug for CallId {
 pub struct CallNode {
     id: CallId,
     parent: Option<Rc<CallNode>>,
-    location: &'static Location<'static>,
-    index: usize, // or `iteration`, `count`
-                  //debug_name: Option<&'static str>,
+    pub(crate) location: &'static Location<'static>,
+    pub(crate) index: usize, // or `iteration`, `count`
 }
 
 impl fmt::Debug for CallNode {
@@ -64,11 +63,7 @@ impl fmt::Debug for CallNode {
             let mut node = Some(self);
             //let mut depth = 0;
             while let Some(current_node) = node {
-                writeln!(
-                    f,
-                    "\t --> {} (index {})",
-                    current_node.location, current_node.index
-                )?;
+                writeln!(f, "\t --> {} (index {})", current_node.location, current_node.index)?;
                 //depth += 1;
                 node = current_node.parent.as_deref();
             }
@@ -99,16 +94,8 @@ impl CallIdStack {
 
     fn chain_hash<H: Hash>(&self, s: &H) -> u64 {
         let stacklen = self.id_stack.len();
-        let key1 = if stacklen >= 2 {
-            self.id_stack[stacklen - 2]
-        } else {
-            0
-        };
-        let key0 = if stacklen >= 1 {
-            self.id_stack[stacklen - 1]
-        } else {
-            0
-        };
+        let key1 = if stacklen >= 2 { self.id_stack[stacklen - 2] } else { 0 };
+        let key0 = if stacklen >= 1 { self.id_stack[stacklen - 1] } else { 0 };
         let mut hasher = DefaultHasher::new();
         key0.hash(&mut hasher);
         key1.hash(&mut hasher);

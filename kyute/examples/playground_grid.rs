@@ -118,7 +118,7 @@ fn playground_grid(test: usize) -> impl Widget + Clone {
     for i in 0..row_count {
         cache::scoped(i, || {
             for j in 0..column_count {
-                cache::scoped(j, || play_grid.add_item(i, j, Thumb::draggable(Label::new("hello"))));
+                cache::scoped(j, || play_grid.add_item(i, j, Thumb::new(Label::new("hello"))));
             }
         });
     }

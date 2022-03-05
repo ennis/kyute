@@ -15,6 +15,7 @@ use crate::{
 };
 use keyboard_types::{KeyState, Modifiers};
 use kyute::GpuFrameCtx;
+use kyute_common::Transform;
 use kyute_shell::{
     application::Application,
     winit,
@@ -651,7 +652,7 @@ impl Window {
                     let mut paint_ctx = PaintCtx {
                         canvas,
                         id,
-                        window_bounds,
+                        window_transform: Transform::identity(),
                         focus,
                         pointer_grab,
                         hot,

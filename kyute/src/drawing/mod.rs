@@ -6,6 +6,7 @@ pub use image::{Image, ImageCache, IMAGE_CACHE};
 pub(crate) use svg_path::svg_path_to_skia;
 
 use crate::{Color, Offset, Point, Rect, Size};
+use kyute_common::Transform;
 use skia_safe as sk;
 
 /// Types that can be converted to their skia equivalent.
@@ -88,5 +89,23 @@ impl FromSkia for Color {
 
     fn from_skia(value: Self::Source) -> Self {
         Color::new(value.r as f64, value.g as f64, value.b as f64, value.a as f64)
+    }
+}
+
+impl ToSkia for Transform {
+    type Target = sk::Matrix;
+
+    fn to_skia(&self) -> Self::Target {
+        sk::Matrix::new_all(
+            self.m11 as sk::scalar,
+            self.m21 as sk::scalar,
+            self.m31 as sk::scalar,
+            self.m12 as sk::scalar,
+            self.m22 as sk::scalar,
+            self.m32 as sk::scalar,
+            0.0,
+            0.0,
+            1.0,
+        )
     }
 }

@@ -4,6 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 use winit::event::DeviceId;
 // FIXME: reexport/import from kyute-shell?
 pub use keyboard_types::{CompositionEvent, Key, KeyboardEvent, Modifiers};
+use kyute_common::Transform;
 use kyute_shell::winit;
 
 /// Represents the type of pointer.
@@ -172,11 +173,11 @@ impl<'a> Event<'a> {
     /// If this event contains a relative pointer location, subtracts the specified offset to it and
     /// runs the provided closure with the modified event.
     /// Otherwise, runs the provided closure with this event, unmodified.
-    pub fn with_local_coordinates<R>(&mut self, offset: Offset, f: impl FnOnce(&mut Event) -> R) -> R {
+    pub fn with_local_coordinates<R>(&mut self, transform: Transform, f: impl FnOnce(&mut Event) -> R) -> R {
         match *self {
             Event::Internal(InternalEvent::RoutePointerEvent { ref event, target }) => {
                 let mut event_copy = *event;
-                event_copy.position -= offset;
+                event_copy.position = transform.inverse().unwrap().transform_point(event_copy.position);
                 f(&mut Event::Internal(InternalEvent::RoutePointerEvent {
                     event: event_copy,
                     target,
@@ -184,7 +185,7 @@ impl<'a> Event<'a> {
             }
             Event::Pointer(ref pointer_event) => {
                 let mut event_copy = *pointer_event;
-                event_copy.position -= offset;
+                event_copy.position = transform.inverse().unwrap().transform_point(event_copy.position);
                 f(&mut Event::Pointer(event_copy))
             }
             _ => f(self),

@@ -48,7 +48,8 @@ pub type PointI = euclid::Point2D<i32, Px>;
 /// Point in physical pixel coordinates.
 pub type PhysicalPoint = euclid::Point2D<f64, Px>;
 /// Transform in dips.
-pub type Transform<Src, Dst> = euclid::Transform2D<f64, Src, Dst>;
+//pub type Transform<Src, Dst> = euclid::Transform2D<f64, Src, Dst>;
+pub type Transform = euclid::Transform2D<f64, Dip, Dip>;
 pub type UnknownUnit = euclid::UnknownUnit;
 /// Side offsets (top,left,right,bottom lengths) in dips
 pub type SideOffsets = euclid::SideOffsets2D<f64, Dip>;

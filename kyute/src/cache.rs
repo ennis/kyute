@@ -216,11 +216,14 @@ impl CacheInner {
             return;
         }*/
         let entry = &self.entries[entry_key];
-        /*trace!(
-            "invalidate_dependents_recursive: {:?} node={:#?}",
-            entry_key,
-            entry.call_node
-        );*/
+        /*if let Some(ref call_node) = entry.call_node {
+            trace!(
+                "invalidate_dependents_recursive: {} (#{})",
+                call_node.location,
+                call_node.index
+            );
+        }*/
+
         //if !entry.dirty.replace(true) {
         entry.dirty.set(true);
         for &d in entry.dependents.iter() {
@@ -874,7 +877,7 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
             let args_changed = cx.writer.compare_and_update_value(call_id, args, call_node.clone());
             let CacheEntryInsertResult { key, dirty, .. } =
                 cx.writer.get_or_insert_entry(call_id, call_node.clone(), || None);
-            /* if args_changed {
+            /*if args_changed {
                 trace!("memoize: recomputing because arguments have changed {:#?}", call_node);
             }
             if dirty {

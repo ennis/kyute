@@ -359,7 +359,7 @@ pub struct GlyphOffset {
     pub ascender_offset: f32,
 }
 
-impl ToDirectWrite for Transform<UnknownUnit, UnknownUnit> {
+impl ToDirectWrite for Transform {
     type Target = DWRITE_MATRIX;
 
     fn to_dwrite(&self) -> Self::Target {
@@ -520,12 +520,9 @@ pub struct GlyphRun<'a> {
 
 impl<'a> GlyphRun<'a> {
     /// Creates a `GlyphRunAnalysis` object containing rendering information for the given scale factor and transformation.
-    pub fn create_glyph_run_analysis(
-        &self,
-        scale_factor: f64,
-        transform: &Transform<UnknownUnit, UnknownUnit>,
-    ) -> GlyphRunAnalysis {
+    pub fn create_glyph_run_analysis(&self, scale_factor: f64, transform: &Transform) -> GlyphRunAnalysis {
         let transform = transform.to_dwrite();
+        eprintln!("transform={:?}", transform);
         let analysis: IDWriteGlyphRunAnalysis = unsafe {
             dwrite_factory()
                 .CreateGlyphRunAnalysis(
@@ -568,7 +565,7 @@ pub trait Renderer {
     fn draw_glyph_run(&mut self, glyph_run: &GlyphRun, drawing_effects: &GlyphRunDrawingEffects);
 
     /// Returns the current text transformation.
-    fn transform(&self) -> Transform<UnknownUnit, UnknownUnit>;
+    fn transform(&self) -> Transform;
 
     /// Returns the scale factor (Physical pixels per DIP).
     fn scale_factor(&self) -> f64;

@@ -27,6 +27,7 @@ mod titled_pane;
 pub use align::Align;
 pub use baseline::Baseline;
 pub use button::Button;
+pub use canvas::Canvas;
 pub use clickable::Clickable;
 pub use constrained::ConstrainedBox;
 pub use container::Container;

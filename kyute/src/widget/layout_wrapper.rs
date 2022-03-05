@@ -66,7 +66,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         // the hit-test, that's not a problem.
         let bounds = self.measurements.get().bounds;
 
-        event.with_local_coordinates(self.offset.get(), |event| match event {
+        event.with_local_coordinates(self.offset.get().to_transform(), |event| match event {
             Event::Pointer(p) => match ctx.hit_test(p, bounds) {
                 HitTestResult::Passed => {
                     if !self.pointer_over.get() {
@@ -112,12 +112,10 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, env: &Environment) {
-        // TODO cleanup duplication: ctx.measurements() and bounds
-        ctx.canvas.save();
-        ctx.canvas.translate(self.offset.get().to_skia());
-        ctx.measurements = self.measurements.get();
-        self.inner.paint(ctx, self.measurements.get().bounds, env);
-        ctx.canvas.restore();
+        // TODO fix duplication between ctx.measurements and bounds
+        ctx.with_transform(self.offset.get().to_transform(), self.measurements.get(), |ctx| {
+            self.inner.paint(ctx, ctx.measurements.bounds, env);
+        });
     }
 
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {

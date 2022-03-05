@@ -4,6 +4,7 @@ use crate::{
     cache,
     cache::Key,
     call_id::CallId,
+    drawing::ToSkia,
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
     style::VisualState,
@@ -47,7 +48,7 @@ impl LayoutCtx {
 pub struct PaintCtx<'a> {
     pub canvas: &'a mut skia_safe::Canvas,
     pub id: Option<WidgetId>,
-    pub window_bounds: Rect,
+    pub window_transform: Transform,
     pub focus: Option<WidgetId>,
     pub pointer_grab: Option<WidgetId>,
     pub hot: Option<WidgetId>,
@@ -62,8 +63,7 @@ pub struct PaintCtx<'a> {
 impl<'a> PaintCtx<'a> {
     /// Returns the bounds of the node.
     pub fn bounds(&self) -> Rect {
-        // FIXME: is the local origin always on the top-left corner?
-        Rect::new(Point::origin(), self.window_bounds.size)
+        self.measurements.bounds
     }
 
     /// Returns the measurements computed during layout.
@@ -103,6 +103,35 @@ impl<'a> PaintCtx<'a> {
             state |= VisualState::ACTIVE;
         }
         state
+    }
+
+    ///
+    pub fn with_transform<R>(
+        &mut self,
+        transform: Transform,
+        measurements: Measurements,
+        f: impl FnOnce(&mut PaintCtx) -> R,
+    ) -> R {
+        let window_transform = transform.then(&self.window_transform);
+        let mut transformed_ctx = PaintCtx {
+            canvas: self.canvas,
+            id: self.id,
+            window_transform,
+            focus: self.focus,
+            pointer_grab: self.pointer_grab,
+            hot: self.hot,
+            inputs: self.inputs,
+            scale_factor: self.scale_factor,
+            invalid: self.invalid,
+            hover: self.hover,
+            measurements,
+            active: self.active,
+        };
+        transformed_ctx.canvas.save();
+        transformed_ctx.canvas.concat(&transform.to_skia());
+        let result = f(&mut transformed_ctx);
+        transformed_ctx.canvas.restore();
+        result
     }
 
     /*/// Returns the size of the node.
@@ -212,7 +241,8 @@ pub struct EventCtx<'a> {
     pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
     pub(crate) parent_window: Option<&'a mut kyute_shell::window::Window>,
     pub(crate) focus_state: &'a mut FocusState,
-    pub(crate) window_position: Point,
+    pub(crate) window_transform: Transform,
+    //pub(crate) window_position: Point,
     pub(crate) scale_factor: f64,
     pub(crate) id: Option<WidgetId>,
     pub(crate) handled: bool,
@@ -234,7 +264,7 @@ impl<'a> EventCtx<'a> {
             event_loop,
             parent_window: None,
             focus_state,
-            window_position: Default::default(),
+            window_transform: Transform::identity(),
             scale_factor: 1.0,
             id,
             handled: false,
@@ -259,8 +289,7 @@ impl<'a> EventCtx<'a> {
             event_loop: parent.event_loop,
             parent_window: Some(window),
             focus_state,
-            // reset window pos because we're entering a child window
-            window_position: Point::origin(),
+            window_transform: Transform::identity(),
             scale_factor,
             id: parent.id,
             handled: false,
@@ -642,10 +671,11 @@ struct WidgetPodState {
     id: Option<WidgetId>,
 
     /// Position of this widget relative to its parent. Set by `WidgetPod::set_child_offset`.
-    offset: Cell<Offset>,
+    //offset: Cell<Offset>,
 
     // Transform
-    //transform: Cell<Transform<Dip, Dip>>,
+    transform: Cell<Transform>,
+
     /// Indicates that this widget should be repainted.
     /// Set by `layout` if the layout has changed somehow, after event handling if `EventCtx::request_redraw` was called,
     /// and by `set_child_offset`.
@@ -669,9 +699,8 @@ struct WidgetPodState {
 }
 
 impl WidgetPodState {
-    /// Sets the offset of this widget relative to its parent.
-    pub fn set_child_offset(&self, offset: Offset) {
-        self.offset.set(offset);
+    pub fn set_transform(&self, transform: Transform) {
+        self.transform.set(transform);
         self.paint_invalid.set(true);
     }
 }
@@ -715,14 +744,14 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
     /// Used internally by `event`. In charge of calling the `event` method on the widget with
     /// the child `EventCtx`, and handling its result.
     fn do_event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        let offset = self.state.offset.get();
-        let window_position = parent_ctx.window_position + offset;
+        let local_transform = self.state.transform.get();
+        let window_transform = local_transform.then(&parent_ctx.window_transform);
         let mut ctx = EventCtx {
             app_ctx: parent_ctx.app_ctx,
             event_loop: parent_ctx.event_loop,
             parent_window: parent_ctx.parent_window.as_deref_mut(),
             focus_state: parent_ctx.focus_state,
-            window_position,
+            window_transform,
             scale_factor: parent_ctx.scale_factor,
             id: self.id(),
             handled: false,
@@ -738,7 +767,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         if ctx.relayout {
             //tracing::trace!(widget_id = ?self.state.id, "requested relayout");
             // relayout requested by the widget: invalidate cached measurements and offset
-            self.state.offset.set(Offset::zero());
+            self.state.transform.set(Transform::identity());
             self.state.layout_result.set(None);
             self.state.paint_invalid.set(true);
         } else if ctx.redraw {
@@ -762,13 +791,19 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         // FIXME also check the environment when checking the validity of a cached layout.
         // if the layout that we calculated is valid, return it
         // FIXME grids call layout twice, which makes this kind of caching useless
+
         if let Some(layout) = self.state.layout_result.get() {
             if layout.constraints == constraints {
-                //trace!("using cached layout");
+                //trace!("{}: using cached layout", self.widget.debug_name());
                 return layout.measurements;
-            } /*else {
-                  trace!("constraints mismatch {:?} {:?}", layout.constraints, constraints);
-              }*/
+            } else {
+                /*trace!(
+                    "{}: layout constraints mismatch: old:{:?} vs new:{:?}",
+                    self.widget.debug_name(),
+                    layout.constraints,
+                    constraints
+                );*/
+            }
         }
 
         //trace!("recalculating layout");
@@ -806,21 +841,22 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             return;
         }*/
 
-        let offset = self.state.offset.get();
+        let local_transform = self.state.transform.get();
         let measurements = if let Some(layout_result) = self.state.layout_result.get() {
             layout_result.measurements
         } else {
-            tracing::warn!(id=?self.id(), "`paint` called with invalid layout");
+            warn!(id=?self.id(), "`paint` called with invalid layout");
             return;
         };
-        let size = measurements.size();
+
+        // TODO partial repaint
         // bounds of this widget in window space
-        let window_bounds = Rect::new(parent_ctx.window_bounds.origin + offset, size);
-        if !parent_ctx.invalid.intersects(window_bounds) {
+        //let local_bounds = Rect::new(Point::origin(), size);
+        /*if !parent_ctx.invalid.intersects(window_bounds) {
             //tracing::trace!("not repainting valid region");
             // not invalidated, no need to redraw
             return;
-        }
+        }*/
 
         /*let _span = trace_span!(
             "paint",
@@ -830,21 +866,21 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         ).entered();*/
         // trace!(?ctx.scale_factor, ?ctx.inputs.pointers, ?window_bounds, "paint");
 
-        let hover = parent_ctx
-            .inputs
-            .pointers
-            .iter()
-            .any(|(_, state)| window_bounds.contains(state.position));
+        let window_transform = local_transform.then(&parent_ctx.window_transform);
+        let inv_window_transform = window_transform.inverse().unwrap();
+
+        let hover = parent_ctx.inputs.pointers.iter().any(|(_, state)| {
+            let local_pointer_pos = inv_window_transform.transform_point(state.position);
+            measurements.bounds.contains(local_pointer_pos)
+        });
 
         parent_ctx.canvas.save();
-        parent_ctx
-            .canvas
-            .translate(skia_safe::Vector::new(offset.x as f32, offset.y as f32));
+        parent_ctx.canvas.concat(&local_transform.to_skia());
 
         {
             let mut child_ctx = PaintCtx {
                 canvas: parent_ctx.canvas,
-                window_bounds,
+                window_transform,
                 focus: parent_ctx.focus,
                 pointer_grab: parent_ctx.pointer_grab,
                 hot: parent_ctx.hot,
@@ -856,7 +892,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                 measurements,
                 active: self.state.active.get(),
             };
-            self.widget.paint(&mut child_ctx, Rect::new(Point::origin(), size), env);
+            self.widget.paint(&mut child_ctx, measurements.bounds, env);
         }
 
         /*if !env.get(SHOW_DEBUG_OVERLAY).unwrap_or_default() {
@@ -962,7 +998,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                     //trace!("pointer event reached {:?}", target);
                     self.event(parent_ctx, &mut Event::Pointer(*pointer_event), env);
                 } else if self.may_contain(target) {
-                    event.with_local_coordinates(self.state.offset.get(), |event| {
+                    event.with_local_coordinates(self.state.transform.get(), |event| {
                         self.do_event(parent_ctx, event, env);
                     });
                 }
@@ -1046,7 +1082,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             return;
         };
 
-        event.with_local_coordinates(self.state.offset.get(), |event| match event {
+        event.with_local_coordinates(self.state.transform.get(), |event| match event {
             Event::Pointer(p) => {
                 match hit_test_helper(p, measurements.bounds, self.id(), parent_ctx.focus_state.pointer_grab) {
                     HitTestResult::Passed => {
@@ -1111,12 +1147,12 @@ impl<T: Widget + 'static> WidgetPod<T> {
         WidgetPod {
             state: WidgetPodState {
                 id,
-                offset: Cell::new(Offset::zero()),
                 paint_invalid: Cell::new(true),
                 pointer_over: Cell::new(false),
                 active: Cell::new(false),
                 layout_result: Cell::new(None),
                 child_filter: Cell::new(None),
+                transform: Cell::new(Transform::identity()),
             },
             widget,
         }
@@ -1156,13 +1192,17 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
 
     /// Returns previously set child offset. See `set_child_offset`.
     pub fn child_offset(&self) -> Offset {
-        self.state.offset.get()
+        let transform = self.state.transform.get();
+        Offset::new(transform.m31, transform.m32)
     }
 
-    /// TODO documentation
     /// Sets the offset of this widget relative to its parent. Should be called during widget layout.
     pub fn set_child_offset(&self, offset: Offset) {
-        self.state.set_child_offset(offset);
+        self.set_transform(offset.to_transform());
+    }
+
+    pub fn set_transform(&self, transform: Transform) {
+        self.state.set_transform(transform);
     }
 
     /// Returns whether the widget should be repainted.
