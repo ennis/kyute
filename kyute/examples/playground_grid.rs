@@ -8,7 +8,7 @@ use kyute::{
         drop_down,
         grid::{AlignItems, GridTrackDefinition, JustifyItems},
         Container, DropDown, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit, TextInput,
-        TitledPane, ValidationResult,
+        Thumb, TitledPane, ValidationResult,
     },
     Alignment, AssetId, BoxConstraints, Color, Data, EnvKey, Environment, Orientation, Point, Size, State, UnitExt,
     Widget, WidgetExt, WidgetPod, Window,
@@ -51,6 +51,7 @@ fn playground_grid(test: usize) -> impl Widget + Clone {
             2,
             TextInput::number(row_count as f64).on_value_changed(|v| row_count = v as usize),
         );
+
         row += 1;
     }
 
@@ -115,9 +116,11 @@ fn playground_grid(test: usize) -> impl Widget + Clone {
         .justify_items(justify_items);
 
     for i in 0..row_count {
-        for j in 0..column_count {
-            play_grid.add_item(i, j, Label::new("hello"))
-        }
+        cache::scoped(i, || {
+            for j in 0..column_count {
+                cache::scoped(j, || play_grid.add_item(i, j, Thumb::draggable(Label::new("hello"))));
+            }
+        });
     }
 
     grid.add_item(row, 2, Container::new(play_grid).fixed_height(700.dip()));

@@ -10,6 +10,7 @@ use crate::{
     widget::{Align, ConstrainedBox},
     Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, Size,
 };
+use kyute_common::{Dip, Transform};
 use kyute_macros::composable;
 use kyute_shell::{
     graal,
@@ -643,6 +644,8 @@ struct WidgetPodState {
     /// Position of this widget relative to its parent. Set by `WidgetPod::set_child_offset`.
     offset: Cell<Offset>,
 
+    // Transform
+    //transform: Cell<Transform<Dip, Dip>>,
     /// Indicates that this widget should be repainted.
     /// Set by `layout` if the layout has changed somehow, after event handling if `EventCtx::request_redraw` was called,
     /// and by `set_child_offset`.

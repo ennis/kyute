@@ -1,44 +1,69 @@
-use crate::{cache, event::PointerEventKind, widget::prelude::*, Signal, State};
+use crate::{
+    cache,
+    event::PointerEventKind,
+    widget::{prelude::*, LayoutWrapper},
+    Signal, State,
+};
 use std::cell::Cell;
 
 #[derive(Clone)]
 pub struct Thumb<Content> {
     id: WidgetId,
     content: Content,
-    gesture_started: Signal<Point>,
-    gesture_ended: Signal<Point>,
-    position_changed: Signal<Point>,
+    drag_started: Signal<Point>,
+    drag_delta: Signal<Point>,
+    drag_completed: Signal<Point>,
 }
 
 impl<Content: Widget + 'static> Thumb<Content> {
     #[composable]
-    pub fn draggable(content: Content, offset: Offset) -> Thumb<Content> {
+    pub fn new(content: Content) -> Thumb<Content> {
+        /*#[state]
+        let mut position = Point::zero();
         #[state]
-        let mut anchor_offset: Option<Offset> = None;
-        #[state]
-        let mut offset = Offset::zero();
+        let mut offset: Option<Offset> = None;
 
-        //let anchor_offset = State::new(|| None);
-        let offset = State::new(|| Offset::zero());
-        let thumb = Thumb::new(content, offset.get());
+        let actual_position = if let Some(offset) = offset {
+            position + offset
+        } else {
+            position
+        };*/
 
         /*if let Some(at) = thumb.gesture_started() {
-            // on gesture started, set anchor offset
-            anchor_offset.set(Some(at));
+            position = at;
+            offset = Some(Offset::zero());
+        }
+
+        if let Some(ref mut offset) = offset {
+            if let Some(at) = thumb.gesture_moved() {
+                *offset = at - position;
+            }
+        }
+
+        if let Some(at) = thumb.gesture_ended() {
+            position = at;
+            offset = None;
         }*/
 
-        thumb
-    }
-
-    #[composable]
-    pub fn new(content: Content, offset: Offset) -> Thumb<Content> {
         Thumb {
             id: WidgetId::here(),
             content,
-            gesture_started: Signal::new(),
-            gesture_ended: Signal::new(),
-            position_changed: Signal::new(),
+            drag_started: Signal::new(),
+            drag_delta: Signal::new(),
+            drag_completed: Signal::new(),
         }
+    }
+
+    pub fn drag_started(&self) -> Option<Point> {
+        self.drag_started.value()
+    }
+
+    pub fn drag_delta(&self) -> Option<Point> {
+        self.drag_delta.value()
+    }
+
+    pub fn drag_completed(&self) -> Option<Point> {
+        self.drag_completed.value()
     }
 
     /// Returns a reference to the inner widget.
@@ -52,10 +77,6 @@ impl<Content: Widget + 'static> Thumb<Content> {
     }
 }
 
-// dragging behavior:
-// - on mouse down -> record current pos as anchor pos, set delta to zero
-// - on pointer move
-
 impl<Content: Widget + 'static> Widget for Thumb<Content> {
     fn widget_id(&self) -> Option<WidgetId> {
         Some(self.id)
@@ -66,12 +87,21 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
             Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerDown => {
                     // start drag gesture
-                    //ctx.set_state(self.anchor_pos, Some(p.position));
+                    self.drag_started.signal(ctx, p.position);
                     ctx.capture_pointer();
                     ctx.request_redraw();
                     ctx.set_handled();
                 }
-                PointerEventKind::PointerMove => {}
+                PointerEventKind::PointerMove => {
+                    self.drag_delta.signal(ctx, p.position);
+                    ctx.request_redraw();
+                    ctx.set_handled();
+                }
+                PointerEventKind::PointerUp => {
+                    self.drag_completed.signal(ctx, p.position);
+                    ctx.request_redraw();
+                    ctx.set_handled();
+                }
                 _ => {}
             },
             _ => {}

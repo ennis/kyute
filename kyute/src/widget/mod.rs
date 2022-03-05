@@ -19,6 +19,7 @@ mod slider;
 mod text;
 mod text_edit;
 //mod text_v1;
+mod canvas;
 mod popup;
 mod thumb;
 mod titled_pane;
@@ -43,6 +44,7 @@ pub use separator::separator;
 pub use slider::Slider;
 pub use text::Text;
 pub use text_edit::{Formatter, TextEdit, TextInput, ValidationResult};
+pub use thumb::Thumb;
 pub use titled_pane::TitledPane;
 
 use crate::{BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Widget, WidgetId};
