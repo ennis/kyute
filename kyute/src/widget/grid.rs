@@ -3,6 +3,7 @@ use crate::{
     WidgetFilter, WidgetId,
 };
 use std::{
+    borrow::Borrow,
     cell::{Cell, RefCell},
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
     sync::Arc,
@@ -256,6 +257,14 @@ where
 }
 
 #[derive(Clone, Debug)]
+struct CachedGridLayout {
+    constraints: BoxConstraints,
+    measurements: Measurements,
+    row_layout: Vec<GridTrackLayout>,
+    column_layout: Vec<GridTrackLayout>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Grid {
     id: WidgetId,
     /// Column sizes.
@@ -274,11 +283,11 @@ pub struct Grid {
     align_items: AlignItems,
     justify_items: JustifyItems,
 
-    row_layout: RefCell<Vec<GridTrackLayout>>,
-    column_layout: RefCell<Vec<GridTrackLayout>>,
+    //row_layout: RefCell<Vec<GridTrackLayout>>,
+    //column_layout: RefCell<Vec<GridTrackLayout>>,
 
     // FIXME this is ugly, there's probably the same problem with the child filter
-    cached_layout: Arc<Cell<Option<(BoxConstraints, Measurements)>>>,
+    cached_layout: Arc<RefCell<Option<CachedGridLayout>>>,
     cached_child_filter: Cell<Option<Bloom<WidgetId>>>,
 }
 
@@ -295,23 +304,7 @@ impl Grid {
 
     /// Creates a new grid, initially without any row or column definitions.
     pub fn new() -> Grid {
-        trace!("Grid::new()");
-        Grid {
-            id: WidgetId::here(),
-            column_definitions: vec![],
-            row_definitions: vec![],
-            items: vec![],
-            row_template: GridLength::Auto,
-            column_template: GridLength::Auto,
-            row_gap: Length::Dip(0.0),
-            column_gap: Length::Dip(0.0),
-            align_items: AlignItems::Start,
-            justify_items: JustifyItems::Start,
-            row_layout: RefCell::new(vec![]),
-            column_layout: RefCell::new(vec![]),
-            cached_layout: Arc::new(Cell::new(None)),
-            cached_child_filter: Cell::new(None),
-        }
+        Grid::with_rows_columns([], [])
     }
 
     /// Creates a single-column grid.
@@ -357,7 +350,6 @@ impl Grid {
         rows: impl IntoIterator<Item = GridTrackDefinition>,
         columns: impl IntoIterator<Item = GridTrackDefinition>,
     ) -> Grid {
-        trace!("Grid::new()");
         Grid {
             id: WidgetId::here(),
             column_definitions: columns.into_iter().collect(),
@@ -369,9 +361,7 @@ impl Grid {
             column_gap: Length::Dip(0.0),
             align_items: AlignItems::Start,
             justify_items: JustifyItems::Start,
-            row_layout: RefCell::new(vec![]),
-            column_layout: RefCell::new(vec![]),
-            cached_layout: Arc::new(Cell::new(None)),
+            cached_layout: Arc::new(RefCell::new(None)),
             cached_child_filter: Cell::new(None),
         }
     }
@@ -677,9 +667,12 @@ impl Widget for Grid {
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         // try to use the cached layout first
-        if let Some((prev_constraints, measurements)) = self.cached_layout.get() {
-            if prev_constraints == constraints {
-                return measurements;
+        {
+            let cached_layout = (&*self.cached_layout).borrow();
+            if let Some(cached_layout) = cached_layout.as_ref() {
+                if cached_layout.constraints == constraints {
+                    return cached_layout.measurements;
+                }
             }
         }
 
@@ -754,11 +747,13 @@ impl Widget for Grid {
                 .set_child_offset(Offset::new(x, y).round_to_pixel(ctx.scale_factor));
         }
 
-        self.row_layout.replace(row_layout);
-        self.column_layout.replace(column_layout);
-
         let measurements = Measurements::new(Rect::new(Point::origin(), Size::new(width, height)));
-        self.cached_layout.set(Some((constraints, measurements)));
+        self.cached_layout.replace(Some(CachedGridLayout {
+            constraints,
+            measurements,
+            row_layout,
+            column_layout,
+        }));
         measurements
     }
 
@@ -769,25 +764,32 @@ impl Widget for Grid {
 
         // draw debug grid lines
         if env.get(SHOW_GRID_LAYOUT_LINES).unwrap_or_default() {
-            let row_layout = self.row_layout.borrow();
-            let column_layout = self.column_layout.borrow();
-            let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
+            ctx.canvas.save();
+            ctx.canvas.set_matrix(&transform.to_skia().into());
+            let cached_layout = (&*self.cached_layout).borrow();
+            if let Some(cached_layout) = cached_layout.as_ref() {
+                let row_layout = &cached_layout.row_layout;
+                let column_layout = &cached_layout.column_layout;
+                let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
 
-            for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width)) {
-                ctx.canvas.draw_line(
-                    Point::new(x + 0.5, 0.5).to_skia(),
-                    Point::new(x + 0.5, height + 0.5).to_skia(),
-                    &paint,
-                );
+                for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width)) {
+                    ctx.canvas.draw_line(
+                        Point::new(x + 0.5, 0.5).to_skia(),
+                        Point::new(x + 0.5, height + 0.5).to_skia(),
+                        &paint,
+                    );
+                }
+
+                for y in row_layout.iter().map(|x| x.pos).chain(std::iter::once(height)) {
+                    ctx.canvas.draw_line(
+                        Point::new(0.5, y + 0.5).to_skia(),
+                        Point::new(width + 0.5, y + 0.5).to_skia(),
+                        &paint,
+                    );
+                }
             }
 
-            for y in row_layout.iter().map(|x| x.pos).chain(std::iter::once(height)) {
-                ctx.canvas.draw_line(
-                    Point::new(0.5, y + 0.5).to_skia(),
-                    Point::new(width + 0.5, y + 0.5).to_skia(),
-                    &paint,
-                );
-            }
+            ctx.canvas.restore();
         }
 
         // draw grid items

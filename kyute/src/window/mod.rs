@@ -46,7 +46,6 @@ pub(crate) struct WindowState {
     window_builder: Option<WindowBuilder>,
     focus_state: FocusState,
     menu: Option<Menu>,
-    menu_actions: HashMap<u32, Action>,
     inputs: InputState,
     last_click: Option<LastClick>,
     scale_factor: f64,
@@ -111,9 +110,6 @@ impl WindowState {
                 None
             }
             WindowEvent::Command(id) => {
-                // command from a menu
-                tracing::trace!("received WM_COMMAND {}", id);
-
                 // send to popup menu target if any
                 if let Some(target) = self.focus_state.popup_target.take() {
                     let mut content_ctx = EventCtx::new_subwindow(
@@ -133,8 +129,10 @@ impl WindowState {
                 } else {
                     // command from the window menu
                     // find matching action and trigger it
-                    if let Some(action) = self.menu_actions.get(&(*id as u32)) {
-                        action.triggered.signal(parent_ctx, ());
+                    if let Some(ref menu) = self.menu {
+                        if let Some(action) = menu.find_action_by_index(*id) {
+                            action.triggered.signal(parent_ctx, ());
+                        }
                     }
                 }
                 None
@@ -408,14 +406,11 @@ impl WindowState {
     fn update_menu(&mut self) {
         if let Some(ref mut skia_window) = self.window {
             if let Some(ref menu) = self.menu {
-                let m = menu.to_shell_menu();
+                menu.assign_menu_item_indices();
+                let m = menu.to_shell_menu(false);
                 skia_window.window.set_menu(Some(m));
-                // build action map
-                self.menu_actions.clear();
-                menu.build_action_map(&mut self.menu_actions);
             } else {
                 skia_window.window.set_menu(None);
-                self.menu_actions.clear();
             }
         }
     }
@@ -443,7 +438,6 @@ impl Window {
                 window_builder: Some(window_builder),
                 focus_state: FocusState::default(),
                 menu: None,
-                menu_actions: Default::default(),
                 inputs: Default::default(),
                 last_click: None,
                 scale_factor: 1.0, // initialized during window creation

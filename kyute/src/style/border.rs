@@ -12,11 +12,11 @@ use skia_safe as sk;
 #[serde(tag = "type", content = "value")]
 pub enum BorderPosition {
     #[serde(rename = "inside")]
-    Inside(ValueRef<Length>),
+    Inside,
     #[serde(rename = "center")]
     Center,
     #[serde(rename = "outside")]
-    Outside(ValueRef<Length>),
+    Outside,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Deserialize)]
@@ -65,12 +65,12 @@ impl Border {
 
     pub fn inside(width: impl Into<ValueRef<Length>>) -> Border {
         let width = width.into();
-        Border::new(width, BorderPosition::Inside(width))
+        Border::new(width, BorderPosition::Inside)
     }
 
     pub fn outside(width: impl Into<ValueRef<Length>>) -> Border {
         let width = width.into();
-        Border::new(width, BorderPosition::Outside(width))
+        Border::new(width, BorderPosition::Outside)
     }
 
     pub fn center(width: impl Into<ValueRef<Length>>) -> Border {
@@ -142,22 +142,31 @@ impl Border {
         paint.set_blend_mode(self.blend_mode.to_skia());
         //paint.set_alpha_f(self.opacity as sk::scalar);
 
+        // LTRB
         let widths = [
-            self.widths[0].resolve_or_default(env).to_dips(ctx.scale_factor) as sk::scalar,
-            self.widths[1].resolve_or_default(env).to_dips(ctx.scale_factor) as sk::scalar,
-            self.widths[2].resolve_or_default(env).to_dips(ctx.scale_factor) as sk::scalar,
-            self.widths[3].resolve_or_default(env).to_dips(ctx.scale_factor) as sk::scalar,
+            self.widths[0].resolve_or_default(env).to_dips(ctx.scale_factor),
+            self.widths[1].resolve_or_default(env).to_dips(ctx.scale_factor),
+            self.widths[2].resolve_or_default(env).to_dips(ctx.scale_factor),
+            self.widths[3].resolve_or_default(env).to_dips(ctx.scale_factor),
         ];
         let uniform_border = widths.iter().all(|&w| ulps_eq!(w, widths[0]));
 
         let rect = match self.position {
-            BorderPosition::Inside(x) => {
-                let x = -0.5 - x.resolve_or_default(env).to_dips(ctx.scale_factor);
-                bounds.inflate(x, x)
+            BorderPosition::Inside => {
+                let mut rect = bounds;
+                rect.origin.x += 0.5 * widths[0];
+                rect.origin.y += 0.5 * widths[1];
+                rect.size.width -= 0.5 * (widths[0] + widths[2]);
+                rect.size.height -= 0.5 * (widths[1] + widths[3]);
+                rect
             }
-            BorderPosition::Outside(x) => {
-                let x = 0.5 + x.resolve_or_default(env).to_dips(ctx.scale_factor);
-                bounds.inflate(x, x)
+            BorderPosition::Outside => {
+                let mut rect = bounds;
+                rect.origin.x -= 0.5 * widths[0];
+                rect.origin.y -= 0.5 * widths[1];
+                rect.size.width += 0.5 * (widths[0] + widths[2]);
+                rect.size.height += 0.5 * (widths[1] + widths[3]);
+                rect
             }
             BorderPosition::Center => bounds,
         };
@@ -167,36 +176,37 @@ impl Border {
 
         if !uniform_border {
             // draw lines, ignore radii
-            // TODO border colors
+            // TODO multiple border colors
 
             // left
             if !ulps_eq!(widths[0], 0.0) {
-                paint.set_stroke_width(widths[0]);
+                paint.set_stroke_width(widths[0] as sk::scalar);
                 ctx.canvas
                     .draw_line(rect.top_left().to_skia(), rect.bottom_left().to_skia(), &paint);
             }
 
             // top
             if !ulps_eq!(widths[1], 0.0) {
-                paint.set_stroke_width(widths[1]);
+                paint.set_stroke_width(widths[1] as sk::scalar);
                 ctx.canvas
                     .draw_line(rect.top_left().to_skia(), rect.top_right().to_skia(), &paint);
             }
 
             // right
             if !ulps_eq!(widths[2], 0.0) {
-                paint.set_stroke_width(widths[2]);
+                paint.set_stroke_width(widths[2] as sk::scalar);
                 ctx.canvas
                     .draw_line(rect.top_right().to_skia(), rect.bottom_right().to_skia(), &paint);
             }
 
             // bottom
             if !ulps_eq!(widths[3], 0.0) {
-                paint.set_stroke_width(widths[3]);
+                paint.set_stroke_width(widths[3] as sk::scalar);
                 ctx.canvas
                     .draw_line(rect.bottom_left().to_skia(), rect.bottom_right().to_skia(), &paint);
             }
         } else {
+            paint.set_stroke_width(widths[0] as sk::scalar);
             if radii[0].is_zero() && radii[1].is_zero() && radii[2].is_zero() && radii[3].is_zero() {
                 ctx.canvas.draw_rect(rect.to_skia(), &paint);
             } else {

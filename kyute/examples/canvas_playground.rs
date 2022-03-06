@@ -2,13 +2,13 @@ use anyhow::Error;
 use kyute::{
     application, cache, composable,
     shell::{application::Application, winit::window::WindowBuilder},
-    style::BoxStyle,
+    style::{Border, BoxStyle},
     text::{Attribute, FormattedText},
     theme,
     widget::{
         grid::{AlignItems, GridTrackDefinition},
-        Canvas, Container, DragController, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text,
-        TextEdit, TextInput, Thumb, TitledPane, ValidationResult,
+        Action, Canvas, Container, ContextMenu, DragController, Flex, Formatter, Grid, GridLength, Image, Label, Menu,
+        MenuItem, Null, Slider, Text, TextEdit, TextInput, Thumb, TitledPane, ValidationResult,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Offset, Orientation, Point, Size, State, UnitExt,
     Widget, WidgetExt, WidgetPod, Window,
@@ -50,11 +50,31 @@ fn canvas_playground() -> impl Widget + Clone {
     canvas.add_item(Offset::new(0.0, 0.0), Label::new("Artist: 少女理論観測所"));
 
     // make a draggable canvas
-    let mut drag_controller = DragController::new(canvas)
+    let drag_controller = DragController::new(canvas)
         .on_started(|| tmp_offset = offset)
         .on_delta(|delta| offset = tmp_offset + inv_transform.transform_vector(delta));
 
-    grid.add_item(3, .., drag_controller.fix_height(800.0));
+    // context menu handler
+
+    let add_node_action = Action::new().on_triggered(|| eprintln!("add node"));
+    let add_comment_action = Action::new().on_triggered(|| eprintln!("add comment"));
+
+    // problem: the thumb intercepts all pointer events
+    let context_menu = Menu::new(vec![
+        MenuItem::Action {
+            text: "Add Node".to_string(),
+            action: add_node_action,
+        },
+        MenuItem::Action {
+            text: "Add Comment".to_string(),
+            action: add_comment_action,
+        },
+    ]);
+
+    let context_menu_area = Container::new(ContextMenu::new(context_menu, drag_controller))
+        .box_style(BoxStyle::new().border(Border::inside(2.px()).paint(Color::from_hex("#FFB500"))));
+
+    grid.add_item(3, .., context_menu_area.fix_height(800.0));
 
     Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))
 }

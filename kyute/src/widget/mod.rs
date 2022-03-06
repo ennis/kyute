@@ -37,7 +37,7 @@ pub use grid::{Grid, GridLength, GridRow, GridSpan};
 pub use image::Image;
 pub use label::Label;
 pub use layout_wrapper::LayoutWrapper;
-pub use menu::{Action, Menu, MenuItem, Shortcut};
+pub use menu::{Action, ContextMenu, Menu, MenuItem, Shortcut};
 pub use null::Null;
 pub use padding::Padding;
 pub use popup::Popup;

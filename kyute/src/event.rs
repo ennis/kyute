@@ -17,6 +17,7 @@ pub enum PointerType {
 }
 
 /// Represents a pointer button.
+// TODO why u no bitflags?
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct PointerButton(pub u16);
 
@@ -29,10 +30,21 @@ impl PointerButton {
 }
 
 /// The state of the mouse buttons.
+// TODO why u no bitflags?
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct PointerButtons(pub u32);
 
 impl PointerButtons {
+    pub const ALL: PointerButtons = PointerButtons(0xFFFFFFFF);
+
+    pub fn new() -> PointerButtons {
+        PointerButtons(0)
+    }
+
+    pub fn with(self, button: PointerButton) -> Self {
+        PointerButtons(self.0 | (1u32 << button.0 as u32))
+    }
+
     /// Checks if the specified mouse button is pressed.
     pub fn test(self, button: PointerButton) -> bool {
         self.0 & (1u32 << button.0 as u32) != 0
@@ -43,6 +55,9 @@ impl PointerButtons {
     pub fn reset(&mut self, button: PointerButton) {
         self.0 &= !(1u32 << button.0 as u32);
     }
+    pub fn intersects(&self, buttons: PointerButtons) -> bool {
+        (self.0 & buttons.0) != 0
+    }
     pub fn is_empty(&self) -> bool {
         self.0 == 0
     }
@@ -50,7 +65,7 @@ impl PointerButtons {
 
 impl Default for PointerButtons {
     fn default() -> Self {
-        PointerButtons(0)
+        PointerButtons::new()
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
     cache,
-    event::PointerEventKind,
+    event::{PointerButton, PointerButtons, PointerEventKind},
     widget::{prelude::*, LayoutWrapper},
     Signal, State,
 };
@@ -10,6 +10,7 @@ use std::cell::Cell;
 pub struct Thumb<Content> {
     id: WidgetId,
     content: Content,
+    pointer_buttons: PointerButtons,
     pointer_down: Signal<Point>,
     pointer_move: Signal<Point>,
     pointer_up: Signal<Point>,
@@ -22,11 +23,17 @@ impl<Content: Widget + 'static> Thumb<Content> {
         Thumb {
             id: WidgetId::here(),
             content,
+            pointer_buttons: PointerButtons::ALL,
             pointer_down: Signal::new(),
             pointer_move: Signal::new(),
             pointer_up: Signal::new(),
             scrolled: Signal::new(),
         }
+    }
+
+    pub fn pointer_button_filter(mut self, buttons: PointerButtons) -> Self {
+        self.pointer_buttons = buttons;
+        self
     }
 
     pub fn pointer_down(&self) -> Option<Point> {
@@ -88,18 +95,21 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
             match event {
                 Event::Pointer(p) => match p.kind {
                     PointerEventKind::PointerDown => {
-                        // start drag gesture
-                        self.pointer_down.signal(ctx, p.position);
-                        ctx.capture_pointer();
-                        ctx.set_handled();
+                        if self.pointer_buttons.test(p.button.unwrap()) {
+                            self.pointer_down.signal(ctx, p.position);
+                            ctx.capture_pointer();
+                            ctx.set_handled();
+                        }
                     }
                     PointerEventKind::PointerMove => {
                         self.pointer_move.signal(ctx, p.position);
                         ctx.set_handled();
                     }
                     PointerEventKind::PointerUp => {
-                        self.pointer_up.signal(ctx, p.position);
-                        ctx.set_handled();
+                        if self.pointer_buttons.test(p.button.unwrap()) {
+                            self.pointer_up.signal(ctx, p.position);
+                            ctx.set_handled();
+                        }
                     }
                     _ => {}
                 },
@@ -135,7 +145,7 @@ impl<Content: Widget + 'static> DragController<Content> {
         let mut started = false;
         let mut completed = false;
 
-        let thumb = Thumb::new(content);
+        let thumb = Thumb::new(content).pointer_button_filter(PointerButtons::new().with(PointerButton::LEFT));
 
         if let Some(p) = thumb.pointer_down() {
             anchor = Some(p);

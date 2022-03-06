@@ -1,5 +1,8 @@
-use crate::{cache, composable, state::Signal, util::counter::Counter, Data};
-use std::{collections::HashMap, convert::TryInto};
+use crate::{
+    cache, composable, event::PointerButton, state::Signal, util::counter::Counter, widget::prelude::*, Data,
+    PointerEvent, PointerEventKind, WidgetId,
+};
+use std::{cell::Cell, collections::HashMap, convert::TryInto};
 
 /// Keyboard shortcut.
 // This is a newtype so that we can impl Data on it.
@@ -36,8 +39,9 @@ impl Data for Shortcut {
 
 #[derive(Clone, Debug, Data)]
 pub struct Action {
-    id: u32,
     pub(crate) shortcut: Option<Shortcut>,
+    #[data(ignore)]
+    pub(crate) index: Cell<usize>,
     // ignore "triggered" which is transient state
     #[data(ignore)]
     pub(crate) triggered: Signal<()>,
@@ -65,17 +69,24 @@ impl Action {
 
     #[composable]
     fn new_inner(shortcut: Option<Shortcut>) -> Action {
-        let id: u32 = cache::once(|| ACTION_ID_COUNTER.next().try_into().unwrap());
+        //let id: u32 = cache::once(|| ACTION_ID_COUNTER.next().try_into().unwrap());
         Action {
-            id,
             triggered: Signal::new(),
             shortcut,
+            index: Cell::new(0),
         }
     }
 
     /// Returns whether the action was triggered.
     pub fn triggered(&self) -> bool {
         self.triggered.signalled()
+    }
+
+    pub fn on_triggered(self, f: impl FnOnce()) -> Self {
+        if self.triggered.signalled() {
+            f()
+        }
+        self
     }
 }
 
@@ -130,14 +141,18 @@ impl Menu {
         Menu { items }
     }
 
-    pub(crate) fn to_shell_menu(&self) -> kyute_shell::Menu {
-        let mut menu = kyute_shell::Menu::new();
+    pub(crate) fn to_shell_menu(&self, popup: bool) -> kyute_shell::Menu {
+        let mut menu = if popup {
+            kyute_shell::Menu::new_popup()
+        } else {
+            kyute_shell::Menu::new()
+        };
         for item in self.items.iter() {
             match item {
                 MenuItem::Action { action, text } => {
                     menu.add_item(
                         text,
-                        action.id as usize,
+                        action.index.get() as usize,
                         action.shortcut.as_ref().map(|s| &s.0),
                         false,
                         false,
@@ -147,14 +162,14 @@ impl Menu {
                     menu.add_separator();
                 }
                 MenuItem::Submenu { text, menu: submenu } => {
-                    menu.add_submenu(text, submenu.to_shell_menu());
+                    menu.add_submenu(text, submenu.to_shell_menu(popup));
                 }
             }
         }
         menu
     }
 
-    pub(crate) fn build_action_map(&self, actions_by_id: &mut HashMap<u32, Action>) {
+    /*pub(crate) fn build_action_map(&self, actions_by_id: &mut HashMap<u32, Action>) {
         for item in self.items.iter() {
             match item {
                 MenuItem::Action { action, .. } => {
@@ -166,5 +181,99 @@ impl Menu {
                 MenuItem::Separator => {}
             }
         }
+    }*/
+
+    // FIXME: should be done automatically so that nobody forgets to call it.
+    pub(crate) fn assign_menu_item_indices(&self) {
+        self.assign_menu_item_indices_inner(&mut 0);
+    }
+
+    fn assign_menu_item_indices_inner(&self, index: &mut usize) {
+        for item in self.items.iter() {
+            match item {
+                MenuItem::Action { action, .. } => {
+                    action.index.set(*index);
+                    *index += 1;
+                }
+                MenuItem::Submenu { menu, .. } => {
+                    menu.assign_menu_item_indices_inner(index);
+                }
+                MenuItem::Separator => {}
+            }
+        }
+    }
+
+    /// Find the action with the given ID.
+    pub(crate) fn find_action_by_index(&self, index: usize) -> Option<&Action> {
+        for item in self.items.iter() {
+            match item {
+                MenuItem::Action { action, .. } => {
+                    if action.index.get() == index {
+                        return Some(action);
+                    }
+                }
+                MenuItem::Submenu { menu, .. } => {
+                    if let Some(action) = menu.find_action_by_index(index) {
+                        return Some(action);
+                    }
+                }
+                MenuItem::Separator => {}
+            }
+        }
+        None
+    }
+}
+
+#[derive(Clone)]
+pub struct ContextMenu<Content> {
+    id: WidgetId,
+    menu: Menu,
+    content: Content,
+}
+
+impl<Content> ContextMenu<Content> {
+    #[composable]
+    pub fn new(menu: Menu, content: Content) -> ContextMenu<Content> {
+        ContextMenu {
+            id: WidgetId::here(),
+            menu,
+            content,
+        }
+    }
+}
+
+impl<Content: Widget + 'static> Widget for ContextMenu<Content> {
+    fn widget_id(&self) -> Option<WidgetId> {
+        Some(self.id)
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.content.event(ctx, event, env);
+        if !ctx.handled {
+            match *event {
+                Event::Pointer(ref pointer_event)
+                    if pointer_event.kind == PointerEventKind::PointerDown
+                        && pointer_event.button == Some(PointerButton::RIGHT) =>
+                {
+                    let menu = self.menu.to_shell_menu(true);
+                    self.menu.assign_menu_item_indices();
+                    ctx.track_popup_menu(menu, pointer_event.window_position);
+                }
+                Event::MenuCommand(index) => {
+                    if let Some(action) = self.menu.find_action_by_index(index) {
+                        action.triggered.signal(ctx, ());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.content.layout(ctx, constraints, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+        self.content.paint(ctx, bounds, transform, env)
     }
 }

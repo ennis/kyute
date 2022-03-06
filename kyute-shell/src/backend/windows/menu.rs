@@ -36,15 +36,8 @@ impl Menu {
     pub fn new_popup() -> Menu {
         let hmenu = unsafe {
             // SAFETY: no particular requirements
-            let hmenu = CreatePopupMenu();
-            let mut menu_info = MENUINFO::default();
-            menu_info.fMask = MIM_STYLE;
-            GetMenuInfo(hmenu, &mut menu_info);
-            menu_info.dwStyle |= MNS_NOTIFYBYPOS;
-            SetMenuInfo(hmenu, &menu_info);
-            hmenu
+            CreatePopupMenu()
         };
-
         Menu { hmenu, accels: vec![] }
     }
 
