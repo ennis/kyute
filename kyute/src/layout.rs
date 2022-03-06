@@ -161,8 +161,24 @@ impl BoxConstraints {
         self.max.width
     }
 
+    pub fn finite_max_width(&self) -> Option<f64> {
+        if self.max.width.is_finite() {
+            Some(self.max.width)
+        } else {
+            None
+        }
+    }
+
     pub fn max_height(&self) -> f64 {
         self.max.height
+    }
+
+    pub fn finite_max_height(&self) -> Option<f64> {
+        if self.max.height.is_finite() {
+            Some(self.max.height)
+        } else {
+            None
+        }
     }
 }
 

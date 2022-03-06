@@ -388,7 +388,7 @@ pub const TITLED_PANE_HEADER: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.tit
 pub fn setup_default_style(env: &mut Environment) {
     keys::setup_default_colors(env);
 
-    let control_border = Border::inside(0.px()).paint(keys::CONTROL_BORDER_COLOR);
+    let control_border = Border::inside(1.px()).paint(keys::CONTROL_BORDER_COLOR);
 
     let blue_button_like_frame = BoxStyle::new()
         .radius(3.dip())
@@ -410,8 +410,8 @@ pub fn setup_default_style(env: &mut Environment) {
                     .stop(ColorExpr::darken(palette::GREY_800, 0.02), Some(0.0))
                     .stop(ColorExpr::lighten(palette::GREY_800, 0.02), Some(1.0)),
             )
-            .border(Border::inside(0.px()).paint(palette::GREY_700).offset_y(1.px()))
-            .border(Border::inside(0.px()).paint(palette::GREY_900));
+            .border(Border::inside(1.px()).paint(palette::GREY_700).offset_y(1.px()))
+            .border(Border::inside(1.px()).paint(palette::GREY_900));
         env.set(BUTTON, button_frame.clone());
         env.set(BUTTON_ACTIVE, button_frame.clone());
         env.set(DROP_DOWN, blue_button_like_frame.clone());
@@ -426,7 +426,7 @@ pub fn setup_default_style(env: &mut Environment) {
                     .stop(ColorExpr::darken(palette::GREY_900, 0.02), Some(0.0))
                     .stop(ColorExpr::lighten(palette::GREY_900, 0.02), Some(1.0)),
             )
-            .border(Border::inside(0.px()).paint(palette::GREY_900));
+            .border(Border::inside(1.px()).paint(palette::GREY_900));
         env.set(BUTTON_ACTIVE, button_active_frame.clone());
     }
 
@@ -435,12 +435,12 @@ pub fn setup_default_style(env: &mut Environment) {
             .radius(3.dip())
             .fill(
                 LinearGradient::new()
-                    .angle(90.degrees())
-                    .stop(ColorExpr::darken(palette::GREY_700, 0.02), Some(0.0))
-                    .stop(ColorExpr::lighten(palette::GREY_700, 0.02), Some(1.0)),
+                    .angle(-90.degrees())
+                    .stop(ColorExpr::lighten(palette::GREY_800, 0.1), Some(0.0))
+                    .stop(ColorExpr::darken(palette::GREY_800, 0.1), Some(1.0)),
             )
-            .border(Border::inside(0.px()).paint(palette::GREY_700).offset_y(1.px()))
-            .border(Border::inside(0.px()).paint(palette::GREY_800));
+            .border(Border::inside(1.px()).paint(palette::GREY_700).offset_y(1.px()))
+            .border(Border::inside(1.px()).paint(palette::GREY_900));
         env.set(BUTTON_HOVER, button_hover_frame.clone());
     }
 
@@ -448,7 +448,7 @@ pub fn setup_default_style(env: &mut Environment) {
         let header_frame = BoxStyle::new()
             .radii(8.dip(), 8.dip(), 0.dip(), 0.dip())
             .fill(palette::GREY_900)
-            .border(Border::inside(0.px()).paint(palette::GREY_800));
+            .border(Border::inside(1.px()).paint(palette::GREY_800));
         env.set(TITLED_PANE_HEADER, header_frame.clone());
     }
 
@@ -462,7 +462,7 @@ pub fn setup_default_style(env: &mut Environment) {
         BoxStyle::new()
             .radius(4.dip())
             .fill(palette::GREY_800)
-            .border(Border::inside(0.px()).paint(palette::GREY_900)),
+            .border(Border::inside(1.px()).paint(palette::GREY_900)),
     );
 
     let base_label_height = 15;

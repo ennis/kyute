@@ -66,6 +66,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         // the hit-test, that's not a problem.
         let bounds = self.measurements.get().bounds;
 
+        // FIXME: accumulated transform may not be right in ctx here
         event.with_local_coordinates(self.offset.get().to_transform(), |event| match event {
             Event::Pointer(p) => match ctx.hit_test(p, bounds) {
                 HitTestResult::Passed => {

@@ -131,7 +131,7 @@ impl WindowState {
                     // find matching action and trigger it
                     if let Some(ref menu) = self.menu {
                         if let Some(action) = menu.find_action_by_index(*id) {
-                            action.triggered.signal(parent_ctx, ());
+                            parent_ctx.cache_mut().signal(&action.triggered, ());
                         }
                     }
                 }
@@ -740,8 +740,12 @@ impl Widget for Window {
                         .to_logical::<f64>(scale_factor)
                         .into();
                     // perform initial layout of contents
-                    self.contents
-                        .relayout(BoxConstraints::new(0.0..width, 0.0..height), scale_factor, env);
+                    self.contents.relayout(
+                        ctx.app_ctx,
+                        BoxConstraints::new(0.0..width, 0.0..height),
+                        scale_factor,
+                        env,
+                    );
 
                     // update window state
                     window_state.scale_factor = scale_factor;
@@ -782,9 +786,12 @@ impl Widget for Window {
             let scale_factor = winit_window.scale_factor();
             let (width, height): (f64, f64) = winit_window.inner_size().to_logical::<f64>(scale_factor).into();
             let mut m_window = Measurements::new(Size::new(width, height).into());
-            let (m_content, layout_changed) =
-                self.contents
-                    .relayout(BoxConstraints::new(0.0..width, 0.0..height), scale_factor, &env);
+            let (m_content, layout_changed) = self.contents.relayout(
+                ctx.app_ctx,
+                BoxConstraints::new(0.0..width, 0.0..height),
+                scale_factor,
+                &env,
+            );
             if layout_changed {
                 let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content).round_to_pixel(scale_factor);
                 self.contents.set_child_offset(offset);

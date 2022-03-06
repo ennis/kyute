@@ -9,15 +9,16 @@ use crate::{
     region::Region,
     style::VisualState,
     widget::{Align, ConstrainedBox},
-    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, Size,
+    Alignment, BoxConstraints, Cache, Dip, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point,
+    Rect, Size, Transform,
 };
-use kyute_common::{Dip, Transform};
 use kyute_macros::composable;
 use kyute_shell::{
     graal,
     graal::{ash::vk, BufferId, ImageId},
     winit::{event_loop::EventLoopWindowTarget, window::WindowId},
 };
+use skia_safe as sk;
 use std::{cell::Cell, fmt, hash::Hash, ops::RangeBounds, sync::Arc};
 use tracing::{trace, warn};
 
@@ -26,17 +27,19 @@ pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.show_debug_overl
 /// Context passed to widgets during the layout pass.
 ///
 /// See [`Widget::layout`].
-pub struct LayoutCtx {
+pub struct LayoutCtx<'a> {
     pub scale_factor: f64,
+    app_ctx: &'a mut AppCtx,
     changed: bool,
 }
 
-impl LayoutCtx {
-    pub fn new(scale_factor: f64) -> LayoutCtx {
-        LayoutCtx {
-            scale_factor,
-            changed: false,
-        }
+impl<'a> LayoutCtx<'a> {
+    pub fn cache_mut(&mut self) -> &mut Cache {
+        &mut self.app_ctx.cache
+    }
+
+    pub fn cache(&self) -> &Cache {
+        &self.app_ctx.cache
     }
 
     pub fn round_to_pixel(&self, dip_length: f64) -> f64 {
@@ -73,6 +76,19 @@ impl<'a> PaintCtx<'a> {
         } else {
             false
         }
+    }
+
+    /// Sets the transformation matrix on the skia canvas.
+    pub fn save_and_set_transform(&mut self, transform: Transform) {
+        self.canvas.save();
+        let scale_factor = self.scale_factor as sk::scalar;
+        self.canvas.reset_matrix();
+        self.canvas.scale((scale_factor, scale_factor));
+        self.canvas.concat(&transform.to_skia());
+    }
+
+    pub fn restore(&mut self) {
+        self.canvas.restore();
     }
 
     /// Returns whether the widget is active.
@@ -242,6 +258,15 @@ pub struct EventCtx<'a> {
 }
 
 impl<'a> EventCtx<'a> {
+    /// Returns a mutable reference to the composition cache
+    pub fn cache_mut(&mut self) -> &mut Cache {
+        &mut self.app_ctx.cache
+    }
+
+    pub fn cache(&self) -> &Cache {
+        &self.app_ctx.cache
+    }
+
     /// Creates the root `EventCtx`
     fn new(
         app_ctx: &'a mut AppCtx,
@@ -1197,8 +1222,15 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
 
     /// Computes the layout of this widget and its children. Returns the measurements, and whether
     /// the measurements have changed since last layout.
-    pub fn relayout(&self, constraints: BoxConstraints, scale_factor: f64, env: &Environment) -> (Measurements, bool) {
+    pub fn relayout(
+        &self,
+        app_ctx: &mut AppCtx,
+        constraints: BoxConstraints,
+        scale_factor: f64,
+        env: &Environment,
+    ) -> (Measurements, bool) {
         let mut ctx = LayoutCtx {
+            app_ctx,
             scale_factor,
             changed: false,
         };

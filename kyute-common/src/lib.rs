@@ -79,6 +79,12 @@ impl RoundToPixel for Offset {
     }
 }
 
+impl RoundToPixel for Size {
+    fn round_to_pixel(&self, scale_factor: f64) -> Self {
+        (*self * scale_factor).ceil() * (1.0 / scale_factor)
+    }
+}
+
 impl RoundToPixel for Rect {
     fn round_to_pixel(&self, scale_factor: f64) -> Rect {
         (*self * scale_factor).round() * (1.0 / scale_factor)
@@ -131,6 +137,8 @@ pub enum Length {
     /// Inches (logical inches? approximate inches?).
     #[cfg_attr(feature = "serializing", serde(rename = "in"))]
     In(f64),
+    /// Length relative to the parent element.
+    Proportional(f64),
 }
 
 impl Neg for Length {
@@ -141,6 +149,7 @@ impl Neg for Length {
             Length::Px(v) => Length::Px(-v),
             Length::Dip(v) => Length::Dip(-v),
             Length::In(v) => Length::In(-v),
+            Length::Proportional(v) => Length::Proportional(-v),
         }
     }
 }
@@ -151,11 +160,12 @@ impl Length {
         Length::Dip(0.0)
     }
 
-    pub fn to_dips(self, scale_factor: f64) -> f64 {
+    pub fn to_dips(self, scale_factor: f64, parent_length_dips: f64) -> f64 {
         match self {
             Length::Px(x) => x / scale_factor,
             Length::In(x) => 96.0 * x,
             Length::Dip(x) => x,
+            Length::Proportional(x) => x * parent_length_dips,
         }
     }
 }
@@ -185,6 +195,7 @@ pub trait UnitExt {
     fn dip(self) -> Length;
     fn inch(self) -> Length;
     fn px(self) -> Length;
+    fn percent(self) -> Length;
     fn degrees(self) -> Angle;
     fn radians(self) -> Angle;
 }
@@ -198,6 +209,9 @@ impl UnitExt for f32 {
     }
     fn px(self) -> Length {
         Length::Px(self as f64)
+    }
+    fn percent(self) -> Length {
+        Length::Proportional(self as f64 / 100.0)
     }
     fn degrees(self) -> Angle {
         Angle::degrees(self as f64)
@@ -217,6 +231,9 @@ impl UnitExt for f64 {
     fn px(self) -> Length {
         Length::Px(self)
     }
+    fn percent(self) -> Length {
+        Length::Proportional(self / 100.0)
+    }
     fn degrees(self) -> Angle {
         Angle::degrees(self)
     }
@@ -235,6 +252,9 @@ impl UnitExt for i32 {
     fn px(self) -> Length {
         Length::Px(self as f64)
     }
+    fn percent(self) -> Length {
+        Length::Proportional(self as f64 / 100.0)
+    }
     fn degrees(self) -> Angle {
         Angle::degrees(self as f64)
     }
@@ -252,6 +272,9 @@ impl UnitExt for u32 {
     }
     fn px(self) -> Length {
         Length::Px(self as f64)
+    }
+    fn percent(self) -> Length {
+        Length::Proportional(self as f64 / 100.0)
     }
     fn degrees(self) -> Angle {
         Angle::degrees(self as f64)

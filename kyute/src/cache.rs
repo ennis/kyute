@@ -2,7 +2,7 @@
 use crate::{
     application::ExtEvent,
     call_id::{CallId, CallIdStack, CallNode},
-    Data, Environment,
+    composable, Data, Environment,
 };
 use kyute_shell::winit::event_loop::EventLoopProxy;
 use slotmap::SlotMap;
@@ -591,6 +591,57 @@ impl CacheWriter {
     }
 }
 
+/// TODO Document this stuff.
+/// FIXME: verify that the automatic clone impl doesn't have sketchy implications w.r.t. cache invalidation
+#[derive(Clone, Debug)]
+pub struct Signal<T> {
+    fetched: Cell<bool>,
+    value: RefCell<Option<T>>,
+    key: Key<Option<T>>,
+}
+
+impl<T: Clone + 'static> Signal<T> {
+    #[composable]
+    pub fn new() -> Signal<T> {
+        let key = state(|| None);
+        Signal {
+            fetched: Cell::new(false),
+            value: RefCell::new(None),
+            key,
+        }
+    }
+
+    fn fetch_value(&self) {
+        if !self.fetched.get() {
+            let value = self.key.get();
+            if value.is_some() {
+                self.key.set(None);
+            }
+            self.value.replace(value);
+            self.fetched.set(true);
+        }
+    }
+
+    pub fn set(&self, value: T) {
+        self.value.replace(Some(value));
+        self.fetched.set(true);
+    }
+
+    pub fn signalled(&self) -> bool {
+        self.fetch_value();
+        self.value.borrow().is_some()
+    }
+
+    pub fn value(&self) -> Option<T> {
+        self.fetch_value();
+        self.value.borrow().clone()
+    }
+
+    pub fn map<U>(&self, f: impl FnOnce(T) -> U) -> Option<U> {
+        self.value().map(f)
+    }
+}
+
 /// Context stored in TLS when running a function within the positional cache.
 struct CacheContext {
     event_loop_proxy: EventLoopProxy<ExtEvent>,
@@ -685,6 +736,11 @@ impl Cache {
     /// Sets the value of the state variable identified by `key`, and invalidates all dependent variables in the cache.
     pub fn set_state<T: 'static>(&mut self, key: Key<T>, value: T) {
         self.cache.as_mut().unwrap().set_state(key, value)
+    }
+
+    /// Sets the value of a signal, and invalidates all dependent variables in the cache.
+    pub fn signal<T: 'static>(&mut self, signal: &Signal<T>, value: T) {
+        self.set_state(signal.key, Some(value));
     }
 }
 

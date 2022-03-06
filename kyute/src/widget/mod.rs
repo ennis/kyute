@@ -21,6 +21,7 @@ mod text_edit;
 //mod text_v1;
 mod canvas;
 mod popup;
+mod scroll_area;
 mod thumb;
 mod titled_pane;
 
@@ -121,7 +122,7 @@ impl<T: Controller> Widget for T {
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
-        composable, Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
-        Orientation, PaintCtx, Point, Rect, Size, Transform, Widget, WidgetId, WidgetPod,
+        cache::Signal, composable, Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements,
+        Offset, Orientation, PaintCtx, Point, Rect, Size, Transform, Widget, WidgetId, WidgetPod,
     };
 }

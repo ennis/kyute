@@ -2,9 +2,8 @@ use crate::{
     cache,
     event::{PointerButton, PointerButtons, PointerEventKind},
     widget::{prelude::*, LayoutWrapper},
-    Signal, State,
+    Signal,
 };
-use std::cell::Cell;
 
 #[derive(Clone)]
 pub struct Thumb<Content> {
@@ -96,24 +95,26 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
                 Event::Pointer(p) => match p.kind {
                     PointerEventKind::PointerDown => {
                         if self.pointer_buttons.test(p.button.unwrap()) {
-                            self.pointer_down.signal(ctx, p.position);
+                            ctx.cache_mut().signal(&self.pointer_down, p.position);
                             ctx.capture_pointer();
                             ctx.set_handled();
                         }
                     }
                     PointerEventKind::PointerMove => {
-                        self.pointer_move.signal(ctx, p.position);
+                        ctx.cache_mut().signal(&self.pointer_move, p.position);
                         ctx.set_handled();
                     }
                     PointerEventKind::PointerUp => {
                         if self.pointer_buttons.test(p.button.unwrap()) {
-                            self.pointer_up.signal(ctx, p.position);
+                            ctx.cache_mut().signal(&self.pointer_up, p.position);
                             ctx.set_handled();
                         }
                     }
                     _ => {}
                 },
-                Event::Wheel(wheel) => self.scrolled.signal(ctx, Offset::new(wheel.delta_x, wheel.delta_y)),
+                Event::Wheel(wheel) => ctx
+                    .cache_mut()
+                    .signal(&self.scrolled, Offset::new(wheel.delta_x, wheel.delta_y)),
                 _ => {}
             }
         }

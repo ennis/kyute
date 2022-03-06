@@ -109,6 +109,11 @@ impl Slider {
     pub fn value_changed(&self) -> Option<f64> {
         self.value_changed.value()
     }
+
+    pub fn on_value_changed(self, f: impl FnOnce(f64)) -> Self {
+        self.value_changed.map(f);
+        self
+    }
 }
 
 impl Widget for Slider {
@@ -128,7 +133,7 @@ impl Widget for Slider {
                 }
                 PointerEventKind::PointerDown => {
                     let new_value = self.track.get().value_from_position(p.position, self.min, self.max);
-                    self.value_changed.signal(ctx, new_value);
+                    ctx.cache_mut().signal(&self.value_changed, new_value);
                     ctx.capture_pointer();
                     ctx.request_focus();
                     ctx.request_redraw();
@@ -136,7 +141,7 @@ impl Widget for Slider {
                 PointerEventKind::PointerMove => {
                     if ctx.is_capturing_pointer() {
                         let new_value = self.track.get().value_from_position(p.position, self.min, self.max);
-                        self.value_changed.signal(ctx, new_value);
+                        ctx.cache_mut().signal(&self.value_changed, new_value);
                         ctx.request_redraw();
                     }
                 }

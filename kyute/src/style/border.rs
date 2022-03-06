@@ -133,8 +133,8 @@ impl Border {
         env: &Environment,
     ) {
         let offset = Offset::new(
-            self.offset_x.to_dips(ctx.scale_factor),
-            self.offset_y.to_dips(ctx.scale_factor),
+            self.offset_x.to_dips(ctx.scale_factor, bounds.size.width),
+            self.offset_y.to_dips(ctx.scale_factor, bounds.size.height),
         );
         let bounds = bounds.translate(offset);
         let mut paint = self.paint.to_sk_paint(env, bounds);
@@ -144,10 +144,18 @@ impl Border {
 
         // LTRB
         let widths = [
-            self.widths[0].resolve_or_default(env).to_dips(ctx.scale_factor),
-            self.widths[1].resolve_or_default(env).to_dips(ctx.scale_factor),
-            self.widths[2].resolve_or_default(env).to_dips(ctx.scale_factor),
-            self.widths[3].resolve_or_default(env).to_dips(ctx.scale_factor),
+            self.widths[0]
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor, bounds.size.width),
+            self.widths[1]
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor, bounds.size.height),
+            self.widths[2]
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor, bounds.size.width),
+            self.widths[3]
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor, bounds.size.height),
         ];
         let uniform_border = widths.iter().all(|&w| ulps_eq!(w, widths[0]));
 
@@ -171,8 +179,7 @@ impl Border {
             BorderPosition::Center => bounds,
         };
 
-        ctx.canvas.save();
-        ctx.canvas.set_matrix(&transform.to_skia().into());
+        ctx.save_and_set_transform(transform);
 
         if !uniform_border {
             // draw lines, ignore radii
@@ -215,6 +222,6 @@ impl Border {
             }
         }
 
-        ctx.canvas.restore();
+        ctx.restore();
     }
 }

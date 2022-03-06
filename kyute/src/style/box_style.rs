@@ -7,12 +7,13 @@ use skia_safe as sk;
 
 //--------------------------------------------------------------------------------------------------
 
-fn radii_to_skia(ctx: &mut PaintCtx, radii: &[Length; 4]) -> [sk::Vector; 4] {
+fn radii_to_skia(ctx: &mut PaintCtx, bounds: Rect, radii: &[Length; 4]) -> [sk::Vector; 4] {
+    // FIXME: height-relative sizes
     let radii_dips = [
-        radii[0].to_dips(ctx.scale_factor),
-        radii[1].to_dips(ctx.scale_factor),
-        radii[2].to_dips(ctx.scale_factor),
-        radii[3].to_dips(ctx.scale_factor),
+        radii[0].to_dips(ctx.scale_factor, bounds.size.width),
+        radii[1].to_dips(ctx.scale_factor, bounds.size.width),
+        radii[2].to_dips(ctx.scale_factor, bounds.size.width),
+        radii[3].to_dips(ctx.scale_factor, bounds.size.width),
     ];
 
     // TODO x,y radii
@@ -167,7 +168,7 @@ impl BoxStyle {
             self.border_radii[2].resolve_or_default(env),
             self.border_radii[3].resolve_or_default(env),
         ];
-        let radii = radii_to_skia(ctx, &radii);
+        let radii = radii_to_skia(ctx, bounds, &radii);
 
         // box shadow
         if let Some(ref box_shadow) = self.box_shadow {
@@ -176,10 +177,22 @@ impl BoxStyle {
             };
 
             let mut blur = sk::Paint::default();
-            let offset_x = params.offset_x.resolve_or_default(env).to_dips(ctx.scale_factor);
-            let offset_y = params.offset_y.resolve_or_default(env).to_dips(ctx.scale_factor);
-            let blur_radius = params.blur_radius.resolve_or_default(env).to_dips(ctx.scale_factor);
-            let spread = params.spread_radius.resolve_or_default(env).to_dips(ctx.scale_factor);
+            let offset_x = params
+                .offset_x
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor, bounds.size.width);
+            let offset_y = params
+                .offset_y
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor, bounds.size.height);
+            let blur_radius = params
+                .blur_radius
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor, bounds.size.width);
+            let spread = params
+                .spread_radius
+                .resolve_or_default(env)
+                .to_dips(ctx.scale_factor, bounds.size.width);
             let color = params.color.resolve_or_default(env);
             blur.set_mask_filter(sk::MaskFilter::blur(
                 sk::BlurStyle::Normal,
@@ -194,10 +207,9 @@ impl BoxStyle {
                     shadow_bounds.origin += Offset::new(offset_x, offset_y);
                     shadow_bounds = shadow_bounds.inflate(spread, spread);
                     let rrect = sk::RRect::new_rect_radii(shadow_bounds.to_skia(), &radii);
-                    ctx.canvas.save();
-                    ctx.canvas.set_matrix(&transform.to_skia().into());
+                    ctx.save_and_set_transform(transform);
                     ctx.canvas.draw_rrect(rrect, &blur);
-                    ctx.canvas.restore();
+                    ctx.restore();
                 }
                 BoxShadow::Inset(_) => {
                     // TODO
@@ -210,10 +222,9 @@ impl BoxStyle {
             let mut paint = brush.to_sk_paint(env, bounds);
             paint.set_style(sk::PaintStyle::Fill);
             let rrect = sk::RRect::new_rect_radii(bounds.to_skia(), &radii);
-            ctx.canvas.save();
-            ctx.canvas.set_matrix(&transform.to_skia().into());
+            ctx.save_and_set_transform(transform);
             ctx.canvas.draw_rrect(rrect, &paint);
-            ctx.canvas.restore();
+            ctx.restore();
         }
 
         // borders

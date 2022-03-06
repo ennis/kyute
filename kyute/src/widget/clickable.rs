@@ -46,7 +46,7 @@ impl<Content: Widget + 'static> Widget for Clickable<Content> {
         match event {
             Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerDown => {
-                    self.clicked.signal(ctx, ());
+                    ctx.cache_mut().signal(&self.clicked, ());
                     ctx.request_focus();
                     ctx.request_redraw();
                     ctx.set_handled();

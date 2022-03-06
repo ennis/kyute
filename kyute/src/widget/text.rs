@@ -1,8 +1,7 @@
 use crate::{
-    composable, drawing::ToSkia, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx,
-    Point, Rect, Widget, WidgetId,
+    composable, drawing::ToSkia, BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx, Measurements,
+    PaintCtx, Point, Rect, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
-use kyute_common::{Color, RectI, Transform, UnknownUnit};
 use kyute_text::{
     FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
     RasterizationOptions,
@@ -174,15 +173,16 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
             let mut paint = sk::Paint::new(color.to_skia(), None);
             paint.set_blender(mask_blender);
 
-            //self.ctx.canvas.save();
+            self.ctx.canvas.save();
             //let inv_scale_factor = 1.0 / self.ctx.scale_factor as f32;
             //self.ctx.canvas.scale((inv_scale_factor, inv_scale_factor));
+            self.ctx.canvas.reset_matrix();
             self.ctx.canvas.draw_image(
                 &mask_image.mask,
                 sk::Point::new(bounds.origin.x as sk::scalar, bounds.origin.y as sk::scalar),
                 Some(&paint),
             );
-            //self.ctx.canvas.restore();
+            self.ctx.canvas.restore();
         }
     }
 
@@ -203,7 +203,7 @@ impl Widget for Text {
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
-    fn layout(&self, _ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
         let paragraph = self
             .formatted_text
             .create_paragraph(constraints.max, &ParagraphStyle::default());
@@ -215,7 +215,7 @@ impl Widget for Text {
             .first()
             .map(|line| line.baseline)
             .unwrap_or(0.0);
-        let size = constraints.constrain(metrics.bounds.size);
+        let size = constraints.constrain(metrics.bounds.size.round_to_pixel(ctx.scale_factor));
 
         // stash the laid out paragraph for rendering
         self.paragraph.replace(Some(paragraph));

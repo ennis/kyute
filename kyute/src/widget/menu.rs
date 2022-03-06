@@ -1,6 +1,6 @@
 use crate::{
-    cache, composable, event::PointerButton, state::Signal, util::counter::Counter, widget::prelude::*, Data,
-    PointerEvent, PointerEventKind, WidgetId,
+    cache, composable, event::PointerButton, util::counter::Counter, widget::prelude::*, Data, PointerEvent,
+    PointerEventKind, WidgetId,
 };
 use std::{cell::Cell, collections::HashMap, convert::TryInto};
 
@@ -261,7 +261,7 @@ impl<Content: Widget + 'static> Widget for ContextMenu<Content> {
                 }
                 Event::MenuCommand(index) => {
                     if let Some(action) = self.menu.find_action_by_index(index) {
-                        action.triggered.signal(ctx, ());
+                        ctx.cache_mut().signal(&action.triggered, ());
                     }
                 }
                 _ => {}

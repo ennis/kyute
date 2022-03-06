@@ -202,9 +202,15 @@ impl<Content: Widget> Widget for Container<Content> {
         content_size.bounds = content_size.bounds.outer_rect(content_padding);
         let mut content_offset = Offset::new(content_padding.left, content_padding.top);
 
+        // Base size for proportional length calculations
+        let base_width = constraints.finite_max_width().unwrap_or(0.0);
+        let base_height = constraints.finite_max_height().unwrap_or(0.0);
+
         // adjust content baseline so that `baseline = adjusted_content_baseline + padding.top`.
         if let Some(baseline) = self.baseline {
-            let baseline = (baseline.resolve(env).unwrap().to_dips(ctx.scale_factor) - content_offset.y).max(0.0);
+            // TODO do size-relative baselines make sense?
+            let baseline =
+                (baseline.resolve(env).unwrap().to_dips(ctx.scale_factor, base_height) - content_offset.y).max(0.0);
             let offset = baseline - content_size.baseline.unwrap_or(content_size.bounds.size.height).round();
             content_offset.y += offset;
             content_size.bounds.size.height += offset;
@@ -231,19 +237,19 @@ impl<Content: Widget> Widget for Container<Content> {
         // apply additional w/h sizing constraints to the container
         //let mut additional_constraints = BoxConstraints::new(..,..);
         if let Some(w) = self.min_width {
-            let w = w.resolve(env).unwrap().to_dips(ctx.scale_factor);
+            let w = w.resolve(env).unwrap().to_dips(ctx.scale_factor, base_width);
             constraints.min.width = clamp(w, constraints.min.width, constraints.max.width);
         }
         if let Some(w) = self.max_width {
-            let w = w.resolve(env).unwrap().to_dips(ctx.scale_factor);
+            let w = w.resolve(env).unwrap().to_dips(ctx.scale_factor, base_height);
             constraints.max.width = clamp(w, constraints.min.width, constraints.max.width);
         }
         if let Some(h) = self.min_height {
-            let h = h.resolve(env).unwrap().to_dips(ctx.scale_factor);
+            let h = h.resolve(env).unwrap().to_dips(ctx.scale_factor, base_width);
             constraints.min.height = clamp(h, constraints.min.height, constraints.max.height);
         }
         if let Some(h) = self.max_height {
-            let h = h.resolve(env).unwrap().to_dips(ctx.scale_factor);
+            let h = h.resolve(env).unwrap().to_dips(ctx.scale_factor, base_height);
             constraints.max.height = clamp(h, constraints.min.height, constraints.max.height);
         }
 

@@ -217,22 +217,20 @@ impl Path {
         if let Some(ref brush) = self.fill {
             let mut paint = brush.to_sk_paint(env, bounds);
             paint.set_style(sk::PaintStyle::Fill);
-            ctx.canvas.save();
-            ctx.canvas.set_matrix(&transform.to_skia().into());
+            ctx.save_and_set_transform(transform);
             ctx.canvas.translate(bounds.top_left().to_skia());
             ctx.canvas.draw_path(&self.path, &paint);
-            ctx.canvas.restore();
+            ctx.restore();
         }
 
         // stroke
         if let Some(ref stroke) = self.stroke {
             let mut paint = stroke.to_sk_paint(env, bounds);
             paint.set_style(sk::PaintStyle::Stroke);
-            ctx.canvas.save();
-            ctx.canvas.set_matrix(&transform.to_skia().into());
+            ctx.save_and_set_transform(transform);
             ctx.canvas.translate(bounds.top_left().to_skia());
             ctx.canvas.draw_path(&self.path, &paint);
-            ctx.canvas.restore();
+            ctx.restore();
         }
     }
 }

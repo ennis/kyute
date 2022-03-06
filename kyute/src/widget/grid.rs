@@ -3,7 +3,6 @@ use crate::{
     WidgetFilter, WidgetId,
 };
 use std::{
-    borrow::Borrow,
     cell::{Cell, RefCell},
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
     sync::Arc,
@@ -485,6 +484,8 @@ impl Grid {
         env: &Environment,
         axis: TrackAxis,
         available_space: f64,
+        row_gap: f64,
+        column_gap: f64,
         column_layout: Option<&[GridTrackLayout]>,
     ) -> ComputeTrackSizeResult {
         let tracks = match axis {
@@ -492,9 +493,15 @@ impl Grid {
             TrackAxis::Column => &self.column_definitions[..],
         };
 
+        let finite_available_space = if available_space.is_finite() {
+            available_space
+        } else {
+            0.0
+        };
+
         let gap = match axis {
-            TrackAxis::Row => self.row_gap.to_dips(layout_ctx.scale_factor),
-            TrackAxis::Column => self.column_gap.to_dips(layout_ctx.scale_factor),
+            TrackAxis::Row => row_gap,
+            TrackAxis::Column => column_gap,
         };
 
         let num_tracks = tracks.len();
@@ -514,7 +521,6 @@ impl Grid {
                     // if we already have a column layout, constrain available space by the size of the column range
                     let constraints = if let Some(column_layout) = column_layout {
                         // width of the column range, including gutters
-                        let column_gap = self.column_gap.to_dips(layout_ctx.scale_factor);
                         let w = track_span_width(column_layout, item.column_range.clone(), column_gap);
                         BoxConstraints::new(0.0..w, ..)
                     } else {
@@ -676,11 +682,27 @@ impl Widget for Grid {
             }
         }
 
+        // compute gap sizes
+        let column_gap = self
+            .column_gap
+            .to_dips(ctx.scale_factor, constraints.finite_max_width().unwrap_or(0.0));
+        let row_gap = self
+            .row_gap
+            .to_dips(ctx.scale_factor, constraints.finite_max_height().unwrap_or(0.0));
+
         // first measure the width of the columns
         let ComputeTrackSizeResult {
             layout: column_layout,
             size: width,
-        } = self.compute_track_sizes(ctx, env, TrackAxis::Column, constraints.max_width(), None);
+        } = self.compute_track_sizes(
+            ctx,
+            env,
+            TrackAxis::Column,
+            constraints.max_width(),
+            row_gap,
+            column_gap,
+            None,
+        );
         // then measure the height of the rows, which may depend on the width of the columns
         // Note: it may go the other way around (width of columns that depend on the height of the rows)
         // but we choose to do it like this
@@ -692,14 +714,13 @@ impl Widget for Grid {
             env,
             TrackAxis::Row,
             constraints.max_height(),
+            row_gap,
+            column_gap,
             Some(&column_layout[..]),
         );
 
         // layout items
         for item in self.items.iter() {
-            let column_gap = self.column_gap.to_dips(ctx.scale_factor);
-            let row_gap = self.row_gap.to_dips(ctx.scale_factor);
-
             let w: f64 = track_span_width(&column_layout, item.column_range.clone(), column_gap);
             let h: f64 = track_span_width(&row_layout, item.row_range.clone(), row_gap);
 
@@ -764,8 +785,7 @@ impl Widget for Grid {
 
         // draw debug grid lines
         if env.get(SHOW_GRID_LAYOUT_LINES).unwrap_or_default() {
-            ctx.canvas.save();
-            ctx.canvas.set_matrix(&transform.to_skia().into());
+            ctx.save_and_set_transform(transform);
             let cached_layout = (&*self.cached_layout).borrow();
             if let Some(cached_layout) = cached_layout.as_ref() {
                 let row_layout = &cached_layout.row_layout;
@@ -789,7 +809,7 @@ impl Widget for Grid {
                 }
             }
 
-            ctx.canvas.restore();
+            ctx.restore();
         }
 
         // draw grid items

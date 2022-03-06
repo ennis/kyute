@@ -5,7 +5,6 @@ use crate::{
     drawing::ToSkia,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
-    state::{Signal, State},
     style::{BoxStyle, PaintCtxExt},
     text::{FormattedText, Selection, TextAffinity, TextPosition},
     theme,
@@ -100,27 +99,38 @@ impl TextEdit {
     /// Use if you don't care about the selection.
     #[composable]
     pub fn new(formatted_text: impl Into<FormattedText>) -> TextEdit {
-        let selection = State::new(|| Selection::empty(0));
-        let text_edit = Self::with_selection(formatted_text, selection.get());
-        selection.update(text_edit.selection_changed());
-        text_edit
+        #[state]
+        let mut selection = Selection::empty(0);
+        Self::with_selection(formatted_text, selection).on_selection_changed(|s| selection = s)
     }
 
     /// Returns whether TODO.
-    #[composable]
     pub fn editing_finished(&self) -> Option<Arc<str>> {
         self.editing_finished.value()
     }
 
+    pub fn on_editing_finished(self, f: impl FnOnce(Arc<str>)) -> Self {
+        self.editing_finished.map(f);
+        self
+    }
+
     /// Returns whether the text has changed.
-    #[composable]
     pub fn text_changed(&self) -> Option<Arc<str>> {
         self.text_changed.value()
     }
 
-    #[composable]
+    pub fn on_text_changed(self, f: impl FnOnce(Arc<str>)) -> Self {
+        self.text_changed.map(f);
+        self
+    }
+
     pub fn selection_changed(&self) -> Option<Selection> {
         self.selection_changed.value()
+    }
+
+    pub fn on_selection_changed(self, f: impl FnOnce(Selection)) -> Self {
+        self.selection_changed.map(f);
+        self
     }
 
     /// Moves the cursor forward or backward. Returns the new selection.
@@ -194,16 +204,16 @@ impl TextEdit {
     fn notify_selection_changed(&self, ctx: &mut EventCtx, new_selection: Selection) {
         if new_selection != self.selection {
             eprintln!("notify selection changed {:?}->{:?}", self.selection, new_selection);
-            self.selection_changed.signal(ctx, new_selection);
+            ctx.cache_mut().signal(&self.selection_changed, new_selection);
         }
     }
 
     fn notify_text_changed(&self, ctx: &mut EventCtx, new_text: Arc<str>) {
-        self.text_changed.signal(ctx, new_text);
+        ctx.cache_mut().signal(&self.text_changed, new_text);
     }
 
     fn notify_editing_finished(&self, ctx: &mut EventCtx, new_text: Arc<str>) {
-        self.editing_finished.signal(ctx, new_text);
+        ctx.cache_mut().signal(&self.editing_finished, new_text);
     }
 }
 
@@ -246,13 +256,12 @@ impl Widget for TextEdit {
             let caret_color = env.get(theme::CARET_COLOR).unwrap();
             let paint = sk::Paint::new(caret_color.to_skia(), None);
             let pos = caret_hit_test.point + offset;
-            ctx.canvas.save();
-            ctx.canvas.set_matrix(&transform.to_skia().into());
+            ctx.save_and_set_transform(transform);
             ctx.canvas.draw_rect(
                 Rect::new(pos.floor(), Size::new(1.0, caret_hit_test.metrics.bounds.size.height)).to_skia(),
                 &paint,
             );
-            ctx.canvas.restore();
+            ctx.restore();
         }
     }
 
@@ -452,10 +461,11 @@ where
     #[composable]
     pub fn new(value: T, formatter: impl Formatter<T>) -> TextInput<T> {
         // current text during editing
-        let editing_text = State::new(|| None);
+        #[state]
+        let mut editing_text = None;
 
         // if currently editing (editing_text != None), use that, otherwise get the text by formatting the given value
-        let text = if let Some(text) = editing_text.get() {
+        let text = if let Some(text) = editing_text.clone() {
             text
         } else {
             formatter.format(&value)
@@ -465,7 +475,7 @@ where
 
         if let Some(text) = text_edit.text_changed() {
             // update editing text
-            editing_text.set(Some(formatter.format_partial_input(&text)));
+            editing_text = Some(formatter.format_partial_input(&text));
         }
 
         let mut new_value = None;
@@ -474,7 +484,7 @@ where
             match formatter.validate_partial_input(&text) {
                 ValidationResult::Valid => {
                     // editing finished and valid input: clear the editing text, set the new value
-                    editing_text.set(None);
+                    editing_text = None;
                     new_value = Some(formatter.parse(&text).unwrap());
                 }
                 ValidationResult::Invalid => {

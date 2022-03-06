@@ -1,7 +1,5 @@
 use crate::{
-    composable,
-    state::State,
-    theme,
+    composable, theme,
     widget::{
         grid::GridTrackDefinition, separator::separator, Clickable, Container, Grid, GridLength, Image, Label,
         SingleChildWidget,
@@ -24,10 +22,9 @@ impl TitledPane {
         initially_collapsed: bool,
         content: impl Widget + 'static,
     ) -> TitledPane {
-        let collapsed_state = State::new(|| initially_collapsed);
-        let pane = Self::new(collapsed_state.get(), title.into(), content);
-        collapsed_state.update(pane.collapsed_changed());
-        pane
+        #[state]
+        let mut collapsed_state = initially_collapsed;
+        Self::new(collapsed_state, title.into(), content).on_collapsed_changed(|v| collapsed_state = v)
     }
 
     #[composable]
@@ -77,6 +74,11 @@ impl TitledPane {
     /// Returns whether the panel has been collapsed or expanded from user input.
     pub fn collapsed_changed(&self) -> Option<bool> {
         self.collapsed_changed
+    }
+
+    pub fn on_collapsed_changed(self, f: impl FnOnce(bool)) -> Self {
+        self.collapsed_changed.map(f);
+        self
     }
 }
 
