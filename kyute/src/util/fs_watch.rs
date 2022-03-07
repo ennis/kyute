@@ -136,7 +136,7 @@ pub fn watch_path(path: impl AsRef<Path>) -> bool {
             .watch(path, false, move |_event| {
                 event_loop_proxy
                     .send_event(ExtEvent::Recompose {
-                        cache_fn: Box::new(move |cache| cache.set_state(changed, true)),
+                        cache_fn: Box::new(move |cache| cache.set(changed, true)),
                     })
                     .unwrap();
             })

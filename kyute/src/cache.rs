@@ -23,7 +23,7 @@ use std::{
 use tracing::{trace, warn};
 
 slotmap::new_key_type! {
-    struct CacheEntryKey;
+    struct KeyInner;
 }
 
 /// Entry representing a mutable state slot inside a composition cache.
@@ -33,7 +33,7 @@ struct StateEntry {
     call_node: Option<Rc<CallNode>>,
     /// Whether the value has been invalidated because a dependency has changed.
     dirty: Cell<bool>,
-    dependents: HashSet<CacheEntryKey>,
+    dependents: HashSet<KeyInner>,
     value: Box<dyn Any>,
 }
 
@@ -49,11 +49,12 @@ enum Slot {
     EndGroup,
     Value {
         call_id: CallId,
-        key: CacheEntryKey,
+        key: KeyInner,
     },
 }
 
 /// A key used to access a state variable stored in a `Cache`.
+
 // TODO right now the get/set methods on `Key` can only be called in a composition context,
 // but not outside. To set the value of a cache entry outside of a composition context,
 // we have to call `cache.set_state(key)`.
@@ -63,8 +64,12 @@ enum Slot {
 // API.
 // Counterpoint: this bloats the struct with an Arc pointer.
 // Counter-counterpoint: but at least this makes the whole system self-contained.
+//
+// What if the cache was put in TLS *also* during layout, recomp, etc?
+// Heck, what if the cache was *always* in TLS?
+
 pub struct Key<T> {
-    key: CacheEntryKey,
+    key: KeyInner,
     // TODO: `cache: Arc<Cache>`. When setting values, schedule a recomp on the main event loop. Cache gets an EventLoopProxy on construction to send recomp events.
     _phantom: PhantomData<fn() -> T>,
 }
@@ -101,7 +106,7 @@ impl<T: Data + 'static> Key<T> {
 
 impl<T: 'static> Key<T> {
     ///
-    fn from_entry_key(key: CacheEntryKey) -> Key<T> {
+    fn from_inner(key: KeyInner) -> Key<T> {
         Key {
             key,
             _phantom: PhantomData,
@@ -168,7 +173,7 @@ struct CacheInner {
     /// The call tree, represented as an array of slots.
     slots: Vec<Slot>,
     /// Cache entries.
-    entries: SlotMap<CacheEntryKey, StateEntry>,
+    entries: SlotMap<KeyInner, StateEntry>,
     /// The number of times `Cache::run` has been called.
     revision: usize,
 }
@@ -188,8 +193,18 @@ impl CacheInner {
         }
     }
 
+    /// Gets the value of a state entry.
+    pub fn get<T: Clone + 'static>(&self, key: Key<T>) -> Option<&T> {
+        self.entries
+            .get(key.key)?
+            .value
+            .downcast_ref::<T>()
+            .expect("type mismatch")
+            .into()
+    }
+
     /// Sets the value of a state entry and invalidates all dependent entries.
-    pub fn set_state<T: 'static>(&mut self, key: Key<T>, new_value: T) {
+    pub fn set<T: 'static>(&mut self, key: Key<T>, new_value: T) {
         if !self.entries.contains_key(key.key) {
             warn!("set_state: entry deleted: {:?}", key.key);
             return;
@@ -200,13 +215,13 @@ impl CacheInner {
         self.invalidate_dependents(key.key);
     }
 
-    fn invalidate_dependents(&self, entry_key: CacheEntryKey) {
+    fn invalidate_dependents(&self, entry_key: KeyInner) {
         for &d in self.entries[entry_key].dependents.iter() {
             self.invalidate_dependents_recursive(d);
         }
     }
 
-    fn invalidate_dependents_recursive(&self, entry_key: CacheEntryKey) {
+    fn invalidate_dependents_recursive(&self, entry_key: KeyInner) {
         assert!(
             self.entries.contains_key(entry_key),
             "invalidate_dependents_recursive: no such entry"
@@ -283,7 +298,7 @@ struct CacheWriter {
     /// The top element is the start of the current group.
     group_stack: Vec<usize>,
     /// Stack of state entries.
-    state_stack: Vec<CacheEntryKey>,
+    state_stack: Vec<KeyInner>,
 }
 
 impl CacheWriter {
@@ -514,7 +529,7 @@ impl CacheWriter {
             value: Box::new(initial_value),
         });
         self.cache.slots.insert(self.pos, Slot::Value { call_id, key });
-        Key::from_entry_key(key)
+        Key::from_inner(key)
     }
 
     /// Sets the value of a cache entry.
@@ -536,7 +551,7 @@ impl CacheWriter {
         let result = if self.sync(call_id) {
             match self.cache.slots[self.pos] {
                 Slot::Value { key: entry_key, .. } => CacheEntryInsertResult {
-                    key: Key::from_entry_key(entry_key),
+                    key: Key::from_inner(entry_key),
                     dirty: self.cache.entries[entry_key].dirty.get(),
                     inserted: false,
                 },
@@ -642,6 +657,9 @@ impl<T: Clone + 'static> Signal<T> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct State<T>(Key<T>);
+
 /// Context stored in TLS when running a function within the positional cache.
 struct CacheContext {
     event_loop_proxy: EventLoopProxy<ExtEvent>,
@@ -734,13 +752,18 @@ impl Cache {
     }
 
     /// Sets the value of the state variable identified by `key`, and invalidates all dependent variables in the cache.
-    pub fn set_state<T: 'static>(&mut self, key: Key<T>, value: T) {
-        self.cache.as_mut().unwrap().set_state(key, value)
+    pub fn set<T: 'static>(&mut self, key: Key<T>, value: T) {
+        self.cache.as_mut().unwrap().set(key, value)
     }
 
     /// Sets the value of a signal, and invalidates all dependent variables in the cache.
     pub fn signal<T: 'static>(&mut self, signal: &Signal<T>, value: T) {
-        self.set_state(signal.key, Some(value));
+        self.cache.as_mut().unwrap().set(signal.key, Some(value))
+    }
+
+    /// Gets a reference to a state entry.
+    pub fn get<T: Clone + 'static>(&self, key: Key<T>) -> &T {
+        self.cache.as_ref().unwrap().get(state.0.key)
     }
 }
 
@@ -885,7 +908,7 @@ where
                 // instead of having to do weird things like this
                 el.send_event(ExtEvent::Recompose {
                     cache_fn: Box::new(move |cache| {
-                        cache.set_state(result_key, Poll::Ready(result));
+                        cache.set(result_key, Poll::Ready(result));
                     }),
                 });
             });

@@ -202,6 +202,14 @@ impl<Content: Widget + 'static> DragController<Content> {
         }
         self
     }
+
+    pub fn content(&self) -> &Content {
+        self.content.content()
+    }
+
+    pub fn content_mut(&mut self) -> &mut Content {
+        self.content.content_mut()
+    }
 }
 
 impl<Content: Widget + 'static> Widget for DragController<Content> {

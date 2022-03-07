@@ -333,7 +333,7 @@ impl<'a> EventCtx<'a> {
     }
 
     pub fn set_state<T: 'static>(&mut self, key: Key<T>, value: T) {
-        self.app_ctx.cache.set_state(key, value)
+        self.app_ctx.cache.set(key, value)
     }
 
     pub fn register_window(&mut self, window_id: WindowId) {

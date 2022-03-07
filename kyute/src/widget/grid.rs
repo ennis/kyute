@@ -284,6 +284,7 @@ pub struct Grid {
 
     //row_layout: RefCell<Vec<GridTrackLayout>>,
     //column_layout: RefCell<Vec<GridTrackLayout>>,
+    cached_layout: Key<Option<CachedGridLayout>>,
 
     // FIXME this is ugly, there's probably the same problem with the child filter
     cached_layout: Arc<RefCell<Option<CachedGridLayout>>>,

@@ -10,7 +10,7 @@ use kyute::{
         Container, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit, TextInput,
         TitledPane, ValidationResult,
     },
-    Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Point, Size, State, UnitExt, Widget,
+    Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Point, Size, UnitExt, Widget,
     WidgetExt, WidgetPod, Window,
 };
 use kyute_text::{Selection, TextAlignment};
@@ -20,17 +20,17 @@ use tracing::info;
 #[composable]
 fn text_edit(font_size: f64, grid: &mut Grid) {
     #[state]
-    let mut text = Arc::from(format!("{}dip text", font_size));
+    let mut text: Arc<str> = Arc::from(format!("{}dip text", font_size));
 
     let label = Label::new(format!("Font size: {}dip", font_size));
-    let formatted_text = FormattedText::new(text.get())
+    let formatted_text = FormattedText::new(text.clone())
         .font_size(font_size)
         .text_alignment(TextAlignment::Center);
 
     let text_edit = TextEdit::new(formatted_text);
 
     if let Some(new_text) = text_edit.text_changed() {
-        text.set(new_text);
+        text = new_text;
     }
 
     let row = grid.row_count();
@@ -60,21 +60,13 @@ fn text_playground() -> impl Widget + Clone {
         });
     }
 
-    // TODO:
-    // - widgets:     `on_*` methods for easier event handling
-    // - grid:        push_row_definition, push_column_definition
-    // - grid:        GridRow, GridColumn types
-    // - grid:        named rows and columns
-    // - composable:  `#[state]` statement attribute.
-    // - composable:  `#[identifiable(expr)]` statement attribute.
-
     {
         let row = grid.row_count();
         grid.add_item(row, 0, Label::new("Custom font size".to_string()));
         let custom_font_size_slider =
             Slider::new(3.0, 80.0, custom_font_size).on_value_changed(|v| custom_font_size = v);
         grid.add_item(row, 2, custom_font_size_slider);
-        text_edit(custom_font_size.get(), &mut grid);
+        text_edit(custom_font_size, &mut grid);
     }
 
     // text input test

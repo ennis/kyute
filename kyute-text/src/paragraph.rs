@@ -531,7 +531,7 @@ impl<'a> GlyphRun<'a> {
                     &transform,
                     // TODO should probably be controlled by the client;
                     // - NATURAL for small fonts, SYMMETRIC for bigger things
-                    DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL_SYMMETRIC,
+                    DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL,
                     self.measuring_mode,
                     self.baseline_origin_x,
                     self.baseline_origin_y,

@@ -126,3 +126,64 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         self.inner.gpu_frame(ctx);
     }
 }
+
+/// A wrapper widget that makes the result of its layout available to the composition step.
+pub struct LayoutInspector<Content> {
+    content: Content,
+    size: Size,
+    size_changed: Signal<Size>,
+}
+
+impl<Content: Widget + 'static> LayoutInspector<Content> {
+    #[composable]
+    pub fn new(content: Content) -> LayoutInspector<Content> {
+        #[state]
+        let mut size = Size::zero();
+        let size_changed = Signal::new();
+        if let Some(new_size) = size_changed.value() {
+            size = new_size;
+        }
+
+        LayoutInspector {
+            content,
+            size,
+            size_changed,
+        }
+    }
+
+    /// Returns the current size of the thing.
+    pub fn size(&self) -> Size {
+        self.size
+    }
+
+    pub fn size_changed(&self) -> Option<Size> {
+        self.size_changed.value()
+    }
+
+    pub fn on_size_changed(self, f: impl FnOnce(Size)) -> Self {
+        self.size_changed.map(f);
+        self
+    }
+}
+
+impl<Content: Widget + 'static> Widget for LayoutInspector<Content> {
+    fn widget_id(&self) -> Option<WidgetId> {
+        self.content.widget_id()
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.content.event(ctx, event, env)
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        let measurements = self.content.layout(ctx, constraints, env);
+        if measurements.bounds.size != self.prev_size {
+            ctx.cache_mut().signal(&self.size_changed, measurements.bounds.size);
+        }
+        measurements
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+        self.content.paint(ctx, bounds, transform, env)
+    }
+}
