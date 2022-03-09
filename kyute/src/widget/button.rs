@@ -88,12 +88,12 @@ impl Widget for Button {
                     ctx.request_redraw();
                     ctx.set_handled();
                     ctx.capture_pointer();
-                    ctx.set_state(self.active.1, true);
+                    self.active.1.set(true);
                 }
                 PointerEventKind::PointerUp => {
                     ctx.request_redraw();
-                    ctx.set_state(self.active.1, false);
-                    ctx.cache_mut().signal(&self.clicked, ());
+                    self.active.1.set(false);
+                    self.clicked.signal(());
                 }
                 PointerEventKind::PointerOver => {
                     //trace!("button PointerOver");

@@ -177,8 +177,8 @@ impl<Content: Widget + 'static> Widget for LayoutInspector<Content> {
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let measurements = self.content.layout(ctx, constraints, env);
-        if measurements.bounds.size != self.prev_size {
-            ctx.cache_mut().signal(&self.size_changed, measurements.bounds.size);
+        if measurements.bounds.size != self.size {
+            self.size_changed.signal(measurements.bounds.size);
         }
         measurements
     }

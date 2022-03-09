@@ -131,7 +131,7 @@ impl WindowState {
                     // find matching action and trigger it
                     if let Some(ref menu) = self.menu {
                         if let Some(action) = menu.find_action_by_index(*id) {
-                            parent_ctx.cache_mut().signal(&action.triggered, ());
+                            action.triggered.signal(());
                         }
                     }
                 }

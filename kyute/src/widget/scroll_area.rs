@@ -1,9 +1,10 @@
 use crate::{
+    theme,
     widget::{
-        grid::GridTrackDefinition, prelude::*, Canvas, Color, Container, DragController, Grid, GridLength,
-        LayoutInspector, Null, Thumb, UnitExt,
+        grid::GridTrackDefinition, prelude::*, Canvas, Container, DragController, Grid, GridLength, LayoutInspector,
+        Null, Thumb,
     },
-    PointerEventKind,
+    Color, PointerEventKind, UnitExt,
 };
 use kyute::style::BoxStyle;
 use std::cell::Cell;

@@ -14,9 +14,8 @@
 
 //! Traits for handling value types.
 
-use crate::{Offset, Point, Rect, SideOffsets};
+use crate::{Offset, Point, Rect, SideOffsets, Size};
 use std::{ptr, rc::Rc, sync::Arc};
-//use crate::style::StyleSet;
 
 pub trait Data: Clone + 'static {
     fn same(&self, other: &Self) -> bool;
@@ -78,6 +77,7 @@ impl_data_simple!(std::ops::RangeFull);
 //impl_data_simple!(Color);
 impl_data_simple!(SideOffsets);
 impl_data_simple!(Rect);
+impl_data_simple!(Size);
 impl_data_simple!(Point);
 impl_data_simple!(Offset);
 

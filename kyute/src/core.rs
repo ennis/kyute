@@ -9,8 +9,8 @@ use crate::{
     region::Region,
     style::VisualState,
     widget::{Align, ConstrainedBox},
-    Alignment, BoxConstraints, Cache, Dip, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point,
-    Rect, Size, Transform,
+    Alignment, BoxConstraints, Dip, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, Size,
+    Transform,
 };
 use kyute_macros::composable;
 use kyute_shell::{
@@ -34,14 +34,6 @@ pub struct LayoutCtx<'a> {
 }
 
 impl<'a> LayoutCtx<'a> {
-    pub fn cache_mut(&mut self) -> &mut Cache {
-        &mut self.app_ctx.cache
-    }
-
-    pub fn cache(&self) -> &Cache {
-        &self.app_ctx.cache
-    }
-
     pub fn round_to_pixel(&self, dip_length: f64) -> f64 {
         (dip_length * self.scale_factor).round()
     }
@@ -258,15 +250,6 @@ pub struct EventCtx<'a> {
 }
 
 impl<'a> EventCtx<'a> {
-    /// Returns a mutable reference to the composition cache
-    pub fn cache_mut(&mut self) -> &mut Cache {
-        &mut self.app_ctx.cache
-    }
-
-    pub fn cache(&self) -> &Cache {
-        &self.app_ctx.cache
-    }
-
     /// Creates the root `EventCtx`
     fn new(
         app_ctx: &'a mut AppCtx,
@@ -330,10 +313,6 @@ impl<'a> EventCtx<'a> {
     /// Returns the parent widget ID.
     pub fn widget_id(&self) -> Option<WidgetId> {
         self.id
-    }
-
-    pub fn set_state<T: 'static>(&mut self, key: Key<T>, value: T) {
-        self.app_ctx.cache.set(key, value)
     }
 
     pub fn register_window(&mut self, window_id: WindowId) {

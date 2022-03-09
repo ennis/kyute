@@ -261,7 +261,7 @@ impl<Content: Widget + 'static> Widget for ContextMenu<Content> {
                 }
                 Event::MenuCommand(index) => {
                     if let Some(action) = self.menu.find_action_by_index(index) {
-                        ctx.cache_mut().signal(&action.triggered, ());
+                        action.triggered.signal(());
                     }
                 }
                 _ => {}

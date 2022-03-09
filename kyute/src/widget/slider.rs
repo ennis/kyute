@@ -133,7 +133,7 @@ impl Widget for Slider {
                 }
                 PointerEventKind::PointerDown => {
                     let new_value = self.track.get().value_from_position(p.position, self.min, self.max);
-                    ctx.cache_mut().signal(&self.value_changed, new_value);
+                    self.value_changed.signal(new_value);
                     ctx.capture_pointer();
                     ctx.request_focus();
                     ctx.request_redraw();
@@ -141,7 +141,7 @@ impl Widget for Slider {
                 PointerEventKind::PointerMove => {
                     if ctx.is_capturing_pointer() {
                         let new_value = self.track.get().value_from_position(p.position, self.min, self.max);
-                        ctx.cache_mut().signal(&self.value_changed, new_value);
+                        self.value_changed.signal(new_value);
                         ctx.request_redraw();
                     }
                 }

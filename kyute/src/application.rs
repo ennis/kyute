@@ -4,10 +4,11 @@
 //! events from winit into the events expected by kyute.
 use crate::{
     asset::ASSET_LOADER,
+    cache,
     core::WidgetId,
     drawing::{ImageCache, IMAGE_CACHE},
     util::fs_watch::{FileSystemWatcher, FILE_SYSTEM_WATCHER},
-    AssetLoader, Cache, Environment, Event, InternalEvent, WidgetPod,
+    AssetLoader, Environment, Event, InternalEvent, WidgetPod,
 };
 use kyute_shell::{
     winit,
@@ -24,9 +25,7 @@ use std::{
 
 pub enum ExtEvent {
     /// Triggers a recomposition
-    Recompose {
-        cache_fn: Box<dyn FnOnce(&mut Cache) + Send>,
-    },
+    Recompose { cache_fn: Box<dyn FnOnce() + Send> },
 }
 
 impl fmt::Debug for ExtEvent {
@@ -39,10 +38,6 @@ impl fmt::Debug for ExtEvent {
 pub struct AppCtx {
     /// Open windows, mapped to their corresponding widget.
     pub(crate) windows: HashMap<WindowId, WidgetId>,
-    /// Main UI cache.
-    ///
-    /// Stores cached copies of widgets and state variables.
-    pub(crate) cache: Cache,
     pub(crate) pending_events: Vec<Event<'static>>,
     event_loop_proxy: EventLoopProxy<ExtEvent>,
 }
@@ -52,7 +47,6 @@ impl AppCtx {
     fn new(event_loop_proxy: EventLoopProxy<ExtEvent>) -> AppCtx {
         AppCtx {
             windows: HashMap::new(),
-            cache: Cache::new(),
             pending_events: vec![],
             event_loop_proxy,
         }
@@ -110,7 +104,7 @@ fn eval_root_widget(
     root_env: &Environment,
     f: fn() -> Arc<WidgetPod>,
 ) -> Arc<WidgetPod> {
-    let root_widget = app_ctx.cache.run(app_ctx.event_loop_proxy.clone(), root_env, f);
+    let root_widget = cache::recompose(app_ctx.event_loop_proxy.clone(), root_env, f);
     // ensures that all widgets have received the `Initialize` event.
     root_widget.initialize(app_ctx, event_loop, root_env);
     root_widget
@@ -172,7 +166,7 @@ pub fn run(ui: fn() -> Arc<WidgetPod>, env_overrides: Environment) {
             // --- EXT EVENTS ----------------------------------------------------------------------
             winit::event::Event::UserEvent(ext_event) => match ext_event {
                 ExtEvent::Recompose { cache_fn } => {
-                    cache_fn(&mut app_ctx.cache);
+                    cache_fn();
                     root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
                 }
             },

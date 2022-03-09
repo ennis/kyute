@@ -21,7 +21,7 @@ mod text_edit;
 //mod text_v1;
 mod canvas;
 mod popup;
-mod scroll_area;
+//mod scroll_area;
 mod thumb;
 mod titled_pane;
 

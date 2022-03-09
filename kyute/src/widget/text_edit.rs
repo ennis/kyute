@@ -204,16 +204,16 @@ impl TextEdit {
     fn notify_selection_changed(&self, ctx: &mut EventCtx, new_selection: Selection) {
         if new_selection != self.selection {
             eprintln!("notify selection changed {:?}->{:?}", self.selection, new_selection);
-            ctx.cache_mut().signal(&self.selection_changed, new_selection);
+            self.selection_changed.signal(new_selection);
         }
     }
 
     fn notify_text_changed(&self, ctx: &mut EventCtx, new_text: Arc<str>) {
-        ctx.cache_mut().signal(&self.text_changed, new_text);
+        self.text_changed.signal(new_text);
     }
 
     fn notify_editing_finished(&self, ctx: &mut EventCtx, new_text: Arc<str>) {
-        ctx.cache_mut().signal(&self.editing_finished, new_text);
+        self.editing_finished.signal(new_text);
     }
 }
 

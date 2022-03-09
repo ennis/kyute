@@ -140,8 +140,8 @@ impl<T: Clone + 'static> Widget for DropDown<T> {
             },
             Event::MenuCommand(id) => {
                 trace!("menu command: {}", *id);
-                ctx.cache_mut()
-                    .signal(&self.selected_item_changed, (*id, self.choices[*id].value.clone()));
+                self.selected_item_changed
+                    .signal((*id, self.choices[*id].value.clone()));
                 ctx.set_handled();
             }
             _ => {}
