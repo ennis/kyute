@@ -14,7 +14,7 @@
 
 //! Traits for handling value types.
 
-use crate::{Offset, Point, Rect, SideOffsets, Size};
+use crate::{Offset, Point, Rect, SideOffsets, Size, Transform};
 use std::{ptr, rc::Rc, sync::Arc};
 
 pub trait Data: Clone + 'static {
@@ -80,6 +80,7 @@ impl_data_simple!(Rect);
 impl_data_simple!(Size);
 impl_data_simple!(Point);
 impl_data_simple!(Offset);
+impl_data_simple!(Transform);
 
 //TODO: remove me!?
 impl_data_simple!(String);

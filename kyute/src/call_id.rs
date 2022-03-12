@@ -4,6 +4,7 @@ use std::{
     hash::{Hash, Hasher},
     panic::Location,
     rc::Rc,
+    sync::Arc,
 };
 
 /// Identifies a particular call site in a call tree.
@@ -51,7 +52,7 @@ impl fmt::Debug for CallId {
 #[derive(Clone)]
 pub struct CallNode {
     id: CallId,
-    parent: Option<Rc<CallNode>>,
+    parent: Option<Arc<CallNode>>,
     pub(crate) location: &'static Location<'static>,
     pub(crate) index: usize, // or `iteration`, `count`
 }
@@ -78,8 +79,8 @@ impl fmt::Debug for CallNode {
 
 pub(crate) struct CallIdStack {
     id_stack: Vec<u64>,
-    nodes: HashMap<CallId, Rc<CallNode>>,
-    current_node: Option<Rc<CallNode>>,
+    nodes: HashMap<CallId, Arc<CallNode>>,
+    current_node: Option<Arc<CallNode>>,
 }
 
 impl CallIdStack {
@@ -108,7 +109,7 @@ impl CallIdStack {
         let id = self.chain_hash(&(location, index));
         self.id_stack.push(id);
         let id = CallId(id);
-        let node = Rc::new(CallNode {
+        let node = Arc::new(CallNode {
             id,
             parent: self.current_node.clone(),
             location,
@@ -131,12 +132,12 @@ impl CallIdStack {
     }
 
     /// Returns the current node in the call tree.
-    pub fn current_call_node(&self) -> Option<Rc<CallNode>> {
+    pub fn current_call_node(&self) -> Option<Arc<CallNode>> {
         self.current_node.clone()
     }
 
     /// Returns the call node corresponding to the specified CallId.
-    pub fn call_node(&self, id: CallId) -> Option<Rc<CallNode>> {
+    pub fn call_node(&self, id: CallId) -> Option<Arc<CallNode>> {
         self.nodes.get(&id).cloned()
     }
 

@@ -5,10 +5,14 @@
 use crate::{
     asset::ASSET_LOADER,
     cache,
+    cache::Cache,
     core::WidgetId,
     drawing::{ImageCache, IMAGE_CACHE},
+    theme,
     util::fs_watch::{FileSystemWatcher, FILE_SYSTEM_WATCHER},
-    AssetLoader, Environment, Event, InternalEvent, WidgetPod,
+    AssetLoader, Environment, Event, InternalEvent,
+    ValueRef::Env,
+    Widget, WidgetPod,
 };
 use kyute_shell::{
     winit,
@@ -17,15 +21,18 @@ use kyute_shell::{
         window::WindowId,
     },
 };
+use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt, mem,
     sync::Arc,
+    task::{Wake, Waker},
 };
+use svgtypes::LengthUnit::Ex;
 
 pub enum ExtEvent {
     /// Triggers a recomposition
-    Recompose { cache_fn: Box<dyn FnOnce() + Send> },
+    Recompose,
 }
 
 impl fmt::Debug for ExtEvent {
@@ -39,16 +46,16 @@ pub struct AppCtx {
     /// Open windows, mapped to their corresponding widget.
     pub(crate) windows: HashMap<WindowId, WidgetId>,
     pub(crate) pending_events: Vec<Event<'static>>,
-    event_loop_proxy: EventLoopProxy<ExtEvent>,
+    cache: Cache,
 }
 
 impl AppCtx {
     /// Creates a new AppCtx.
-    fn new(event_loop_proxy: EventLoopProxy<ExtEvent>) -> AppCtx {
+    fn new(waker: Waker) -> AppCtx {
         AppCtx {
             windows: HashMap::new(),
             pending_events: vec![],
-            event_loop_proxy,
+            cache: Cache::new(waker),
         }
     }
 
@@ -98,21 +105,56 @@ impl AppCtx {
     }
 }
 
-fn eval_root_widget(
+fn eval_root_widget<W: Widget + 'static>(
     app_ctx: &mut AppCtx,
     event_loop: &EventLoopWindowTarget<ExtEvent>,
     root_env: &Environment,
-    f: fn() -> Arc<WidgetPod>,
+    ui: fn() -> W,
 ) -> Arc<WidgetPod> {
-    let root_widget = cache::recompose(app_ctx.event_loop_proxy.clone(), root_env, f);
+    let root_widget = app_ctx
+        .cache
+        .recompose(root_env, || cache::memoize((), || Arc::new(WidgetPod::new(ui()))));
     // ensures that all widgets have received the `Initialize` event.
     root_widget.initialize(app_ctx, event_loop, root_env);
     root_widget
 }
 
-pub fn run(ui: fn() -> Arc<WidgetPod>, env_overrides: Environment) {
+struct EventLoopWaker(Mutex<EventLoopProxy<ExtEvent>>);
+
+impl EventLoopWaker {
+    fn new(event_loop: &EventLoop<ExtEvent>) -> EventLoopWaker {
+        EventLoopWaker(Mutex::new(event_loop.create_proxy()))
+    }
+}
+
+impl Wake for EventLoopWaker {
+    fn wake(self: Arc<Self>) {
+        self.0
+            .lock()
+            .send_event(ExtEvent::Recompose)
+            .expect("failed to wake event loop");
+    }
+
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.0
+            .lock()
+            .send_event(ExtEvent::Recompose)
+            .expect("failed to wake event loop");
+    }
+}
+
+pub fn run<W: Widget + 'static>(ui: fn() -> W) {
+    run_inner(ui, Environment::new())
+}
+
+pub fn run_with_env<W: Widget + 'static>(ui: fn() -> W, env_overrides: Environment) {
+    run_inner(ui, env_overrides)
+}
+
+fn run_inner<W: Widget + 'static>(ui: fn() -> W, env_overrides: Environment) {
     let event_loop = EventLoop::<ExtEvent>::with_user_event();
-    let mut app_ctx = AppCtx::new(event_loop.create_proxy());
+    let event_loop_waker = Waker::from(Arc::new(EventLoopWaker::new(&event_loop)));
+    let mut app_ctx = AppCtx::new(event_loop_waker);
 
     // setup env
     let mut env = Environment::new();
@@ -123,6 +165,7 @@ pub fn run(ui: fn() -> Arc<WidgetPod>, env_overrides: Environment) {
     env.set(IMAGE_CACHE, image_cache);
     let fs_watcher = FileSystemWatcher::new();
     env.set(FILE_SYSTEM_WATCHER, fs_watcher);
+    theme::setup_default_style(&mut env);
 
     env = env.merged(env_overrides);
 
@@ -165,9 +208,9 @@ pub fn run(ui: fn() -> Arc<WidgetPod>, env_overrides: Environment) {
             }
             // --- EXT EVENTS ----------------------------------------------------------------------
             winit::event::Event::UserEvent(ext_event) => match ext_event {
-                ExtEvent::Recompose { cache_fn } => {
-                    cache_fn();
-                    root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
+                ExtEvent::Recompose => {
+                    // will recomp in maineventscleared
+                    //root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
                 }
             },
             // --- REPAINT -------------------------------------------------------------------------

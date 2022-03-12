@@ -3,116 +3,169 @@ use crate::{
     application::ExtEvent,
     call_id::{CallId, CallIdStack, CallNode},
     composable, Data, Environment,
-    ValueRef::Env,
 };
-use kyute_shell::winit::event_loop::EventLoopProxy;
-use replace_with::replace_with_or_abort;
-use slotmap::SlotMap;
+use parking_lot::Mutex;
 use std::{
     any::Any,
     cell::{Cell, RefCell},
-    collections::HashSet,
     convert::TryInto,
     fmt,
     future::Future,
     hash::Hash,
-    marker::PhantomData,
     mem,
     panic::Location,
-    rc::Rc,
-    task::Poll,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    task::{Poll, Waker},
 };
-use tracing::{trace, warn};
+use threadbound::ThreadBound;
 
 slotmap::new_key_type! {
     struct KeyInner;
 }
 
-/// Entry representing a mutable state slot inside a composition cache.
-struct StateEntry {
-    call_id: CallId,
-    /// For debugging purposes.
-    call_node: Option<Rc<CallNode>>,
-    /// Whether the value has been invalidated because a dependency has changed.
-    dirty: Cell<bool>,
-    dependents: HashSet<KeyInner>,
-    value: Box<dyn Any>,
+#[derive(Debug)]
+struct DepNode {
+    dirty: AtomicBool,
+    dependents: Mutex<Vec<Arc<DepNode>>>,
 }
 
-/// A slot in the slot table.
-enum Slot {
-    /// Marks the start of a group.
-    /// Contains the length of the group including this slot and the `GroupEnd` marker.
-    StartGroup {
-        call_id: CallId,
-        len: u32,
-    },
-    /// Marks the end of a scope.
-    EndGroup,
-    Value {
-        call_id: CallId,
-        key: KeyInner,
-    },
+impl DepNode {
+    fn new() -> DepNode {
+        DepNode {
+            dirty: AtomicBool::new(false),
+            dependents: Mutex::new(vec![]),
+        }
+    }
+
+    fn set_dirty(&self, dirty: bool) {
+        self.dirty.store(dirty, Ordering::SeqCst)
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.dirty.load(Ordering::SeqCst)
+    }
+
+    fn invalidate_dependents(&self) {
+        for d in self.dependents.lock().iter() {
+            d.invalidate()
+        }
+    }
+
+    fn add_dependent(&self, dep: &Arc<DepNode>) {
+        let mut deps = self.dependents.lock();
+        for d in deps.iter() {
+            if Arc::ptr_eq(d, dep) {
+                return;
+            }
+        }
+        deps.push(dep.clone());
+    }
+
+    fn invalidate(&self) {
+        self.set_dirty(true);
+        self.invalidate_dependents();
+    }
+}
+
+/// Entry representing a mutable state slot inside a composition cache.
+struct StateCell<T: ?Sized = dyn Any> {
+    call_id: CallId,
+    // for debugging
+    call_node: Option<Arc<CallNode>>,
+    dep_node: Arc<DepNode>,
+    waker: Waker,
+    value: Mutex<T>,
+}
+
+impl<T: ?Sized> fmt::Debug for StateCell<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("StateCell").finish_non_exhaustive()
+    }
+}
+
+impl StateCell {
+    fn downcast<U: Any + 'static>(self: Arc<Self>) -> Result<Arc<StateCell<U>>, Arc<StateCell>> {
+        if (*self).value.lock().is::<U>() {
+            unsafe { Ok(Arc::from_raw(Arc::into_raw(self) as *const StateCell<U>)) }
+        } else {
+            Err(self)
+        }
+    }
+}
+
+impl<T: ?Sized> StateCell<T> {
+    fn update_dependents(&self) {
+        if let Some(var) = parent_state() {
+            self.dep_node.add_dependent(&var.dep_node);
+        }
+    }
+}
+
+impl<T: 'static> StateCell<T> {
+    fn replace(&self, new_value: T, invalidate: bool) -> T {
+        self.update_dependents();
+        let mut value = self.value.lock();
+        let ret = mem::replace(&mut *value, new_value);
+        if invalidate {
+            self.dep_node.invalidate_dependents();
+            self.waker.wake_by_ref();
+        }
+        ret
+    }
+}
+
+impl<T: Clone + 'static> StateCell<T> {
+    fn get(&self) -> T {
+        self.update_dependents();
+        self.value.lock().clone()
+    }
+}
+
+impl<T: Data> StateCell<T> {
+    fn update(&self, new_value: T) -> Option<T> {
+        self.update_dependents();
+        let mut value = self.value.lock();
+        if !new_value.same(&*value) {
+            let ret = mem::replace(&mut *value, new_value);
+            self.dep_node.invalidate_dependents();
+            self.waker.wake_by_ref();
+            Some(ret)
+        } else {
+            None
+        }
+    }
 }
 
 /// A key used to access a state variable stored in a `Cache`.
+pub struct State<T>(Arc<StateCell<T>>);
 
-// TODO right now the get/set methods on `Key` can only be called in a composition context,
-// but not outside. To set the value of a cache entry outside of a composition context,
-// we have to call `cache.set_state(key)`.
-// A possible change would be to keep some kind of weak ref to the cache inside the key,
-// and allow calling `Key::set` outside of a composition context.
-// This way there would be a single function to call, regardless of the calling context, streamlining the
-// API.
-// Counterpoint: this bloats the struct with an Arc pointer.
-// Counter-counterpoint: but at least this makes the whole system self-contained.
-//
-// What if the cache was put in TLS *also* during layout, recomp, etc?
-// Heck, what if the cache was *always* in TLS?
-
-pub struct Key<T> {
-    inner: KeyInner,
-    // TODO: `cache: Arc<Cache>`. When setting values, schedule a recomp on the main event loop. Cache gets an EventLoopProxy on construction to send recomp events.
-    _phantom: PhantomData<fn() -> T>,
-}
-
-impl<T> Copy for Key<T> {}
-
-impl<T> Clone for Key<T> {
+impl<T> Clone for State<T> {
     fn clone(&self) -> Self {
-        Key {
-            inner: self.inner,
-            _phantom: Default::default(),
-        }
+        State(self.0.clone())
     }
 }
 
-impl<T> fmt::Debug for Key<T> {
+impl<T> fmt::Debug for State<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.inner, f)
+        fmt::Debug::fmt(&self.0, f)
     }
 }
 
-impl<T: 'static> Key<T> {
-    ///
-    fn from_inner(key: KeyInner) -> Key<T> {
-        Key {
-            inner: key,
-            _phantom: PhantomData,
-        }
-    }
-
+impl<T: 'static> State<T> {
     /// Returns the value of the cache entry and replaces it by the given value.
     /// Always invalidates.
     /// Can be called outside of recomposition.
     pub fn replace(&self, new_value: T) -> T {
-        with_cache_cx(|cx| cx.replace(*self, new_value, true))
+        self.0.replace(new_value, true)
     }
 
     /// Returns the value of the cache entry and replaces it by the default value.
     /// Does not invalidate the dependent entries.
     pub fn replace_without_invalidation(&self, new_value: T) -> T {
-        with_cache_cx(|cx| cx.replace(*self, new_value, false))
+        self.0.replace(new_value, false)
     }
 
     pub fn set(&self, new_value: T) {
@@ -128,20 +181,20 @@ impl<T: 'static> Key<T> {
     }
 }
 
-impl<T: Data + 'static> Key<T> {
+impl<T: Data + 'static> State<T> {
     ///
     pub fn update(&self, new_value: T) -> Option<T> {
-        with_cache_cx(|cx| cx.update(*self, new_value))
+        self.0.update(new_value)
     }
 }
 
-impl<T: Clone + 'static> Key<T> {
+impl<T: Clone + 'static> State<T> {
     pub fn get(&self) -> T {
-        with_cache_cx(|cx| cx.get(*self))
+        self.0.get()
     }
 }
 
-impl<T: Default + 'static> Key<T> {
+impl<T: Default + 'static> State<T> {
     /// Returns the value of the cache entry and replaces it by the default value.
     pub fn take(&self) -> T {
         self.replace(T::default())
@@ -153,116 +206,40 @@ impl<T: Default + 'static> Key<T> {
     }
 }
 
+/// A slot in the slot table.
+enum Slot {
+    /// Marks the start of a group.
+    /// Contains the length of the group including this slot and the `GroupEnd` marker.
+    StartGroup {
+        call_id: CallId,
+        len: u32,
+    },
+    /// Marks the end of a scope.
+    EndGroup,
+    Value {
+        var: Arc<StateCell>,
+    },
+}
+
 /// Composition cache. Contains the recorded call tree and state entries.
-struct Cache {
+struct CacheInner {
+    waker: Waker,
     /// The call tree, represented as an array of slots.
     slots: Vec<Slot>,
-    /// Cache entries.
-    entries: SlotMap<KeyInner, StateEntry>,
     /// The number of times `Cache::run` has been called.
     revision: usize,
 }
 
-impl Cache {
-    fn new() -> Cache {
-        Cache {
+impl CacheInner {
+    fn new(waker: Waker) -> CacheInner {
+        CacheInner {
+            waker,
             slots: vec![],
             revision: 0,
-            entries: SlotMap::with_key(),
         }
     }
 
-    /// Gets the value of a state entry.
-    fn get<T: Clone + 'static>(&self, key: Key<T>) -> Option<&T> {
-        self.entries
-            .get(key.inner)?
-            .value
-            .downcast_ref::<T>()
-            .expect("type mismatch")
-            .into()
-    }
-
-    /*/// Sets the value of a state entry and invalidates all dependent entries.
-    fn set<T: 'static>(&mut self, key: Key<T>, new_value: T) {
-        if !self.entries.contains_key(key.inner) {
-            warn!("set_state: entry deleted: {:?}", key.inner);
-            return;
-        }
-
-        let value = self.entries[key.inner]
-            .value
-            .downcast_mut::<T>()
-            .expect("type mismatch");
-        *value = new_value;
-        self.invalidate_dependents(key.inner);
-    }*/
-
-    /// Replaces the value of a state entry and invalidates all dependent entries.
-    fn replace<T: 'static>(&mut self, key: Key<T>, new_value: T, invalidate: bool) -> T {
-        let value = self
-            .entries
-            .get_mut(key.inner)
-            .expect("entry deleted")
-            .value
-            .downcast_mut::<T>()
-            .expect("type mismatch");
-        let ret = mem::replace(value, new_value);
-        if invalidate {
-            self.invalidate_dependents(key.inner);
-        }
-        ret
-    }
-
-    /// Replaces the value of a state entry and invalidates all dependent entries if the new value is different.
-    fn update<T: Data>(&mut self, key: Key<T>, new_value: T) -> Option<T> {
-        let value = self
-            .entries
-            .get_mut(key.inner)
-            .expect("entry deleted")
-            .value
-            .downcast_mut::<T>()
-            .expect("type mismatch");
-
-        if !new_value.same(value) {
-            let ret = mem::replace(value, new_value);
-            self.invalidate_dependents(key.inner);
-            Some(ret)
-        } else {
-            None
-        }
-    }
-
-    fn invalidate_dependents(&self, entry_key: KeyInner) {
-        for &d in self.entries[entry_key].dependents.iter() {
-            self.invalidate_dependents_recursive(d);
-        }
-    }
-
-    fn invalidate_dependents_recursive(&self, entry_key: KeyInner) {
-        assert!(
-            self.entries.contains_key(entry_key),
-            "invalidate_dependents_recursive: no such entry"
-        );
-        /*if !self.entries.contains_key(entry) {
-            tracing::warn!("invalidate_dependents_recursive: no such entry");
-            return;
-        }*/
-        let entry = &self.entries[entry_key];
-        /*if let Some(ref call_node) = entry.call_node {
-            trace!(
-                "invalidate_dependents_recursive: {} (#{})",
-                call_node.location,
-                call_node.index
-            );
-        }*/
-
-        //if !entry.dirty.replace(true) {
-        entry.dirty.set(true);
-        for &d in entry.dependents.iter() {
-            self.invalidate_dependents_recursive(d);
-        }
-        //}
-    }
+    //fn create_state_proxy(&self, key: Key<T>) ->
 
     fn dump(&self, current_position: usize) {
         for (i, s) in self.slots.iter().enumerate() {
@@ -284,24 +261,22 @@ impl Cache {
                 Slot::EndGroup => {
                     eprintln!("{:3} EndGroup", i)
                 }
-                Slot::Value { call_id, key } => {
-                    let entry = &self.entries[*key];
-                    if let Some(ref node) = entry.call_node {
+                Slot::Value { var } => {
+                    let call_id = var.call_id;
+                    if let Some(ref node) = var.call_node {
                         eprintln!(
-                            "{:3} Value      call_id={:?} key={:?} dirty={:?} [{}]",
+                            "{:3} Value      call_id={:?} dirty={:?} [{}]",
                             i,
                             call_id,
-                            key,
-                            entry.dirty.get(),
+                            var.dep_node.is_dirty(),
                             node.location
                         )
                     } else {
                         eprintln!(
-                            "{:3} Value      call_id={:?} key={:?} dirty={:?}",
+                            "{:3} Value      call_id={:?} dirty={:?}",
                             i,
                             call_id,
-                            key,
-                            entry.dirty.get()
+                            var.dep_node.is_dirty()
                         )
                     }
                 }
@@ -311,19 +286,14 @@ impl Cache {
 }
 
 struct CacheEntryInsertResult<T> {
-    key: Key<T>,
+    key: State<T>,
     dirty: bool,
     inserted: bool,
 }
 
-struct CompositionContext<'a> {
-    cache: &'a mut Cache,
-    writer: &'a mut CacheWriter,
-}
-
 /// Holds the state during cache updates (`Cache::run`).
 struct CacheWriter {
-    cache: Cache,
+    cache: CacheInner,
     /// Current position in the slot table (`self.cache.slots`)
     pos: usize,
     /// Stack of call IDs.
@@ -331,12 +301,12 @@ struct CacheWriter {
     /// Stack of group start positions.
     /// The top element is the start of the current group.
     group_stack: Vec<usize>,
-    /// Stack of state entries.
-    state_stack: Vec<KeyInner>,
+    /// Stack of dependent state variables.
+    state_stack: Vec<Arc<StateCell<dyn Any>>>,
 }
 
 impl CacheWriter {
-    fn new(root_location: &'static Location<'static>, cache: Cache) -> CacheWriter {
+    fn new(root_location: &'static Location<'static>, cache: CacheInner) -> CacheWriter {
         let mut writer = CacheWriter {
             cache,
             pos: 0,
@@ -353,14 +323,14 @@ impl CacheWriter {
         let CacheEntryInsertResult {
             key: root_cache_key, ..
         } = writer.get_or_insert_entry(|| ());
-        writer.state_stack.push(root_cache_key.inner);
-        writer.cache.entries[root_cache_key.inner].dirty.set(false);
+        writer.state_stack.push(root_cache_key.0.clone());
+        root_cache_key.0.dep_node.set_dirty(false);
         writer
     }
 
-    fn finish(mut self) -> (Cache, bool) {
+    fn finish(mut self) -> (CacheInner, bool) {
         let root_state_key = self.state_stack.pop().expect("unbalanced state scopes");
-        let should_rerun = self.cache.entries.get(root_state_key).unwrap().dirty.get();
+        let should_rerun = root_state_key.dep_node.is_dirty();
         if should_rerun {
             trace!("cache: state entry invalidated, will re-run");
         }
@@ -381,9 +351,9 @@ impl CacheWriter {
         self.id_stack.exit();
     }
 
-    fn start_state<T>(&mut self, key: Key<T>) {
-        self.state_stack.push(key.inner);
-        self.cache.entries[key.inner].dirty.set(false);
+    fn start_state<T: 'static>(&mut self, key: &State<T>) {
+        self.state_stack.push(key.0.clone());
+        key.0.dep_node.set_dirty(false);
     }
 
     fn end_state(&mut self) {
@@ -411,9 +381,7 @@ impl CacheWriter {
                     }
                     i += len as usize;
                 }
-                Slot::Value {
-                    call_id: this_call_id, ..
-                } if this_call_id == call_id => {
+                Slot::Value { ref var } if var.call_id == call_id => {
                     return Some(i);
                 }
                 Slot::EndGroup => {
@@ -511,16 +479,13 @@ impl CacheWriter {
         // remove the extra slots, and associated entries
         for slot in self.cache.slots.drain(self.pos..group_end_pos) {
             match slot {
-                Slot::Value { key, .. } => {
-                    let entry = self.cache.entries.get(key).expect("cache entry not found");
+                Slot::Value { var } => {
                     trace!(
-                        "removing cache entry cache_key={:?} depends={:?} call_id={:?}, call_node={:#?}",
-                        key,
-                        entry.dependents,
-                        entry.call_id,
-                        entry.call_node
+                        "removing cache entry dep_node={:?} call_id={:?}, call_node={:#?}",
+                        var.dep_node,
+                        var.call_id,
+                        var.call_node
                     );
-                    self.cache.entries.remove(key).unwrap();
                 }
                 _ => {}
             }
@@ -563,30 +528,26 @@ impl CacheWriter {
 
     /// Inserts a new state entry.
     ///
-    fn insert_entry<T: 'static>(&mut self, initial_value: T) -> Key<T> {
+    fn insert_entry<T: 'static>(&mut self, initial_value: T) -> State<T> {
         let call_id = self.id_stack.current();
         let call_node = self.id_stack.current_call_node();
-        let key = self.cache.entries.insert(StateEntry {
+        let var = Arc::new(StateCell {
             call_id,
             call_node,
-            dependents: HashSet::new(),
-            dirty: Cell::new(false),
-            value: Box::new(initial_value),
+            dep_node: Arc::new(DepNode::new()),
+            waker: self.cache.waker.clone(),
+            value: Mutex::new(initial_value),
         });
-        self.cache.slots.insert(self.pos, Slot::Value { call_id, key });
-        Key::from_inner(key)
-    }
-
-    fn invalidate_dependents<T: 'static>(&mut self, cache_key: Key<T>) {
-        self.cache.invalidate_dependents(cache_key.inner);
+        self.cache.slots.insert(self.pos, Slot::Value { var: var.clone() });
+        State(var)
     }
 
     fn get_or_insert_entry<T: 'static, Init: FnOnce() -> T>(&mut self, init: Init) -> CacheEntryInsertResult<T> {
         let result = if self.sync() {
             match self.cache.slots[self.pos] {
-                Slot::Value { key, .. } => CacheEntryInsertResult {
-                    key: Key::from_inner(key),
-                    dirty: self.cache.entries[key].dirty.get(),
+                Slot::Value { ref var } => CacheEntryInsertResult {
+                    key: State(var.clone().downcast::<T>().unwrap()),
+                    dirty: var.dep_node.is_dirty(),
                     inserted: false,
                 },
                 _ => panic!("unexpected entry type"),
@@ -603,36 +564,21 @@ impl CacheWriter {
         result
     }
 
-    fn get<T: Clone + 'static>(&mut self, key: Key<T>) -> T {
-        let entry = &mut self.cache.entries[key.inner];
-        if let Some(parent_state) = self.state_stack.last().cloned() {
-            //trace!("{:?} made dependent of {:?}", parent_state, key.key);
-            entry.dependents.insert(parent_state);
-        }
-        entry.value.downcast_ref::<T>().expect("unexpected type").clone()
-    }
-
-    fn replace<T: 'static>(&mut self, key: Key<T>, new_value: T, invalidate: bool) -> T {
-        let entry = &mut self.cache.entries[key.inner];
-        if let Some(parent_state) = self.state_stack.last().cloned() {
-            //trace!("{:?} made dependent of {:?}", parent_state, key.key);
-            entry.dependents.insert(parent_state);
-        }
-        self.cache.replace(key, new_value, invalidate)
-    }
-
-    fn update<T: Data>(&mut self, key: Key<T>, new_value: T) -> Option<T> {
-        let entry = &mut self.cache.entries[key.inner];
-        if let Some(parent_state) = self.state_stack.last().cloned() {
-            //trace!("{:?} made dependent of {:?}", parent_state, key.key);
-            entry.dependents.insert(parent_state);
-        }
-        self.cache.update(key, new_value)
-    }
-
     fn compare_and_update<T: Data>(&mut self, new_value: T) -> bool {
         let CacheEntryInsertResult { key, inserted, .. } = self.get_or_insert_entry(|| new_value.clone());
-        inserted || { self.update(key, new_value).is_some() }
+        inserted || {
+            if let Some(var) = self.state_stack.last() {
+                key.0.dep_node.add_dependent(&var.dep_node);
+            }
+            let mut value = key.0.value.lock();
+            if !new_value.same(&*value) {
+                mem::replace(&mut *value, new_value);
+                key.0.dep_node.invalidate_dependents();
+                true
+            } else {
+                false
+            }
+        }
     }
 }
 
@@ -642,7 +588,7 @@ impl CacheWriter {
 pub struct Signal<T> {
     fetched: Cell<bool>,
     value: RefCell<Option<T>>,
-    key: Key<Option<T>>,
+    key: State<Option<T>>,
 }
 
 impl<T: Clone + 'static> Signal<T> {
@@ -667,7 +613,7 @@ impl<T: Clone + 'static> Signal<T> {
         }
     }
 
-    pub fn set(&self, value: T) {
+    fn set(&self, value: T) {
         self.value.replace(Some(value));
         self.fetched.set(true);
     }
@@ -691,63 +637,10 @@ impl<T: Clone + 'static> Signal<T> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct State<T>(Key<T>);
-
-enum CacheCompositionStatus {
-    Idle(Cache),
-    Recomposing(CacheWriter),
-}
-
 /// Context stored in TLS when running a function within the positional cache.
 struct CacheContext {
-    event_loop_proxy: Option<EventLoopProxy<ExtEvent>>,
-    cache: CacheCompositionStatus,
+    writer: CacheWriter,
     env: Environment,
-}
-
-impl CacheContext {
-    fn new() -> CacheContext {
-        CacheContext {
-            event_loop_proxy: None,
-            cache: CacheCompositionStatus::Idle(Cache::new()),
-            env: Environment::new(),
-        }
-    }
-
-    fn cache_mut(&mut self) -> &mut Cache {
-        match self.cache {
-            CacheCompositionStatus::Idle(ref mut cache) => cache,
-            CacheCompositionStatus::Recomposing(ref mut writer) => &mut writer.cache,
-        }
-    }
-
-    fn get<T: Clone + 'static>(&mut self, key: Key<T>) -> T {
-        match self.cache {
-            CacheCompositionStatus::Idle(ref cache) => {
-                // outside composition, we just read the value
-                cache.get(key).unwrap().clone()
-            }
-            CacheCompositionStatus::Recomposing(ref mut writer) => {
-                // during recomposition, reading a state entry makes the parent state dependent on it
-                writer.get(key)
-            }
-        }
-    }
-
-    fn replace<T: 'static>(&mut self, key: Key<T>, new_value: T, invalidate: bool) -> T {
-        match self.cache {
-            CacheCompositionStatus::Idle(ref mut cache) => cache.replace(key, new_value, invalidate),
-            CacheCompositionStatus::Recomposing(ref mut writer) => writer.replace(key, new_value, invalidate),
-        }
-    }
-
-    fn update<T: Data>(&mut self, key: Key<T>, new_value: T) -> Option<T> {
-        match self.cache {
-            CacheCompositionStatus::Idle(ref mut cache) => cache.update(key, new_value),
-            CacheCompositionStatus::Recomposing(ref mut writer) => writer.update(key, new_value),
-        }
-    }
 }
 
 thread_local! {
@@ -756,104 +649,105 @@ thread_local! {
     // A less hack-ish solution would be to rewrite composable function calls, but we need
     // more than a proc macro to be able to do that (must resolve function paths and rewrite call sites)
     // The cache context lives on the main thread.
-    static CACHE_CONTEXT: RefCell<CacheContext> = RefCell::new(CacheContext::new());
+    static CACHE_CONTEXT: RefCell<Option<CacheContext>> = RefCell::new(None);
 }
 
-/// Runs a cached function with the cache.
-#[track_caller]
-pub fn recompose<T>(event_loop_proxy: EventLoopProxy<ExtEvent>, env: &Environment, function: impl Fn() -> T) -> T {
-    let root_location = Location::caller();
-    CACHE_CONTEXT.with(|cx_cell| {
-        let mut result;
+pub struct Cache {
+    inner: Option<CacheInner>,
+}
 
-        loop {
-            {
-                let mut cx = cx_cell.borrow_mut();
-                // sleight-of-hand
-                replace_with_or_abort(&mut cx.cache, |status| match status {
-                    CacheCompositionStatus::Idle(mut cache) => {
-                        cache.revision += 1;
-                        CacheCompositionStatus::Recomposing(CacheWriter::new(root_location, cache))
-                    }
-                    other => other,
-                });
-                cx.event_loop_proxy = Some(event_loop_proxy.clone());
-                cx.env = env.clone();
-            }
-
-            // run the function
-            enter(0);
-            result = function();
-            exit();
-
-            let should_rerun = {
-                let mut should_rerun = false;
-                let mut cx = cx_cell.borrow_mut();
-                replace_with_or_abort(&mut cx.cache, |status| match status {
-                    CacheCompositionStatus::Recomposing(writer) => {
-                        // finish writing to the cache
-                        let (cache, rerun) = writer.finish();
-                        should_rerun = rerun;
-                        CacheCompositionStatus::Idle(cache)
-                    }
-                    other => other,
-                });
-                should_rerun
-            };
-
-            if should_rerun {
-                // internal state within the cache is not consistent, run again
-                continue;
-            }
-
-            break;
+impl Cache {
+    pub fn new(waker: Waker) -> Cache {
+        Cache {
+            inner: Some(CacheInner::new(waker)),
         }
+    }
 
-        result
-    })
+    /// Runs a cached function with the cache.
+    pub fn recompose<T>(&mut self, env: &Environment, function: impl Fn() -> T) -> T {
+        let root_location = Location::caller();
+
+        CACHE_CONTEXT.with(|cx_cell| {
+            let mut result;
+            let mut inner = self.inner.take().unwrap();
+
+            loop {
+                inner.revision += 1;
+
+                {
+                    let mut cx = cx_cell.borrow_mut();
+                    cx.replace(CacheContext {
+                        writer: CacheWriter::new(root_location, inner),
+                        env: env.clone(),
+                    });
+                }
+
+                // run the function
+                enter(0);
+                result = function();
+                exit();
+
+                let mut cx = cx_cell.borrow_mut();
+                let (cache, should_rerun) = cx.take().unwrap().writer.finish();
+                inner = cache;
+
+                if should_rerun {
+                    // internal state within the cache is not consistent, run again
+                    continue;
+                }
+
+                break;
+            }
+
+            self.inner = Some(inner);
+            result
+        })
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
-
-fn with_cache_writer<R>(f: impl FnOnce(&mut CacheWriter) -> R) -> R {
+fn with_cache_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
     CACHE_CONTEXT.with(|cx_cell| {
         let mut cx = cx_cell.borrow_mut();
-        match cx.cache {
-            CacheCompositionStatus::Idle(_) => {
-                panic!("this function cannot be called outside of recomposition");
-            }
-            CacheCompositionStatus::Recomposing(ref mut writer) => f(writer),
+        if let Some(ref mut cx) = &mut *cx {
+            f(cx)
+        } else {
+            panic!("this function cannot be called outside of recomposition");
         }
     })
 }
 
-fn with_cache_cx<R>(f: impl FnOnce(&mut CacheContext) -> R) -> R {
+fn parent_state() -> Option<Arc<StateCell>> {
     CACHE_CONTEXT.with(|cx_cell| {
-        let mut cx = cx_cell.borrow_mut();
-        f(&mut *cx)
+        let cx = cx_cell.borrow();
+        if let Some(ref cx) = &*cx {
+            cx.writer.state_stack.last().cloned()
+        } else {
+            None
+        }
     })
 }
 
 /// Returns the current call identifier.
 pub fn current_call_id() -> CallId {
-    with_cache_writer(|cx| cx.id_stack.current())
+    with_cache_cx(|cx| cx.writer.id_stack.current())
 }
 
 /// Returns the current revision.
 pub fn revision() -> usize {
-    with_cache_writer(|cx| cx.cache.revision)
+    with_cache_cx(|cx| cx.writer.cache.revision)
 }
 
 /// Must be called inside `Cache::run`.
 #[track_caller]
 fn enter(index: usize) {
     let location = Location::caller();
-    with_cache_writer(move |cx| cx.enter_scope(location, index));
+    with_cache_cx(move |cx| cx.writer.enter_scope(location, index));
 }
 
 /// Must be called inside `Cache::run`.
 fn exit() {
-    with_cache_writer(move |cx| cx.exit_scope());
+    with_cache_cx(move |cx| cx.writer.exit_scope());
 }
 
 /// Must be called inside `Cache::run`.
@@ -885,10 +779,10 @@ pub fn with_environment<R>(env: Environment, f: impl FnOnce() -> R) -> R {
 #[track_caller]
 pub fn changed<T: Data>(value: T) -> bool {
     let location = Location::caller();
-    with_cache_writer(move |cx| {
-        cx.enter_scope(location, 0);
-        let changed = cx.compare_and_update(value);
-        cx.exit_scope();
+    with_cache_cx(move |cx| {
+        cx.writer.enter_scope(location, 0);
+        let changed = cx.writer.compare_and_update(value);
+        cx.writer.exit_scope();
         changed
     })
 }
@@ -896,22 +790,19 @@ pub fn changed<T: Data>(value: T) -> bool {
 #[track_caller]
 fn state_inner<T: 'static, Init: FnOnce() -> T>(init: Init) -> CacheEntryInsertResult<T> {
     let location = Location::caller();
-    with_cache_writer(move |cx| {
-        cx.enter_scope(location, 0);
-        let r = cx.get_or_insert_entry(init);
-        cx.exit_scope();
+    with_cache_cx(move |cx| {
+        cx.writer.enter_scope(location, 0);
+        let r = cx.writer.get_or_insert_entry(init);
+        cx.writer.exit_scope();
         r
     })
 }
 
 /// TODO document
 #[track_caller]
-pub fn state<T: 'static, Init: FnOnce() -> T>(init: Init) -> Key<T> {
+pub fn state<T: 'static, Init: FnOnce() -> T>(init: Init) -> State<T> {
     state_inner(init).key
 }
-
-//#[track_caller]
-//pub fn
 
 /// TODO document
 #[track_caller]
@@ -951,19 +842,11 @@ where
 
     if inserted || restart {
         with_cache_cx(|cx| {
-            let el = cx.event_loop_proxy.clone().unwrap();
-
+            let mut result_key_2 = result_key.clone();
             // spawn task that will set the value
             let handle = tokio::spawn(async move {
                 let result = future.await;
-                // TODO I'd really like to just do `key.set(...)` regardless of whether we're in or out the cache,
-                // instead of having to do weird things like this
-                // FIXME it's coming up
-                el.send_event(ExtEvent::Recompose {
-                    cache_fn: Box::new(move || {
-                        result_key.set(Poll::Ready(result));
-                    }),
-                });
+                result_key_2.set(Poll::Ready(result));
             });
 
             task = Some(AsyncTaskEntry { handle, revision })
@@ -977,35 +860,31 @@ where
 #[track_caller]
 pub fn group<R>(f: impl FnOnce() -> R) -> R {
     let location = Location::caller();
-    with_cache_writer(|cx| {
-        cx.enter_scope(location, 0);
-        cx.start_group()
+    with_cache_cx(|cx| {
+        cx.writer.enter_scope(location, 0);
+        cx.writer.start_group()
     });
     let r = f();
-    with_cache_writer(|cx| {
-        cx.end_group();
-        cx.exit_scope();
+    with_cache_cx(|cx| {
+        cx.writer.end_group();
+        cx.writer.exit_scope();
     });
     r
 }
 
 pub fn skip_to_end_of_group() {
-    with_cache_writer(|cx| {
-        cx.skip_until_end_of_group();
+    with_cache_cx(|cx| {
+        cx.writer.skip_until_end_of_group();
     })
-}
-
-pub fn event_loop_proxy() -> EventLoopProxy<ExtEvent> {
-    with_cache_cx(|cx| cx.event_loop_proxy.clone().unwrap())
 }
 
 /// Memoizes the result of a function at this call site.
 #[track_caller]
 pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T) -> T {
     group(move || {
-        let (result_key, result_dirty) = with_cache_writer(move |cx| {
-            let args_changed = cx.compare_and_update(args);
-            let CacheEntryInsertResult { key, dirty, .. } = cx.get_or_insert_entry(|| None);
+        let (result_key, result_dirty) = with_cache_cx(move |cx| {
+            let args_changed = cx.writer.compare_and_update(args);
+            let CacheEntryInsertResult { key, dirty, .. } = cx.writer.get_or_insert_entry(|| None);
             /*if args_changed {
                 trace!("memoize: recomputing because arguments have changed {:#?}", call_node);
             }
@@ -1016,14 +895,14 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
         });
 
         if result_dirty {
-            with_cache_writer(|cx| {
-                cx.start_state(result_key);
+            with_cache_cx(|cx| {
+                cx.writer.start_state(&result_key);
             });
             let result = f();
-            with_cache_writer(|cx| {
-                cx.end_state();
-                cx.replace(result_key, Some(result), true);
+            with_cache_cx(|cx| {
+                cx.writer.end_state();
             });
+            result_key.replace(Some(result));
         } else {
             skip_to_end_of_group();
         }

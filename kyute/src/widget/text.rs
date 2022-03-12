@@ -6,12 +6,14 @@ use kyute_text::{
     FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
     RasterizationOptions,
 };
+use lazy_static::lazy_static;
 use skia_safe as sk;
 use std::{
     cell::{Ref, RefCell},
     ptr,
     sync::Arc,
 };
+use threadbound::ThreadBound;
 
 /// Displays formatted text.
 #[derive(Clone)]
@@ -131,6 +133,11 @@ half4 main(vec4 src, vec4 dst) {
 }
 "#;
 
+lazy_static! {
+    pub static ref APPLY_MASK_EFFECT: ThreadBound<sk::RuntimeEffect> =
+        ThreadBound::new(sk::RuntimeEffect::make_for_blender(LCD_MASK_BLENDER_SKSL, None).unwrap());
+}
+
 impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
     fn draw_glyph_run(&mut self, glyph_run: &GlyphRun, drawing_effects: &GlyphRunDrawingEffects) {
         let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.transform);
@@ -140,7 +147,7 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
             let mask_image = GlyphMaskImage::new(bounds, mask);
             let color = drawing_effects.color;
 
-            let apply_mask_effect = sk::RuntimeEffect::make_for_blender(LCD_MASK_BLENDER_SKSL, None).unwrap();
+            let apply_mask_effect = APPLY_MASK_EFFECT.get_ref().unwrap();
 
             let mask_blender = {
                 // set color uniform

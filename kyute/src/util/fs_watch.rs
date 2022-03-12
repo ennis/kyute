@@ -1,5 +1,5 @@
 //! File system watcher
-use crate::{application::ExtEvent, cache::event_loop_proxy, composable, environment, memoize, state, EnvKey};
+use crate::{application::ExtEvent, composable, environment, memoize, state, EnvKey};
 use notify::{RecommendedWatcher, Watcher};
 use std::{
     collections::HashMap,
@@ -129,16 +129,12 @@ impl FileSystemWatcher {
 #[composable]
 pub fn watch_path(path: impl AsRef<Path>) -> bool {
     let changed = state(|| false);
-    let event_loop_proxy = event_loop_proxy();
+    let changed_2 = changed.clone();
 
     memoize(path.as_ref().to_owned(), || {
         FileSystemWatcher::instance()
             .watch(path, false, move |_event| {
-                event_loop_proxy
-                    .send_event(ExtEvent::Recompose {
-                        cache_fn: Box::new(move || changed.set(true)),
-                    })
-                    .unwrap();
+                changed_2.set(true);
             })
             .ok()
     });

@@ -26,7 +26,9 @@ tokio = { version = "1.16.1", features = ["rt", "sync", "time", "rt-multi-thread
 notify = "5.0.0-pre.13"
 skia-safe = { version = "0.47.0", features = ["vulkan", "textlayout"] }
 svgtypes = "0.8.0"  # SVG path parser and path segment definitions
-replace_with = "0.1.7"
+threadbound = "0.1.2"
+lazy_static = "1.4.0"
+parking_lot = "0.12.0"
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.2.19", features = ["fmt"] }

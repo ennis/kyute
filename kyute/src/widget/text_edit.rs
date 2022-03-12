@@ -75,12 +75,6 @@ impl TextEdit {
         selection.start = selection.start.min(formatted_text.plain_text.len());
         selection.end = selection.end.min(formatted_text.plain_text.len());
 
-        trace!(
-            "TextEdit::with_selection: {:?}, {:?}",
-            formatted_text.plain_text,
-            selection
-        );
-
         let inner = Container::new(Text::new(formatted_text.clone()))
             .box_style(theme::TEXT_EDIT)
             .content_padding(SideOffsets::new_all_same(2.0));
@@ -143,7 +137,7 @@ impl TextEdit {
                     .unwrap_or(self.selection.end),
                 Movement::LeftWord | Movement::RightWord => {
                     // TODO word navigation (unicode word segmentation)
-                    tracing::warn!("word navigation is unimplemented");
+                    warn!("word navigation is unimplemented");
                     self.selection.end
                 }
             };

@@ -1,5 +1,5 @@
 use crate::{widget::prelude::*, Dip, Length, Transform};
-use std::sync::Arc;
+use std::{cell::Cell, sync::Arc};
 
 pub enum PositioningMode {
     /// Position relative to center.
@@ -143,5 +143,59 @@ impl Widget for Canvas {
         for item in self.items.iter() {
             item.widget.paint(ctx, bounds, transform, env)
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct Viewport<Contents> {
+    contents: WidgetPod<Contents>,
+    transform: Transform,
+}
+
+impl<Contents: Widget + 'static> Viewport<Contents> {
+    #[composable]
+    pub fn new(contents: Contents) -> Viewport<Contents> {
+        Viewport {
+            transform: Transform::identity(),
+            contents: WidgetPod::new(contents),
+        }
+    }
+
+    pub fn transform(mut self, transform: Transform) -> Self {
+        self.set_transform(transform);
+        self
+    }
+
+    pub fn set_transform(&mut self, transform: Transform) {
+        self.transform = transform;
+    }
+
+    pub fn contents(&self) -> &Contents {
+        self.contents.widget()
+    }
+}
+
+impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
+    fn widget_id(&self) -> Option<WidgetId> {
+        self.contents.widget().widget_id()
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.contents.event(ctx, event, env)
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        // unconstrained
+        self.contents.layout(ctx, BoxConstraints::new(.., ..), env);
+        self.contents.set_transform(self.transform);
+
+        // always take the maximum available space
+        let width = constraints.finite_max_width().unwrap_or(0.0);
+        let height = constraints.finite_max_height().unwrap_or(0.0);
+        Measurements::new(Rect::new(Point::origin(), Size::new(width, height)))
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+        self.contents.paint(ctx, bounds, transform, env)
     }
 }

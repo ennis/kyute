@@ -6,7 +6,7 @@ use std::{convert::TryInto, fmt::Display};
 #[derive(Clone)]
 pub struct Popup {
     id: WidgetId,
-    shown: cache::Key<bool>,
+    shown: cache::State<bool>,
     window: Option<Window>,
 }
 

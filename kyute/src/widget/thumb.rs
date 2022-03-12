@@ -10,7 +10,7 @@ pub struct Thumb<Content> {
     id: WidgetId,
     content: Content,
     pointer_buttons: PointerButtons,
-    pointer_down: Signal<Point>,
+    pointer_down: Signal<(Point, Transform)>,
     pointer_move: Signal<Point>,
     pointer_up: Signal<Point>,
     scrolled: Signal<Offset>,
@@ -35,11 +35,11 @@ impl<Content: Widget + 'static> Thumb<Content> {
         self
     }
 
-    pub fn pointer_down(&self) -> Option<Point> {
+    pub fn pointer_down(&self) -> Option<(Point, Transform)> {
         self.pointer_down.value()
     }
 
-    pub fn on_pointer_down(self, f: impl FnOnce(Point)) -> Self {
+    pub fn on_pointer_down(self, f: impl FnOnce((Point, Transform))) -> Self {
         self.pointer_down.map(f);
         self
     }
@@ -95,18 +95,18 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
                 Event::Pointer(p) => match p.kind {
                     PointerEventKind::PointerDown => {
                         if self.pointer_buttons.test(p.button.unwrap()) {
-                            self.pointer_down.signal(p.position);
+                            self.pointer_down.signal((p.window_position, *ctx.window_transform()));
                             ctx.capture_pointer();
                             ctx.set_handled();
                         }
                     }
                     PointerEventKind::PointerMove => {
-                        self.pointer_move.signal(p.position);
+                        self.pointer_move.signal(p.window_position);
                         ctx.set_handled();
                     }
                     PointerEventKind::PointerUp => {
                         if self.pointer_buttons.test(p.button.unwrap()) {
-                            self.pointer_up.set(p.position);
+                            self.pointer_up.signal(p.window_position);
                             ctx.set_handled();
                         }
                     }
@@ -138,7 +138,7 @@ impl<Content: Widget + 'static> DragController<Content> {
     #[composable]
     pub fn new(content: Content) -> DragController<Content> {
         #[state]
-        let mut anchor = None;
+        let mut anchor: Option<(Point, Transform)> = None;
 
         let mut delta = None;
         let mut started = false;
@@ -152,8 +152,8 @@ impl<Content: Widget + 'static> DragController<Content> {
         }
 
         if let Some(p) = thumb.pointer_moved() {
-            if let Some(anchor) = anchor {
-                delta = Some(p - anchor);
+            if let Some((anchor_point, anchor_transform)) = anchor {
+                delta = Some(anchor_transform.transform_vector(p - anchor_point));
             }
         }
 

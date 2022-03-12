@@ -1,10 +1,4 @@
-#![feature(coerce_unsized)]
-#![feature(unsize)]
-#![feature(arc_new_cyclic)]
-#![feature(const_str_from_utf8)]
-#![feature(const_fn_floating_point_arithmetic)]
-#![feature(const_mut_refs)]
-#![feature(let_else)]
+//#![feature(const_mut_refs)]
 
 extern crate self as kyute;
 
@@ -36,7 +30,7 @@ pub use kyute_macros::composable;
 pub use crate::{
     asset::{Asset, AssetId, AssetLoader, AssetUri},
     bloom::Bloom,
-    cache::{changed, environment, memoize, once, run_async, state, with_environment, Key, Signal},
+    cache::{changed, environment, memoize, once, run_async, state, with_environment, Signal, State},
     core::{
         EventCtx, GpuFrameCtx, LayoutCtx, PaintCtx, Widget, WidgetExt, WidgetFilter, WidgetId, WidgetPod,
         SHOW_DEBUG_OVERLAY,

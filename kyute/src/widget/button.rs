@@ -13,7 +13,7 @@ pub struct Button {
     inner: Container<Label>,
     clicked: Signal<()>,
     // FIXME: I just want for the flag value to be retained across recomps; design something simpler
-    active: (bool, cache::Key<bool>),
+    active: (bool, cache::State<bool>),
 }
 
 impl Button {

@@ -57,28 +57,24 @@ fn align_in_constrained_box() -> impl Widget + Clone {
 }
 
 #[composable]
-fn ui_root() -> Arc<WidgetPod> {
-    Arc::new(WidgetPod::new(Window::new(
+fn ui_root() -> Window {
+    Window::new(
         WindowBuilder::new().with_title("Layouts"),
-        Flex::vertical().with(align_in_constrained_box()),
+        Flex::new(Orientation::Vertical).with(align_in_constrained_box()),
         None,
-    )))
+    )
 }
 
 fn main() {
-    let _app = Application::new();
-
-    let mut env = Environment::new();
-    theme::setup_default_style(&mut env);
-    env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
-
     tracing_subscriber::fmt()
         .compact()
         .with_target(false)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    application::run(ui_root, env);
-
+    let _app = Application::new();
+    let mut env = Environment::new();
+    env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
+    application::run_with_env(ui_root, env);
     Application::shutdown();
 }

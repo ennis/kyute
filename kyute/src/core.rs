@@ -2,7 +2,7 @@ use crate::{
     application::{AppCtx, ExtEvent},
     bloom::Bloom,
     cache,
-    cache::Key,
+    cache::State,
     call_id::CallId,
     drawing::ToSkia,
     event::{InputState, PointerEvent, PointerEventKind},
@@ -273,6 +273,20 @@ impl<'a> EventCtx<'a> {
     }
 
     /// Creates a new `EventCtx` to propagate events in a subwindow.
+    pub fn with_local_transform<R>(
+        &mut self,
+        transform: Transform,
+        event: &mut Event,
+        f: impl FnOnce(&mut EventCtx, &mut Event) -> R,
+    ) -> R {
+        let prev_window_transform = self.window_transform;
+        self.window_transform = transform.then(&self.window_transform);
+        let result = event.with_local_coordinates(transform, |event| f(self, event));
+        self.window_transform = prev_window_transform;
+        result
+    }
+
+    /// Creates a new `EventCtx` to propagate events in a subwindow.
     pub(crate) fn new_subwindow<'b>(
         parent: &'b mut EventCtx,
         scale_factor: f64,
@@ -315,6 +329,10 @@ impl<'a> EventCtx<'a> {
         self.id
     }
 
+    pub fn window_transform(&self) -> &Transform {
+        &self.window_transform
+    }
+
     pub fn register_window(&mut self, window_id: WindowId) {
         if let Some(id) = self.id {
             self.app_ctx.register_window_widget(window_id, id);
@@ -332,10 +350,6 @@ impl<'a> EventCtx<'a> {
     /// Requests a redraw of the current node and its children.
     pub fn request_redraw(&mut self) {
         self.redraw = true;
-    }
-
-    pub fn request_recomposition(&mut self) {
-        todo!()
     }
 
     /// Requests a relayout of the current widget.
@@ -661,6 +675,7 @@ struct LayoutResult {
     measurements: Measurements,
 }
 
+#[derive(Clone)]
 struct WidgetPodState {
     /// Unique ID of the widget, if it has one.
     id: Option<WidgetId>,
@@ -703,6 +718,8 @@ impl WidgetPodState {
 /// A container for a widget that gives it an identity (a `WidgetId`), derived from its position in
 /// the call tree.
 /// TODO fix the docs.
+/// TODO I'm not sure that we should allow it to be Clone-able
+#[derive(Clone)]
 pub struct WidgetPod<T: ?Sized = dyn Widget> {
     state: WidgetPodState,
     widget: T,

@@ -66,8 +66,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         // the hit-test, that's not a problem.
         let bounds = self.measurements.get().bounds;
 
-        // FIXME: accumulated transform may not be right in ctx here
-        event.with_local_coordinates(self.offset.get().to_transform(), |event| match event {
+        ctx.with_local_transform(self.offset.get().to_transform(), event, |ctx, event| match event {
             Event::Pointer(p) => match ctx.hit_test(p, bounds) {
                 HitTestResult::Passed => {
                     if !self.pointer_over.get() {
@@ -128,6 +127,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
 }
 
 /// A wrapper widget that makes the result of its layout available to the composition step.
+#[derive(Clone)]
 pub struct LayoutInspector<Content> {
     content: Content,
     size: Size,
@@ -163,6 +163,16 @@ impl<Content: Widget + 'static> LayoutInspector<Content> {
     pub fn on_size_changed(self, f: impl FnOnce(Size)) -> Self {
         self.size_changed.map(f);
         self
+    }
+
+    /// Returns a reference to the inner widget.
+    pub fn contents(&self) -> &Content {
+        &self.content
+    }
+
+    /// Returns a mutable reference to the inner widget.
+    pub fn contents_mut(&mut self) -> &mut Content {
+        &mut self.content
     }
 }
 

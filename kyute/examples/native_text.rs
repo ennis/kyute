@@ -4,12 +4,10 @@ use kyute::{
     style::BoxStyle,
     text::FormattedText,
     theme,
-    widget::{Container, Flex, Grid, GridLength, Image, Label, Null, TitledPane},
+    widget::{grid::GridTrackDefinition, Container, Flex, Grid, GridLength, Image, Label, Null, Text, TitledPane},
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Point, Size, UnitExt, Widget,
     WidgetExt, WidgetPod, Window,
 };
-
-use kyute::widget::Text;
 use std::sync::Arc;
 
 #[composable(cached)]
@@ -27,7 +25,7 @@ fn native_text_test() -> impl Widget + Clone {
     let pane_1 = TitledPane::collapsible("Initially collapsed", true, Label::new("Hi!".to_string()));
     let pane_2 = TitledPane::collapsible("Initially expanded", false, text_widget);
 
-    let mut v = Grid::column(400.dip());
+    let mut v = Grid::column(GridTrackDefinition::new(400.dip()));
     v.add_row(pane_1);
     v.add_row(pane_2);
 
@@ -35,26 +33,18 @@ fn native_text_test() -> impl Widget + Clone {
 }
 
 #[composable]
-fn ui_root() -> Arc<WidgetPod> {
-    Arc::new(WidgetPod::new(Window::new(
-        WindowBuilder::new().with_title("Native text"),
-        native_text_test(),
-        None,
-    )))
+fn ui_root() -> impl Widget {
+    Window::new(WindowBuilder::new().with_title("Native text"), native_text_test(), None)
 }
 
 fn main() {
-    let _app = Application::new();
-
-    let mut env = Environment::new();
-    theme::setup_default_style(&mut env);
-
     tracing_subscriber::fmt()
         .compact()
         .with_target(false)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    application::run(ui_root, env);
+    let _app = Application::new();
+    application::run(ui_root);
     Application::shutdown();
 }
