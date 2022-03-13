@@ -176,13 +176,10 @@ impl Widget for Slider {
             end: Point::new(inner_bounds.max_x() - hkw, y),
         });
 
-        Measurements {
-            bounds: size.into(),
-            baseline: None,
-        }
+        Measurements::from(size)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, transform: Transform, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
         /*let background_gradient = LinearGradient::new()
         .angle(90.0.degrees())
         .stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
@@ -213,10 +210,10 @@ impl Widget for Slider {
 
         // track
         let style = env.get(theme::SLIDER_TRACK).unwrap_or_default();
-        ctx.draw_styled_box(track_bounds, &style, transform, env);
+        ctx.draw_styled_box(track_bounds, &style, env);
 
         Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
             .fill(theme::keys::CONTROL_BORDER_COLOR)
-            .draw(ctx, knob_bounds, transform, env);
+            .draw(ctx, knob_bounds, env);
     }
 }

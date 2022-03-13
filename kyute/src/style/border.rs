@@ -124,14 +124,7 @@ impl Border {
     }
 
     /// Draws the described border in the given paint context, around the specified bounds.
-    pub fn draw(
-        &self,
-        ctx: &mut PaintCtx,
-        bounds: Rect,
-        radii: [sk::Vector; 4],
-        transform: Transform,
-        env: &Environment,
-    ) {
+    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, radii: [sk::Vector; 4], env: &Environment) {
         let offset = Offset::new(
             self.offset_x.to_dips(ctx.scale_factor, bounds.size.width),
             self.offset_y.to_dips(ctx.scale_factor, bounds.size.height),
@@ -179,8 +172,6 @@ impl Border {
             BorderPosition::Center => bounds,
         };
 
-        ctx.save_and_set_transform(transform);
-
         if !uniform_border {
             // draw lines, ignore radii
             // TODO multiple border colors
@@ -221,7 +212,5 @@ impl Border {
                 ctx.canvas.draw_rrect(rrect, &paint);
             }
         }
-
-        ctx.restore();
     }
 }

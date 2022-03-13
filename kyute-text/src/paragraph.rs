@@ -33,7 +33,8 @@ use windows::{
                 DWRITE_GLYPH_RUN, DWRITE_GLYPH_RUN_DESCRIPTION, DWRITE_HIT_TEST_METRICS, DWRITE_LINE_METRICS,
                 DWRITE_MATRIX, DWRITE_MEASURING_MODE, DWRITE_MEASURING_MODE_NATURAL,
                 DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL, DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL_SYMMETRIC,
-                DWRITE_STRIKETHROUGH, DWRITE_TEXTURE_TYPE, DWRITE_TEXT_METRICS, DWRITE_TEXT_RANGE, DWRITE_UNDERLINE,
+                DWRITE_RENDERING_MODE_NATURAL, DWRITE_STRIKETHROUGH, DWRITE_TEXTURE_TYPE, DWRITE_TEXT_METRICS,
+                DWRITE_TEXT_RANGE, DWRITE_UNDERLINE,
             },
         },
     },
@@ -531,7 +532,7 @@ impl<'a> GlyphRun<'a> {
                     &transform,
                     // TODO should probably be controlled by the client;
                     // - NATURAL for small fonts, SYMMETRIC for bigger things
-                    DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL,
+                    DWRITE_RENDERING_MODE_NATURAL,
                     self.measuring_mode,
                     self.baseline_origin_x,
                     self.baseline_origin_y,

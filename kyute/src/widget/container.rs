@@ -289,16 +289,25 @@ impl<Content: Widget> Widget for Container<Content> {
 
         self.content.set_offset(content_offset);
 
+        let bounds = Rect {
+            origin: Point::origin(),
+            size,
+        };
+
+        let clip_bounds = self
+            .box_style
+            .resolve(env)
+            .unwrap()
+            .clip_bounds(bounds, ctx.scale_factor, env);
+
         Measurements {
-            bounds: Rect {
-                origin: Point::origin(),
-                size,
-            },
+            bounds,
+            clip_bounds,
             baseline: content_size.baseline.map(|b| b + content_offset.y),
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
         let state = ctx.visual_state();
 
         // check if there's a corresponding alternate style
@@ -306,7 +315,7 @@ impl<Content: Widget> Widget for Container<Content> {
         for (state_filter, alt_style) in self.alternate_box_styles.iter() {
             if state.contains(*state_filter) {
                 let alt_style = alt_style.resolve(env).unwrap();
-                ctx.draw_styled_box(bounds, &alt_style, transform, env);
+                ctx.draw_styled_box(ctx.bounds, &alt_style, env);
                 used_alt_style = true;
                 break;
             }
@@ -315,10 +324,10 @@ impl<Content: Widget> Widget for Container<Content> {
         // fallback to main style
         if !used_alt_style {
             let style = self.box_style.resolve(env).unwrap();
-            ctx.draw_styled_box(bounds, &style, transform, env);
+            ctx.draw_styled_box(ctx.bounds, &style, env);
         }
 
-        self.content.paint(ctx, bounds, transform, env);
+        self.content.paint(ctx, env);
 
         /*let overlay_box_style = self
             .overlay_box_style

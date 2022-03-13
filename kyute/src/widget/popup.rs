@@ -52,5 +52,5 @@ impl Widget for Popup {
         Measurements::default()
     }
 
-    fn paint(&self, _ctx: &mut PaintCtx, _bounds: Rect, _transform: Transform, _env: &Environment) {}
+    fn paint(&self, _ctx: &mut PaintCtx, _env: &Environment) {}
 }

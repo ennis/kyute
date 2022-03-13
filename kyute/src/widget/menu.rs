@@ -273,7 +273,7 @@ impl<Content: Widget + 'static> Widget for ContextMenu<Content> {
         self.content.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.content.paint(ctx, bounds, transform, env)
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.content.paint(ctx, env)
     }
 }

@@ -212,25 +212,25 @@ impl Path {
         self
     }
 
-    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         // fill
         if let Some(ref brush) = self.fill {
             let mut paint = brush.to_sk_paint(env, bounds);
             paint.set_style(sk::PaintStyle::Fill);
-            ctx.save_and_set_transform(transform);
+            ctx.canvas.save();
             ctx.canvas.translate(bounds.top_left().to_skia());
             ctx.canvas.draw_path(&self.path, &paint);
-            ctx.restore();
+            ctx.canvas.restore();
         }
 
         // stroke
         if let Some(ref stroke) = self.stroke {
             let mut paint = stroke.to_sk_paint(env, bounds);
             paint.set_style(sk::PaintStyle::Stroke);
-            ctx.save_and_set_transform(transform);
+            ctx.canvas.save();
             ctx.canvas.translate(bounds.top_left().to_skia());
             ctx.canvas.draw_path(&self.path, &paint);
-            ctx.restore();
+            ctx.canvas.restore();
         }
     }
 }
@@ -262,11 +262,11 @@ impl CornerLengths for f32 {
 
 //--------------------------------------------------------------------------------------------------
 pub trait PaintCtxExt {
-    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, transform: Transform, env: &Environment);
+    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, env: &Environment);
 }
 
 impl<'a> PaintCtxExt for PaintCtx<'a> {
-    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, transform: Transform, env: &Environment) {
-        box_style.draw(self, bounds, transform, env)
+    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, env: &Environment) {
+        box_style.draw(self, bounds, env)
     }
 }

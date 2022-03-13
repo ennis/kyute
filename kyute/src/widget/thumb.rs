@@ -5,6 +5,7 @@ use crate::{
     Signal,
 };
 
+/// Widget that provides feedback on the pointer position and status when the pointer is over it.
 #[derive(Clone)]
 pub struct Thumb<Content> {
     id: WidgetId,
@@ -17,6 +18,7 @@ pub struct Thumb<Content> {
 }
 
 impl<Content: Widget + 'static> Thumb<Content> {
+    /// Creates a new Thumb widget over the specified content.
     #[composable]
     pub fn new(content: Content) -> Thumb<Content> {
         Thumb {
@@ -122,8 +124,8 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
         self.content.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.content.paint(ctx, bounds, transform, env);
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.content.paint(ctx, env);
     }
 }
 
@@ -223,7 +225,7 @@ impl<Content: Widget + 'static> Widget for DragController<Content> {
         self.content.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.content.paint(ctx, bounds, transform, env)
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.content.paint(ctx, env)
     }
 }

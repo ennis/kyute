@@ -2,7 +2,7 @@ use crate::{
     composable, theme,
     widget::{
         grid::GridTrackDefinition, separator::separator, Clickable, Container, Grid, GridLength, Image, Label,
-        SingleChildWidget,
+        WidgetWrapper,
     },
     Alignment, Orientation, SideOffsets, Widget, WidgetExt,
 };
@@ -82,8 +82,14 @@ impl TitledPane {
     }
 }
 
-impl SingleChildWidget for TitledPane {
-    fn child(&self) -> &dyn Widget {
+impl WidgetWrapper for TitledPane {
+    type Inner = Grid;
+
+    fn inner(&self) -> &Grid {
         &self.inner
+    }
+
+    fn inner_mut(&mut self) -> &mut Grid {
+        &mut self.inner
     }
 }

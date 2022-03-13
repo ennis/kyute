@@ -43,7 +43,7 @@ impl<'a> LayoutCtx<'a> {
 pub struct PaintCtx<'a> {
     pub canvas: &'a mut skia_safe::Canvas,
     pub id: Option<WidgetId>,
-    //pub window_transform: Transform,
+    pub window_transform: Transform,
     pub focus: Option<WidgetId>,
     pub pointer_grab: Option<WidgetId>,
     pub hot: Option<WidgetId>,
@@ -51,7 +51,7 @@ pub struct PaintCtx<'a> {
     pub scale_factor: f64,
     pub invalid: &'a Region,
     pub hover: bool,
-    //pub measurements: Measurements,
+    pub bounds: Rect,
     pub active: bool,
 }
 
@@ -70,10 +70,38 @@ impl<'a> PaintCtx<'a> {
         }
     }
 
-    /// Sets the transformation matrix on the skia canvas.
+    pub fn with_transform_and_clip<R>(
+        &mut self,
+        transform: Transform,
+        bounds: Rect,
+        clip: Rect,
+        f: impl FnOnce(&mut PaintCtx) -> R,
+    ) -> R {
+        let prev_window_transform = self.window_transform;
+        let prev_bounds = self.bounds;
+
+        self.window_transform = transform.then(&self.window_transform);
+        self.bounds = bounds;
+
+        self.canvas.save();
+        self.canvas.reset_matrix();
+        let scale_factor = self.scale_factor as sk::scalar;
+        self.canvas.scale((scale_factor, scale_factor));
+        self.canvas.concat(&self.window_transform.to_skia());
+        self.canvas.clip_rect(clip.to_skia(), None, None);
+
+        let result = f(self);
+
+        self.canvas.restore();
+
+        self.bounds = prev_bounds;
+        self.window_transform = prev_window_transform;
+        result
+    }
+
+    /*/// Sets the transformation matrix on the skia canvas.
     pub fn save_and_set_transform(&mut self, transform: Transform) {
         self.canvas.save();
-        let scale_factor = self.scale_factor as sk::scalar;
         self.canvas.reset_matrix();
         self.canvas.scale((scale_factor, scale_factor));
         self.canvas.concat(&transform.to_skia());
@@ -81,7 +109,7 @@ impl<'a> PaintCtx<'a> {
 
     pub fn restore(&mut self) {
         self.canvas.restore();
-    }
+    }*/
 
     /// Returns whether the widget is active.
     pub fn is_active(&self) -> bool {
@@ -524,8 +552,7 @@ pub trait Widget {
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements;
 
     /// Paints the widget in the given context.
-    // TODO: remove "measurements" from ctx, pass transform and local bounds to
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment);
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment);
 
     /// Called only for native window widgets.
     fn window_paint(&self, _ctx: &mut WindowPaintCtx) {}
@@ -552,8 +579,8 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::layout(&**self, ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        Widget::paint(&**self, ctx, bounds, transform, env)
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        Widget::paint(&**self, ctx, env)
     }
 
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {
@@ -847,7 +874,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         measurements
     }
 
-    pub fn paint(&self, parent_ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+    pub fn paint(&self, parent_ctx: &mut PaintCtx, env: &Environment) {
         let local_transform = self.state.transform.get();
         let measurements = if let Some(layout_result) = self.state.layout_result.get() {
             layout_result.measurements
@@ -873,33 +900,20 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         ).entered();*/
         // trace!(?ctx.scale_factor, ?ctx.inputs.pointers, ?window_bounds, "paint");
 
-        let child_transform = local_transform.then(&transform);
-        let inv_child_transform = child_transform.inverse().unwrap();
+        parent_ctx.with_transform_and_clip(
+            local_transform,
+            measurements.bounds,
+            measurements.clip_bounds,
+            |child_ctx| {
+                let inv_window_transform = child_ctx.window_transform.inverse().unwrap();
+                child_ctx.hover = child_ctx.inputs.pointers.iter().any(|(_, state)| {
+                    let local_pointer_pos = inv_window_transform.transform_point(state.position);
+                    measurements.bounds.contains(local_pointer_pos)
+                });
 
-        let hover = parent_ctx.inputs.pointers.iter().any(|(_, state)| {
-            let local_pointer_pos = inv_child_transform.transform_point(state.position);
-            measurements.bounds.contains(local_pointer_pos)
-        });
-
-        parent_ctx.canvas.save();
-        //parent_ctx.canvas.concat(&local_transform.to_skia());
-
-        {
-            let mut child_ctx = PaintCtx {
-                canvas: parent_ctx.canvas,
-                focus: parent_ctx.focus,
-                pointer_grab: parent_ctx.pointer_grab,
-                hot: parent_ctx.hot,
-                inputs: parent_ctx.inputs,
-                scale_factor: parent_ctx.scale_factor,
-                id: self.id(),
-                hover,
-                invalid: &parent_ctx.invalid,
-                active: self.state.active.get(),
-            };
-            self.widget
-                .paint(&mut child_ctx, measurements.bounds, child_transform, env);
-        }
+                self.widget.paint(child_ctx, env);
+            },
+        );
 
         /*if !env.get(SHOW_DEBUG_OVERLAY).unwrap_or_default() {
             use crate::styling::*;
@@ -949,7 +963,6 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             }
         }*/
 
-        parent_ctx.canvas.restore();
         self.state.paint_invalid.set(false);
     }
 

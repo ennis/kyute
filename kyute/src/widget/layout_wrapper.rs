@@ -111,10 +111,12 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         m
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        let child_transform = self.offset.get().to_transform().then(&transform);
-        self.inner
-            .paint(ctx, self.measurements.get().bounds, child_transform, env);
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        let m = self.measurements.get();
+        let offset = self.offset.get();
+        ctx.with_transform_and_clip(offset.to_transform(), m.bounds, m.clip_bounds, |ctx| {
+            self.inner.paint(ctx, env);
+        });
     }
 
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {
@@ -193,7 +195,7 @@ impl<Content: Widget + 'static> Widget for LayoutInspector<Content> {
         measurements
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.content.paint(ctx, bounds, transform, env)
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.content.paint(ctx, env)
     }
 }

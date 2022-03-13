@@ -114,14 +114,13 @@ impl Widget for Button {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let m = self.inner.layout(ctx, constraints, env);
-        m
+        self.inner.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
         if self.active.0 {
             ctx.active = true;
         }
-        self.inner.paint(ctx, bounds, transform, env)
+        self.inner.paint(ctx, env)
     }
 }

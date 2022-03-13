@@ -220,9 +220,9 @@ impl Widget for TextEdit {
         self.inner.layout(ctx, constraints.tighten(), env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
         // paint the text
-        self.inner.paint(ctx, bounds, transform, env);
+        self.inner.paint(ctx, env);
 
         // paint the selection over it
         let offset = self.inner.widget().content_offset();
@@ -231,12 +231,7 @@ impl Widget for TextEdit {
             paragraph.hit_test_text_range(self.selection.min()..self.selection.max(), Point::origin());
         for mut tb in selection_boxes {
             tb.bounds.origin += offset;
-            ctx.draw_styled_box(
-                tb.bounds,
-                &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)),
-                transform,
-                env,
-            );
+            ctx.draw_styled_box(tb.bounds, &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)), env);
         }
 
         // paint the caret
@@ -250,12 +245,10 @@ impl Widget for TextEdit {
             let caret_color = env.get(theme::CARET_COLOR).unwrap();
             let paint = sk::Paint::new(caret_color.to_skia(), None);
             let pos = caret_hit_test.point + offset;
-            ctx.save_and_set_transform(transform);
             ctx.canvas.draw_rect(
                 Rect::new(pos.floor(), Size::new(1.0, caret_hit_test.metrics.bounds.size.height)).to_skia(),
                 &paint,
             );
-            ctx.restore();
         }
     }
 
@@ -524,7 +517,7 @@ impl<T> Widget for TextInput<T> {
         self.text_edit.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.text_edit.paint(ctx, bounds, transform, env)
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.text_edit.paint(ctx, env)
     }
 }

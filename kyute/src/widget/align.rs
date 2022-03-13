@@ -74,16 +74,20 @@ impl<W: Widget> Widget for Align<W> {
 
         self.inner.set_offset(Offset::new(x, y));
 
+        let bounds = Rect {
+            origin: child.bounds.origin,
+            size,
+        };
+
         Measurements {
-            bounds: Rect {
-                origin: child.bounds.origin,
-                size,
-            },
+            bounds,
+            // FIXME
+            clip_bounds: bounds,
             baseline,
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.inner.paint(ctx, bounds, transform, env)
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.inner.paint(ctx, env)
     }
 }

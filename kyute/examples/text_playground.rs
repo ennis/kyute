@@ -27,11 +27,7 @@ fn text_edit(font_size: f64, grid: &mut Grid) {
         .font_size(font_size)
         .text_alignment(TextAlignment::Center);
 
-    let text_edit = TextEdit::new(formatted_text);
-
-    if let Some(new_text) = text_edit.text_changed() {
-        text = new_text;
-    }
+    let text_edit = TextEdit::new(formatted_text).on_text_changed(|new_text| text = new_text);
 
     let row = grid.row_count();
     grid.add_item(row, 0, label);
@@ -101,6 +97,6 @@ fn main() {
         .init();
 
     let _app = Application::new();
-    application::run(ui_root, Environment::new());
+    application::run(ui_root);
     Application::shutdown();
 }

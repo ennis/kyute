@@ -778,14 +778,13 @@ impl Widget for Grid {
         measurements
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
         use skia_safe as sk;
-        let height = bounds.size.height;
-        let width = bounds.size.width;
+        let height = ctx.bounds.size.height;
+        let width = ctx.bounds.size.width;
 
         // draw debug grid lines
         if env.get(SHOW_GRID_LAYOUT_LINES).unwrap_or_default() {
-            ctx.save_and_set_transform(transform);
             let cached_layout = (&*self.cached_layout).borrow();
             if let Some(cached_layout) = cached_layout.as_ref() {
                 let row_layout = &cached_layout.row_layout;
@@ -808,13 +807,11 @@ impl Widget for Grid {
                     );
                 }
             }
-
-            ctx.restore();
         }
 
         // draw grid items
         for item in self.items.iter() {
-            item.widget.paint(ctx, bounds, transform, env);
+            item.widget.paint(ctx, env);
         }
     }
 }

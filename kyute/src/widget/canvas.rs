@@ -139,9 +139,9 @@ impl Widget for Canvas {
         Measurements::new(Rect::new(Point::origin(), Size::new(width, height)))
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
         for item in self.items.iter() {
-            item.widget.paint(ctx, bounds, transform, env)
+            item.widget.paint(ctx, env)
         }
     }
 }
@@ -192,10 +192,10 @@ impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
         // always take the maximum available space
         let width = constraints.finite_max_width().unwrap_or(0.0);
         let height = constraints.finite_max_height().unwrap_or(0.0);
-        Measurements::new(Rect::new(Point::origin(), Size::new(width, height)))
+        Measurements::from(Size::new(width, height))
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.contents.paint(ctx, bounds, transform, env)
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.contents.paint(ctx, env)
     }
 }

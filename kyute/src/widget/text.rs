@@ -116,7 +116,6 @@ impl GlyphMaskImage {
 
 struct Renderer<'a, 'b> {
     ctx: &'a mut PaintCtx<'b>,
-    transform: Transform,
     masks: Vec<(RectI, GlyphMaskData)>,
 }
 
@@ -140,7 +139,7 @@ lazy_static! {
 
 impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
     fn draw_glyph_run(&mut self, glyph_run: &GlyphRun, drawing_effects: &GlyphRunDrawingEffects) {
-        let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.transform);
+        let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.ctx.window_transform);
         let raster_opts = RasterizationOptions::Subpixel;
         let bounds = analysis.raster_bounds(raster_opts);
         if let Some(mask) = analysis.rasterize(raster_opts) {
@@ -194,7 +193,7 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
     }
 
     fn transform(&self) -> Transform {
-        self.transform
+        self.ctx.window_transform
     }
 
     fn scale_factor(&self) -> f64 {
@@ -227,13 +226,10 @@ impl Widget for Text {
         // stash the laid out paragraph for rendering
         self.paragraph.replace(Some(paragraph));
 
-        Measurements {
-            bounds: size.into(),
-            baseline: Some(baseline),
-        }
+        Measurements::from(size).with_baseline(baseline)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, _bounds: Rect, transform: Transform, _env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx, _env: &Environment) {
         //----------------------------------
         let mut paragraph = self.paragraph.borrow_mut();
         let paragraph = paragraph.as_mut().expect("paint called before layout");
@@ -242,11 +238,7 @@ impl Widget for Text {
         let runs = self.run_masks.borrow_mut();
 
         if runs.is_none() {
-            let mut renderer = Renderer {
-                ctx,
-                transform,
-                masks: vec![],
-            };
+            let mut renderer = Renderer { ctx, masks: vec![] };
             // FIXME: should be a point in absolute coords?
             paragraph.draw(
                 Point::origin(),

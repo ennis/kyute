@@ -71,25 +71,44 @@ impl Orientation {
 }
 
 /// Widgets that have only one child and wish to defer to this child's `Widget` implementation.
-pub trait SingleChildWidget {
-    fn child(&self) -> &dyn Widget;
-}
+pub trait WidgetWrapper {
+    type Inner: Widget + ?Sized;
 
-impl<T: SingleChildWidget> Widget for T {
+    fn inner(&self) -> &Self::Inner;
+    fn inner_mut(&mut self) -> &mut Self::Inner;
+
     fn widget_id(&self) -> Option<WidgetId> {
-        self.child().widget_id()
+        self.inner().widget_id()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.child().event(ctx, event, env)
+        self.inner().event(ctx, event, env)
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.child().layout(ctx, constraints, env)
+        self.inner().layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.child().paint(ctx, bounds, transform, env);
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.inner().paint(ctx, env);
+    }
+}
+
+impl<T: WidgetWrapper> Widget for T {
+    fn widget_id(&self) -> Option<WidgetId> {
+        WidgetWrapper::widget_id(self)
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        WidgetWrapper::event(self, ctx, event, env)
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        WidgetWrapper::layout(self, ctx, constraints, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        WidgetWrapper::paint(self, ctx, env)
     }
 }
 

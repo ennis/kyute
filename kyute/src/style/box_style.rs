@@ -118,6 +118,25 @@ impl BoxStyle {
         }
     }
 
+    pub fn clip_bounds(&self, bounds: Rect, scale_factor: f64, env: &Environment) -> Rect {
+        // FIXME: this is not very efficient since we end up resolving stuff twice: in layout, and again in paint
+        // BoxStyle should already be resolved. Add "procedural entries" to env.
+        match self.box_shadow {
+            Some(BoxShadow::Drop(p)) => {
+                let ox = p.offset_x.resolve(env).unwrap().to_dips(scale_factor, bounds.width());
+                let oy = p.offset_y.resolve(env).unwrap().to_dips(scale_factor, bounds.height());
+                let radius = p
+                    .blur_radius
+                    .resolve(env)
+                    .unwrap()
+                    .to_dips(scale_factor, bounds.width());
+                let inflate = radius + ox.max(oy);
+                bounds.inflate(inflate, inflate)
+            }
+            _ => bounds,
+        }
+    }
+
     /// Specifies the radius of the 4 corners of the box.
     pub fn radius(mut self, radius: impl Into<ValueRef<Length>>) -> Self {
         let radius = radius.into();
@@ -161,7 +180,7 @@ impl BoxStyle {
     }
 
     /// Draws a box with this style in the given bounds.
-    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
+    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
         let radii = [
             self.border_radii[0].resolve_or_default(env),
             self.border_radii[1].resolve_or_default(env),
@@ -207,9 +226,7 @@ impl BoxStyle {
                     shadow_bounds.origin += Offset::new(offset_x, offset_y);
                     shadow_bounds = shadow_bounds.inflate(spread, spread);
                     let rrect = sk::RRect::new_rect_radii(shadow_bounds.to_skia(), &radii);
-                    ctx.save_and_set_transform(transform);
                     ctx.canvas.draw_rrect(rrect, &blur);
-                    ctx.restore();
                 }
                 BoxShadow::Inset(_) => {
                     // TODO
@@ -222,14 +239,12 @@ impl BoxStyle {
             let mut paint = brush.to_sk_paint(env, bounds);
             paint.set_style(sk::PaintStyle::Fill);
             let rrect = sk::RRect::new_rect_radii(bounds.to_skia(), &radii);
-            ctx.save_and_set_transform(transform);
             ctx.canvas.draw_rrect(rrect, &paint);
-            ctx.restore();
         }
 
         // borders
         for border in self.borders.iter() {
-            border.draw(ctx, bounds, radii, transform, env);
+            border.draw(ctx, bounds, radii, env);
         }
     }
 }

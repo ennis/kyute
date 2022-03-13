@@ -52,7 +52,7 @@ impl<Inner: Widget> Widget for Baseline<Inner> {
         )
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.inner.paint(ctx, bounds, transform, env);
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.inner.paint(ctx, env);
     }
 }

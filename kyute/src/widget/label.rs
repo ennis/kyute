@@ -79,8 +79,8 @@ impl Widget for Label {
         }*/
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.text.paint(ctx, bounds, transform, env);
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.text.paint(ctx, env);
 
         /*let text_blob = self.text_blob.borrow();
         if let Some(ref text_blob) = &*text_blob {

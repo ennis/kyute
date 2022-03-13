@@ -229,6 +229,8 @@ pub struct Measurements {
     /// Bounds of this node relative to the parent node origin.
     /// TODO replace with size+anchor point? might be more intuitive
     pub bounds: Rect,
+    /// Clip bounds. Usually the same as the layout bounds.
+    pub clip_bounds: Rect,
     /// Baseline offset relative to *this* node.
     /// The baseline relative to the parent node is `offset.y + baseline`.
     pub baseline: Option<f64>,
@@ -248,6 +250,7 @@ impl Default for Measurements {
     fn default() -> Self {
         Measurements {
             bounds: Rect::zero(),
+            clip_bounds: Rect::zero(),
             baseline: None,
         }
     }
@@ -256,12 +259,21 @@ impl Default for Measurements {
 impl Measurements {
     /// Creates a new [`Layout`] with the given size, with no offset relative to its parent.
     pub fn new(bounds: Rect) -> Measurements {
-        Measurements { bounds, baseline: None }
+        Measurements {
+            bounds,
+            clip_bounds: bounds,
+            baseline: None,
+        }
     }
 
     /// Replaces the baseline of this node.
-    pub fn with_baseline(mut self, baseline: Option<f64>) -> Measurements {
-        self.baseline = baseline;
+    pub fn with_baseline(mut self, baseline: f64) -> Measurements {
+        self.baseline = Some(baseline);
+        self
+    }
+
+    pub fn with_clip_bounds(mut self, clip_bounds: Rect) -> Measurements {
+        self.clip_bounds = clip_bounds;
         self
     }
 
@@ -287,6 +299,12 @@ impl Measurements {
 impl From<Rect> for Measurements {
     fn from(bounds: Rect) -> Self {
         Measurements::new(bounds)
+    }
+}
+
+impl From<Size> for Measurements {
+    fn from(s: Size) -> Self {
+        Measurements::new(s.into())
     }
 }
 

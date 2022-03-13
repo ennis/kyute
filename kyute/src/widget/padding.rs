@@ -46,7 +46,7 @@ impl<W: Widget> Widget for Padding<W> {
         m
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, transform: Transform, env: &Environment) {
-        self.inner.paint(ctx, bounds, transform, env)
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.inner.paint(ctx, env)
     }
 }
