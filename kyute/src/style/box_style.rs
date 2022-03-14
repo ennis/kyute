@@ -1,8 +1,9 @@
 use crate::{
     drawing::ToSkia,
-    style::{border::Border, ColorRef, Length, Paint},
+    style::{border::Border, paint::IntoPaint, ColorRef, Length, Paint},
     Environment, Offset, PaintCtx, Rect, Transform, ValueRef,
 };
+use kyute_common::Color;
 use skia_safe as sk;
 
 //--------------------------------------------------------------------------------------------------
@@ -30,11 +31,11 @@ fn radii_to_skia(ctx: &mut PaintCtx, bounds: Rect, radii: &[Length; 4]) -> [sk::
 /// Parameters of a box shadow effect.
 #[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
 pub struct BoxShadowParams {
-    offset_x: ValueRef<Length>,
-    offset_y: ValueRef<Length>,
-    blur_radius: ValueRef<Length>,
-    spread_radius: ValueRef<Length>,
-    color: ColorRef,
+    offset_x: Length,
+    offset_y: Length,
+    blur_radius: Length,
+    spread_radius: Length,
+    color: Color,
 }
 
 /// Box shadow effect.
@@ -49,10 +50,10 @@ pub enum BoxShadow {
 
 impl BoxShadow {
     pub fn drop(
-        offset_x: impl Into<ValueRef<Length>>,
-        offset_y: impl Into<ValueRef<Length>>,
-        blur_radius: impl Into<ValueRef<Length>>,
-        spread_radius: impl Into<ValueRef<Length>>,
+        offset_x: impl Into<Length>,
+        offset_y: impl Into<Length>,
+        blur_radius: impl Into<Length>,
+        spread_radius: impl Into<Length>,
         color: impl Into<ColorRef>,
     ) -> BoxShadow {
         let params = BoxShadowParams {
@@ -60,16 +61,16 @@ impl BoxShadow {
             offset_y: offset_y.into(),
             blur_radius: blur_radius.into(),
             spread_radius: spread_radius.into(),
-            color: color.into(),
+            color: color.into().resolve().unwrap(),
         };
         BoxShadow::Drop(params)
     }
 
     pub fn inset(
-        offset_x: impl Into<ValueRef<Length>>,
-        offset_y: impl Into<ValueRef<Length>>,
-        blur_radius: impl Into<ValueRef<Length>>,
-        spread_radius: impl Into<ValueRef<Length>>,
+        offset_x: impl Into<Length>,
+        offset_y: impl Into<Length>,
+        blur_radius: impl Into<Length>,
+        spread_radius: impl Into<Length>,
         color: impl Into<ColorRef>,
     ) -> BoxShadow {
         let params = BoxShadowParams {
@@ -77,16 +78,16 @@ impl BoxShadow {
             offset_y: offset_y.into(),
             blur_radius: blur_radius.into(),
             spread_radius: spread_radius.into(),
-            color: color.into(),
+            color: color.into().resolve().unwrap(),
         };
         BoxShadow::Inset(params)
     }
 }
 
 /// Style of a container.
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct BoxStyle {
-    border_radii: [ValueRef<Length>; 4],
+    border_radii: [Length; 4],
     fill: Option<Paint>,
     borders: Vec<Border>,
     box_shadow: Option<BoxShadow>,
@@ -101,7 +102,7 @@ impl Default for BoxStyle {
 impl BoxStyle {
     pub fn new() -> BoxStyle {
         BoxStyle {
-            border_radii: [ValueRef::Inline(Length::Dip(0.0)); 4],
+            border_radii: [Length::Dip(0.0); 4],
             fill: None,
             borders: vec![],
             box_shadow: None,
@@ -109,7 +110,7 @@ impl BoxStyle {
     }
 
     /// Creates a new box with rounded corners.
-    pub fn new_rounded(border_radii: [ValueRef<Length>; 4]) -> BoxStyle {
+    pub fn new_rounded(border_radii: [Length; 4]) -> BoxStyle {
         BoxStyle {
             border_radii,
             fill: None,
@@ -118,18 +119,14 @@ impl BoxStyle {
         }
     }
 
-    pub fn clip_bounds(&self, bounds: Rect, scale_factor: f64, env: &Environment) -> Rect {
+    pub fn clip_bounds(&self, bounds: Rect, scale_factor: f64) -> Rect {
         // FIXME: this is not very efficient since we end up resolving stuff twice: in layout, and again in paint
         // BoxStyle should already be resolved. Add "procedural entries" to env.
         match self.box_shadow {
             Some(BoxShadow::Drop(p)) => {
-                let ox = p.offset_x.resolve(env).unwrap().to_dips(scale_factor, bounds.width());
-                let oy = p.offset_y.resolve(env).unwrap().to_dips(scale_factor, bounds.height());
-                let radius = p
-                    .blur_radius
-                    .resolve(env)
-                    .unwrap()
-                    .to_dips(scale_factor, bounds.width());
+                let ox = p.offset_x.to_dips(scale_factor, bounds.width());
+                let oy = p.offset_y.to_dips(scale_factor, bounds.height());
+                let radius = p.blur_radius.to_dips(scale_factor, bounds.width());
                 let inflate = radius + ox.max(oy);
                 bounds.inflate(inflate, inflate)
             }
@@ -138,7 +135,7 @@ impl BoxStyle {
     }
 
     /// Specifies the radius of the 4 corners of the box.
-    pub fn radius(mut self, radius: impl Into<ValueRef<Length>>) -> Self {
+    pub fn radius(mut self, radius: impl Into<Length>) -> Self {
         let radius = radius.into();
         self.border_radii = [radius; 4];
         self
@@ -147,10 +144,10 @@ impl BoxStyle {
     /// Specifies the radius of each corner of the box separately.
     pub fn radii(
         mut self,
-        top_left: impl Into<ValueRef<Length>>,
-        top_right: impl Into<ValueRef<Length>>,
-        bottom_right: impl Into<ValueRef<Length>>,
-        bottom_left: impl Into<ValueRef<Length>>,
+        top_left: impl Into<Length>,
+        top_right: impl Into<Length>,
+        bottom_right: impl Into<Length>,
+        bottom_left: impl Into<Length>,
     ) -> Self {
         self.border_radii = [
             top_left.into(),
@@ -162,8 +159,8 @@ impl BoxStyle {
     }
 
     /// Sets the brush used to fill the rectangle.
-    pub fn fill(mut self, paint: impl Into<Paint>) -> Self {
-        self.fill = Some(paint.into());
+    pub fn fill(mut self, paint: impl IntoPaint) -> Self {
+        self.fill = Some(paint.into_paint());
         self
     }
 
@@ -180,14 +177,8 @@ impl BoxStyle {
     }
 
     /// Draws a box with this style in the given bounds.
-    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        let radii = [
-            self.border_radii[0].resolve_or_default(env),
-            self.border_radii[1].resolve_or_default(env),
-            self.border_radii[2].resolve_or_default(env),
-            self.border_radii[3].resolve_or_default(env),
-        ];
-        let radii = radii_to_skia(ctx, bounds, &radii);
+    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect) {
+        let radii = radii_to_skia(ctx, bounds, &self.border_radii);
 
         // box shadow
         if let Some(ref box_shadow) = self.box_shadow {
@@ -196,23 +187,11 @@ impl BoxStyle {
             };
 
             let mut blur = sk::Paint::default();
-            let offset_x = params
-                .offset_x
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor, bounds.size.width);
-            let offset_y = params
-                .offset_y
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor, bounds.size.height);
-            let blur_radius = params
-                .blur_radius
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor, bounds.size.width);
-            let spread = params
-                .spread_radius
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor, bounds.size.width);
-            let color = params.color.resolve_or_default(env);
+            let offset_x = params.offset_x.to_dips(ctx.scale_factor, bounds.size.width);
+            let offset_y = params.offset_y.to_dips(ctx.scale_factor, bounds.size.height);
+            let blur_radius = params.blur_radius.to_dips(ctx.scale_factor, bounds.size.width);
+            let spread = params.spread_radius.to_dips(ctx.scale_factor, bounds.size.width);
+            let color = params.color;
             blur.set_mask_filter(sk::MaskFilter::blur(
                 sk::BlurStyle::Normal,
                 blur_radius as sk::scalar,
@@ -236,7 +215,7 @@ impl BoxStyle {
 
         // fill
         if let Some(ref brush) = self.fill {
-            let mut paint = brush.to_sk_paint(env, bounds);
+            let mut paint = brush.to_sk_paint(bounds);
             paint.set_style(sk::PaintStyle::Fill);
             let rrect = sk::RRect::new_rect_radii(bounds.to_skia(), &radii);
             ctx.canvas.draw_rrect(rrect, &paint);
@@ -244,7 +223,7 @@ impl BoxStyle {
 
         // borders
         for border in self.borders.iter() {
-            border.draw(ctx, bounds, radii, env);
+            border.draw(ctx, bounds, radii);
         }
     }
 }

@@ -10,14 +10,14 @@ use kyute_common::RoundToPixel;
 #[derive(Clone)]
 pub struct Container<Content> {
     alignment: Option<Alignment>,
-    min_width: Option<ValueRef<Length>>,
-    min_height: Option<ValueRef<Length>>,
-    max_width: Option<ValueRef<Length>>,
-    max_height: Option<ValueRef<Length>>,
-    baseline: Option<ValueRef<Length>>,
-    content_padding: ValueRef<SideOffsets>,
-    box_style: ValueRef<BoxStyle>,
-    alternate_box_styles: Vec<(VisualState, ValueRef<BoxStyle>)>,
+    min_width: Option<Length>,
+    min_height: Option<Length>,
+    max_width: Option<Length>,
+    max_height: Option<Length>,
+    baseline: Option<Length>,
+    content_padding: SideOffsets,
+    box_style: BoxStyle,
+    alternate_box_styles: Vec<(VisualState, BoxStyle)>,
     content: LayoutWrapper<Content>,
 }
 
@@ -65,7 +65,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Sets the baseline of the content.
     pub fn set_baseline(&mut self, baseline: impl Into<ValueRef<Length>>) {
-        self.baseline = Some(baseline.into());
+        self.baseline = Some(baseline.into().resolve().unwrap());
     }
 
     /// Constrain the minimum width of the container.
@@ -76,7 +76,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Constrain the minimum width of the container.
     pub fn set_min_width(&mut self, width: impl Into<ValueRef<Length>>) {
-        self.min_width = Some(width.into());
+        self.min_width = Some(width.into().resolve().unwrap());
     }
 
     /// Constrain the minimum height of the container.
@@ -87,7 +87,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Constrain the minimum height of the container.
     pub fn set_min_height(&mut self, height: impl Into<ValueRef<Length>>) {
-        self.min_height = Some(height.into());
+        self.min_height = Some(height.into().resolve().unwrap());
     }
 
     /// Constrain the width of the container.
@@ -98,7 +98,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Constrain the width of the container.
     pub fn set_fixed_width(&mut self, width: impl Into<ValueRef<Length>>) {
-        let w = width.into();
+        let w = width.into().resolve().unwrap();
         self.min_width = Some(w);
         self.max_width = Some(w);
     }
@@ -111,7 +111,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Constrain the width of the container.
     pub fn set_fixed_height(&mut self, height: impl Into<ValueRef<Length>>) {
-        let h = height.into();
+        let h = height.into().resolve().unwrap();
         self.min_height = Some(h);
         self.max_height = Some(h);
     }
@@ -158,7 +158,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Aligns the widget in the available space.
     pub fn set_content_padding(&mut self, padding: impl Into<ValueRef<SideOffsets>>) {
-        self.content_padding = padding.into();
+        self.content_padding = padding.into().resolve().unwrap();
     }
 
     /// Sets the style used to paint the box of the container.
@@ -169,7 +169,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Sets the style used to paint the box of the container.
     pub fn set_box_style(&mut self, box_style: impl Into<ValueRef<BoxStyle>>) {
-        self.box_style = box_style.into();
+        self.box_style = box_style.into().resolve().unwrap();
     }
 
     /// Adds an alternate style, which replaces the main style when the widget is in the specified state.
@@ -180,7 +180,8 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Sets the overlay style, only active when the widget is in the specified state.
     pub fn push_alternate_box_style(&mut self, state: VisualState, box_style: impl Into<ValueRef<BoxStyle>>) {
-        self.alternate_box_styles.push((state, box_style.into()));
+        self.alternate_box_styles
+            .push((state, box_style.into().resolve().unwrap()));
     }
 }
 
@@ -196,11 +197,10 @@ impl<Content: Widget> Widget for Container<Content> {
 
     fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
         // First, measure the child, taking into account the mandatory padding
-        let content_padding = self.content_padding.resolve(env).unwrap();
-        let content_constraints = constraints.deflate(content_padding);
+        let content_constraints = constraints.deflate(self.content_padding);
         let mut content_size = self.content.layout(ctx, content_constraints, env);
-        content_size.bounds = content_size.bounds.outer_rect(content_padding);
-        let mut content_offset = Offset::new(content_padding.left, content_padding.top);
+        content_size.bounds = content_size.bounds.outer_rect(self.content_padding);
+        let mut content_offset = Offset::new(self.content_padding.left, self.content_padding.top);
 
         // Base size for proportional length calculations
         let base_width = constraints.finite_max_width().unwrap_or(0.0);
@@ -209,8 +209,7 @@ impl<Content: Widget> Widget for Container<Content> {
         // adjust content baseline so that `baseline = adjusted_content_baseline + padding.top`.
         if let Some(baseline) = self.baseline {
             // TODO do size-relative baselines make sense?
-            let baseline =
-                (baseline.resolve(env).unwrap().to_dips(ctx.scale_factor, base_height) - content_offset.y).max(0.0);
+            let baseline = (baseline.to_dips(ctx.scale_factor, base_height) - content_offset.y).max(0.0);
             let offset = baseline - content_size.baseline.unwrap_or(content_size.bounds.size.height).round();
             content_offset.y += offset;
             content_size.bounds.size.height += offset;
@@ -237,19 +236,19 @@ impl<Content: Widget> Widget for Container<Content> {
         // apply additional w/h sizing constraints to the container
         //let mut additional_constraints = BoxConstraints::new(..,..);
         if let Some(w) = self.min_width {
-            let w = w.resolve(env).unwrap().to_dips(ctx.scale_factor, base_width);
+            let w = w.to_dips(ctx.scale_factor, base_width);
             constraints.min.width = clamp(w, constraints.min.width, constraints.max.width);
         }
         if let Some(w) = self.max_width {
-            let w = w.resolve(env).unwrap().to_dips(ctx.scale_factor, base_height);
+            let w = w.to_dips(ctx.scale_factor, base_height);
             constraints.max.width = clamp(w, constraints.min.width, constraints.max.width);
         }
         if let Some(h) = self.min_height {
-            let h = h.resolve(env).unwrap().to_dips(ctx.scale_factor, base_width);
+            let h = h.to_dips(ctx.scale_factor, base_width);
             constraints.min.height = clamp(h, constraints.min.height, constraints.max.height);
         }
         if let Some(h) = self.max_height {
-            let h = h.resolve(env).unwrap().to_dips(ctx.scale_factor, base_height);
+            let h = h.to_dips(ctx.scale_factor, base_height);
             constraints.max.height = clamp(h, constraints.min.height, constraints.max.height);
         }
 
@@ -294,11 +293,7 @@ impl<Content: Widget> Widget for Container<Content> {
             size,
         };
 
-        let clip_bounds = self
-            .box_style
-            .resolve(env)
-            .unwrap()
-            .clip_bounds(bounds, ctx.scale_factor, env);
+        let clip_bounds = self.box_style.clip_bounds(bounds, ctx.scale_factor);
 
         Measurements {
             bounds,
@@ -314,8 +309,7 @@ impl<Content: Widget> Widget for Container<Content> {
         let mut used_alt_style = false;
         for (state_filter, alt_style) in self.alternate_box_styles.iter() {
             if state.contains(*state_filter) {
-                let alt_style = alt_style.resolve(env).unwrap();
-                ctx.draw_styled_box(ctx.bounds, &alt_style, env);
+                ctx.draw_styled_box(ctx.bounds, alt_style);
                 used_alt_style = true;
                 break;
             }
@@ -323,8 +317,8 @@ impl<Content: Widget> Widget for Container<Content> {
 
         // fallback to main style
         if !used_alt_style {
-            let style = self.box_style.resolve(env).unwrap();
-            ctx.draw_styled_box(ctx.bounds, &style, env);
+            let style = &self.box_style;
+            ctx.draw_styled_box(ctx.bounds, style);
         }
 
         self.content.paint(ctx, env);

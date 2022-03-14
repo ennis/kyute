@@ -3,7 +3,7 @@ use crate::{
     event::PointerEventKind,
     style::{BoxStyle, VisualState},
     theme,
-    widget::{prelude::*, Container, Label},
+    widget::{prelude::*, Container, Grid, Label},
     Color, SideOffsets, Signal, ValueRef,
 };
 
@@ -122,5 +122,34 @@ impl Widget for Button {
             ctx.active = true;
         }
         self.inner.paint(ctx, env)
+    }
+}
+
+pub struct ButtonBox {
+    grid: Grid,
+}
+
+impl ButtonBox {
+    #[composable]
+    pub fn new<I>(buttons: I)
+    where
+        I: IntoIterator<Item = Button>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let iter = buttons.into_iter();
+        let n = iter.len();
+        for (i, mut b) in iter.enumerate() {
+            match i {
+                0 => {
+                    b.set_box_style(theme::BOX_BUTTON_LEADING);
+                }
+                x if x == n => {
+                    b.set_box_style(theme::BOX_BUTTON_INNER);
+                }
+                _ => {
+                    b.set_box_style(theme::BOX_BUTTON_TRAILING);
+                }
+            }
+        }
     }
 }

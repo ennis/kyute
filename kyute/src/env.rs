@@ -195,17 +195,17 @@ pub enum ValueRef<T> {
 }
 
 impl<T: EnvValue> ValueRef<T> {
-    pub fn resolve(&self, env: &Environment) -> Option<T> {
+    pub fn resolve(&self) -> Option<T> {
         match self {
             ValueRef::Inline(v) => Some(v.clone()),
-            ValueRef::Env(k) => env.get(*k),
+            ValueRef::Env(k) => k.get(),
         }
     }
 }
 
 impl<T: EnvValue + Default> ValueRef<T> {
-    pub fn resolve_or_default(&self, env: &Environment) -> T {
-        self.resolve(env).unwrap_or_default()
+    pub fn resolve_or_default(&self) -> T {
+        self.resolve().unwrap_or_default()
     }
 }
 

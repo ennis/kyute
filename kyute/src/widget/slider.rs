@@ -210,10 +210,10 @@ impl Widget for Slider {
 
         // track
         let style = env.get(theme::SLIDER_TRACK).unwrap_or_default();
-        ctx.draw_styled_box(track_bounds, &style, env);
+        ctx.draw_styled_box(track_bounds, &style);
 
         Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
-            .fill(theme::keys::CONTROL_BORDER_COLOR)
-            .draw(ctx, knob_bounds, env);
+            .fill(env.get(theme::keys::CONTROL_BORDER_COLOR).unwrap())
+            .draw(ctx, knob_bounds);
     }
 }

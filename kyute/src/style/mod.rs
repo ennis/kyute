@@ -12,6 +12,7 @@ use crate::{
 use bitflags::bitflags;
 use skia_safe as sk;
 
+use crate::style::paint::IntoPaint;
 pub use border::{Border, BorderPosition, BorderStyle};
 pub use box_style::{BoxShadow, BoxShadowParams, BoxStyle};
 pub use paint::{GradientStop, LinearGradient, Paint};
@@ -106,78 +107,12 @@ impl ToSkia for BlendMode {
 /// ValueRef to a color.
 pub type ColorRef = ValueRef<Color>;
 
-/// Modifier applied to a color expr (`ColorExpr`).
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum ColorModifier {
-    Darken(f64),
-    Lighten(f64),
+pub fn darken(color: impl Into<ColorRef>, amount: f64) -> Color {
+    color.into().resolve().unwrap().darken(amount)
 }
 
-impl ColorModifier {
-    pub fn apply(self, color: Color) -> Color {
-        match self {
-            ColorModifier::Darken(amount) => color.darken(amount),
-            ColorModifier::Lighten(amount) => color.lighten(amount),
-        }
-    }
-}
-
-/// A reference to a color value with a modifier.
-#[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
-pub struct ColorExpr {
-    color: ColorRef,
-    #[serde(skip)]
-    modifier: Option<ColorModifier>,
-}
-
-impl ColorExpr {
-    pub fn resolve(&self, env: &Environment) -> Option<Color> {
-        let color = self.color.resolve(env)?;
-        Some(self.modifier.map(|m| m.apply(color)).unwrap_or(color))
-    }
-
-    /*pub fn resolve_or_default(&self, env: &Environment) -> Color {
-        let color = self.color.resolve(env).unwrap_or_default();
-        self.modifier.map(|m| m.apply(color)).unwrap_or(color)
-    }*/
-
-    pub fn darken(color: impl Into<ColorRef>, amount: f64) -> ColorExpr {
-        ColorExpr {
-            color: color.into(),
-            modifier: Some(ColorModifier::Darken(amount)),
-        }
-    }
-
-    pub fn lighten(color: impl Into<ColorRef>, amount: f64) -> ColorExpr {
-        ColorExpr {
-            color: color.into(),
-            modifier: Some(ColorModifier::Lighten(amount)),
-        }
-    }
-}
-
-impl From<ColorRef> for ColorExpr {
-    fn from(color: ColorRef) -> Self {
-        ColorExpr { color, modifier: None }
-    }
-}
-
-impl From<Color> for ColorExpr {
-    fn from(color: Color) -> Self {
-        ColorExpr {
-            color: color.into(),
-            modifier: None,
-        }
-    }
-}
-
-impl From<EnvKey<Color>> for ColorExpr {
-    fn from(color: EnvKey<Color>) -> Self {
-        ColorExpr {
-            color: color.into(),
-            modifier: None,
-        }
-    }
+pub fn lighten(color: impl Into<ColorRef>, amount: f64) -> Color {
+    color.into().resolve().unwrap().lighten(amount)
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -201,21 +136,21 @@ impl Path {
     }
 
     /// Sets the brush used to fill the path.
-    pub fn fill(mut self, paint: impl Into<Paint>) -> Self {
-        self.fill = Some(paint.into());
+    pub fn fill(mut self, paint: impl IntoPaint) -> Self {
+        self.fill = Some(paint.into_paint());
         self
     }
 
     /// Sets the brush used to stroke the path.
-    pub fn stroke(mut self, paint: impl Into<Paint>) -> Self {
-        self.fill = Some(paint.into());
+    pub fn stroke(mut self, paint: impl IntoPaint) -> Self {
+        self.fill = Some(paint.into_paint());
         self
     }
 
-    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
+    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect) {
         // fill
         if let Some(ref brush) = self.fill {
-            let mut paint = brush.to_sk_paint(env, bounds);
+            let mut paint = brush.to_sk_paint(bounds);
             paint.set_style(sk::PaintStyle::Fill);
             ctx.canvas.save();
             ctx.canvas.translate(bounds.top_left().to_skia());
@@ -225,7 +160,7 @@ impl Path {
 
         // stroke
         if let Some(ref stroke) = self.stroke {
-            let mut paint = stroke.to_sk_paint(env, bounds);
+            let mut paint = stroke.to_sk_paint(bounds);
             paint.set_style(sk::PaintStyle::Stroke);
             ctx.canvas.save();
             ctx.canvas.translate(bounds.top_left().to_skia());
@@ -262,11 +197,11 @@ impl CornerLengths for f32 {
 
 //--------------------------------------------------------------------------------------------------
 pub trait PaintCtxExt {
-    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, env: &Environment);
+    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle);
 }
 
 impl<'a> PaintCtxExt for PaintCtx<'a> {
-    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle, env: &Environment) {
-        box_style.draw(self, bounds, env)
+    fn draw_styled_box(&mut self, bounds: Rect, box_style: &BoxStyle) {
+        box_style.draw(self, bounds)
     }
 }

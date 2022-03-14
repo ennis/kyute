@@ -1,8 +1,9 @@
 //! Description of paints.
 use crate::{
     asset::ASSET_LOADER,
-    drawing::{ToSkia, IMAGE_CACHE},
-    style::ColorExpr,
+    cache,
+    drawing::{Image, ToSkia, IMAGE_CACHE},
+    style::ColorRef,
     Angle, Color, EnvKey, Environment, Offset, Rect,
 };
 use skia_safe as sk;
@@ -15,8 +16,7 @@ pub struct GradientStop {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pos: Option<f64>,
-    #[serde(flatten)]
-    color: ColorExpr,
+    color: Color,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Deserialize)]
@@ -26,16 +26,19 @@ pub enum RepeatMode {
 }
 
 /// Paint.
-#[derive(Clone, Debug, serde::Deserialize)]
-#[serde(tag = "type")]
+#[derive(Clone, Debug)]
+//#[serde(tag = "type")]
 pub enum Paint {
-    #[serde(rename = "color")]
-    SolidColor { color: ColorExpr },
-    #[serde(rename = "linear-gradient")]
+    //#[serde(rename = "color")]
+    SolidColor {
+        color: Color,
+    },
+    //#[serde(rename = "linear-gradient")]
     LinearGradient(LinearGradient),
-    #[serde(rename = "image")]
+    //#[serde(rename = "image")]
     Image {
-        uri: String,
+        // FIXME: can't deserialize here
+        image: Image,
         repeat_x: RepeatMode,
         repeat_y: RepeatMode,
     },
@@ -43,10 +46,9 @@ pub enum Paint {
 
 impl Paint {
     /// Converts this object to a skia `SkPaint`.
-    pub fn to_sk_paint(&self, env: &Environment, bounds: Rect) -> sk::Paint {
+    pub fn to_sk_paint(&self, bounds: Rect) -> sk::Paint {
         match self {
             Paint::SolidColor { color } => {
-                let color = color.resolve(env).unwrap();
                 let mut paint = sk::Paint::new(color.to_skia(), None);
                 paint.set_anti_alias(true);
                 paint
@@ -103,11 +105,7 @@ impl Paint {
                     }
                 }
 
-                let colors: Vec<_> = linear_gradient
-                    .stops
-                    .iter()
-                    .map(|stop| stop.color.resolve(env).unwrap().to_skia())
-                    .collect();
+                let colors: Vec<_> = linear_gradient.stops.iter().map(|stop| stop.color.to_skia()).collect();
 
                 let shader = sk::Shader::linear_gradient(
                     (a, b),
@@ -125,45 +123,68 @@ impl Paint {
                 paint
             }
             Paint::Image {
-                uri,
+                image,
                 repeat_x,
                 repeat_y,
             } => {
-                let image_cache = env.get(IMAGE_CACHE).unwrap();
-                if let Ok(image) = image_cache.load(uri) {
-                    let tile_x = match *repeat_x {
-                        RepeatMode::Repeat => sk::TileMode::Repeat,
-                        RepeatMode::NoRepeat => sk::TileMode::Decal,
-                    };
-                    let tile_y = match *repeat_y {
-                        RepeatMode::Repeat => sk::TileMode::Repeat,
-                        RepeatMode::NoRepeat => sk::TileMode::Decal,
-                    };
-                    let sampling_options = sk::SamplingOptions::new(sk::FilterMode::Linear, sk::MipmapMode::None);
-                    let image_shader = image
-                        .to_skia()
-                        .to_shader((tile_x, tile_y), sampling_options, None)
-                        .unwrap();
-                    let mut paint = sk::Paint::default();
-                    paint.set_shader(image_shader);
-                    paint
-                } else {
-                    sk::Paint::default()
-                }
+                let tile_x = match *repeat_x {
+                    RepeatMode::Repeat => sk::TileMode::Repeat,
+                    RepeatMode::NoRepeat => sk::TileMode::Decal,
+                };
+                let tile_y = match *repeat_y {
+                    RepeatMode::Repeat => sk::TileMode::Repeat,
+                    RepeatMode::NoRepeat => sk::TileMode::Decal,
+                };
+                let sampling_options = sk::SamplingOptions::new(sk::FilterMode::Linear, sk::MipmapMode::None);
+                let image_shader = image
+                    .to_skia()
+                    .to_shader((tile_x, tile_y), sampling_options, None)
+                    .unwrap();
+                let mut paint = sk::Paint::default();
+                paint.set_shader(image_shader);
+                paint
+            }
+        }
+    }
+
+    pub fn image(uri: &str, repeat_x: RepeatMode, repeat_y: RepeatMode) -> Paint {
+        // TODO: call outside of composition?
+        let image_cache = cache::environment().get(IMAGE_CACHE).unwrap();
+        if let Ok(image) = image_cache.load(uri) {
+            Paint::Image {
+                image,
+                repeat_x,
+                repeat_y,
+            }
+        } else {
+            Paint::SolidColor {
+                color: Default::default(),
             }
         }
     }
 }
 
-impl From<Color> for Paint {
-    fn from(color: Color) -> Self {
-        Paint::SolidColor { color: color.into() }
+pub trait IntoPaint {
+    fn into_paint(self) -> Paint;
+}
+
+impl IntoPaint for Color {
+    fn into_paint(self) -> Paint {
+        Paint::SolidColor { color: self }
     }
 }
 
-impl From<EnvKey<Color>> for Paint {
-    fn from(color: EnvKey<Color>) -> Self {
-        Paint::SolidColor { color: color.into() }
+impl IntoPaint for EnvKey<Color> {
+    fn into_paint(self) -> Paint {
+        Paint::SolidColor {
+            color: self.get().unwrap(),
+        }
+    }
+}
+
+impl IntoPaint for LinearGradient {
+    fn into_paint(self) -> Paint {
+        Paint::LinearGradient(self)
     }
 }
 
@@ -213,9 +234,9 @@ impl LinearGradient {
     }
 
     /// Appends a color stop to this gradient.
-    pub fn stop(mut self, color: impl Into<ColorExpr>, pos: impl Into<Option<f64>>) -> Self {
+    pub fn stop(mut self, color: impl Into<ColorRef>, pos: impl Into<Option<f64>>) -> Self {
         self.stops.push(GradientStop {
-            color: color.into(),
+            color: color.into().resolve().unwrap(),
             pos: pos.into(),
         });
         self

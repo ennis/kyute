@@ -1,7 +1,7 @@
 //! Border description.
 use crate::{
     drawing::ToSkia,
-    style::{BlendMode, Length, Paint},
+    style::{paint::IntoPaint, BlendMode, Length, Paint},
     Color, Environment, Offset, PaintCtx, Rect, RectExt, Transform, ValueRef,
 };
 use approx::ulps_eq;
@@ -28,10 +28,10 @@ pub enum BorderStyle {
 }
 
 /// Describes a border around a box.
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Border {
     /// Left,top,right,bottom border widths.
-    widths: [ValueRef<Length>; 4],
+    widths: [Length; 4],
     /// Position of the border relative to the bounds.
     position: BorderPosition,
     paint: Paint,
@@ -46,8 +46,7 @@ pub struct Border {
 
 impl Border {
     /// Creates a new border description with the specified side widths.
-    fn new(width: ValueRef<Length>, position: BorderPosition) -> Border {
-        let width = width.into();
+    fn new(width: Length, position: BorderPosition) -> Border {
         Border {
             widths: [width; 4],
             position,
@@ -64,17 +63,17 @@ impl Border {
     }
 
     pub fn inside(width: impl Into<ValueRef<Length>>) -> Border {
-        let width = width.into();
+        let width = width.into().resolve().unwrap();
         Border::new(width, BorderPosition::Inside)
     }
 
     pub fn outside(width: impl Into<ValueRef<Length>>) -> Border {
-        let width = width.into();
+        let width = width.into().resolve().unwrap();
         Border::new(width, BorderPosition::Outside)
     }
 
     pub fn center(width: impl Into<ValueRef<Length>>) -> Border {
-        let width = width.into();
+        let width = width.into().resolve().unwrap();
         Border::new(width, BorderPosition::Center)
     }
 
@@ -103,8 +102,8 @@ impl Border {
         self
     }*/
 
-    pub fn paint(mut self, paint: impl Into<Paint>) -> Self {
-        self.paint = paint.into();
+    pub fn paint(mut self, paint: impl IntoPaint) -> Self {
+        self.paint = paint.into_paint();
         self
     }
 
@@ -124,31 +123,23 @@ impl Border {
     }
 
     /// Draws the described border in the given paint context, around the specified bounds.
-    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, radii: [sk::Vector; 4], env: &Environment) {
+    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, radii: [sk::Vector; 4]) {
         let offset = Offset::new(
             self.offset_x.to_dips(ctx.scale_factor, bounds.size.width),
             self.offset_y.to_dips(ctx.scale_factor, bounds.size.height),
         );
         let bounds = bounds.translate(offset);
-        let mut paint = self.paint.to_sk_paint(env, bounds);
+        let mut paint = self.paint.to_sk_paint(bounds);
         paint.set_style(sk::PaintStyle::Stroke);
         paint.set_blend_mode(self.blend_mode.to_skia());
         //paint.set_alpha_f(self.opacity as sk::scalar);
 
         // LTRB
         let widths = [
-            self.widths[0]
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor, bounds.size.width),
-            self.widths[1]
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor, bounds.size.height),
-            self.widths[2]
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor, bounds.size.width),
-            self.widths[3]
-                .resolve_or_default(env)
-                .to_dips(ctx.scale_factor, bounds.size.height),
+            self.widths[0].to_dips(ctx.scale_factor, bounds.size.width),
+            self.widths[1].to_dips(ctx.scale_factor, bounds.size.height),
+            self.widths[2].to_dips(ctx.scale_factor, bounds.size.width),
+            self.widths[3].to_dips(ctx.scale_factor, bounds.size.height),
         ];
         let uniform_border = widths.iter().all(|&w| ulps_eq!(w, widths[0]));
 
