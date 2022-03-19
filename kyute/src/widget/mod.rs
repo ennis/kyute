@@ -24,6 +24,7 @@ mod popup;
 mod scroll_area;
 mod thumb;
 mod titled_pane;
+mod tree;
 
 pub use align::Align;
 pub use baseline::Baseline;
@@ -49,6 +50,7 @@ pub use text::Text;
 pub use text_edit::{Formatter, TextEdit, TextInput, ValidationResult};
 pub use thumb::{DragController, Thumb};
 pub use titled_pane::TitledPane;
+pub use tree::{TreeGrid, TreeNode};
 
 use crate::{
     BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Transform, Widget, WidgetId,

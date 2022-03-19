@@ -220,9 +220,10 @@ impl<'a> From<&'a str> for GridSpan<'a> {
     }
 }
 
-struct GridRowItem<'a> {
-    column: GridSpan<'a>,
-    widget: Arc<WidgetPod>,
+/// Item in a grid row.
+pub struct GridRowItem<'a> {
+    pub column: GridSpan<'a>,
+    pub widget: Arc<WidgetPod>,
 }
 
 /// Represents a row of widgets to be inserted in a grid.
@@ -231,11 +232,12 @@ pub struct GridRow<'a> {
 }
 
 impl<'a> GridRow<'a> {
+    /// Creates an empty `GridRow`.
     pub fn new() -> GridRow<'a> {
         GridRow { items: vec![] }
     }
 
-    #[composable]
+    /// Adds an item to the row.
     pub fn add(&mut self, column: impl Into<GridSpan<'a>>, widget: impl Widget + 'static) {
         self.items.push(GridRowItem {
             column: column.into(),
@@ -420,6 +422,26 @@ impl Grid {
     ) {
         let widget = Arc::new(WidgetPod::new(widget));
         self.push_item_inner(row_span, column_span, widget);
+    }
+
+    #[composable]
+    pub fn add_item_pod<'a>(
+        &mut self,
+        row_span: impl Into<GridSpan<'a>>,
+        column_span: impl Into<GridSpan<'a>>,
+        widget: Arc<WidgetPod>,
+    ) {
+        self.push_item_inner(row_span, column_span, widget);
+    }
+
+    /// Resolves the specified column span to column indices.
+    pub fn resolve_column_span(&self, column_span: GridSpan) -> Range<usize> {
+        column_span.resolve(&self.column_definitions)
+    }
+
+    /// Resolves the specified row span to row indices.
+    pub fn resolve_row_span(&self, row_span: GridSpan) -> Range<usize> {
+        row_span.resolve(&self.row_definitions)
     }
 
     #[composable]

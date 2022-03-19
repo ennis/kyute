@@ -1,12 +1,17 @@
 #![feature(const_fn_floating_point_arithmetic)]
 //! Basic types shared by kyute crates.
 
+mod atom;
 mod color;
 mod data;
 
 use std::ops::Neg;
 
-pub use crate::{color::Color, data::Data};
+pub use crate::{
+    atom::{make_unique_atom, Atom},
+    color::Color,
+    data::Data,
+};
 pub use kyute_common_macros::Data;
 
 /// The DIP (device-independent pixel) unit.

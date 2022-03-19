@@ -5,37 +5,18 @@ use crate::{
     Attribute, Error, FontStyle, FontWeight, TextAffinity, TextAlignment, TextPosition, ToDirectWrite, ToWString,
 };
 use kyute_common::{Color, Data, Point, PointI, Rect, RectI, Size, SizeI, Transform, UnknownUnit};
-use std::{
-    any::Any,
-    cell::RefCell,
-    ffi::c_void,
-    mem,
-    mem::MaybeUninit,
-    ops::Range,
-    ptr,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, ffi::c_void, mem, mem::MaybeUninit, ops::Range, ptr, sync::Arc};
 use windows::{
     core::{implement, IUnknown, IUnknownImpl, Interface, ToImpl, HRESULT, PCWSTR},
     Win32::{
         Foundation::{BOOL, ERROR_INSUFFICIENT_BUFFER, RECT},
-        Graphics::{
-            Direct2D::Common::{
-                ID2D1SimplifiedGeometrySink, D2D1_BEZIER_SEGMENT, D2D1_FIGURE_BEGIN, D2D1_FIGURE_END, D2D1_FILL_MODE,
-                D2D1_PATH_SEGMENT, D2D_POINT_2F,
-            },
-            DirectWrite::{
-                DWRITE_TEXTURE_ALIASED_1x1, DWRITE_TEXTURE_CLEARTYPE_3x1, IDWriteFactory7, IDWriteFontFace,
-                IDWriteGlyphRunAnalysis, IDWriteInlineObject, IDWriteNumberSubstitution,
-                IDWriteNumberSubstitution_Impl, IDWritePixelSnapping_Impl, IDWriteTextFormat3, IDWriteTextLayout,
-                IDWriteTextLayout3, IDWriteTextRenderer, IDWriteTextRenderer_Impl, DWRITE_FONT_STRETCH,
-                DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_GLYPH_OFFSET,
-                DWRITE_GLYPH_RUN, DWRITE_GLYPH_RUN_DESCRIPTION, DWRITE_HIT_TEST_METRICS, DWRITE_LINE_METRICS,
-                DWRITE_MATRIX, DWRITE_MEASURING_MODE, DWRITE_MEASURING_MODE_NATURAL,
-                DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL, DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL_SYMMETRIC,
-                DWRITE_RENDERING_MODE_NATURAL, DWRITE_STRIKETHROUGH, DWRITE_TEXTURE_TYPE, DWRITE_TEXT_METRICS,
-                DWRITE_TEXT_RANGE, DWRITE_UNDERLINE,
-            },
+        Graphics::DirectWrite::{
+            DWRITE_TEXTURE_ALIASED_1x1, DWRITE_TEXTURE_CLEARTYPE_3x1, IDWriteFontFace, IDWriteGlyphRunAnalysis,
+            IDWriteInlineObject, IDWriteNumberSubstitution, IDWriteNumberSubstitution_Impl, IDWritePixelSnapping_Impl,
+            IDWriteTextLayout, IDWriteTextRenderer, IDWriteTextRenderer_Impl, DWRITE_FONT_STRETCH_NORMAL,
+            DWRITE_GLYPH_RUN, DWRITE_GLYPH_RUN_DESCRIPTION, DWRITE_HIT_TEST_METRICS, DWRITE_LINE_METRICS,
+            DWRITE_MATRIX, DWRITE_MEASURING_MODE, DWRITE_RENDERING_MODE_NATURAL, DWRITE_STRIKETHROUGH,
+            DWRITE_TEXTURE_TYPE, DWRITE_TEXT_METRICS, DWRITE_TEXT_RANGE, DWRITE_UNDERLINE,
         },
     },
 };

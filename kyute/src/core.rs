@@ -742,8 +742,7 @@ impl WidgetPodState {
     }
 }
 
-/// A container for a widget that gives it an identity (a `WidgetId`), derived from its position in
-/// the call tree.
+/// A container for a widget.
 /// TODO fix the docs.
 /// TODO I'm not sure that we should allow it to be Clone-able
 #[derive(Clone)]
@@ -824,150 +823,19 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         parent_ctx.redraw |= ctx.redraw;
         parent_ctx.handled = ctx.handled;
     }
+}
 
-    /// Called to measure this widget and layout the children of this widget.
-    pub fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        // FIXME also check the environment when checking the validity of a cached layout.
-        // if the layout that we calculated is valid, return it
-        // FIXME grids call layout twice, which makes this kind of caching useless
-
-        if let Some(layout) = self.state.layout_result.get() {
-            if layout.constraints == constraints {
-                //trace!("{}: using cached layout", self.widget.debug_name());
-                return layout.measurements;
-            } else {
-                /*trace!(
-                    "{}: layout constraints mismatch: old:{:?} vs new:{:?}",
-                    self.widget.debug_name(),
-                    layout.constraints,
-                    constraints
-                );*/
-            }
-        }
-
-        //trace!("recalculating layout");
-        let measurements = self.widget.layout(ctx, constraints, env);
-        /*tracing::trace!(
-            "layout[{}-{:?}]: {:?}",
-            self.widget.debug_name(),
-            self.state.id,
-            measurements
-        );*/
-
-        if !measurements.size().width.is_finite() || !measurements.size().height.is_finite() {
-            warn!(
-                "layout[{:?}({})] returned non-finite measurements: {:?}",
-                self.state.id,
-                self.widget.debug_name(),
-                measurements
-            );
-        }
-
-        let result = LayoutResult {
-            constraints,
-            measurements,
-        };
-
-        self.state.layout_result.set(Some(result));
-        self.state.paint_invalid.set(true);
-        ctx.changed = true;
-        measurements
+impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
+    fn widget_id(&self) -> Option<WidgetId> {
+        self.id()
     }
 
-    pub fn paint(&self, parent_ctx: &mut PaintCtx, env: &Environment) {
-        let local_transform = self.state.transform.get();
-        let measurements = if let Some(layout_result) = self.state.layout_result.get() {
-            layout_result.measurements
-        } else {
-            warn!(id=?self.id(), "`paint` called with invalid layout");
-            return;
-        };
-
-        // TODO partial repaint
-        // bounds of this widget in window space
-        //let local_bounds = Rect::new(Point::origin(), size);
-        /*if !parent_ctx.invalid.intersects(window_bounds) {
-            //tracing::trace!("not repainting valid region");
-            // not invalidated, no need to redraw
-            return;
-        }*/
-
-        /*let _span = trace_span!(
-            "paint",
-            ?self.id,
-            ?offset,
-            ?measurements,
-        ).entered();*/
-        // trace!(?ctx.scale_factor, ?ctx.inputs.pointers, ?window_bounds, "paint");
-
-        parent_ctx.with_transform_and_clip(
-            local_transform,
-            measurements.bounds,
-            measurements.clip_bounds,
-            |child_ctx| {
-                let inv_window_transform = child_ctx.window_transform.inverse().unwrap();
-                child_ctx.hover = child_ctx.inputs.pointers.iter().any(|(_, state)| {
-                    let local_pointer_pos = inv_window_transform.transform_point(state.position);
-                    measurements.bounds.contains(local_pointer_pos)
-                });
-
-                self.widget.paint(child_ctx, env);
-            },
-        );
-
-        /*if !env.get(SHOW_DEBUG_OVERLAY).unwrap_or_default() {
-            use crate::styling::*;
-            use kyute_shell::{drawing::ToSkia, skia as sk};
-
-            if self.state.created_since_debug_paint.take() {
-                ctx.draw_styled_box(
-                    measurements.bounds,
-                    rectangle().with(
-                        border(1.0)
-                            .inside(0.0)
-                            .brush(Color::new(0.9, 0.8, 0.0, 1.0)),
-                    ),
-                    env,
-                );
-                ctx.canvas.draw_line(
-                    Point::new(0.5, 0.5).to_skia(),
-                    Point::new(6.5, 0.5).to_skia(),
-                    &sk::Paint::new(Color::new(1.0, 0.0, 0.0, 1.0).to_skia(), None),
-                );
-                ctx.canvas.draw_line(
-                    Point::new(0.5, 0.5).to_skia(),
-                    Point::new(0.5, 6.5).to_skia(),
-                    &sk::Paint::new(Color::new(0.0, 1.0, 0.0, 1.0).to_skia(), None),
-                );
-
-                {
-                    let w = measurements.bounds.width() as sk::scalar;
-                    let mut font: sk::Font = sk::Font::new(sk::Typeface::default(), Some(10.0));
-                    font.set_edging(sk::font::Edging::Alias);
-                    let text = format!("{}", self.state.created);
-                    let text_blob =
-                        sk::TextBlob::from_str(&text, &font).unwrap();
-                    let text_paint: sk::Paint =
-                        sk::Paint::new(sk::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
-                    let bg_paint: sk::Paint =
-                        sk::Paint::new(sk::Color4f::new(0.9, 0.8, 0.0, 1.0), None);
-                    let (_, bounds) = font.measure_str(&text, Some(&text_paint));
-                    ctx.canvas.draw_rect(
-                        sk::Rect::new(w - bounds.width(), 0.0, w, bounds.height()),
-                        &bg_paint,
-                    );
-                    ctx.canvas
-                        .draw_text_blob(text_blob, (w - bounds.width(), -bounds.y()), &text_paint);
-                    //let bounds = Rect::from_skia(bounds);
-                }
-            }
-        }*/
-
-        self.state.paint_invalid.set(false);
+    fn debug_name(&self) -> &str {
+        self.widget().debug_name()
     }
 
     /// Propagates an event to the wrapped widget.
-    pub fn event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+    fn event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         if parent_ctx.handled {
             tracing::warn!("event already handled");
             return;
@@ -1141,15 +1009,156 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             }
         });
     }
-}
 
-/*// Unsized coercions
-impl<T, U> CoerceUnsized<WidgetPod<U>> for WidgetPod<T>
-where
-    T: Unsize<U> + ?Sized,
-    U: ?Sized,
-{
-}*/
+    /// Called to measure this widget and layout the children of this widget.
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        // FIXME also check the environment when checking the validity of a cached layout.
+        // if the layout that we calculated is valid, return it
+        // FIXME grids call layout twice, which makes this kind of caching useless
+
+        if let Some(layout) = self.state.layout_result.get() {
+            if layout.constraints == constraints {
+                //trace!("{}: using cached layout", self.widget.debug_name());
+                return layout.measurements;
+            } else {
+                /*trace!(
+                    "{}: layout constraints mismatch: old:{:?} vs new:{:?}",
+                    self.widget.debug_name(),
+                    layout.constraints,
+                    constraints
+                );*/
+            }
+        }
+
+        //trace!("recalculating layout");
+        let measurements = self.widget.layout(ctx, constraints, env);
+        /*tracing::trace!(
+            "layout[{}-{:?}]: {:?}",
+            self.widget.debug_name(),
+            self.state.id,
+            measurements
+        );*/
+
+        if !measurements.size().width.is_finite() || !measurements.size().height.is_finite() {
+            warn!(
+                "layout[{:?}({})] returned non-finite measurements: {:?}",
+                self.state.id,
+                self.widget.debug_name(),
+                measurements
+            );
+        }
+
+        let result = LayoutResult {
+            constraints,
+            measurements,
+        };
+
+        self.state.layout_result.set(Some(result));
+        self.state.paint_invalid.set(true);
+        ctx.changed = true;
+        measurements
+    }
+
+    fn paint(&self, parent_ctx: &mut PaintCtx, env: &Environment) {
+        let local_transform = self.state.transform.get();
+        let measurements = if let Some(layout_result) = self.state.layout_result.get() {
+            layout_result.measurements
+        } else {
+            warn!(id=?self.id(), "`paint` called with invalid layout");
+            return;
+        };
+
+        // TODO partial repaint
+        // bounds of this widget in window space
+        //let local_bounds = Rect::new(Point::origin(), size);
+        /*if !parent_ctx.invalid.intersects(window_bounds) {
+            //tracing::trace!("not repainting valid region");
+            // not invalidated, no need to redraw
+            return;
+        }*/
+
+        /*let _span = trace_span!(
+            "paint",
+            ?self.id,
+            ?offset,
+            ?measurements,
+        ).entered();*/
+        // trace!(?ctx.scale_factor, ?ctx.inputs.pointers, ?window_bounds, "paint");
+
+        parent_ctx.with_transform_and_clip(
+            local_transform,
+            measurements.bounds,
+            measurements.clip_bounds,
+            |child_ctx| {
+                let inv_window_transform = child_ctx.window_transform.inverse().unwrap();
+                child_ctx.hover = child_ctx.inputs.pointers.iter().any(|(_, state)| {
+                    let local_pointer_pos = inv_window_transform.transform_point(state.position);
+                    measurements.bounds.contains(local_pointer_pos)
+                });
+
+                self.widget.paint(child_ctx, env);
+            },
+        );
+
+        /*if !env.get(SHOW_DEBUG_OVERLAY).unwrap_or_default() {
+            use crate::styling::*;
+            use kyute_shell::{drawing::ToSkia, skia as sk};
+
+            if self.state.created_since_debug_paint.take() {
+                ctx.draw_styled_box(
+                    measurements.bounds,
+                    rectangle().with(
+                        border(1.0)
+                            .inside(0.0)
+                            .brush(Color::new(0.9, 0.8, 0.0, 1.0)),
+                    ),
+                    env,
+                );
+                ctx.canvas.draw_line(
+                    Point::new(0.5, 0.5).to_skia(),
+                    Point::new(6.5, 0.5).to_skia(),
+                    &sk::Paint::new(Color::new(1.0, 0.0, 0.0, 1.0).to_skia(), None),
+                );
+                ctx.canvas.draw_line(
+                    Point::new(0.5, 0.5).to_skia(),
+                    Point::new(0.5, 6.5).to_skia(),
+                    &sk::Paint::new(Color::new(0.0, 1.0, 0.0, 1.0).to_skia(), None),
+                );
+
+                {
+                    let w = measurements.bounds.width() as sk::scalar;
+                    let mut font: sk::Font = sk::Font::new(sk::Typeface::default(), Some(10.0));
+                    font.set_edging(sk::font::Edging::Alias);
+                    let text = format!("{}", self.state.created);
+                    let text_blob =
+                        sk::TextBlob::from_str(&text, &font).unwrap();
+                    let text_paint: sk::Paint =
+                        sk::Paint::new(sk::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+                    let bg_paint: sk::Paint =
+                        sk::Paint::new(sk::Color4f::new(0.9, 0.8, 0.0, 1.0), None);
+                    let (_, bounds) = font.measure_str(&text, Some(&text_paint));
+                    ctx.canvas.draw_rect(
+                        sk::Rect::new(w - bounds.width(), 0.0, w, bounds.height()),
+                        &bg_paint,
+                    );
+                    ctx.canvas
+                        .draw_text_blob(text_blob, (w - bounds.width(), -bounds.y()), &text_paint);
+                    //let bounds = Rect::from_skia(bounds);
+                }
+            }
+        }*/
+
+        self.state.paint_invalid.set(false);
+    }
+
+    fn window_paint(&self, ctx: &mut WindowPaintCtx) {
+        self.widget.window_paint(ctx);
+    }
+
+    fn gpu_frame<'a, 'b>(&'a self, _ctx: &mut GpuFrameCtx<'a, 'b>) {
+        todo!()
+    }
+}
 
 impl fmt::Debug for WidgetPod {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
