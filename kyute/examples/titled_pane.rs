@@ -34,7 +34,6 @@ fn main() {
         .with_target(false)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-
-    application::run(ui_root, Environment::new());
+    application::run(ui_root);
     Application::shutdown();
 }

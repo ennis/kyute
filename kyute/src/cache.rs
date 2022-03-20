@@ -1,6 +1,5 @@
 //! GUI positional cache.
 use crate::{
-    application::ExtEvent,
     call_id::{CallId, CallIdStack, CallNode},
     composable, Data, Environment,
 };
@@ -10,6 +9,7 @@ use std::{
     cell::{Cell, RefCell},
     convert::TryInto,
     fmt,
+    fmt::Write,
     future::Future,
     hash::Hash,
     mem,
@@ -20,16 +20,33 @@ use std::{
     },
     task::{Poll, Waker},
 };
-use threadbound::ThreadBound;
 
 slotmap::new_key_type! {
     struct KeyInner;
+}
+
+#[derive(Clone)]
+struct InvalidationCause<'a> {
+    location: &'static Location<'static>,
+    message: &'a str,
+}
+
+impl<'a> InvalidationCause<'a> {
+    #[track_caller]
+    fn new(message: &'a str) -> InvalidationCause<'a> {
+        InvalidationCause {
+            location: Location::caller(),
+            message,
+        }
+    }
 }
 
 #[derive(Debug)]
 struct DepNode {
     dirty: AtomicBool,
     dependents: Mutex<Vec<Arc<DepNode>>>,
+    #[cfg(debug_assertions)]
+    causes: Mutex<Vec<(&'static Location<'static>, String)>>,
 }
 
 impl DepNode {
@@ -37,7 +54,15 @@ impl DepNode {
         DepNode {
             dirty: AtomicBool::new(false),
             dependents: Mutex::new(vec![]),
+            #[cfg(debug_assertions)]
+            causes: Mutex::new(vec![]),
         }
+    }
+
+    #[cfg(debug_assertions)]
+    fn take_causes(&self) -> Vec<(&'static Location<'static>, String)> {
+        let mut causes = self.causes.lock();
+        mem::replace(&mut *causes, vec![])
     }
 
     fn set_dirty(&self, dirty: bool) {
@@ -48,9 +73,20 @@ impl DepNode {
         self.dirty.load(Ordering::SeqCst)
     }
 
-    fn invalidate_dependents(&self) {
-        for d in self.dependents.lock().iter() {
-            d.invalidate()
+    fn invalidate_dependents(&self, #[cfg(debug_assertions)] cause: (&'static Location<'static>, &str)) {
+        let dependents = self.dependents.lock();
+
+        #[cfg(debug_assertions)]
+        // only set the cause for nodes which have no dependent entries (root nodes)
+        if dependents.is_empty() {
+            self.causes.lock().push((cause.0, cause.1.to_string()));
+        }
+
+        for d in dependents.iter() {
+            #[cfg(debug_assertions)]
+            d.invalidate(cause);
+            #[cfg(not(debug_assertions))]
+            d.invalidate();
         }
     }
 
@@ -64,8 +100,11 @@ impl DepNode {
         deps.push(dep.clone());
     }
 
-    fn invalidate(&self) {
+    fn invalidate(&self, #[cfg(debug_assertions)] cause: (&'static Location<'static>, &str)) {
         self.set_dirty(true);
+        #[cfg(debug_assertions)]
+        self.invalidate_dependents(cause);
+        #[cfg(not(debug_assertions))]
         self.invalidate_dependents();
     }
 }
@@ -105,11 +144,19 @@ impl<T: ?Sized> StateCell<T> {
 }
 
 impl<T: 'static> StateCell<T> {
-    fn replace(&self, new_value: T, invalidate: bool) -> T {
+    fn replace(
+        &self,
+        new_value: T,
+        invalidate: bool,
+        #[cfg(debug_assertions)] cause: (&'static Location<'static>, &str),
+    ) -> T {
         self.update_dependents();
         let mut value = self.value.lock();
         let ret = mem::replace(&mut *value, new_value);
         if invalidate {
+            #[cfg(debug_assertions)]
+            self.dep_node.invalidate_dependents(cause);
+            #[cfg(not(debug_assertions))]
             self.dep_node.invalidate_dependents();
             self.waker.wake_by_ref();
         }
@@ -117,25 +164,28 @@ impl<T: 'static> StateCell<T> {
     }
 }
 
-impl<T: Clone + 'static> StateCell<T> {
-    fn get(&self) -> T {
-        self.update_dependents();
-        self.value.lock().clone()
-    }
-}
-
 impl<T: Data> StateCell<T> {
-    fn update(&self, new_value: T) -> Option<T> {
+    fn update(&self, new_value: T, #[cfg(debug_assertions)] cause: (&'static Location<'static>, &str)) -> Option<T> {
         self.update_dependents();
         let mut value = self.value.lock();
         if !new_value.same(&*value) {
             let ret = mem::replace(&mut *value, new_value);
+            #[cfg(debug_assertions)]
+            self.dep_node.invalidate_dependents(cause);
+            #[cfg(not(debug_assertions))]
             self.dep_node.invalidate_dependents();
             self.waker.wake_by_ref();
             Some(ret)
         } else {
             None
         }
+    }
+}
+
+impl<T: Clone + 'static> StateCell<T> {
+    fn get(&self) -> T {
+        self.update_dependents();
+        self.value.lock().clone()
     }
 }
 
@@ -158,20 +208,42 @@ impl<T: 'static> State<T> {
     /// Returns the value of the cache entry and replaces it by the given value.
     /// Always invalidates.
     /// Can be called outside of recomposition.
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn replace(&self, new_value: T) -> T {
-        self.0.replace(new_value, true)
+        #[cfg(debug_assertions)]
+        let result = self
+            .0
+            .replace(new_value, true, (Location::caller(), "state variable updated"));
+        #[cfg(not(debug_assertions))]
+        let result = self.0.replace(new_value, true);
+        result
     }
 
     /// Returns the value of the cache entry and replaces it by the default value.
     /// Does not invalidate the dependent entries.
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn replace_without_invalidation(&self, new_value: T) -> T {
-        self.0.replace(new_value, false)
+        #[cfg(debug_assertions)]
+        let result = self.0.replace(new_value, false, (Location::caller(), ""));
+        #[cfg(not(debug_assertions))]
+        let result = self.0.replace(new_value, false);
+        result
     }
 
+    /// Sets the value of the state variable.
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn set(&self, new_value: T) {
         // TODO idea: log the call sites that invalidated the cache, for debugging
         // e.g. `state entry @ (call site) invalidated because of (state entries), because of manual invalidation @ (call site) OR invalidated externally`
         self.replace(new_value);
+    }
+
+    /// Sets the value of the state variable.
+    pub(crate) fn set_with_cause(&self, new_value: T, location: &'static Location<'static>, cause: impl AsRef<str>) {
+        #[cfg(debug_assertions)]
+        self.0.replace(new_value, true, (location, cause.as_ref()));
+        #[cfg(not(debug_assertions))]
+        self.0.replace(new_value, true);
     }
 
     pub fn set_without_invalidation(&self, new_value: T) {
@@ -183,8 +255,13 @@ impl<T: 'static> State<T> {
 
 impl<T: Data + 'static> State<T> {
     ///
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn update(&self, new_value: T) -> Option<T> {
-        self.0.update(new_value)
+        #[cfg(debug_assertions)]
+        let result = self.0.update(new_value, (Location::caller(), "state variable updated"));
+        #[cfg(not(debug_assertions))]
+        let result = self.0.update(new_value);
+        result
     }
 }
 
@@ -323,6 +400,18 @@ impl CacheWriter {
         let CacheEntryInsertResult {
             key: root_cache_key, ..
         } = writer.get_or_insert_entry(|| ());
+        #[cfg(debug_assertions)]
+        {
+            // in debug mode, print the causes of the invalidation
+            let causes = root_cache_key.0.dep_node.take_causes();
+            if !causes.is_empty() {
+                let mut trace = String::new();
+                for (location, cause) in causes {
+                    write!(&mut trace, "\n   --> {}: {}", location, cause);
+                }
+                trace!("cache: root state dirty: {}", trace);
+            }
+        }
         writer.state_stack.push(root_cache_key.0.clone());
         root_cache_key.0.dep_node.set_dirty(false);
         writer
@@ -331,9 +420,6 @@ impl CacheWriter {
     fn finish(mut self) -> (CacheInner, bool) {
         let root_state_key = self.state_stack.pop().expect("unbalanced state scopes");
         let should_rerun = root_state_key.dep_node.is_dirty();
-        if should_rerun {
-            trace!("cache: state entry invalidated, will re-run");
-        }
         self.end_group();
         self.exit_scope();
         assert!(self.group_stack.is_empty(), "unbalanced groups");
@@ -564,6 +650,7 @@ impl CacheWriter {
         result
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     fn compare_and_update<T: Data>(&mut self, new_value: T) -> bool {
         let CacheEntryInsertResult { key, inserted, .. } = self.get_or_insert_entry(|| new_value.clone());
         inserted || {
@@ -573,6 +660,11 @@ impl CacheWriter {
             let mut value = key.0.value.lock();
             if !new_value.same(&*value) {
                 mem::replace(&mut *value, new_value);
+                #[cfg(debug_assertions)]
+                key.0
+                    .dep_node
+                    .invalidate_dependents((Location::caller(), "compare_and_update"));
+                #[cfg(not(debug_assertions))]
                 key.0.dep_node.invalidate_dependents();
                 true
             } else {
@@ -602,10 +694,14 @@ impl<T: Clone + 'static> Signal<T> {
         }
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     fn fetch_value(&self) {
         if !self.fetched.get() {
             let value = self.key.get();
             if value.is_some() {
+                #[cfg(debug_assertions)]
+                self.key.set_with_cause(None, Location::caller(), "signal reset");
+                #[cfg(not(debug_assertions))]
                 self.key.set(None);
             }
             self.value.replace(value);
@@ -613,11 +709,12 @@ impl<T: Clone + 'static> Signal<T> {
         }
     }
 
-    fn set(&self, value: T) {
+    /*fn set(&self, value: T) {
         self.value.replace(Some(value));
         self.fetched.set(true);
-    }
+    }*/
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn signalled(&self) -> bool {
         self.fetch_value();
         self.value.borrow().is_some()
@@ -632,7 +729,12 @@ impl<T: Clone + 'static> Signal<T> {
         self.value().map(f)
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn signal(&self, value: T) {
+        #[cfg(debug_assertions)]
+        self.key
+            .set_with_cause(Some(value), Location::caller(), "value signalled");
+        #[cfg(not(debug_assertions))]
         self.key.set(Some(value));
     }
 }
@@ -881,18 +983,22 @@ pub fn skip_to_end_of_group() {
 /// Memoizes the result of a function at this call site.
 #[track_caller]
 pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T) -> T {
+    let location = Location::caller();
     group(move || {
-        let (result_key, result_dirty) = with_cache_cx(move |cx| {
+        let (result_key, args_changed, dirty) = with_cache_cx(move |cx| {
             let args_changed = cx.writer.compare_and_update(args);
-            let CacheEntryInsertResult { key, dirty, .. } = cx.writer.get_or_insert_entry(|| None);
+            let CacheEntryInsertResult {
+                key: result_key, dirty, ..
+            } = cx.writer.get_or_insert_entry(|| None);
             /*if args_changed {
                 trace!("memoize: recomputing because arguments have changed {:#?}", call_node);
             }
             if dirty {
                 trace!("memoize: recomputing because state entry is dirty {:#?}", call_node);
             }*/
-            (key, args_changed || dirty)
+            (result_key, args_changed, dirty)
         });
+        let result_dirty = args_changed || dirty;
 
         if result_dirty {
             with_cache_cx(|cx| {
@@ -902,7 +1008,14 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
             with_cache_cx(|cx| {
                 cx.writer.end_state();
             });
-            result_key.replace(Some(result));
+            /*#[cfg(debug_assertions)]
+            result_key.set_with_cause(
+                Some(result),
+                location,
+                &format!("memoization result dirty (args: {}, dirty: {})", args_changed, dirty),
+            );
+            #[cfg(not(debug_assertions))]*/
+            result_key.set_without_invalidation(Some(result));
         } else {
             skip_to_end_of_group();
         }
