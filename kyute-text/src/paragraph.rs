@@ -4,7 +4,7 @@ use crate::{
     formatted_text::{FormattedText, ParagraphStyle},
     Attribute, Error, FontStyle, FontWeight, TextAffinity, TextAlignment, TextPosition, ToDirectWrite, ToWString,
 };
-use kyute_common::{Color, Data, Point, PointI, Rect, RectI, Size, SizeI, Transform, UnknownUnit};
+use kyute_common::{Color, Data, Point, PointI, Rect, RectI, Size, SizeI, Transform};
 use std::{cell::RefCell, ffi::c_void, mem, mem::MaybeUninit, ops::Range, ptr, sync::Arc};
 use windows::{
     core::{implement, IUnknown, IUnknownImpl, Interface, ToImpl, HRESULT, PCWSTR},
@@ -15,8 +15,9 @@ use windows::{
             IDWriteInlineObject, IDWriteNumberSubstitution, IDWriteNumberSubstitution_Impl, IDWritePixelSnapping_Impl,
             IDWriteTextLayout, IDWriteTextRenderer, IDWriteTextRenderer_Impl, DWRITE_FONT_STRETCH_NORMAL,
             DWRITE_GLYPH_RUN, DWRITE_GLYPH_RUN_DESCRIPTION, DWRITE_HIT_TEST_METRICS, DWRITE_LINE_METRICS,
-            DWRITE_MATRIX, DWRITE_MEASURING_MODE, DWRITE_RENDERING_MODE_NATURAL, DWRITE_STRIKETHROUGH,
-            DWRITE_TEXTURE_TYPE, DWRITE_TEXT_METRICS, DWRITE_TEXT_RANGE, DWRITE_UNDERLINE,
+            DWRITE_MATRIX, DWRITE_MEASURING_MODE, DWRITE_RENDERING_MODE_NATURAL,
+            DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC, DWRITE_STRIKETHROUGH, DWRITE_TEXTURE_TYPE, DWRITE_TEXT_METRICS,
+            DWRITE_TEXT_RANGE, DWRITE_UNDERLINE,
         },
     },
 };
@@ -513,7 +514,7 @@ impl<'a> GlyphRun<'a> {
                     &transform,
                     // TODO should probably be controlled by the client;
                     // - NATURAL for small fonts, SYMMETRIC for bigger things
-                    DWRITE_RENDERING_MODE_NATURAL,
+                    DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
                     self.measuring_mode,
                     self.baseline_origin_x,
                     self.baseline_origin_y,
@@ -567,22 +568,22 @@ struct DWriteRendererProxy {
 }
 
 impl IDWritePixelSnapping_Impl for DWriteRendererProxy {
-    fn IsPixelSnappingDisabled(&self, clientdrawingcontext: *const c_void) -> ::windows::core::Result<BOOL> {
+    fn IsPixelSnappingDisabled(&self, _clientdrawingcontext: *const c_void) -> ::windows::core::Result<BOOL> {
         Ok(false.into())
     }
 
-    fn GetCurrentTransform(&self, clientdrawingcontext: *const c_void) -> ::windows::core::Result<DWRITE_MATRIX> {
+    fn GetCurrentTransform(&self, _clientdrawingcontext: *const c_void) -> ::windows::core::Result<DWRITE_MATRIX> {
         let transform = unsafe {
             // SAFETY: ensured by lifetime of DWriteRendererProxy in Paragraph::draw
-            (&mut *self.renderer).transform()
+            (&*self.renderer).transform()
         };
         Ok(transform.to_dwrite())
     }
 
-    fn GetPixelsPerDip(&self, clientdrawingcontext: *const c_void) -> ::windows::core::Result<f32> {
+    fn GetPixelsPerDip(&self, _clientdrawingcontext: *const c_void) -> ::windows::core::Result<f32> {
         let scale_factor = unsafe {
             // SAFETY: ensured by lifetime of DWriteRendererProxy in Paragraph::draw
-            (&mut *self.renderer).scale_factor()
+            (&*self.renderer).scale_factor()
         };
         Ok(scale_factor as f32)
     }
@@ -629,35 +630,35 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
 
     fn DrawUnderline(
         &self,
-        clientdrawingcontext: *const c_void,
-        baselineoriginx: f32,
-        baselineoriginy: f32,
-        underline: *const DWRITE_UNDERLINE,
-        clientdrawingeffect: &Option<::windows::core::IUnknown>,
+        _clientdrawingcontext: *const c_void,
+        _baselineoriginx: f32,
+        _baselineoriginy: f32,
+        _underline: *const DWRITE_UNDERLINE,
+        _clientdrawingeffect: &Option<::windows::core::IUnknown>,
     ) -> ::windows::core::Result<()> {
         todo!()
     }
 
     fn DrawStrikethrough(
         &self,
-        clientdrawingcontext: *const c_void,
-        baselineoriginx: f32,
-        baselineoriginy: f32,
-        strikethrough: *const DWRITE_STRIKETHROUGH,
-        clientdrawingeffect: &Option<::windows::core::IUnknown>,
+        _clientdrawingcontext: *const c_void,
+        _baselineoriginx: f32,
+        _baselineoriginy: f32,
+        _strikethrough: *const DWRITE_STRIKETHROUGH,
+        _clientdrawingeffect: &Option<::windows::core::IUnknown>,
     ) -> ::windows::core::Result<()> {
         todo!()
     }
 
     fn DrawInlineObject(
         &self,
-        clientdrawingcontext: *const c_void,
-        originx: f32,
-        originy: f32,
-        inlineobject: &Option<IDWriteInlineObject>,
-        issideways: BOOL,
-        isrighttoleft: BOOL,
-        clientdrawingeffect: &Option<::windows::core::IUnknown>,
+        _clientdrawingcontext: *const c_void,
+        _originx: f32,
+        _originy: f32,
+        _inlineobject: &Option<IDWriteInlineObject>,
+        _issideways: BOOL,
+        _isrighttoleft: BOOL,
+        _clientdrawingeffect: &Option<::windows::core::IUnknown>,
     ) -> ::windows::core::Result<()> {
         todo!()
     }
@@ -726,7 +727,9 @@ impl FormattedText {
                 )
                 .expect("CreateTextLayout failed");
 
-            layout.SetTextAlignment(paragraph_text_alignment);
+            layout
+                .SetTextAlignment(paragraph_text_alignment)
+                .expect("SetTextAlignment failed");
 
             // apply style ranges
             for run in self.runs.runs.iter() {
@@ -759,24 +762,28 @@ impl FormattedText {
 
                 if let Some(ff) = font_family {
                     let ff_name = ff.0.to_wstring();
-                    layout.SetFontFamilyName(PCWSTR(ff_name.as_ptr()), range);
+                    layout
+                        .SetFontFamilyName(PCWSTR(ff_name.as_ptr()), range)
+                        .expect("SetFontFamilyName failed");
                 }
 
                 if let Some(fs) = font_size {
-                    layout.SetFontSize(fs as f32, range);
+                    layout.SetFontSize(fs as f32, range).expect("SetFontSize failed");
                 }
 
                 if let Some(fw) = font_weight {
-                    layout.SetFontWeight(fw.to_dwrite(), range);
+                    layout
+                        .SetFontWeight(fw.to_dwrite(), range)
+                        .expect("SetFontWeight failed");
                 }
 
                 if let Some(fs) = font_style {
-                    layout.SetFontStyle(fs.to_dwrite(), range);
+                    layout.SetFontStyle(fs.to_dwrite(), range).expect("SetFontStyle failed");
                 }
 
                 if let Some(color) = color {
                     let effect: IUnknown = GlyphRunDrawingEffectsWrapper(GlyphRunDrawingEffects { color }).into();
-                    layout.SetDrawingEffect(effect, range);
+                    layout.SetDrawingEffect(effect, range).expect("SetDrawingEffect failed");
                 }
             }
 

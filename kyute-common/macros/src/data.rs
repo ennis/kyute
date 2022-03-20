@@ -120,14 +120,9 @@ impl Field<DataAttrs> {
                     Meta::List(meta) => {
                         for nested in meta.nested.iter() {
                             match nested {
-                                NestedMeta::Meta(Meta::Path(path))
-                                    if path.is_ident(IGNORE_ATTR_PATH) =>
-                                {
+                                NestedMeta::Meta(Meta::Path(path)) if path.is_ident(IGNORE_ATTR_PATH) => {
                                     if ignore {
-                                        return Err(Error::new(
-                                            nested.span(),
-                                            "Duplicate attribute",
-                                        ));
+                                        return Err(Error::new(nested.span(), "Duplicate attribute"));
                                     }
                                     ignore = true;
                                 }
@@ -176,7 +171,7 @@ impl Field<DataAttrs> {
 impl<Attrs> Field<Attrs> {
     pub fn ident_tokens(&self) -> TokenTree {
         match self.ident {
-            FieldIdent::Named(ref s) => Ident::new(&s, Span::call_site()).into(),
+            FieldIdent::Named(ref s) => Ident::new(s, Span::call_site()).into(),
             FieldIdent::Unnamed(num) => Literal::usize_unsuffixed(num).into(),
         }
     }
@@ -193,10 +188,7 @@ fn parse_lit_into_expr_path(lit: &syn::Lit) -> Result<ExprPath, Error> {
     let string = if let syn::Lit::Str(lit) = lit {
         lit
     } else {
-        return Err(Error::new(
-            lit.span(),
-            "expected str, found... something else",
-        ));
+        return Err(Error::new(lit.span(), "expected str, found... something else"));
     };
 
     let tokens = syn::parse_str(&string.value())?;
@@ -216,9 +208,7 @@ fn parse_lit_into_expr_path(lit: &syn::Lit) -> Result<ExprPath, Error> {
     Ok(ident)
 }*/
 
-pub(crate) fn derive_data_impl(
-    input: syn::DeriveInput,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
+pub(crate) fn derive_data_impl(input: syn::DeriveInput) -> Result<proc_macro2::TokenStream, syn::Error> {
     match &input.data {
         Data::Struct(s) => derive_struct(&input, s),
         Data::Enum(e) => derive_enum(&input, e),
@@ -229,10 +219,7 @@ pub(crate) fn derive_data_impl(
     }
 }
 
-fn derive_struct(
-    input: &syn::DeriveInput,
-    s: &DataStruct,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
+fn derive_struct(input: &syn::DeriveInput, s: &DataStruct) -> Result<proc_macro2::TokenStream, syn::Error> {
     let ident = &input.ident;
     let impl_generics = generics_bounds(&input.generics);
     let (_, ty_generics, where_clause) = &input.generics.split_for_impl();
@@ -244,10 +231,7 @@ fn derive_struct(
             .iter()
             .filter(|f| !f.attrs.ignore)
             .map(Field::same_fn_path_tokens);
-        let fields = fields
-            .iter()
-            .filter(|f| !f.attrs.ignore)
-            .map(Field::ident_tokens);
+        let fields = fields.iter().filter(|f| !f.attrs.ignore).map(Field::ident_tokens);
         quote!( #( #same_fns(&self.#fields, &other.#fields) )&&* )
     } else {
         quote!(true)
@@ -276,15 +260,12 @@ fn is_c_style_enum(s: &DataEnum) -> bool {
     })
 }
 
-fn derive_enum(
-    input: &syn::DeriveInput,
-    s: &DataEnum,
-) -> Result<proc_macro2::TokenStream, syn::Error> {
+fn derive_enum(input: &syn::DeriveInput, s: &DataEnum) -> Result<proc_macro2::TokenStream, syn::Error> {
     let ident = &input.ident;
     let impl_generics = generics_bounds(&input.generics);
     let (_, ty_generics, where_clause) = &input.generics.split_for_impl();
 
-    if is_c_style_enum(&s) {
+    if is_c_style_enum(s) {
         let res = quote! {
             impl<#impl_generics> ::#CRATE::Data for #ident #ty_generics #where_clause {
                 fn same(&self, other: &Self) -> bool { self == other }

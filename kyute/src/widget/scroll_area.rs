@@ -1,11 +1,10 @@
 use crate::{
     style::BoxStyle,
-    theme,
     widget::{
-        grid::GridTrackDefinition, prelude::*, Canvas, Container, DragController, Grid, GridLength, LayoutInspector,
-        LayoutWrapper, Null, Thumb, Viewport, WidgetWrapper,
+        grid::GridTrackDefinition, prelude::*, Container, DragController, Grid, GridLength, LayoutInspector, Null,
+        Viewport, WidgetWrapper,
     },
-    Color, PointerEventKind, UnitExt,
+    Color, UnitExt,
 };
 
 #[derive(Clone)]
@@ -26,7 +25,7 @@ impl ScrollArea {
             [GridTrackDefinition::new(GridLength::Flex(1.0))],
             [
                 GridTrackDefinition::new(GridLength::Flex(1.0)),
-                GridTrackDefinition::new(GridLength::Fixed(5.0)),
+                GridTrackDefinition::new(GridLength::Fixed(5.0.dip())),
             ],
         ));
 

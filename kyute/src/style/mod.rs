@@ -6,13 +6,11 @@ mod theme;
 
 use crate::{
     drawing::{svg_path_to_skia, ToSkia},
-    env::Environment,
-    Color, EnvKey, Length, PaintCtx, Rect, RectExt, Transform, UnitExt, ValueRef,
+    Color, Length, PaintCtx, Rect, RectExt, UnitExt, ValueRef,
 };
 use bitflags::bitflags;
 use skia_safe as sk;
 
-use crate::style::paint::IntoPaint;
 pub use border::{Border, BorderPosition, BorderStyle};
 pub use box_style::{BoxShadow, BoxShadowParams, BoxStyle};
 pub use paint::{GradientStop, LinearGradient, Paint};
@@ -21,10 +19,11 @@ pub use theme::{define_theme, ThemeData, ThemeLoadError};
 bitflags! {
     #[derive(Default)]
     pub struct VisualState: u8 {
-        const DEFAULT = 0;
-        const FOCUS   = 1 << 0;
-        const ACTIVE  = 1 << 1;
-        const HOVER   = 1 << 2;
+        const DEFAULT  = 0;
+        const FOCUS    = 1 << 0;
+        const ACTIVE   = 1 << 1;
+        const HOVER    = 1 << 2;
+        const DISABLED = 1 << 3;
     }
 }
 
@@ -107,14 +106,6 @@ impl ToSkia for BlendMode {
 /// ValueRef to a color.
 pub type ColorRef = ValueRef<Color>;
 
-pub fn darken(color: impl Into<ColorRef>, amount: f64) -> Color {
-    color.into().resolve().unwrap().darken(amount)
-}
-
-pub fn lighten(color: impl Into<ColorRef>, amount: f64) -> Color {
-    color.into().resolve().unwrap().lighten(amount)
-}
-
 //--------------------------------------------------------------------------------------------------
 
 /// Path visual.
@@ -136,14 +127,14 @@ impl Path {
     }
 
     /// Sets the brush used to fill the path.
-    pub fn fill(mut self, paint: impl IntoPaint) -> Self {
-        self.fill = Some(paint.into_paint());
+    pub fn fill(mut self, paint: impl Into<Paint>) -> Self {
+        self.fill = Some(paint.into());
         self
     }
 
     /// Sets the brush used to stroke the path.
-    pub fn stroke(mut self, paint: impl IntoPaint) -> Self {
-        self.fill = Some(paint.into_paint());
+    pub fn stroke(mut self, paint: impl Into<Paint>) -> Self {
+        self.fill = Some(paint.into());
         self
     }
 

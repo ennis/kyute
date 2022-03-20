@@ -15,7 +15,7 @@ impl Deref for Atom {
 
 impl Data for Atom {
     fn same(&self, other: &Self) -> bool {
-        &self.0 == &other.0
+        self.0 == other.0
     }
 }
 
@@ -35,7 +35,7 @@ impl fmt::Display for Atom {
 }
 
 /// Helper function to adjust a name so that it doesn't clash with existing names.
-pub fn make_unique_atom<'a>(base_name: impl Into<Atom>, existing: impl Iterator<Item = Atom> + Clone) -> Atom {
+pub fn make_unique_atom(base_name: impl Into<Atom>, existing: impl Iterator<Item = Atom> + Clone) -> Atom {
     let mut counter = 0;
     let base_name = base_name.into();
     let mut disambiguated_name = base_name.clone();

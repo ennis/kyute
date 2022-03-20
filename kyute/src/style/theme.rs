@@ -45,7 +45,7 @@ impl Asset for ThemeData {
 
     fn load(reader: &mut dyn Read) -> Result<Self, Self::LoadError> {
         Ok(ThemeData {
-            json: json::from_reader(reader).map_err(|e| ThemeLoadError::JsonError(e))?,
+            json: json::from_reader(reader).map_err(ThemeLoadError::JsonError)?,
         })
     }
 }

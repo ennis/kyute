@@ -4,8 +4,9 @@ use crate::{
     style::{BoxStyle, VisualState},
     theme,
     widget::{prelude::*, Container, Grid, Label},
-    Color, SideOffsets, Signal, ValueRef,
+    Color, Signal, ValueRef,
 };
+use kyute_common::UnitExt;
 
 #[derive(Clone)]
 pub struct Button {
@@ -23,10 +24,11 @@ impl Button {
         let active = cache::state(|| false);
         Button {
             id: WidgetId::here(),
+            // TODO: ValueRef for container
             inner: Container::new(Label::new(label))
-                .min_height(theme::BUTTON_HEIGHT)
-                .content_padding(SideOffsets::new_all_same(5.0))
-                .baseline(theme::BUTTON_LABEL_BASELINE)
+                .min_height(21.dip())
+                .content_padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
+                .baseline(17.dip())
                 .box_style(theme::BUTTON)
                 .alternate_box_style(VisualState::ACTIVE | VisualState::HOVER, theme::BUTTON_ACTIVE)
                 .alternate_box_style(VisualState::HOVER, theme::BUTTON_HOVER),
@@ -81,8 +83,8 @@ impl Widget for Button {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        match event {
-            Event::Pointer(p) => match p.kind {
+        if let Event::Pointer(p) = event {
+            match p.kind {
                 PointerEventKind::PointerDown => {
                     ctx.request_focus();
                     ctx.request_redraw();
@@ -104,8 +106,7 @@ impl Widget for Button {
                     ctx.request_redraw();
                 }
                 _ => {}
-            },
-            _ => {}
+            }
         }
 
         if !ctx.handled() {

@@ -52,7 +52,7 @@ pub enum GridLength {
     /// Size to content.
     Auto,
     /// Fixed size.
-    Fixed(f64),
+    Fixed(Length),
     /// Proportion of remaining space.
     Flex(f64),
 }
@@ -76,8 +76,9 @@ pub enum AlignItems {
     Baseline,
 }
 
-impl From<Length> for GridLength {
+/*impl From<Length> for GridLength {
     fn from(length: Length) -> Self {
+        GridLength::Fixed(length)
         match length {
             Length::Dip(dips) => GridLength::Fixed(dips),
             _ => {
@@ -85,7 +86,7 @@ impl From<Length> for GridLength {
             }
         }
     }
-}
+}*/
 
 /// Orientation of a grid track.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -243,6 +244,12 @@ impl<'a> GridRow<'a> {
             column: column.into(),
             widget: Arc::new(WidgetPod::new(widget)),
         })
+    }
+}
+
+impl<'a> Default for GridRow<'a> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -457,8 +464,8 @@ impl Grid {
         // add rows/columns as required
         let num_rows = self.row_definitions.len();
         let num_columns = self.column_definitions.len();
-        let extra_rows = row_range.end.checked_sub(num_rows).unwrap_or(0);
-        let extra_columns = column_range.end.checked_sub(num_columns).unwrap_or(0);
+        let extra_rows = row_range.end.saturating_sub(num_rows);
+        let extra_columns = column_range.end.saturating_sub(num_columns);
         for _ in 0..extra_rows {
             self.row_definitions.push(GridTrackDefinition {
                 min_size: self.row_template,
@@ -513,12 +520,6 @@ impl Grid {
         let tracks = match axis {
             TrackAxis::Row => &self.row_definitions[..],
             TrackAxis::Column => &self.column_definitions[..],
-        };
-
-        let finite_available_space = if available_space.is_finite() {
-            available_space
-        } else {
-            0.0
         };
 
         let gap = match axis {
@@ -576,7 +577,7 @@ impl Grid {
             // apply min size constraint
             match tracks[i].min_size {
                 GridLength::Fixed(min) => {
-                    base_size[i] = min;
+                    base_size[i] = min.to_dips(layout_ctx.scale_factor, available_space);
                 }
                 GridLength::Auto => {
                     base_size[i] = max_natural_size;
@@ -587,7 +588,7 @@ impl Grid {
             // apply max size constraint
             match tracks[i].max_size {
                 GridLength::Fixed(max) => {
-                    growth_limit[i] = max;
+                    growth_limit[i] = max.to_dips(layout_ctx.scale_factor, available_space);
                 }
                 GridLength::Auto => {
                     // same as min size constraint
@@ -626,18 +627,14 @@ impl Grid {
         if free_space.is_finite() {
             let mut flex_total = 0.0;
             for t in tracks {
-                match t.max_size {
-                    GridLength::Flex(x) => flex_total += x,
-                    _ => {}
+                if let GridLength::Flex(x) = t.max_size {
+                    flex_total += x
                 }
             }
             for i in 0..num_tracks {
-                match tracks[i].max_size {
-                    GridLength::Flex(x) => {
-                        let fr = x / flex_total;
-                        base_size[i] = base_size[i].max(fr * free_space);
-                    }
-                    _ => {}
+                if let GridLength::Flex(x) = tracks[i].max_size {
+                    let fr = x / flex_total;
+                    base_size[i] = base_size[i].max(fr * free_space);
                 }
             }
         }
@@ -658,6 +655,12 @@ impl Grid {
         }
 
         ComputeTrackSizeResult { layout, size: pos }
+    }
+}
+
+impl Default for Grid {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -813,7 +816,7 @@ impl Widget for Grid {
                 let column_layout = &cached_layout.column_layout;
                 let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
 
-                for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width)) {
+                for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width - 1.0)) {
                     ctx.canvas.draw_line(
                         Point::new(x + 0.5, 0.5).to_skia(),
                         Point::new(x + 0.5, height + 0.5).to_skia(),
@@ -821,7 +824,7 @@ impl Widget for Grid {
                     );
                 }
 
-                for y in row_layout.iter().map(|x| x.pos).chain(std::iter::once(height)) {
+                for y in row_layout.iter().map(|x| x.pos).chain(std::iter::once(height - 1.0)) {
                     ctx.canvas.draw_line(
                         Point::new(0.5, y + 0.5).to_skia(),
                         Point::new(width + 0.5, y + 0.5).to_skia(),

@@ -25,22 +25,6 @@ slotmap::new_key_type! {
     struct KeyInner;
 }
 
-#[derive(Clone)]
-struct InvalidationCause<'a> {
-    location: &'static Location<'static>,
-    message: &'a str,
-}
-
-impl<'a> InvalidationCause<'a> {
-    #[track_caller]
-    fn new(message: &'a str) -> InvalidationCause<'a> {
-        InvalidationCause {
-            location: Location::caller(),
-            message,
-        }
-    }
-}
-
 #[derive(Debug)]
 struct DepNode {
     dirty: AtomicBool,
@@ -62,7 +46,7 @@ impl DepNode {
     #[cfg(debug_assertions)]
     fn take_causes(&self) -> Vec<(&'static Location<'static>, String)> {
         let mut causes = self.causes.lock();
-        mem::replace(&mut *causes, vec![])
+        mem::take(&mut *causes)
     }
 
     fn set_dirty(&self, dirty: bool) {
@@ -407,7 +391,7 @@ impl CacheWriter {
             if !causes.is_empty() {
                 let mut trace = String::new();
                 for (location, cause) in causes {
-                    write!(&mut trace, "\n   --> {}: {}", location, cause);
+                    write!(&mut trace, "\n   --> {}: {}", location, cause).unwrap();
                 }
                 trace!("cache: root state dirty: {}", trace);
             }
@@ -564,16 +548,13 @@ impl CacheWriter {
 
         // remove the extra slots, and associated entries
         for slot in self.cache.slots.drain(self.pos..group_end_pos) {
-            match slot {
-                Slot::Value { var } => {
-                    trace!(
-                        "removing cache entry dep_node={:?} call_id={:?}, call_node={:#?}",
-                        var.dep_node,
-                        var.call_id,
-                        var.call_node
-                    );
-                }
-                _ => {}
+            if let Slot::Value { var } = slot {
+                trace!(
+                    "removing cache entry dep_node={:?} call_id={:?}, call_node={:#?}",
+                    var.dep_node,
+                    var.call_id,
+                    var.call_node
+                );
             }
         }
 
@@ -659,7 +640,7 @@ impl CacheWriter {
             }
             let mut value = key.0.value.lock();
             if !new_value.same(&*value) {
-                mem::replace(&mut *value, new_value);
+                *value = new_value;
                 #[cfg(debug_assertions)]
                 key.0
                     .dep_node
@@ -720,6 +701,7 @@ impl<T: Clone + 'static> Signal<T> {
         self.value.borrow().is_some()
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn value(&self) -> Option<T> {
         self.fetch_value();
         self.value.borrow().clone()
@@ -944,7 +926,7 @@ where
 
     if inserted || restart {
         with_cache_cx(|cx| {
-            let mut result_key_2 = result_key.clone();
+            let result_key_2 = result_key.clone();
             // spawn task that will set the value
             let handle = tokio::spawn(async move {
                 let result = future.await;
@@ -983,7 +965,6 @@ pub fn skip_to_end_of_group() {
 /// Memoizes the result of a function at this call site.
 #[track_caller]
 pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T) -> T {
-    let location = Location::caller();
     group(move || {
         let (result_key, args_changed, dirty) = with_cache_cx(move |cx| {
             let args_changed = cx.writer.compare_and_update(args);
@@ -1008,13 +989,6 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
             with_cache_cx(|cx| {
                 cx.writer.end_state();
             });
-            /*#[cfg(debug_assertions)]
-            result_key.set_with_cause(
-                Some(result),
-                location,
-                &format!("memoization result dirty (args: {}, dirty: {})", args_changed, dirty),
-            );
-            #[cfg(not(debug_assertions))]*/
             result_key.set_without_invalidation(Some(result));
         } else {
             skip_to_end_of_group();

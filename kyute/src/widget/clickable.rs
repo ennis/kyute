@@ -17,6 +17,13 @@ impl<Content: Widget + 'static> Clickable<Content> {
         }
     }
 
+    pub fn on_click(self, f: impl FnOnce()) -> Self {
+        if self.clicked.signalled() {
+            f();
+        }
+        self
+    }
+
     /// Returns whether this button has been clicked.
     pub fn clicked(&self) -> bool {
         self.clicked.signalled()
@@ -43,17 +50,13 @@ impl<Content: Widget + 'static> Widget for Clickable<Content> {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        match event {
-            Event::Pointer(p) => match p.kind {
-                PointerEventKind::PointerDown => {
-                    self.clicked.signal(());
-                    ctx.request_focus();
-                    ctx.request_redraw();
-                    ctx.set_handled();
-                }
-                _ => {}
-            },
-            _ => {}
+        if let Event::Pointer(p) = event {
+            if p.kind == PointerEventKind::PointerDown {
+                self.clicked.signal(());
+                ctx.request_focus();
+                ctx.request_redraw();
+                ctx.set_handled();
+            }
         }
 
         if !ctx.handled() {

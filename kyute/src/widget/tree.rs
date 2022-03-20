@@ -1,9 +1,10 @@
 //! Tree views.
 use crate::{
     widget::{
-        grid::GridTrackDefinition, prelude::*, Container, Grid, GridLength, GridSpan, Image, Text, WidgetWrapper,
+        grid::GridTrackDefinition, prelude::*, Clickable, Container, Grid, GridLength, GridSpan, Image, Scaling,
+        WidgetWrapper,
     },
-    SideOffsets, State,
+    UnitExt, WidgetExt,
 };
 use std::sync::Arc;
 
@@ -16,39 +17,55 @@ pub struct TreeGrid {
 }
 
 impl TreeGrid {
-    pub fn new(columns: impl IntoIterator<Item = GridTrackDefinition>) -> TreeGrid {
+    /// Creates a new tree grid.
+    pub fn new(row_height: impl Into<GridLength>, columns: impl IntoIterator<Item = GridTrackDefinition>) -> TreeGrid {
         TreeGrid {
-            grid: Grid::with_column_definitions(columns),
+            grid: Grid::with_column_definitions(columns).row_template(row_height.into()),
         }
     }
 
     /// Sets the root node.
+    #[composable]
     pub fn set_root(&mut self, tree_node: TreeNode) {
-        let mut visit = vec![];
-        visit.push((0, tree_node));
+        // visit stack
+        let mut visit = vec![(0, tree_node)];
 
         let mut i = 0;
         while let Some((level, node)) = visit.pop() {
             if !node.children.is_empty() {
-                let icon = Image::from_uri("data/icons/chevron.png");
+                let icon = Clickable::new(
+                    Image::from_uri(
+                        if node.expanded {
+                            "data/icons/chevron.png"
+                        } else {
+                            "data/icons/chevron-collapsed.png"
+                        },
+                        Scaling::Contain,
+                    )
+                    .fix_size(20.dip(), 20.dip()),
+                )
+                .on_click(|| {
+                    node.expanded_changed.signal(!node.expanded);
+                });
+
                 let mut grid = Grid::column(GridLength::Auto);
                 grid.add_item(0, 0, icon);
                 grid.add_item(0, 1, node.widget);
                 self.grid.add_item(
                     i,
                     0,
-                    Container::new(grid).content_padding(SideOffsets::new(0.0, 0.0, 0.0, level as f64 * 20.0)),
+                    Container::new(grid).content_padding(0.dip(), 0.dip(), 0.dip(), (level as f64 * 20.0).dip()),
                 );
             } else {
                 self.grid.add_item(
                     i,
                     0,
-                    Container::new(node.widget).content_padding(SideOffsets::new(
-                        0.0,
-                        0.0,
-                        0.0,
-                        20.0 + level as f64 * 20.0,
-                    )),
+                    Container::new(node.widget).content_padding(
+                        0.dip(),
+                        0.dip(),
+                        0.dip(),
+                        (20.0 + level as f64 * 20.0).dip(),
+                    ),
                 );
             }
 
@@ -57,8 +74,10 @@ impl TreeGrid {
                 self.grid.add_item(i, columns, item);
             }
 
-            // add children to the visit stack
-            visit.extend(node.children.into_iter().map(|n| (level + 1, n)).rev());
+            // add children to the visit stack, if expanded
+            if node.expanded {
+                visit.extend(node.children.into_iter().map(|n| (level + 1, n)).rev());
+            }
             i += 1;
         }
     }
@@ -93,6 +112,11 @@ impl<'a> TreeNode<'a> {
         #[state]
         let mut expanded = false;
         Self::new_inner(expanded, contents).on_expanded_changed(|v| expanded = v)
+    }
+
+    /// Adds a column.
+    pub fn add_column(&mut self, column_span: impl Into<GridSpan<'a>>, widget: impl Widget + 'static) {
+        self.row.push((column_span.into(), Arc::new(WidgetPod::new(widget))));
     }
 
     #[composable]

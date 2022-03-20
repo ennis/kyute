@@ -1,6 +1,5 @@
 use crate::{
     core::{HitTestResult, WindowPaintCtx},
-    drawing::ToSkia,
     event::{PointerEvent, PointerEventKind},
     widget::prelude::*,
     GpuFrameCtx,
@@ -44,6 +43,10 @@ impl<W> LayoutWrapper<W> {
     /// Returns a mutable reference to the inner widget.
     pub fn inner_mut(&mut self) -> &mut W {
         &mut self.inner
+    }
+
+    pub fn into_inner(self) -> W {
+        self.inner
     }
 }
 

@@ -1,11 +1,10 @@
 use crate::{
+    event::{PointerEvent, PointerEventKind},
     style::{BoxStyle, PaintCtxExt, VisualState},
     widget::{prelude::*, LayoutWrapper},
     Length, SideOffsets, UnitExt, ValueRef,
 };
 use kyute_common::RoundToPixel;
-
-// FIXME: there's no way to force a child widget to stretch?
 
 #[derive(Clone)]
 pub struct Container<Content> {
@@ -15,9 +14,13 @@ pub struct Container<Content> {
     max_width: Option<Length>,
     max_height: Option<Length>,
     baseline: Option<Length>,
-    content_padding: SideOffsets,
-    box_style: BoxStyle,
-    alternate_box_styles: Vec<(VisualState, BoxStyle)>,
+    padding_top: Length,
+    padding_right: Length,
+    padding_bottom: Length,
+    padding_left: Length,
+    box_style: ValueRef<BoxStyle>,
+    alternate_box_styles: Vec<(VisualState, ValueRef<BoxStyle>)>,
+    redraw_on_hover: bool,
     content: LayoutWrapper<Content>,
 }
 
@@ -31,9 +34,13 @@ impl<Content: Widget + 'static> Container<Content> {
             max_width: None,
             max_height: None,
             baseline: None,
-            content_padding: Default::default(),
+            padding_top: Length::zero(),
+            padding_right: Length::zero(),
+            padding_bottom: Length::zero(),
+            padding_left: Length::zero(),
             box_style: BoxStyle::default().into(),
             alternate_box_styles: vec![],
+            redraw_on_hover: false,
             content: LayoutWrapper::new(content),
         }
     }
@@ -58,60 +65,60 @@ impl<Content: Widget + 'static> Container<Content> {
 
 impl<Content: Widget + 'static> Container<Content> {
     /// Sets the baseline of the content.
-    pub fn baseline(mut self, baseline: impl Into<ValueRef<Length>>) -> Self {
+    pub fn baseline(mut self, baseline: impl Into<Length>) -> Self {
         self.set_baseline(baseline);
         self
     }
 
     /// Sets the baseline of the content.
-    pub fn set_baseline(&mut self, baseline: impl Into<ValueRef<Length>>) {
-        self.baseline = Some(baseline.into().resolve().unwrap());
+    pub fn set_baseline(&mut self, baseline: impl Into<Length>) {
+        self.baseline = Some(baseline.into());
     }
 
     /// Constrain the minimum width of the container.
-    pub fn min_width(mut self, width: impl Into<ValueRef<Length>>) -> Self {
+    pub fn min_width(mut self, width: impl Into<Length>) -> Self {
         self.set_min_width(width);
         self
     }
 
     /// Constrain the minimum width of the container.
-    pub fn set_min_width(&mut self, width: impl Into<ValueRef<Length>>) {
-        self.min_width = Some(width.into().resolve().unwrap());
+    pub fn set_min_width(&mut self, width: impl Into<Length>) {
+        self.min_width = Some(width.into());
     }
 
     /// Constrain the minimum height of the container.
-    pub fn min_height(mut self, height: impl Into<ValueRef<Length>>) -> Self {
+    pub fn min_height(mut self, height: impl Into<Length>) -> Self {
         self.set_min_height(height);
         self
     }
 
     /// Constrain the minimum height of the container.
-    pub fn set_min_height(&mut self, height: impl Into<ValueRef<Length>>) {
-        self.min_height = Some(height.into().resolve().unwrap());
+    pub fn set_min_height(&mut self, height: impl Into<Length>) {
+        self.min_height = Some(height.into());
     }
 
     /// Constrain the width of the container.
-    pub fn fixed_width(mut self, width: impl Into<ValueRef<Length>>) -> Self {
+    pub fn fixed_width(mut self, width: impl Into<Length>) -> Self {
         self.set_fixed_width(width);
         self
     }
 
     /// Constrain the width of the container.
-    pub fn set_fixed_width(&mut self, width: impl Into<ValueRef<Length>>) {
-        let w = width.into().resolve().unwrap();
+    pub fn set_fixed_width(&mut self, width: impl Into<Length>) {
+        let w = width.into();
         self.min_width = Some(w);
         self.max_width = Some(w);
     }
 
     /// Constrain the width of the container.
-    pub fn fixed_height(mut self, height: impl Into<ValueRef<Length>>) -> Self {
+    pub fn fixed_height(mut self, height: impl Into<Length>) -> Self {
         self.set_fixed_height(height);
         self
     }
 
     /// Constrain the width of the container.
-    pub fn set_fixed_height(&mut self, height: impl Into<ValueRef<Length>>) {
-        let h = height.into().resolve().unwrap();
+    pub fn set_fixed_height(&mut self, height: impl Into<Length>) {
+        let h = height.into();
         self.min_height = Some(h);
         self.max_height = Some(h);
     }
@@ -122,10 +129,19 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     pub fn set_fixed_size(&mut self, size: Size) {
-        self.min_width = Some(size.width.dip().into());
-        self.max_width = Some(size.width.dip().into());
-        self.min_height = Some(size.height.dip().into());
-        self.max_height = Some(size.height.dip().into());
+        self.min_width = Some(size.width.dip());
+        self.max_width = Some(size.width.dip());
+        self.min_height = Some(size.height.dip());
+        self.max_height = Some(size.height.dip());
+    }
+
+    /// Fills the available space.
+    ///
+    /// Equivalent to `self.fixed_width(100.percent()).fixed_height(100.percent())`
+    pub fn fill(mut self) -> Self {
+        self.set_fixed_width(100.percent());
+        self.set_fixed_height(100.percent());
+        self
     }
 
     /// Centers the content in the available space.
@@ -151,14 +167,17 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Aligns the widget in the available space.
-    pub fn content_padding(mut self, padding: impl Into<ValueRef<SideOffsets>>) -> Self {
-        self.set_content_padding(padding);
+    pub fn content_padding(mut self, top: Length, right: Length, bottom: Length, left: Length) -> Self {
+        self.set_content_padding(top, right, bottom, left);
         self
     }
 
     /// Aligns the widget in the available space.
-    pub fn set_content_padding(&mut self, padding: impl Into<ValueRef<SideOffsets>>) {
-        self.content_padding = padding.into().resolve().unwrap();
+    pub fn set_content_padding(&mut self, top: Length, right: Length, bottom: Length, left: Length) {
+        self.padding_top = top;
+        self.padding_right = right;
+        self.padding_bottom = bottom;
+        self.padding_left = left;
     }
 
     /// Sets the style used to paint the box of the container.
@@ -169,7 +188,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Sets the style used to paint the box of the container.
     pub fn set_box_style(&mut self, box_style: impl Into<ValueRef<BoxStyle>>) {
-        self.box_style = box_style.into().resolve().unwrap();
+        self.box_style = box_style.into();
     }
 
     /// Adds an alternate style, which replaces the main style when the widget is in the specified state.
@@ -180,8 +199,10 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Sets the overlay style, only active when the widget is in the specified state.
     pub fn push_alternate_box_style(&mut self, state: VisualState, box_style: impl Into<ValueRef<BoxStyle>>) {
-        self.alternate_box_styles
-            .push((state, box_style.into().resolve().unwrap()));
+        self.alternate_box_styles.push((state, box_style.into()));
+        if state.contains(VisualState::HOVER) {
+            self.redraw_on_hover = true;
+        }
     }
 }
 
@@ -192,19 +213,43 @@ impl<Content: Widget> Widget for Container<Content> {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        // if one of our alternate styles depend on HOVER, we must request a repaint on pointer over/out
+        let redraw_on_hover = self
+            .alternate_box_styles
+            .iter()
+            .any(|(state, _)| state.contains(VisualState::HOVER));
+
+        if redraw_on_hover
+            && matches!(
+                event,
+                Event::Pointer(PointerEvent {
+                    kind: PointerEventKind::PointerOver | PointerEventKind::PointerOut,
+                    ..
+                })
+            )
+        {
+            ctx.request_redraw();
+        }
         self.content.event(ctx, event, env)
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
-        // First, measure the child, taking into account the mandatory padding
-        let content_constraints = constraints.deflate(self.content_padding);
-        let mut content_size = self.content.layout(ctx, content_constraints, env);
-        content_size.bounds = content_size.bounds.outer_rect(self.content_padding);
-        let mut content_offset = Offset::new(self.content_padding.left, self.content_padding.top);
-
         // Base size for proportional length calculations
         let base_width = constraints.finite_max_width().unwrap_or(0.0);
         let base_height = constraints.finite_max_height().unwrap_or(0.0);
+
+        // First, measure the child, taking into account the mandatory padding
+        let content_padding = SideOffsets::new(
+            self.padding_top.to_dips(ctx.scale_factor, base_height),
+            self.padding_right.to_dips(ctx.scale_factor, base_width),
+            self.padding_bottom.to_dips(ctx.scale_factor, base_height),
+            self.padding_left.to_dips(ctx.scale_factor, base_width),
+        );
+
+        let content_constraints = constraints.deflate(content_padding);
+        let mut content_size = self.content.layout(ctx, content_constraints, env);
+        content_size.bounds = content_size.bounds.outer_rect(content_padding);
+        let mut content_offset = Offset::new(content_padding.left, content_padding.top);
 
         // adjust content baseline so that `baseline = adjusted_content_baseline + padding.top`.
         if let Some(baseline) = self.baseline {
@@ -240,11 +285,11 @@ impl<Content: Widget> Widget for Container<Content> {
             constraints.min.width = clamp(w, constraints.min.width, constraints.max.width);
         }
         if let Some(w) = self.max_width {
-            let w = w.to_dips(ctx.scale_factor, base_height);
+            let w = w.to_dips(ctx.scale_factor, base_width);
             constraints.max.width = clamp(w, constraints.min.width, constraints.max.width);
         }
         if let Some(h) = self.min_height {
-            let h = h.to_dips(ctx.scale_factor, base_width);
+            let h = h.to_dips(ctx.scale_factor, base_height);
             constraints.min.height = clamp(h, constraints.min.height, constraints.max.height);
         }
         if let Some(h) = self.max_height {
@@ -293,7 +338,11 @@ impl<Content: Widget> Widget for Container<Content> {
             size,
         };
 
-        let clip_bounds = self.box_style.clip_bounds(bounds, ctx.scale_factor);
+        let clip_bounds = self
+            .box_style
+            .resolve(env)
+            .unwrap()
+            .clip_bounds(bounds, ctx.scale_factor);
 
         Measurements {
             bounds,
@@ -309,7 +358,7 @@ impl<Content: Widget> Widget for Container<Content> {
         let mut used_alt_style = false;
         for (state_filter, alt_style) in self.alternate_box_styles.iter() {
             if state.contains(*state_filter) {
-                ctx.draw_styled_box(ctx.bounds, alt_style);
+                ctx.draw_styled_box(ctx.bounds, &alt_style.resolve(env).unwrap());
                 used_alt_style = true;
                 break;
             }
@@ -318,7 +367,7 @@ impl<Content: Widget> Widget for Container<Content> {
         // fallback to main style
         if !used_alt_style {
             let style = &self.box_style;
-            ctx.draw_styled_box(ctx.bounds, style);
+            ctx.draw_styled_box(ctx.bounds, &style.resolve(env).unwrap());
         }
 
         self.content.paint(ctx, env);

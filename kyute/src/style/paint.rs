@@ -1,10 +1,8 @@
 //! Description of paints.
 use crate::{
-    asset::ASSET_LOADER,
     cache,
     drawing::{Image, ToSkia, IMAGE_CACHE},
-    style::ColorRef,
-    Angle, Color, EnvKey, Environment, Offset, Rect,
+    Angle, Color, Offset, Rect,
 };
 use skia_safe as sk;
 use skia_safe::gradient_shader::GradientShaderColors;
@@ -164,27 +162,9 @@ impl Paint {
     }
 }
 
-pub trait IntoPaint {
-    fn into_paint(self) -> Paint;
-}
-
-impl IntoPaint for Color {
-    fn into_paint(self) -> Paint {
-        Paint::SolidColor { color: self }
-    }
-}
-
-impl IntoPaint for EnvKey<Color> {
-    fn into_paint(self) -> Paint {
-        Paint::SolidColor {
-            color: self.get().unwrap(),
-        }
-    }
-}
-
-impl IntoPaint for LinearGradient {
-    fn into_paint(self) -> Paint {
-        Paint::LinearGradient(self)
+impl From<Color> for Paint {
+    fn from(color: Color) -> Self {
+        Paint::SolidColor { color }
     }
 }
 
@@ -234,17 +214,20 @@ impl LinearGradient {
     }
 
     /// Appends a color stop to this gradient.
-    pub fn stop(mut self, color: impl Into<ColorRef>, pos: impl Into<Option<f64>>) -> Self {
-        self.stops.push(GradientStop {
-            color: color.into().resolve().unwrap(),
-            pos: pos.into(),
-        });
+    pub fn stop(mut self, color: Color, pos: impl Into<Option<f64>>) -> Self {
+        self.stops.push(GradientStop { color, pos: pos.into() });
         self
     }
 }
 
+impl Default for LinearGradient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl From<LinearGradient> for Paint {
-    fn from(a: LinearGradient) -> Self {
-        Paint::LinearGradient(a)
+    fn from(g: LinearGradient) -> Self {
+        Paint::LinearGradient(g)
     }
 }

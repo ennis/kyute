@@ -144,7 +144,10 @@ impl Widget for Flex {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        ctx.draw_styled_box(ctx.bounds, &BoxStyle::new().fill(theme::keys::CONTROL_BACKGROUND_COLOR));
+        ctx.draw_styled_box(
+            ctx.bounds,
+            &BoxStyle::new().fill(theme::keys::CONTROL_BACKGROUND_COLOR.get(env).unwrap()),
+        );
 
         for item in self.items.iter() {
             // eprintln!("flex {:?} paint item {:?}", self.axis, item.child_offset());

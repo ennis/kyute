@@ -50,7 +50,7 @@ impl Menu {
     pub fn add_item(&mut self, text: &str, id: usize, shortcut: Option<&Shortcut>, checked: bool, disabled: bool) {
         // TODO: checked, disabled
         let text = if let Some(shortcut) = shortcut {
-            format!("{}\t{}", text, shortcut.to_string())
+            format!("{}\t{}", text, shortcut)
         } else {
             text.to_string()
         };
@@ -86,5 +86,11 @@ impl Menu {
             // SAFETY: `self.handle` is valid
             AppendMenuW(self.hmenu, MF_SEPARATOR, 0, None);
         }
+    }
+}
+
+impl Default for Menu {
+    fn default() -> Self {
+        Self::new()
     }
 }

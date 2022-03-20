@@ -3,7 +3,6 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     panic::Location,
-    rc::Rc,
     sync::Arc,
 };
 
@@ -15,7 +14,7 @@ use std::{
 pub struct CallId(pub u64);
 
 impl CallId {
-    pub fn to_u64(&self) -> u64 {
+    pub fn to_u64(self) -> u64 {
         self.0
     }
 }

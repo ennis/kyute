@@ -9,9 +9,10 @@ use crate::{
     text::{FormattedText, Selection, TextAffinity, TextPosition},
     theme,
     widget::{prelude::*, Container, Text},
-    Color, Data, SideOffsets,
+    Color, Data,
 };
 use keyboard_types::KeyState;
+use kyute_common::UnitExt;
 use kyute_text::Attribute;
 use skia_safe as sk;
 use std::{marker::PhantomData, sync::Arc};
@@ -27,12 +28,12 @@ pub enum Movement {
 
 fn prev_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
     let mut c = GraphemeCursor::new(offset, text.len(), true);
-    c.prev_boundary(&text, 0).unwrap()
+    c.prev_boundary(text, 0).unwrap()
 }
 
 fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
     let mut c = GraphemeCursor::new(offset, text.len(), true);
-    c.next_boundary(&text, 0).unwrap()
+    c.next_boundary(text, 0).unwrap()
 }
 
 /// Text editor widget.
@@ -77,7 +78,7 @@ impl TextEdit {
 
         let inner = Container::new(Text::new(formatted_text.clone()))
             .box_style(theme::TEXT_EDIT)
-            .content_padding(SideOffsets::new_all_same(2.0));
+            .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip());
 
         TextEdit {
             id: WidgetId::here(),

@@ -1,11 +1,12 @@
 use crate::{
     composable, theme,
     widget::{
-        grid::GridTrackDefinition, separator::separator, Clickable, Container, Grid, GridLength, Image, Label,
+        grid::GridTrackDefinition, separator::separator, Clickable, Container, Grid, GridLength, Image, Label, Scaling,
         WidgetWrapper,
     },
-    Alignment, Orientation, SideOffsets, Widget, WidgetExt,
+    Alignment, Orientation, Widget, WidgetExt,
 };
+use kyute_common::UnitExt;
 
 /// A widget with a title.
 #[derive(Clone)]
@@ -33,25 +34,29 @@ impl TitledPane {
 
         //use kyute::style::*;
 
-        let icon = Image::from_uri(if collapsed {
-            "data/icons/chevron-collapsed.png"
-        } else {
-            "data/icons/chevron.png"
-        });
+        let icon = Image::from_uri(
+            if collapsed {
+                "data/icons/chevron-collapsed.png"
+            } else {
+                "data/icons/chevron.png"
+            },
+            Scaling::Contain,
+        )
+        .fix_size(20.dip(), 20.dip());
 
         // Title bar
         let title_bar = Clickable::new(
             Container::new(
                 Grid::with_column_definitions([
-                    GridTrackDefinition::new(GridLength::Fixed(20.0)),
-                    GridTrackDefinition::new(GridLength::Fixed(3.0)),
+                    GridTrackDefinition::new(GridLength::Fixed(20.dip())),
+                    GridTrackDefinition::new(GridLength::Fixed(3.dip())),
                     GridTrackDefinition::new(GridLength::Flex(1.0)),
-                    GridTrackDefinition::new(GridLength::Fixed(20.0)),
+                    GridTrackDefinition::new(GridLength::Fixed(20.dip())),
                 ])
                 .with_item(0, 0, icon)
                 .with_item(0, 2, Label::new(title).aligned(Alignment::CENTER_LEFT)),
             )
-            .content_padding(SideOffsets::new_all_same(2.0))
+            .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip())
             .box_style(theme::TITLED_PANE_HEADER),
         );
 

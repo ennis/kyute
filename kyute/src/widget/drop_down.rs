@@ -2,8 +2,9 @@ use crate::{
     event::{PointerButton, PointerEventKind},
     theme,
     widget::{prelude::*, Container, Label},
-    SideOffsets, Signal,
+    Signal,
 };
+use kyute_common::UnitExt;
 use std::{
     convert::TryInto,
     fmt::{Debug, Display},
@@ -64,9 +65,9 @@ impl<T: Clone + 'static> DropDown<T> {
     #[composable]
     pub fn with_selected_index(selected_index: usize, choices: Vec<T>, formatter: impl Formatter<T>) -> DropDown<T> {
         let inner = Container::new(Label::new(formatter.format(&choices[selected_index])))
-            .min_height(theme::BUTTON_HEIGHT)
-            .baseline(theme::BUTTON_LABEL_BASELINE)
-            .content_padding(SideOffsets::new_all_same(5.0))
+            .min_height(26.dip())
+            .baseline(21.dip())
+            .content_padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
             .box_style(theme::DROP_DOWN);
 
         // create menu IDs for each choice

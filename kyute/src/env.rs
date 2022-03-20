@@ -1,7 +1,8 @@
-use crate::{cache, Color, Data, Length, SideOffsets};
+use crate::{Color, Data, Length, SideOffsets};
 use std::{
     any::Any,
     collections::HashMap,
+    fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
     sync::Arc,
@@ -42,8 +43,8 @@ impl<T> EnvKey<T> {
 
 impl<T: EnvValue> EnvKey<T> {
     /// Returns the value of the environment variable in the current env.
-    pub fn get(self) -> Option<T> {
-        cache::environment().get(self)
+    pub fn get(self, env: &Environment) -> Option<T> {
+        env.get(self)
     }
 }
 
@@ -181,10 +182,16 @@ impl Environment {
     }
 }
 
+impl Default for Environment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 
 /// Either a value or a reference to a value in an environment.
-#[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
+#[derive(Copy, Clone, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ValueRef<T> {
     /// Inline value.
@@ -192,20 +199,35 @@ pub enum ValueRef<T> {
     /// Fetch the value from the environment.
     #[serde(skip)]
     Env(EnvKey<T>),
+    /// Evaluate the function with the environment.
+    #[serde(skip)]
+    Fn(fn(&Environment) -> T),
+}
+
+// manual impl to avoid "implementation of `Debug` is not general enough" error
+impl<T: fmt::Debug> fmt::Debug for ValueRef<T> {
+    fn fmt<'a>(&'a self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ValueRef::Inline(val) => f.debug_tuple("Inline").field(val).finish(),
+            ValueRef::Env(key) => f.debug_tuple("Env").field(key).finish(),
+            ValueRef::Fn(ptr) => f.debug_tuple("Fn").field(ptr as &fn(&'a Environment) -> T).finish(),
+        }
+    }
 }
 
 impl<T: EnvValue> ValueRef<T> {
-    pub fn resolve(&self) -> Option<T> {
+    pub fn resolve(&self, env: &Environment) -> Option<T> {
         match self {
             ValueRef::Inline(v) => Some(v.clone()),
-            ValueRef::Env(k) => k.get(),
+            ValueRef::Env(k) => k.get(env),
+            ValueRef::Fn(f) => Some(f(env)),
         }
     }
 }
 
 impl<T: EnvValue + Default> ValueRef<T> {
-    pub fn resolve_or_default(&self) -> T {
-        self.resolve().unwrap_or_default()
+    pub fn resolve_or_default(&self, env: &Environment) -> T {
+        self.resolve(env).unwrap_or_default()
     }
 }
 
@@ -218,6 +240,12 @@ impl<T> From<T> for ValueRef<T> {
 impl<T> From<EnvKey<T>> for ValueRef<T> {
     fn from(k: EnvKey<T>) -> Self {
         ValueRef::Env(k)
+    }
+}
+
+impl<T> From<fn(&Environment) -> T> for ValueRef<T> {
+    fn from(f: fn(&Environment) -> T) -> Self {
+        ValueRef::Fn(f)
     }
 }
 

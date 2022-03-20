@@ -5,19 +5,15 @@ use crate::{
     event::Event,
     theme,
     widget::{prelude::*, Text},
-    Color, Data,
+    Color, Data, ValueRef,
 };
 use kyute_text::FormattedText;
-
-/// Style of a text label.
-#[derive(Copy, Clone, Debug)]
-pub struct TextStyle {}
 
 /// Simple text label.
 #[derive(Clone)]
 pub struct Label {
     text: Text,
-    color: Color,
+    color: ValueRef<Color>,
 }
 
 impl Label {
@@ -25,10 +21,9 @@ impl Label {
     #[composable(cached)]
     pub fn new(text: impl Into<String> + Data) -> Label {
         let text = text.into();
-        let color = theme::keys::LABEL_COLOR.get().unwrap();
         Label {
             text: Text::new(FormattedText::new(text.into())),
-            color,
+            color: theme::keys::LABEL_COLOR.into(),
         }
     }
 
@@ -40,7 +35,7 @@ impl Label {
 
     /// Sets the color of the label.
     pub fn set_color(&mut self, color: Color) {
-        self.color = color;
+        self.color = color.into();
     }
 }
 

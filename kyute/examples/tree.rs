@@ -10,13 +10,16 @@ use kyute::{
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, UnitExt, Widget, WidgetExt,
     WidgetPod, Window,
 };
-use kyute_common::SideOffsets;
+use kyute_common::{Length, SideOffsets};
 use std::sync::Arc;
 use tracing::trace;
 
 #[composable]
 fn tree_test() -> impl Widget + Clone {
-    let mut tree = TreeGrid::new([GridTrackDefinition::new(GridLength::Fixed(300.0))]);
+    let mut tree = TreeGrid::new(
+        GridLength::Fixed(20.dip()),
+        [GridLength::Fixed(300.dip()).into(), GridLength::Flex(1.0).into()],
+    );
 
     let mut root = TreeNode::new(Text::new("root"));
     for i in 0..3 {
@@ -26,7 +29,7 @@ fn tree_test() -> impl Widget + Clone {
             for k in 0..2 {
                 n2.add_child(TreeNode::new(
                     Container::new(Text::new(format!("Node {}.{}.{}", i, j, k)))
-                        .content_padding(SideOffsets::new_all_same(3.0))
+                        .content_padding(0.dip(), 2.dip(), 0.dip(), 2.dip())
                         .box_style(theme::DROP_DOWN),
                 ));
             }
@@ -36,7 +39,7 @@ fn tree_test() -> impl Widget + Clone {
     }
 
     tree.set_root(root);
-    tree
+    tree.fix_size(Length::Proportional(1.0), Length::Proportional(1.0))
 }
 
 #[composable]
@@ -51,6 +54,8 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let _app = Application::new();
-    application::run(ui_root);
+    let mut env = Environment::new();
+    //env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
+    application::run_with_env(ui_root, env);
     Application::shutdown();
 }

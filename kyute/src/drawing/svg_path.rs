@@ -125,7 +125,7 @@ pub(crate) fn svg_path_to_skia(svg_path: &str) -> Result<sk::Path, svgtypes::Err
                     _ => last_p,
                 };
                 sk_path.quad_to(cp.to_skia(), (x as scalar, y as scalar));
-                last_cp = cp.into();
+                last_cp = cp;
                 last_p = (x, y).into();
                 last_verb = PathCommand::SmoothQuadratic;
             }

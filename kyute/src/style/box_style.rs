@@ -1,7 +1,7 @@
 use crate::{
     drawing::ToSkia,
-    style::{border::Border, paint::IntoPaint, ColorRef, Length, Paint},
-    Environment, Offset, PaintCtx, Rect, Transform, ValueRef,
+    style::{border::Border, Length, Paint},
+    Offset, PaintCtx, Rect,
 };
 use kyute_common::Color;
 use skia_safe as sk;
@@ -54,14 +54,14 @@ impl BoxShadow {
         offset_y: impl Into<Length>,
         blur_radius: impl Into<Length>,
         spread_radius: impl Into<Length>,
-        color: impl Into<ColorRef>,
+        color: Color,
     ) -> BoxShadow {
         let params = BoxShadowParams {
             offset_x: offset_x.into(),
             offset_y: offset_y.into(),
             blur_radius: blur_radius.into(),
             spread_radius: spread_radius.into(),
-            color: color.into().resolve().unwrap(),
+            color,
         };
         BoxShadow::Drop(params)
     }
@@ -71,14 +71,14 @@ impl BoxShadow {
         offset_y: impl Into<Length>,
         blur_radius: impl Into<Length>,
         spread_radius: impl Into<Length>,
-        color: impl Into<ColorRef>,
+        color: Color,
     ) -> BoxShadow {
         let params = BoxShadowParams {
             offset_x: offset_x.into(),
             offset_y: offset_y.into(),
             blur_radius: blur_radius.into(),
             spread_radius: spread_radius.into(),
-            color: color.into().resolve().unwrap(),
+            color,
         };
         BoxShadow::Inset(params)
     }
@@ -159,8 +159,8 @@ impl BoxStyle {
     }
 
     /// Sets the brush used to fill the rectangle.
-    pub fn fill(mut self, paint: impl IntoPaint) -> Self {
-        self.fill = Some(paint.into_paint());
+    pub fn fill(mut self, paint: impl Into<Paint>) -> Self {
+        self.fill = Some(paint.into());
         self
     }
 

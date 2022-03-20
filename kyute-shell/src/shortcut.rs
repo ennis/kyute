@@ -1,8 +1,9 @@
 use keyboard_types::Modifiers;
-use std::{fmt::Write, ops::Range};
+use kyute_common::Data;
+use std::{fmt, ops::Range};
 
 /// Subset of `Key`s usable as the last key in a shortcut.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Data)]
 pub enum ShortcutKey {
     // We don't support arbitrary strings because we need to be const
     Character(char),
@@ -144,8 +145,9 @@ const fn const_subslice<T>(mut s: &[T], range: Range<usize>) -> &[T] {
 /// Keyboard shortcut
 /// FIXME: does it have to be in kyute-shell? there's nothing platform specific here?
 /// (there might be, at some point)
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Data)]
 pub struct Shortcut {
+    #[data(same_fn = "PartialEq::eq")]
     /// Modifier (e.g. the `Ctrl` in `Ctrl+Z`).
     pub modifiers: Modifiers,
     /// Non-modifier key.
@@ -181,22 +183,22 @@ impl Shortcut {
         let key = ShortcutKey::from_str(const_subslice(s, p..s.len()));
         Shortcut::new(modifiers, key)
     }
+}
 
-    pub fn to_string(&self) -> String {
-        let mut s = String::new();
+impl fmt::Display for Shortcut {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.modifiers.contains(Modifiers::CONTROL) {
-            s.push_str("Ctrl+");
+            write!(f, "Ctrl+")?;
         }
         if self.modifiers.contains(Modifiers::ALT) {
-            s.push_str("Alt+");
+            write!(f, "Alt+")?;
         }
         if self.modifiers.contains(Modifiers::SHIFT) {
-            s.push_str("Shift+");
+            write!(f, "Shift+")?;
         }
         if self.modifiers.contains(Modifiers::META) {
-            s.push_str("Windows+");
+            write!(f, "Windows+")?;
         }
-        write!(s, "{}", self.key.to_key()).unwrap();
-        s
+        write!(f, "{}", self.key.to_key())
     }
 }

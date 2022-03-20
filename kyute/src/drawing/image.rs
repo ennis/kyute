@@ -40,7 +40,7 @@ impl Asset for Image {
         unsafe {
             // There used to be a public `DecodeToRaster` API that could take a void* but it was removed because it was "unused"
             // (how the fuck can you just declare that a _public API_ is "unused"?)
-            let sk_data = skia_safe::Data::new_bytes(&bytes);
+            let sk_data = skia_safe::Data::new_bytes(bytes);
             let sk_image = skia_safe::Image::from_encoded(sk_data)
                 .unwrap()
                 .new_raster_image() // must call to force decoding and release

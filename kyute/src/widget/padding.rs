@@ -1,20 +1,32 @@
 use crate::{
     widget::{prelude::*, LayoutWrapper},
-    SideOffsets,
+    Length, SideOffsets,
 };
 
 /// A widgets that insets its content by a specified padding.
 pub struct Padding<W> {
-    padding: SideOffsets,
+    top: Length,
+    right: Length,
+    bottom: Length,
+    left: Length,
     inner: LayoutWrapper<W>,
 }
 
 impl<W: Widget + 'static> Padding<W> {
     /// Creates a new widget with the specified padding.
     #[composable]
-    pub fn new(padding: SideOffsets, inner: W) -> Padding<W> {
+    pub fn new(
+        top: impl Into<Length>,
+        right: impl Into<Length>,
+        bottom: impl Into<Length>,
+        left: impl Into<Length>,
+        inner: W,
+    ) -> Padding<W> {
         Padding {
-            padding,
+            top: top.into(),
+            right: right.into(),
+            bottom: bottom.into(),
+            left: left.into(),
             inner: LayoutWrapper::new(inner),
         }
     }
@@ -40,9 +52,17 @@ impl<W: Widget> Widget for Padding<W> {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let mut m = self.inner.layout(ctx, constraints.deflate(self.padding), env);
-        m.bounds = m.bounds.outer_rect(self.padding);
-        self.inner.set_offset(Offset::new(self.padding.left, self.padding.top));
+        let padding = SideOffsets::new(
+            self.top.to_dips(ctx.scale_factor, constraints.max.height),
+            self.right.to_dips(ctx.scale_factor, constraints.max.width),
+            self.bottom.to_dips(ctx.scale_factor, constraints.max.height),
+            self.left.to_dips(ctx.scale_factor, constraints.max.width),
+        );
+
+        let mut m = self.inner.layout(ctx, constraints.deflate(padding), env);
+        m.bounds = m.bounds.outer_rect(padding);
+        m.clip_bounds = m.clip_bounds.outer_rect(padding);
+        self.inner.set_offset(Offset::new(padding.left, padding.top));
         m
     }
 

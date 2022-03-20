@@ -22,6 +22,7 @@ mod text_edit;
 mod canvas;
 mod popup;
 mod scroll_area;
+mod selectable;
 mod thumb;
 mod titled_pane;
 mod tree;
@@ -36,7 +37,7 @@ pub use container::Container;
 pub use drop_down::DropDown;
 pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
 pub use grid::{Grid, GridLength, GridRow, GridSpan};
-pub use image::Image;
+pub use image::{Image, Scaling};
 pub use label::Label;
 pub use layout_wrapper::{LayoutInspector, LayoutWrapper};
 pub use menu::{Action, ContextMenu, Menu, MenuItem, Shortcut};
@@ -44,6 +45,7 @@ pub use null::Null;
 pub use padding::Padding;
 pub use popup::Popup;
 pub use scroll_area::ScrollArea;
+pub use selectable::Selectable;
 pub use separator::separator;
 pub use slider::Slider;
 pub use text::Text;
@@ -52,9 +54,7 @@ pub use thumb::{DragController, Thumb};
 pub use titled_pane::TitledPane;
 pub use tree::{TreeGrid, TreeNode};
 
-use crate::{
-    BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Rect, Transform, Widget, WidgetId,
-};
+use crate::{BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Widget, WidgetId};
 
 // TODO move somewhere else
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

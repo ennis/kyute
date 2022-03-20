@@ -2,19 +2,15 @@ pub(crate) mod factory;
 mod formatted_text;
 mod paragraph;
 
-use kyute_common::{Color, Data, Point, Rect};
-use lazy_static::lazy_static;
+use kyute_common::{Color, Data};
 use std::{
-    cmp::Ordering,
-    ops::{Bound, Deref, Range, RangeBounds},
+    ops::{Bound, Range, RangeBounds},
     sync::Arc,
 };
 use windows::Win32::Graphics::DirectWrite::{
-    DWriteCreateFactory, IDWriteFactory, IDWriteFactory7, IDWriteTextLayout3, DWRITE_FACTORY_TYPE_SHARED,
     DWRITE_FONT_STYLE, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STYLE_OBLIQUE,
-    DWRITE_FONT_WEIGHT, DWRITE_FONT_WEIGHT_EXTRA_BLACK, DWRITE_PARAGRAPH_ALIGNMENT, DWRITE_TEXT_ALIGNMENT,
-    DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_JUSTIFIED, DWRITE_TEXT_ALIGNMENT_LEADING,
-    DWRITE_TEXT_ALIGNMENT_TRAILING,
+    DWRITE_FONT_WEIGHT, DWRITE_TEXT_ALIGNMENT, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_JUSTIFIED,
+    DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_TEXT_ALIGNMENT_TRAILING,
 };
 
 pub use formatted_text::{FormattedText, ParagraphStyle};

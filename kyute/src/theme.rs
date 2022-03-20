@@ -1,6 +1,6 @@
 //! Environment keys that control the visual aspect (theme) of common widgets.
 use crate::{
-    style::{darken, lighten, Border, BoxShadow, BoxStyle, LinearGradient},
+    style::{Border, BoxShadow, BoxStyle, LinearGradient},
     Color, EnvKey, Environment, Length, SideOffsets, UnitExt,
 };
 
@@ -401,8 +401,8 @@ pub fn setup_default_style(env: &mut Environment) {
         .fill(
             LinearGradient::new()
                 .angle(90.degrees())
-                .stop(darken(palette::LIGHT_BLUE_900, 0.02), Some(0.0))
-                .stop(lighten(palette::LIGHT_BLUE_900, 0.02), Some(1.0)),
+                .stop(palette::LIGHT_BLUE_900.darken(0.02), Some(0.0))
+                .stop(palette::LIGHT_BLUE_900.lighten(0.02), Some(1.0)),
         )
         .box_shadow(BoxShadow::drop(
             0.dip(),
@@ -419,13 +419,13 @@ pub fn setup_default_style(env: &mut Environment) {
             .fill(
                 LinearGradient::new()
                     .angle(90.degrees())
-                    .stop(darken(palette::GREY_800, 0.02), Some(0.0))
-                    .stop(lighten(palette::GREY_800, 0.02), Some(1.0)),
+                    .stop(palette::GREY_800.darken(0.02), Some(0.0))
+                    .stop(palette::GREY_800.lighten(0.02), Some(1.0)),
             )
             .border(Border::inside(1.px()).paint(palette::GREY_700).offset_y(1.px()))
             .border(Border::inside(1.px()).paint(palette::GREY_900));
-        env.set(BUTTON, button_frame.clone());
-        env.set(DROP_DOWN, blue_button_like_frame.clone());
+        env.set(BUTTON, button_frame);
+        env.set(DROP_DOWN, blue_button_like_frame);
     }
 
     {
@@ -434,11 +434,11 @@ pub fn setup_default_style(env: &mut Environment) {
             .fill(
                 LinearGradient::new()
                     .angle(90.degrees())
-                    .stop(darken(palette::GREY_900, 0.02), Some(0.0))
-                    .stop(lighten(palette::GREY_900, 0.02), Some(1.0)),
+                    .stop(palette::GREY_900.darken(0.02), Some(0.0))
+                    .stop(palette::GREY_900.lighten(0.02), Some(1.0)),
             )
             .border(Border::inside(1.px()).paint(palette::GREY_900));
-        env.set(BUTTON_ACTIVE, button_active_frame.clone());
+        env.set(BUTTON_ACTIVE, button_active_frame);
     }
 
     {
@@ -446,13 +446,13 @@ pub fn setup_default_style(env: &mut Environment) {
             .radius(3.dip())
             .fill(
                 LinearGradient::new()
-                    .angle(-90.degrees())
-                    .stop(lighten(palette::GREY_800, 0.1), Some(0.0))
-                    .stop(darken(palette::GREY_800, 0.1), Some(1.0)),
+                    .angle((-90).degrees())
+                    .stop(palette::GREY_800.lighten(0.1), Some(0.0))
+                    .stop(palette::GREY_800.darken(0.1), Some(1.0)),
             )
             .border(Border::inside(1.px()).paint(palette::GREY_700).offset_y(1.px()))
             .border(Border::inside(1.px()).paint(palette::GREY_900));
-        env.set(BUTTON_HOVER, button_hover_frame.clone());
+        env.set(BUTTON_HOVER, button_hover_frame);
     }
 
     //----------------------------------------------------------------------------------------------
@@ -462,14 +462,14 @@ pub fn setup_default_style(env: &mut Environment) {
             .radii(8.dip(), 8.dip(), 0.dip(), 0.dip())
             .fill(palette::GREY_900)
             .border(Border::inside(1.px()).paint(palette::GREY_800));
-        env.set(TITLED_PANE_HEADER, header_frame.clone());
+        env.set(TITLED_PANE_HEADER, header_frame);
     }
 
     env.set(
         TEXT_EDIT,
         BoxStyle::new()
             .fill(env.get(keys::GROOVE_COLOR).unwrap())
-            .border(control_border.clone()),
+            .border(control_border),
     );
 
     env.set(

@@ -1,7 +1,6 @@
 use crate::{
-    cache,
     event::{PointerButton, PointerButtons, PointerEventKind},
-    widget::{prelude::*, LayoutWrapper},
+    widget::prelude::*,
     Signal,
 };
 
@@ -159,7 +158,7 @@ impl<Content: Widget + 'static> DragController<Content> {
             }
         }
 
-        if let Some(p) = thumb.pointer_up() {
+        if let Some(_p) = thumb.pointer_up() {
             anchor = None;
             completed = true;
         }

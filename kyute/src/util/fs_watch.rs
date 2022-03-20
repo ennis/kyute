@@ -1,5 +1,5 @@
 //! File system watcher
-use crate::{application::ExtEvent, composable, environment, memoize, state, EnvKey};
+use crate::{composable, environment, memoize, state, EnvKey};
 use notify::{RecommendedWatcher, Watcher};
 use std::{
     collections::HashMap,
@@ -68,7 +68,6 @@ impl FileSystemWatcher {
         environment()
             .get(FILE_SYSTEM_WATCHER)
             .expect("could not find a FileWatcher in the current environment")
-            .clone()
     }
 
     /// Watches for changes to a specified path.
@@ -119,7 +118,7 @@ impl FileSystemWatcher {
             handler.original_path.display(),
             handler.canonical_path.display()
         );
-        watch_list.insert(canonical_path.clone(), handler);
+        watch_list.insert(canonical_path, handler);
 
         Ok(WatchSubscription(subscription_token))
     }

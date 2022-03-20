@@ -4,7 +4,7 @@ use graal::vk;
 use raw_window_handle::HasRawWindowHandle;
 use std::ptr;
 use windows::Win32::{
-    Foundation::{BOOL, HINSTANCE, HWND, POINT},
+    Foundation::{HINSTANCE, HWND, POINT},
     Graphics::Gdi::ClientToScreen,
     UI::WindowsAndMessaging::{DestroyMenu, SetMenu, TrackPopupMenu, HMENU, TPM_LEFTALIGN},
 };
@@ -159,7 +159,7 @@ impl Window {
             let y = at.y * scale_factor;*/
             let mut point = POINT { x: at.0, y: at.1 };
             ClientToScreen(self.hwnd, &mut point);
-            if TrackPopupMenu(hmenu, TPM_LEFTALIGN, point.x, point.y, 0, self.hwnd, ptr::null()) == BOOL::from(false) {
+            if TrackPopupMenu(hmenu, TPM_LEFTALIGN, point.x, point.y, 0, self.hwnd, ptr::null()) == false {
                 tracing::warn!("failed to track popup menu");
             }
         }

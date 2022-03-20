@@ -1,8 +1,8 @@
 //! Border description.
 use crate::{
     drawing::ToSkia,
-    style::{paint::IntoPaint, BlendMode, Length, Paint},
-    Color, Environment, Offset, PaintCtx, Rect, RectExt, Transform, ValueRef,
+    style::{BlendMode, Length, Paint},
+    Color, Offset, PaintCtx, Rect, RectExt,
 };
 use approx::ulps_eq;
 use skia_safe as sk;
@@ -51,7 +51,7 @@ impl Border {
             widths: [width; 4],
             position,
             paint: Paint::SolidColor {
-                color: Color::new(0.0, 0.0, 0.0, 1.0).into(),
+                color: Color::new(0.0, 0.0, 0.0, 1.0),
             },
             style: BorderStyle::Solid,
             opacity: 1.0,
@@ -62,18 +62,18 @@ impl Border {
         }
     }
 
-    pub fn inside(width: impl Into<ValueRef<Length>>) -> Border {
-        let width = width.into().resolve().unwrap();
+    pub fn inside(width: impl Into<Length>) -> Border {
+        let width = width.into();
         Border::new(width, BorderPosition::Inside)
     }
 
-    pub fn outside(width: impl Into<ValueRef<Length>>) -> Border {
-        let width = width.into().resolve().unwrap();
+    pub fn outside(width: impl Into<Length>) -> Border {
+        let width = width.into();
         Border::new(width, BorderPosition::Outside)
     }
 
-    pub fn center(width: impl Into<ValueRef<Length>>) -> Border {
-        let width = width.into().resolve().unwrap();
+    pub fn center(width: impl Into<Length>) -> Border {
+        let width = width.into();
         Border::new(width, BorderPosition::Center)
     }
 
@@ -102,8 +102,8 @@ impl Border {
         self
     }*/
 
-    pub fn paint(mut self, paint: impl IntoPaint) -> Self {
-        self.paint = paint.into_paint();
+    pub fn paint(mut self, paint: impl Into<Paint>) -> Self {
+        self.paint = paint.into();
         self
     }
 

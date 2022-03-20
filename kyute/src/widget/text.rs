@@ -1,6 +1,6 @@
 use crate::{
     composable, drawing::ToSkia, BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx, Measurements,
-    PaintCtx, Point, Rect, RectI, RoundToPixel, Transform, Widget, WidgetId,
+    PaintCtx, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
 use kyute_text::{
     FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
@@ -67,7 +67,7 @@ impl GlyphMaskImage {
             match data.format() {
                 GlyphMaskFormat::Rgb8 => unsafe {
                     // SAFETY: rgba_buf and src sized accordingly
-                    ptr::write(rgba_buf.as_mut_ptr().add(i * 4 + 0), src[i * 3 + 0]);
+                    ptr::write(rgba_buf.as_mut_ptr().add(i * 4), src[i * 3]);
                     ptr::write(rgba_buf.as_mut_ptr().add(i * 4 + 1), src[i * 3 + 1]);
                     ptr::write(rgba_buf.as_mut_ptr().add(i * 4 + 2), src[i * 3 + 2]);
                     ptr::write(rgba_buf.as_mut_ptr().add(i * 4 + 3), 255);
@@ -240,13 +240,15 @@ impl Widget for Text {
         if runs.is_none() {
             let mut renderer = Renderer { ctx, masks: vec![] };
             // FIXME: should be a point in absolute coords?
-            paragraph.draw(
-                Point::origin(),
-                &mut renderer,
-                &GlyphRunDrawingEffects {
-                    color: Color::from_hex("#FFFFFF"),
-                },
-            );
+            paragraph
+                .draw(
+                    Point::origin(),
+                    &mut renderer,
+                    &GlyphRunDrawingEffects {
+                        color: Color::from_hex("#FFFFFF"),
+                    },
+                )
+                .expect("failed to draw paragraph");
         }
     }
 }

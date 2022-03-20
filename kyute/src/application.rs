@@ -10,9 +10,7 @@ use crate::{
     drawing::{ImageCache, IMAGE_CACHE},
     theme,
     util::fs_watch::{FileSystemWatcher, FILE_SYSTEM_WATCHER},
-    AssetLoader, Environment, Event, InternalEvent,
-    ValueRef::Env,
-    Widget, WidgetPod,
+    AssetLoader, Environment, Event, InternalEvent, Widget, WidgetPod,
 };
 use kyute_shell::{
     winit,
@@ -28,7 +26,6 @@ use std::{
     sync::Arc,
     task::{Wake, Waker},
 };
-use svgtypes::LengthUnit::Ex;
 
 pub enum ExtEvent {
     /// Triggers a recomposition
@@ -161,7 +158,7 @@ fn run_inner<W: Widget + 'static>(ui: fn() -> W, env_overrides: Environment) {
 
     let asset_loader = AssetLoader::new();
     env.set(ASSET_LOADER, asset_loader.clone());
-    let image_cache = ImageCache::new(asset_loader.clone());
+    let image_cache = ImageCache::new(asset_loader);
     env.set(IMAGE_CACHE, image_cache);
     let fs_watcher = FileSystemWatcher::new();
     env.set(FILE_SYSTEM_WATCHER, fs_watcher);

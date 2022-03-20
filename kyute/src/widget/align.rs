@@ -8,7 +8,6 @@ pub struct Align<W> {
 }
 
 impl<W: Widget + 'static> Align<W> {
-    #[composable]
     pub fn new(alignment: Alignment, inner: W) -> Align<W> {
         Align {
             alignment,

@@ -1,41 +1,7 @@
-use crate::{
-    cache, composable, event::PointerButton, util::counter::Counter, widget::prelude::*, Data, PointerEvent,
-    PointerEventKind, WidgetId,
-};
-use std::{cell::Cell, collections::HashMap, convert::TryInto};
+use crate::{composable, event::PointerButton, widget::prelude::*, Data, PointerEventKind, WidgetId};
+use std::cell::Cell;
 
-/// Keyboard shortcut.
-// This is a newtype so that we can impl Data on it.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Shortcut(kyute_shell::Shortcut);
-
-impl Shortcut {
-    pub const fn new(modifiers: keyboard_types::Modifiers, key: kyute_shell::ShortcutKey) -> Shortcut {
-        Shortcut(kyute_shell::Shortcut::new(modifiers, key))
-    }
-
-    pub const fn from_str(str: &str) -> Shortcut {
-        Shortcut(kyute_shell::Shortcut::from_str(str))
-    }
-
-    pub fn modifiers(&self) -> keyboard_types::Modifiers {
-        self.0.modifiers
-    }
-
-    pub fn key(&self) -> kyute_shell::ShortcutKey {
-        self.0.key
-    }
-
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
-    }
-}
-
-impl Data for Shortcut {
-    fn same(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
+pub use kyute_shell::Shortcut;
 
 #[derive(Clone, Debug, Data)]
 pub struct Action {
@@ -46,11 +12,6 @@ pub struct Action {
     #[data(ignore)]
     pub(crate) triggered: Signal<()>,
 }
-
-// FIXME: WM_COMMAND menu ids are 16-bit, so we can exhaust IDs quickly if we keep creating new actions
-// This is not a problem for window menus, which are not expected to change, but for context menus
-// associated to a particular item in a list this could be a problem.
-static ACTION_ID_COUNTER: Counter = Counter::new();
 
 impl Action {
     /// Creates a new action.
@@ -131,7 +92,7 @@ pub struct Menu {
 // for menus because we don't want to keep re-creating native window menus too often.
 // TODO impl Data for Vec always?
 // TODO find a way to intelligently build cached collections
-fn compare_menu_items(a: &Vec<MenuItem>, b: &Vec<MenuItem>) -> bool {
+fn compare_menu_items(a: &[MenuItem], b: &[MenuItem]) -> bool {
     (a.len() == b.len()) && (a.iter().zip(b.iter()).all(|(x, y)| x.same(y)))
 }
 
@@ -153,7 +114,7 @@ impl Menu {
                     menu.add_item(
                         text,
                         action.index.get() as usize,
-                        action.shortcut.as_ref().map(|s| &s.0),
+                        action.shortcut.as_ref(),
                         false,
                         false,
                     );

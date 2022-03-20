@@ -8,7 +8,7 @@ use crate::{
     graal,
     graal::{vk::Handle, MemoryLocation},
     region::Region,
-    widget::{Action, Menu},
+    widget::Menu,
     window::skia::SkiaWindow,
     Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, PaintCtx,
     Point, Rect, RoundToPixel, Size, Widget, WidgetId, WidgetPod,
@@ -26,7 +26,7 @@ use kyute_shell::{
     },
 };
 use skia_safe as sk;
-use std::{cell::RefCell, collections::HashMap, env, mem, sync::Arc, time::Instant};
+use std::{cell::RefCell, env, mem, sync::Arc, time::Instant};
 use tracing::trace;
 
 /// Stores information about the last click (for double-click handling)
@@ -142,7 +142,7 @@ impl WindowState {
                 input,
                 is_synthetic: _,
             } => {
-                let (key, code) = key_code::key_code_from_winit(&input);
+                let (key, code) = key_code::key_code_from_winit(input);
                 Some(Event::Keyboard(KeyboardEvent {
                     state: match input.state {
                         winit::event::ElementState::Pressed => keyboard_types::KeyState::Down,
@@ -293,13 +293,13 @@ impl WindowState {
             // Send event
             let old_focus = self.focus_state.focus;
 
-            let pointer_grab_auto_release = match event {
+            let pointer_grab_auto_release = matches!(
+                event,
                 Event::Pointer(PointerEvent {
                     kind: PointerEventKind::PointerUp,
                     ..
-                }) => true,
-                _ => false,
-            };
+                })
+            );
 
             match event {
                 Event::Pointer(ref pointer_event) => {
@@ -660,7 +660,7 @@ impl Window {
 
                     // TODO environment
                     //tracing::trace!("window redraw");
-                    contents.paint(&mut paint_ctx, &env);
+                    contents.paint(&mut paint_ctx, env);
                     surface.flush_and_submit();
                 });
 
@@ -792,7 +792,7 @@ impl Widget for Window {
                 ctx.app_ctx,
                 BoxConstraints::new(0.0..width, 0.0..height),
                 scale_factor,
-                &env,
+                env,
             );
             if layout_changed {
                 let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content).round_to_pixel(scale_factor);

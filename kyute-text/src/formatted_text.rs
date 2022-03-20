@@ -1,5 +1,5 @@
 use crate::{resolve_range, Attribute, FontStyle, FontWeight, TextAlignment};
-use kyute_common::{Color, Data};
+use kyute_common::Data;
 use std::{
     cmp::Ordering,
     ops::{Range, RangeBounds},
@@ -144,25 +144,13 @@ impl TextRuns {
     }
 }
 
-#[derive(Clone, Debug, Data)]
+#[derive(Clone, Debug, Data, Default)]
 pub struct ParagraphStyle {
     pub text_alignment: Option<TextAlignment>,
     pub font_style: Option<FontStyle>,
     pub font_weight: Option<FontWeight>,
     pub font_size: Option<f64>,
     pub font_family: Option<String>,
-}
-
-impl Default for ParagraphStyle {
-    fn default() -> Self {
-        ParagraphStyle {
-            text_alignment: None,
-            font_style: None,
-            font_weight: None,
-            font_size: None,
-            font_family: None,
-        }
-    }
 }
 
 /// Text with formatting information.

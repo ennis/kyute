@@ -1,5 +1,5 @@
-use crate::{widget::prelude::*, Dip, Length, Transform};
-use std::{cell::Cell, sync::Arc};
+use crate::{widget::prelude::*, Length, Transform};
+use std::sync::Arc;
 
 pub enum PositioningMode {
     /// Position relative to center.

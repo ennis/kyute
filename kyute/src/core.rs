@@ -2,16 +2,15 @@ use crate::{
     application::{AppCtx, ExtEvent},
     bloom::Bloom,
     cache,
-    cache::State,
     call_id::CallId,
     drawing::ToSkia,
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
     style::VisualState,
-    widget::{Align, ConstrainedBox},
-    Alignment, BoxConstraints, Dip, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, Size,
-    Transform,
+    widget::{Align, ConstrainedBox, Padding},
+    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, Transform,
 };
+use kyute_common::Length;
 use kyute_macros::composable;
 use kyute_shell::{
     graal,
@@ -19,10 +18,12 @@ use kyute_shell::{
     winit::{event_loop::EventLoopWindowTarget, window::WindowId},
 };
 use skia_safe as sk;
-use std::{cell::Cell, fmt, hash::Hash, ops::RangeBounds, sync::Arc};
+use std::{cell::Cell, fmt, hash::Hash, sync::Arc};
 use tracing::{trace, warn};
 
-pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.show_debug_overlay");
+pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.core.show_debug_overlay");
+//pub const SELECTED: EnvKey<bool> = EnvKey::new("kyute.core.selected");
+pub const DISABLED: EnvKey<bool> = EnvKey::new("kyute.core.disabled");
 
 /// Context passed to widgets during the layout pass.
 ///
@@ -245,20 +246,14 @@ fn hit_test_helper(
     id: Option<WidgetId>,
     pointer_grab: Option<WidgetId>,
 ) -> HitTestResult {
-    if pointer_event.kind == PointerEventKind::PointerOut {
+    if pointer_event.kind == PointerEventKind::PointerOut || (pointer_grab.is_some() && pointer_grab == id) {
         // pointer out events are exempt from hit-test: if the pointer leaves
         // the parent widget, we also want the child elements to know that
         HitTestResult::Skipped
+    } else if bounds.contains(pointer_event.position) {
+        HitTestResult::Passed
     } else {
-        if pointer_grab.is_some() && pointer_grab == id {
-            HitTestResult::Skipped
-        } else {
-            if bounds.contains(pointer_event.position) {
-                HitTestResult::Passed
-            } else {
-                HitTestResult::Failed
-            }
-        }
+        HitTestResult::Failed
     }
 }
 
@@ -594,7 +589,7 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
 
 /// Extension methods on widgets.
 pub trait WidgetExt: Widget + Sized + 'static {
-    /// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
+    /*/// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
     #[composable]
     fn constrain_width(self, width: impl RangeBounds<f64>) -> ConstrainedBox<Self> {
         ConstrainedBox::new(BoxConstraints::new(width, ..), self)
@@ -604,35 +599,49 @@ pub trait WidgetExt: Widget + Sized + 'static {
     #[composable]
     fn constrain_height(self, height: impl RangeBounds<f64>) -> ConstrainedBox<Self> {
         ConstrainedBox::new(BoxConstraints::new(.., height), self)
-    }
+    }*/
 
     /// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
-    #[composable]
-    fn fix_width(self, width: f64) -> ConstrainedBox<Self> {
-        ConstrainedBox::new(BoxConstraints::new(width..width, ..), self)
+    fn fix_width(self, width: impl Into<Length>) -> ConstrainedBox<Self> {
+        let width = width.into();
+        ConstrainedBox::new(self).min_width(width).max_width(width)
     }
 
     /// Wraps the widget in a `ConstrainedBox` that constrains the height of the widget.
-    #[composable]
-    fn fix_height(self, height: f64) -> ConstrainedBox<Self> {
-        ConstrainedBox::new(BoxConstraints::new(.., height..height), self)
+    fn fix_height(self, height: impl Into<Length>) -> ConstrainedBox<Self> {
+        let height = height.into();
+        ConstrainedBox::new(self).min_height(height).max_height(height)
     }
     /// Wraps the widget in a `ConstrainedBox` that constrains the size of the widget.
-    #[composable]
-    fn fix_size(self, size: Size) -> ConstrainedBox<Self> {
-        ConstrainedBox::new(BoxConstraints::tight(size), self)
+    fn fix_size(self, width: impl Into<Length>, height: impl Into<Length>) -> ConstrainedBox<Self> {
+        let width = width.into();
+        let height = height.into();
+        ConstrainedBox::new(self)
+            .min_width(width)
+            .max_width(width)
+            .min_height(height)
+            .max_height(height)
     }
 
     /// Centers the widget in the available space.
-    #[composable]
     fn centered(self) -> Align<Self> {
         Align::new(Alignment::CENTER, self)
     }
 
     /// Aligns the widget in the available space.
-    #[composable]
     fn aligned(self, alignment: Alignment) -> Align<Self> {
         Align::new(alignment, self)
+    }
+
+    /// Adds padding around the widget.
+    fn padding(
+        self,
+        top: impl Into<Length>,
+        right: impl Into<Length>,
+        bottom: impl Into<Length>,
+        left: impl Into<Length>,
+    ) -> Padding<Self> {
+        Padding::new(top, right, bottom, left, self)
     }
 }
 

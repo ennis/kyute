@@ -1,5 +1,5 @@
 //! [`Events`](Event) sent to widgets, and related types.
-use crate::{bloom::Bloom, Offset, Point, WidgetId, WidgetPod};
+use crate::{bloom::Bloom, Point, WidgetId, WidgetPod};
 use std::{collections::HashMap, sync::Arc};
 use winit::event::DeviceId;
 // FIXME: reexport/import from kyute-shell?
@@ -246,7 +246,7 @@ impl Default for PointerState {
 }
 
 /// Last known state of various input devices.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct InputState {
     /// Current state of keyboard modifiers.
     pub modifiers: Modifiers,
@@ -271,14 +271,5 @@ impl InputState {
             button,
             repeat_count: 0,
         })
-    }
-}
-
-impl Default for InputState {
-    fn default() -> Self {
-        InputState {
-            modifiers: Modifiers::default(),
-            pointers: HashMap::new(),
-        }
     }
 }

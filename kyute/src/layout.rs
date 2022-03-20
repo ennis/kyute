@@ -7,7 +7,7 @@ use std::{
 };
 
 /// Box constraints.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone)]
 pub struct BoxConstraints {
     pub min: Size,
     pub max: Size,
@@ -15,6 +15,17 @@ pub struct BoxConstraints {
 
 impl Data for BoxConstraints {
     fn same(&self, other: &Self) -> bool {
+        self.min.width.to_bits() == other.min.width.to_bits()
+            && self.min.height.to_bits() == other.min.height.to_bits()
+            && self.max.width.to_bits() == other.max.width.to_bits()
+            && self.max.height.to_bits() == other.max.height.to_bits()
+    }
+}
+
+// required because we also have a custom hash impl
+// (https://rust-lang.github.io/rust-clippy/master/index.html#derive_hash_xor_eq)
+impl PartialEq for BoxConstraints {
+    fn eq(&self, other: &Self) -> bool {
         self.min.width.to_bits() == other.min.width.to_bits()
             && self.min.height.to_bits() == other.min.height.to_bits()
             && self.max.width.to_bits() == other.max.width.to_bits()
@@ -224,7 +235,7 @@ pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measu
 }
 
 /// Layout information for a visual node, relative to a parent node.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 pub struct Measurements {
     /// Bounds of this node relative to the parent node origin.
     /// TODO replace with size+anchor point? might be more intuitive
@@ -234,6 +245,22 @@ pub struct Measurements {
     /// Baseline offset relative to *this* node.
     /// The baseline relative to the parent node is `offset.y + baseline`.
     pub baseline: Option<f64>,
+}
+
+// required because we also have a custom hash impl
+// (https://rust-lang.github.io/rust-clippy/master/index.html#derive_hash_xor_eq)
+impl PartialEq for Measurements {
+    fn eq(&self, other: &Self) -> bool {
+        self.bounds.origin.x.to_bits() == other.bounds.origin.x.to_bits()
+            && self.bounds.origin.y.to_bits() == other.bounds.origin.y.to_bits()
+            && self.bounds.size.width.to_bits() == other.bounds.size.width.to_bits()
+            && self.bounds.size.height.to_bits() == other.bounds.size.height.to_bits()
+            && self.clip_bounds.origin.x.to_bits() == other.clip_bounds.origin.x.to_bits()
+            && self.clip_bounds.origin.y.to_bits() == other.clip_bounds.origin.y.to_bits()
+            && self.clip_bounds.size.width.to_bits() == other.clip_bounds.size.width.to_bits()
+            && self.clip_bounds.size.height.to_bits() == other.clip_bounds.size.height.to_bits()
+            && matches!((self.baseline, other.baseline), (Some(a), Some(b)) if a.to_bits() == b.to_bits())
+    }
 }
 
 impl Hash for Measurements {
@@ -290,7 +317,7 @@ impl Measurements {
     }
 
     pub fn constrain(&self, constraints: BoxConstraints) -> Measurements {
-        let mut m = self.clone();
+        let mut m = *self;
         m.bounds.size = constraints.constrain(m.bounds.size);
         m
     }

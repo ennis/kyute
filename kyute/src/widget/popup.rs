@@ -1,6 +1,5 @@
 use crate::{cache, widget::prelude::*, Window};
 use kyute_shell::winit::window::WindowBuilder;
-use std::{convert::TryInto, fmt::Display};
 
 /// Pop-up window with contents.
 #[derive(Clone)]

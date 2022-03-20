@@ -10,7 +10,7 @@ use crate::{
 use std::cell::Cell;
 
 /// Utility class representing a slider track on which a knob can move.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 struct SliderTrack {
     start: Point,
     end: Point,
@@ -35,15 +35,6 @@ impl SliderTrack {
     /// Returns the position of the knob on the track.
     fn knob_position(&self, value: f64) -> Point {
         self.start + (self.end - self.start) * value
-    }
-}
-
-impl Default for SliderTrack {
-    fn default() -> Self {
-        SliderTrack {
-            start: Default::default(),
-            end: Default::default(),
-        }
     }
 }
 
@@ -126,8 +117,8 @@ impl Widget for Slider {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
-        match event {
-            Event::Pointer(p) => match p.kind {
+        if let Event::Pointer(p) = event {
+            match p.kind {
                 PointerEventKind::PointerOver | PointerEventKind::PointerOut => {
                     ctx.request_redraw();
                 }
@@ -146,15 +137,14 @@ impl Widget for Slider {
                     }
                 }
                 _ => {}
-            },
-            _ => {}
+            }
         }
     }
 
     fn layout(&self, _ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let height = env.get(theme::SLIDER_HEIGHT).unwrap();
         let knob_width = env.get(theme::SLIDER_KNOB_WIDTH).unwrap();
-        let knob_height = env.get(theme::SLIDER_KNOB_HEIGHT).unwrap();
+        let _knob_height = env.get(theme::SLIDER_KNOB_HEIGHT).unwrap();
         let padding = SideOffsets::new_all_same(0.0);
 
         // fixed height
