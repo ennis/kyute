@@ -23,9 +23,9 @@ mod canvas;
 mod popup;
 mod scroll_area;
 mod selectable;
+mod table;
 mod thumb;
 mod titled_pane;
-mod tree;
 
 pub use align::Align;
 pub use baseline::Baseline;
@@ -48,11 +48,13 @@ pub use scroll_area::ScrollArea;
 pub use selectable::Selectable;
 pub use separator::separator;
 pub use slider::Slider;
+pub use table::{ColumnHeaders, TableRow, TableSelection, TableView, TableViewParams};
 pub use text::Text;
 pub use text_edit::{Formatter, TextEdit, TextInput, ValidationResult};
 pub use thumb::{DragController, Thumb};
 pub use titled_pane::TitledPane;
-pub use tree::{TreeGrid, TreeNode};
+
+pub use kyute_macros::WidgetWrapper;
 
 use crate::{BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Widget, WidgetId};
 

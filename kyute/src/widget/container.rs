@@ -1,10 +1,9 @@
 use crate::{
     event::{PointerEvent, PointerEventKind},
-    style::{BoxStyle, PaintCtxExt, VisualState},
+    style::{BoxStyle, Paint, PaintCtxExt, VisualState},
     widget::{prelude::*, LayoutWrapper},
-    Length, SideOffsets, UnitExt, ValueRef,
+    Color, Length, RoundToPixel, SideOffsets, UnitExt, ValueRef,
 };
-use kyute_common::RoundToPixel;
 
 #[derive(Clone)]
 pub struct Container<Content> {
@@ -65,6 +64,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
 impl<Content: Widget + 'static> Container<Content> {
     /// Sets the baseline of the content.
+    #[must_use]
     pub fn baseline(mut self, baseline: impl Into<Length>) -> Self {
         self.set_baseline(baseline);
         self
@@ -76,6 +76,7 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Constrain the minimum width of the container.
+    #[must_use]
     pub fn min_width(mut self, width: impl Into<Length>) -> Self {
         self.set_min_width(width);
         self
@@ -87,6 +88,7 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Constrain the minimum height of the container.
+    #[must_use]
     pub fn min_height(mut self, height: impl Into<Length>) -> Self {
         self.set_min_height(height);
         self
@@ -98,6 +100,7 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Constrain the width of the container.
+    #[must_use]
     pub fn fixed_width(mut self, width: impl Into<Length>) -> Self {
         self.set_fixed_width(width);
         self
@@ -111,6 +114,7 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Constrain the width of the container.
+    #[must_use]
     pub fn fixed_height(mut self, height: impl Into<Length>) -> Self {
         self.set_fixed_height(height);
         self
@@ -123,6 +127,7 @@ impl<Content: Widget + 'static> Container<Content> {
         self.max_height = Some(h);
     }
 
+    #[must_use]
     pub fn fix_size(mut self, size: Size) -> Self {
         self.set_fixed_size(size);
         self
@@ -138,6 +143,7 @@ impl<Content: Widget + 'static> Container<Content> {
     /// Fills the available space.
     ///
     /// Equivalent to `self.fixed_width(100.percent()).fixed_height(100.percent())`
+    #[must_use]
     pub fn fill(mut self) -> Self {
         self.set_fixed_width(100.percent());
         self.set_fixed_height(100.percent());
@@ -145,6 +151,7 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Centers the content in the available space.
+    #[must_use]
     pub fn centered(mut self) -> Self {
         self.set_centered();
         self
@@ -156,6 +163,7 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Aligns the widget in the available space.
+    #[must_use]
     pub fn alignment(mut self, alignment: Alignment) -> Self {
         self.set_alignment(alignment);
         self
@@ -167,6 +175,7 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Aligns the widget in the available space.
+    #[must_use]
     pub fn content_padding(mut self, top: Length, right: Length, bottom: Length, left: Length) -> Self {
         self.set_content_padding(top, right, bottom, left);
         self
@@ -178,6 +187,12 @@ impl<Content: Widget + 'static> Container<Content> {
         self.padding_right = right;
         self.padding_bottom = bottom;
         self.padding_left = left;
+    }
+
+    /// Sets the background color. Overrides any previously set box style.
+    pub fn background(mut self, paint: impl Into<Paint>) -> Self {
+        self.set_box_style(BoxStyle::new().fill(paint));
+        self
     }
 
     /// Sets the style used to paint the box of the container.

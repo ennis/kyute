@@ -6,13 +6,72 @@ use kyute::{
     style::{BoxStyle, LinearGradient, VisualState},
     theme,
     theme::palette,
-    widget::{Align, Container, Grid, GridLength, Null, Padding, Selectable, Text},
+    widget::{
+        grid::GridTrackDefinition, Align, Container, Grid, GridLength, Null, Padding, Selectable, Text, WidgetWrapper,
+    },
     Alignment, Color, Data, Environment, Length, UnitExt, Widget, WidgetExt, Window,
 };
 use kyute_shell::winit::window::WindowBuilder;
 use kyute_text::{FontStyle, FormattedText};
 
 mod grids;
+
+/// A 3-element application scaffolding: a sidebar on the left, a toolbar on the top and the rest is the content area.
+#[derive(Clone, WidgetWrapper)]
+pub struct Scaffold {
+    grid: Grid,
+}
+
+impl Scaffold {
+    #[composable]
+    pub fn new() -> Scaffold {
+        let mut grid = Grid::with_rows_columns(
+            [
+                GridTrackDefinition::new(GridLength::Fixed(150.dip())),
+                GridTrackDefinition::new(GridLength::Fixed(2.dip())),
+                GridTrackDefinition::new(GridLength::Flex(1.0)),
+            ],
+            [
+                GridTrackDefinition::new(GridLength::Fixed(300.dip())),
+                GridTrackDefinition::new(GridLength::Fixed(2.dip())),
+                GridTrackDefinition::new(GridLength::Flex(1.0)),
+            ],
+        );
+
+        // separators
+        grid.add_item(1, .., Container::new(Null).background(theme::palette::GREY_800));
+        grid.add_item(.., 1, Container::new(Null).background(theme::palette::GREY_800));
+
+        Scaffold { grid }
+    }
+
+    pub fn sidebar(mut self, sidebar: impl Widget + 'static) -> Self {
+        self.set_sidebar(sidebar);
+        self
+    }
+
+    pub fn set_sidebar(&mut self, sidebar: impl Widget + 'static) {
+        self.grid.add_item(0..1, 0, sidebar);
+    }
+
+    pub fn toolbar(mut self, toolbar: impl Widget + 'static) -> Self {
+        self.set_toolbar(toolbar);
+        self
+    }
+
+    pub fn set_toolbar(&mut self, toolbar: impl Widget + 'static) {
+        self.grid.add_item(0, 1, toolbar);
+    }
+
+    pub fn content(mut self, content: impl Widget + 'static) -> Self {
+        self.set_content(content);
+        self
+    }
+
+    pub fn set_content(&mut self, content: impl Widget + 'static) {
+        self.grid.add_item(1, 1, content);
+    }
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Data)]
 enum GalleryWidget {
@@ -49,28 +108,7 @@ fn root_view() -> impl Widget + Clone {
     #[state]
     let mut selected = GalleryWidget::Home;
 
-    // v-split
-    let mut g = Grid::with_rows_columns(
-        [GridLength::Flex(1.0).into()],
-        [
-            GridLength::Fixed(300.dip()).into(),
-            GridLength::Fixed(3.px()).into(),
-            GridLength::Flex(1.0).into(),
-        ],
-    );
-
-    g.add_item(
-        0,
-        0,
-        Container::new(Null).fill().box_style(
-            BoxStyle::new().fill(
-                LinearGradient::new()
-                    .stop(Color::from_hex("#21020E"), 1.0)
-                    .stop(Color::from_hex("#140900"), 0.0)
-                    .angle(90.degrees()),
-            ),
-        ),
-    );
+    let mut scaffold = Scaffold::new();
 
     // widget list
     let mut widget_list = Grid::column(GridLength::Flex(1.0))
@@ -115,17 +153,6 @@ fn root_view() -> impl Widget + Clone {
         GalleryWidget::TreeView,
         &mut selected,
     ));
-
-    g.add_item(0, 0, widget_list.padding(8.dip(), 8.dip(), 8.dip(), 8.dip()));
-
-    // separator
-    g.add_item(
-        0,
-        1,
-        Container::new(Null)
-            .fill()
-            .box_style(BoxStyle::new().fill(theme::palette::GREY_400)),
-    );
 
     // content pane
     let right_panel = match selected {
@@ -185,9 +212,10 @@ fn root_view() -> impl Widget + Clone {
         .centered(),
     };
 
-    g.add_item(0, 2, right_panel);
+    scaffold.set_sidebar(widget_list.padding(8.dip(), 8.dip(), 8.dip(), 8.dip()));
+    scaffold.set_content(right_panel);
 
-    g.fix_size(100.percent(), 100.percent())
+    scaffold.fix_size(100.percent(), 100.percent())
 }
 
 #[composable(cached)]

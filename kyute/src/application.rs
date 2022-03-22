@@ -156,6 +156,7 @@ fn run_inner<W: Widget + 'static>(ui: fn() -> W, env_overrides: Environment) {
     // setup env
     let mut env = Environment::new();
 
+    // TODO: move those to lazy_statics
     let asset_loader = AssetLoader::new();
     env.set(ASSET_LOADER, asset_loader.clone());
     let image_cache = ImageCache::new(asset_loader);

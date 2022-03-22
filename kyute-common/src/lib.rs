@@ -5,7 +5,7 @@ mod atom;
 mod color;
 mod data;
 
-use std::ops::Neg;
+use std::ops::{Mul, Neg};
 
 pub use crate::{
     atom::{make_unique_atom, Atom},
@@ -146,6 +146,37 @@ pub enum Length {
     Proportional(f64),
 }
 
+impl Length {
+    /// Scale the length by the given amount.
+    pub fn scale(self, by: f64) -> Self {
+        let mut v = self;
+        match v {
+            Length::Px(ref mut v)
+            | Length::Dip(ref mut v)
+            | Length::In(ref mut v)
+            | Length::Proportional(ref mut v) => {
+                *v *= by;
+            }
+        }
+        v
+    }
+
+    /// Zero length.
+    pub fn zero() -> Length {
+        Length::Dip(0.0)
+    }
+
+    /// Convert to dips, given a scale factor and a parent length for proportional length specifications.
+    pub fn to_dips(self, scale_factor: f64, parent_length_dips: f64) -> f64 {
+        match self {
+            Length::Px(x) => x / scale_factor,
+            Length::In(x) => 96.0 * x,
+            Length::Dip(x) => x,
+            Length::Proportional(x) => x * parent_length_dips,
+        }
+    }
+}
+
 impl Neg for Length {
     type Output = Length;
 
@@ -159,19 +190,19 @@ impl Neg for Length {
     }
 }
 
-impl Length {
-    /// Zero length.
-    pub fn zero() -> Length {
-        Length::Dip(0.0)
+/// Length scaling
+impl Mul<Length> for f64 {
+    type Output = Length;
+    fn mul(self, rhs: Length) -> Self::Output {
+        rhs.scale(self)
     }
+}
 
-    pub fn to_dips(self, scale_factor: f64, parent_length_dips: f64) -> f64 {
-        match self {
-            Length::Px(x) => x / scale_factor,
-            Length::In(x) => 96.0 * x,
-            Length::Dip(x) => x,
-            Length::Proportional(x) => x * parent_length_dips,
-        }
+/// Length scaling
+impl Mul<f64> for Length {
+    type Output = Length;
+    fn mul(self, rhs: f64) -> Self::Output {
+        self.scale(rhs)
     }
 }
 

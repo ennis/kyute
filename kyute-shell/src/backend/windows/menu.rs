@@ -3,8 +3,8 @@ use std::mem;
 use windows::{
     core::PCWSTR,
     Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreateMenu, CreatePopupMenu, DestroyMenu, GetMenuInfo, SetMenuInfo, HMENU, MENUINFO, MF_CHECKED,
-        MF_DISABLED, MF_POPUP, MF_SEPARATOR, MF_STRING, MIM_STYLE, MNS_NOTIFYBYPOS,
+        AppendMenuW, CreateMenu, CreatePopupMenu, DestroyMenu, HMENU, MF_CHECKED, MF_DISABLED, MF_POPUP, MF_SEPARATOR,
+        MF_STRING,
     },
 };
 

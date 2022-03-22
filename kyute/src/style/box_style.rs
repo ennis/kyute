@@ -109,6 +109,11 @@ impl BoxStyle {
         }
     }
 
+    ///
+    pub fn is_transparent(&self) -> bool {
+        self.fill.is_none() && self.borders.is_empty() && self.box_shadow.is_none()
+    }
+
     /// Creates a new box with rounded corners.
     pub fn new_rounded(border_radii: [Length; 4]) -> BoxStyle {
         BoxStyle {

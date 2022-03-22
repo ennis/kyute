@@ -7,11 +7,12 @@ use parking_lot::Mutex;
 use std::{
     any::Any,
     cell::{Cell, RefCell},
+    collections::hash_map::DefaultHasher,
     convert::TryInto,
     fmt,
     fmt::Write,
     future::Future,
-    hash::Hash,
+    hash::{Hash, Hasher},
     mem,
     panic::Location,
     sync::{
@@ -707,6 +708,7 @@ impl<T: Clone + 'static> Signal<T> {
         self.value.borrow().clone()
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn map<U>(&self, f: impl FnOnce(T) -> U) -> Option<U> {
         self.value().map(f)
     }
@@ -836,8 +838,11 @@ fn exit() {
 
 /// Must be called inside `Cache::run`.
 #[track_caller]
-pub fn scoped<R>(index: usize, f: impl FnOnce() -> R) -> R {
-    enter(index);
+pub fn scoped<R>(index: impl Hash, f: impl FnOnce() -> R) -> R {
+    let mut hasher = DefaultHasher::new();
+    index.hash(&mut hasher);
+    // FIXME this broken mess
+    enter(hasher.finish() as usize);
     let r = f();
     exit();
     r

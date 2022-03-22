@@ -9,7 +9,7 @@ use crate::{
 use kyute_common::UnitExt;
 
 /// A widget with a title.
-#[derive(Clone)]
+#[derive(Clone, WidgetWrapper)]
 pub struct TitledPane {
     inner: Grid,
     collapsed_changed: Option<bool>,
@@ -84,17 +84,5 @@ impl TitledPane {
     pub fn on_collapsed_changed(self, f: impl FnOnce(bool)) -> Self {
         self.collapsed_changed.map(f);
         self
-    }
-}
-
-impl WidgetWrapper for TitledPane {
-    type Inner = Grid;
-
-    fn inner(&self) -> &Grid {
-        &self.inner
-    }
-
-    fn inner_mut(&mut self) -> &mut Grid {
-        &mut self.inner
     }
 }

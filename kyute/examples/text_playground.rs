@@ -44,8 +44,8 @@ fn text_playground() -> impl Widget + Clone {
     let base_font_size = 14.0;
 
     let mut grid = Grid::with_column_definitions([
-        GridTrackDefinition::new(GridLength::Fixed(200.0)),
-        GridTrackDefinition::new(GridLength::Fixed(5.0)),
+        GridTrackDefinition::new(GridLength::Fixed(200.dip())),
+        GridTrackDefinition::new(GridLength::Fixed(5.dip())),
         GridTrackDefinition::new(GridLength::Flex(1.0)),
     ])
     .align_items(AlignItems::Baseline);

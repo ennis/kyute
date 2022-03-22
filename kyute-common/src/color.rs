@@ -55,6 +55,11 @@ impl Color {
         })
     }
 
+    /// Returns the alpha value.
+    pub const fn alpha(&self) -> f64 {
+        self.0.alpha as f64
+    }
+
     /// Replaces alpha value.
     pub const fn with_alpha(self, alpha: f64) -> Color {
         Color(palette::Srgba {

@@ -17,6 +17,7 @@ impl<Content: Widget + 'static> Clickable<Content> {
         }
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn on_click(self, f: impl FnOnce()) -> Self {
         if self.clicked.signalled() {
             f();

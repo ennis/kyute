@@ -7,7 +7,7 @@ use crate::{
     Color, UnitExt,
 };
 
-#[derive(Clone)]
+#[derive(Clone, WidgetWrapper)]
 pub struct ScrollArea {
     inner: LayoutInspector<Grid>,
 }
@@ -79,17 +79,5 @@ impl ScrollArea {
         grid_container.contents_mut().add_item(0, 0, content_viewport);
         grid_container.contents_mut().add_item(0, 1, scroll_bar);
         ScrollArea { inner: grid_container }
-    }
-}
-
-impl WidgetWrapper for ScrollArea {
-    type Inner = LayoutInspector<Grid>;
-
-    fn inner(&self) -> &Self::Inner {
-        &self.inner
-    }
-
-    fn inner_mut(&mut self) -> &mut Self::Inner {
-        &mut self.inner
     }
 }

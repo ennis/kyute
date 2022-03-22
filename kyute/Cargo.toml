@@ -8,7 +8,7 @@ edition = "2018"
 kyute-macros = { path="macros" }
 kyute-shell = { path="../kyute-shell", features = ["serializing"] }
 kyute-text = { path="../kyute-text" }
-kyute-common = { path="../kyute-common", features = ["serializing"] }
+kyute-common = { path="../kyute-common", features = ["serializing", "imbl"] }
 tracing = { version = "0.1.25", features = ["attributes"] }
 euclid = "0.22"
 keyboard-types = "0.6"

@@ -42,7 +42,23 @@ pub enum Paint {
     },
 }
 
+impl Default for Paint {
+    fn default() -> Self {
+        Paint::SolidColor {
+            color: Color::new(0.0, 0.0, 0.0, 0.0),
+        }
+    }
+}
+
 impl Paint {
+    pub fn is_transparent(&self) -> bool {
+        if let Paint::SolidColor { color } = self {
+            color.alpha() == 0.0
+        } else {
+            false
+        }
+    }
+
     /// Converts this object to a skia `SkPaint`.
     pub fn to_sk_paint(&self, bounds: Rect) -> sk::Paint {
         match self {

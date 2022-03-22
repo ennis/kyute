@@ -10,7 +10,7 @@ use crate::{
     widget::{Align, ConstrainedBox, Padding},
     Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, Transform,
 };
-use kyute_common::Length;
+use kyute_common::{Length, UnitExt};
 use kyute_macros::composable;
 use kyute_shell::{
     graal,
@@ -602,17 +602,20 @@ pub trait WidgetExt: Widget + Sized + 'static {
     }*/
 
     /// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
+    #[must_use]
     fn fix_width(self, width: impl Into<Length>) -> ConstrainedBox<Self> {
         let width = width.into();
         ConstrainedBox::new(self).min_width(width).max_width(width)
     }
 
     /// Wraps the widget in a `ConstrainedBox` that constrains the height of the widget.
+    #[must_use]
     fn fix_height(self, height: impl Into<Length>) -> ConstrainedBox<Self> {
         let height = height.into();
         ConstrainedBox::new(self).min_height(height).max_height(height)
     }
     /// Wraps the widget in a `ConstrainedBox` that constrains the size of the widget.
+    #[must_use]
     fn fix_size(self, width: impl Into<Length>, height: impl Into<Length>) -> ConstrainedBox<Self> {
         let width = width.into();
         let height = height.into();
@@ -623,17 +626,50 @@ pub trait WidgetExt: Widget + Sized + 'static {
             .max_height(height)
     }
 
+    /// Wraps the widget in a `ConstrainedBox` that fills the available space in the parent widget.
+    #[must_use]
+    fn fill(self) -> ConstrainedBox<Self> {
+        self.fix_size(100.percent(), 100.percent())
+    }
+
     /// Centers the widget in the available space.
+    #[must_use]
     fn centered(self) -> Align<Self> {
         Align::new(Alignment::CENTER, self)
     }
 
     /// Aligns the widget in the available space.
+    #[must_use]
     fn aligned(self, alignment: Alignment) -> Align<Self> {
         Align::new(alignment, self)
     }
 
     /// Adds padding around the widget.
+    #[must_use]
+    fn padding_left(self, left: impl Into<Length>) -> Padding<Self> {
+        Padding::new(0.dip(), 0.dip(), 0.dip(), left, self)
+    }
+
+    /// Adds padding around the widget.
+    #[must_use]
+    fn padding_right(self, right: impl Into<Length>) -> Padding<Self> {
+        Padding::new(0.dip(), right, 0.dip(), 0.dip(), self)
+    }
+
+    /// Adds padding around the widget.
+    #[must_use]
+    fn padding_top(self, top: impl Into<Length>) -> Padding<Self> {
+        Padding::new(top, 0.dip(), 0.dip(), 0.dip(), self)
+    }
+
+    /// Adds padding around the widget.
+    #[must_use]
+    fn padding_bottom(self, bottom: impl Into<Length>) -> Padding<Self> {
+        Padding::new(0.dip(), 0.dip(), bottom, 0.dip(), self)
+    }
+
+    /// Adds padding around the widget.
+    #[must_use]
     fn padding(
         self,
         top: impl Into<Length>,

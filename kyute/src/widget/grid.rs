@@ -1,7 +1,11 @@
 use crate::{
-    bloom::Bloom, drawing::ToSkia, widget::prelude::*, Color, Data, EnvKey, InternalEvent, Length, RoundToPixel,
-    WidgetFilter, WidgetId,
+    bloom::Bloom,
+    drawing::ToSkia,
+    style::{BoxStyle, Paint, PaintCtxExt},
+    widget::prelude::*,
+    Color, Data, EnvKey, InternalEvent, Length, RoundToPixel, ValueRef, WidgetFilter, WidgetId,
 };
+use euclid::Size2D;
 use std::{
     cell::{Cell, RefCell},
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
@@ -270,7 +274,12 @@ struct CachedGridLayout {
     measurements: Measurements,
     row_layout: Vec<GridTrackLayout>,
     column_layout: Vec<GridTrackLayout>,
+    row_gap: f64,
+    column_gap: f64,
 }
+
+// FIXME: cloning anything with a widget id in it is extremely suspect: widgets are only clone for caching,
+// but using it in regular code to make multiple copies of a widget will break a lot of things, similar to forgetting #[composable]
 
 #[derive(Clone, Debug)]
 pub struct Grid {
@@ -291,6 +300,18 @@ pub struct Grid {
     align_items: AlignItems,
     justify_items: JustifyItems,
 
+    // style
+    /// Row background.
+    row_background: Paint,
+    /// Alternate row background.
+    alternate_row_background: Paint,
+
+    /// Row gap background.
+    row_gap_background: Paint,
+    /// Column gap background.
+    column_gap_background: Paint,
+
+    ///
     //row_layout: RefCell<Vec<GridTrackLayout>>,
     //column_layout: RefCell<Vec<GridTrackLayout>>,
 
@@ -369,6 +390,10 @@ impl Grid {
             column_gap: Length::Dip(0.0),
             align_items: AlignItems::Start,
             justify_items: JustifyItems::Start,
+            row_background: Default::default(),
+            alternate_row_background: Default::default(),
+            row_gap_background: Default::default(),
+            column_gap_background: Default::default(),
             cached_layout: Arc::new(RefCell::new(None)),
             cached_child_filter: Cell::new(None),
         }
@@ -380,10 +405,20 @@ impl Grid {
         self
     }
 
+    /// Sets the size of the gap between rows.
+    pub fn set_row_gap(&mut self, gap: impl Into<Length>) {
+        self.row_gap = gap.into();
+    }
+
     /// Sets the size of the gap between columns.
     pub fn column_gap(mut self, gap: impl Into<Length>) -> Self {
         self.column_gap = gap.into();
         self
+    }
+
+    /// Sets the size of the gap between columns.
+    pub fn set_column_gap(&mut self, gap: impl Into<Length>) {
+        self.column_gap = gap.into();
     }
 
     /// Sets the template for implicit row definitions.
@@ -392,10 +427,20 @@ impl Grid {
         self
     }
 
+    /// Sets the template for implicit row definitions.
+    pub fn set_row_template(&mut self, size: GridLength) {
+        self.row_template = size;
+    }
+
     /// Sets the template for implicit column definitions.
     pub fn column_template(mut self, size: GridLength) -> Self {
         self.column_template = size;
         self
+    }
+
+    /// Sets the template for implicit row definitions.
+    pub fn set_column_template(&mut self, size: GridLength) {
+        self.column_template = size;
     }
 
     pub fn align_items(mut self, align_items: AlignItems) -> Self {
@@ -406,6 +451,22 @@ impl Grid {
     pub fn justify_items(mut self, justify_items: JustifyItems) -> Self {
         self.justify_items = justify_items;
         self
+    }
+
+    pub fn set_row_background(&mut self, row_background: impl Into<Paint>) {
+        self.row_background = row_background.into();
+    }
+
+    pub fn set_alternate_row_background(&mut self, alternate_row_background: impl Into<Paint>) {
+        self.alternate_row_background = alternate_row_background.into();
+    }
+
+    pub fn set_row_gap_background(&mut self, bg: impl Into<Paint>) {
+        self.row_gap_background = bg.into();
+    }
+
+    pub fn set_column_gap_background(&mut self, bg: impl Into<Paint>) {
+        self.column_gap_background = bg.into();
     }
 
     // TODO remove? rename to `item()`
@@ -689,7 +750,11 @@ impl Widget for Grid {
                 }
             }
             event => {
-                for item in self.items.iter() {
+                // run the events through the items in reverse order
+                // in order to give priority to items inserted last. This is important given
+                // that grid items can overlap, and we have no concept of Z-order
+                // FIXME: add Z-order for overlapping widgets
+                for item in self.items.iter().rev() {
                     item.widget.event(ctx, event, env);
                 }
             }
@@ -799,6 +864,8 @@ impl Widget for Grid {
             measurements,
             row_layout,
             column_layout,
+            row_gap,
+            column_gap,
         }));
         measurements
     }
@@ -808,29 +875,68 @@ impl Widget for Grid {
         let height = ctx.bounds.size.height;
         let width = ctx.bounds.size.width;
 
+        let layout = (&*self.cached_layout).borrow();
+        let layout = layout.as_ref().expect("grid layout not calculated before paint");
+        let row_layout = &layout.row_layout;
+        let column_layout = &layout.column_layout;
+
+        // draw row backgrounds
+        if !self.row_background.is_transparent() && !self.alternate_row_background.is_transparent() {
+            for (i, row) in row_layout.iter().enumerate() {
+                // TODO start index
+                let bg = if i % 2 == 0 {
+                    self.row_background.clone()
+                } else {
+                    self.alternate_row_background.clone()
+                };
+                ctx.draw_styled_box(
+                    Rect::new(Point::new(0.0, row.pos), Size::new(width, row.size)),
+                    &BoxStyle::new().fill(bg),
+                );
+            }
+        }
+
+        // draw gap backgrounds
+        if !self.row_gap_background.is_transparent() {
+            // draw only inner gaps
+            for row in row_layout.iter().skip(1) {
+                ctx.draw_styled_box(
+                    Rect::new(
+                        Point::new(0.0, row.pos - layout.row_gap),
+                        Size::new(width, layout.row_gap),
+                    ),
+                    &BoxStyle::new().fill(self.row_gap_background.clone()),
+                );
+            }
+        }
+        if !self.column_gap_background.is_transparent() {
+            for column in column_layout.iter().skip(1) {
+                ctx.draw_styled_box(
+                    Rect::new(
+                        Point::new(column.pos - layout.column_gap, 0.0),
+                        Size::new(layout.column_gap, height),
+                    ),
+                    &BoxStyle::new().fill(self.column_gap_background.clone()),
+                );
+            }
+        }
+
         // draw debug grid lines
         if env.get(SHOW_GRID_LAYOUT_LINES).unwrap_or_default() {
-            let cached_layout = (&*self.cached_layout).borrow();
-            if let Some(cached_layout) = cached_layout.as_ref() {
-                let row_layout = &cached_layout.row_layout;
-                let column_layout = &cached_layout.column_layout;
-                let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
-
-                for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width - 1.0)) {
-                    ctx.canvas.draw_line(
-                        Point::new(x + 0.5, 0.5).to_skia(),
-                        Point::new(x + 0.5, height + 0.5).to_skia(),
-                        &paint,
-                    );
-                }
-
-                for y in row_layout.iter().map(|x| x.pos).chain(std::iter::once(height - 1.0)) {
-                    ctx.canvas.draw_line(
-                        Point::new(0.5, y + 0.5).to_skia(),
-                        Point::new(width + 0.5, y + 0.5).to_skia(),
-                        &paint,
-                    );
-                }
+            let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
+            for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width - 1.0)) {
+                ctx.canvas.draw_line(
+                    Point::new(x + 0.5, 0.5).to_skia(),
+                    Point::new(x + 0.5, height + 0.5).to_skia(),
+                    &paint,
+                );
+            }
+            for y in row_layout.iter().map(|x| x.pos).chain(std::iter::once(height - 1.0)) {
+                ctx.canvas.draw_line(
+                    Point::new(0.5, y + 0.5).to_skia(),
+                    Point::new(width + 0.5, y + 0.5).to_skia(),
+                    &paint,
+                );
             }
         }
 

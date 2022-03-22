@@ -14,7 +14,7 @@ fn titled_pane_test() -> impl Widget + Clone {
     let pane_1 = TitledPane::collapsible("Initially collapsed", true, Label::new("Hi!".to_string()));
     let pane_2 = TitledPane::collapsible("Initially expanded", false, Label::new("Hey!".to_string()));
 
-    let mut v = Grid::column(GridTrackDefinition::new(400.dip()));
+    let mut v = Grid::column(GridTrackDefinition::new(GridLength::Fixed(400.dip())));
     v.add_row(pane_1);
     v.add_row(pane_2);
 
