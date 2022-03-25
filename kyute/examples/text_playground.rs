@@ -43,12 +43,11 @@ fn text_playground() -> impl Widget + Clone {
 
     let base_font_size = 14.0;
 
-    let mut grid = Grid::with_column_definitions([
-        GridTrackDefinition::new(GridLength::Fixed(200.dip())),
-        GridTrackDefinition::new(GridLength::Fixed(5.dip())),
-        GridTrackDefinition::new(GridLength::Flex(1.0)),
-    ])
-    .align_items(AlignItems::Baseline);
+    let mut grid = Grid::new();
+    grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(200.dip())));
+    grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(5.dip())));
+    grid.push_column_definition(GridTrackDefinition::new(GridLength::Flex(1.0)));
+    grid.set_align_items(AlignItems::Baseline);
 
     for i in 0..6 {
         cache::scoped(i, || {

@@ -30,7 +30,7 @@ impl TitledPane {
 
     #[composable]
     fn new(collapsed: bool, title: String, content: impl Widget + 'static) -> TitledPane {
-        let mut inner = Grid::column(GridLength::Flex(1.0));
+        let mut inner = Grid::column(GridTrackDefinition::new(GridLength::Flex(1.0)));
 
         //use kyute::style::*;
 
@@ -45,20 +45,23 @@ impl TitledPane {
         .fix_size(20.dip(), 20.dip());
 
         // Title bar
-        let title_bar = Clickable::new(
-            Container::new(
-                Grid::with_column_definitions([
-                    GridTrackDefinition::new(GridLength::Fixed(20.dip())),
-                    GridTrackDefinition::new(GridLength::Fixed(3.dip())),
-                    GridTrackDefinition::new(GridLength::Flex(1.0)),
-                    GridTrackDefinition::new(GridLength::Fixed(20.dip())),
-                ])
-                .with_item(0, 0, icon)
-                .with_item(0, 2, Label::new(title).aligned(Alignment::CENTER_LEFT)),
+
+        let title_bar = {
+            let mut grid = Grid::new();
+            grid.append_column_definitions([
+                GridTrackDefinition::new(GridLength::Fixed(20.dip())),
+                GridTrackDefinition::new(GridLength::Fixed(3.dip())),
+                GridTrackDefinition::new(GridLength::Flex(1.0)),
+                GridTrackDefinition::new(GridLength::Fixed(20.dip())),
+            ]);
+            grid.add_item(0, 0, icon);
+            grid.add_item(0, 2, Label::new(title).aligned(Alignment::CENTER_LEFT));
+            Clickable::new(
+                Container::new(grid)
+                    .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip())
+                    .box_style(theme::TITLED_PANE_HEADER),
             )
-            .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip())
-            .box_style(theme::TITLED_PANE_HEADER),
-        );
+        };
 
         let collapsed_changed = if title_bar.clicked() { Some(!collapsed) } else { None };
 

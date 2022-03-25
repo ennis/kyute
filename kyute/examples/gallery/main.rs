@@ -111,9 +111,12 @@ fn root_view() -> impl Widget + Clone {
     let mut scaffold = Scaffold::new();
 
     // widget list
-    let mut widget_list = Grid::column(GridLength::Flex(1.0))
-        .row_template(GridLength::Fixed(35.dip()))
-        .row_gap(8.dip());
+    let mut widget_list = {
+        let mut grid = Grid::column(GridLength::Flex(1.0));
+        grid.set_row_template(GridLength::Fixed(35.dip()));
+        grid.set_row_gap(8.dip());
+        grid
+    };
 
     // widgets
 

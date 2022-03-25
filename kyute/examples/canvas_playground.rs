@@ -27,12 +27,15 @@ fn canvas_playground() -> impl Widget + Clone {
     #[state]
     let mut tmp_offset = Offset::zero();
 
-    let mut grid = Grid::with_column_definitions([
-        GridTrackDefinition::new(GridLength::Fixed(200.dip())),
-        GridTrackDefinition::new(GridLength::Fixed(5.dip())),
-        GridTrackDefinition::new(GridLength::Flex(1.0)),
-    ])
-    .align_items(AlignItems::Baseline);
+    let mut grid = Grid::new();
+    let col_label = GridTrackDefinition::new(GridLength::Fixed(200.dip()));
+    let col_sep = GridTrackDefinition::new(GridLength::Fixed(5.dip()));
+    let col_widgets = GridTrackDefinition::new(GridLength::Flex(1.0));
+
+    grid.push_column_definition(col_label);
+    grid.push_column_definition(col_sep);
+    grid.push_column_definition(col_widgets);
+    grid.set_align_items(AlignItems::Baseline);
 
     grid.add_item(0, 0, Label::new("Offset X"));
     grid.add_item(0, 2, TextInput::number(offset.x).on_value_changed(|x| offset.x = x));

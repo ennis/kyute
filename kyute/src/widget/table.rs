@@ -2,9 +2,10 @@
 use crate::{
     cache,
     style::{BoxStyle, Paint},
+    theme,
     widget::{
-        grid::GridTrackDefinition, prelude::*, Clickable, Container, Grid, GridLength, GridSpan, Image, Null, Scaling,
-        WidgetWrapper,
+        grid::GridTrackDefinition, prelude::*, Clickable, Container, DragController, Grid, GridLength, GridSpan, Image,
+        Null, Scaling, WidgetWrapper,
     },
     Data, Length, UnitExt, ValueRef, WidgetExt,
 };
@@ -78,6 +79,7 @@ impl<Id> TableRow<Id> {
     }
 
     /// Sets a cell.
+    #[composable]
     pub fn add_cell(&mut self, column: usize, widget: impl Widget + 'static) {
         self.cells.push((column, Arc::new(WidgetPod::new(widget))));
     }
@@ -98,6 +100,7 @@ impl ColumnHeaders {
         ColumnHeaders { widgets: vec![] }
     }
 
+    #[composable]
     pub fn add(mut self, widget: impl Widget + 'static) -> Self {
         self.widgets.push(Arc::new(WidgetPod::new(widget)));
         self
@@ -190,7 +193,7 @@ impl<'a, Id> Default for TableViewParams<'a, Id> {
     }
 }
 
-#[derive(Clone, WidgetWrapper)]
+#[derive(Clone)]
 pub struct TableView {
     grid: Grid,
 }
@@ -200,7 +203,8 @@ impl TableView {
     #[composable]
     pub fn new<Id: Hash + Eq + Clone>(mut params: TableViewParams<Id>) -> TableView {
         // create the main grid
-        let mut grid = Grid::with_column_definitions(params.columns);
+        let mut grid = Grid::new();
+        grid.append_column_definitions(params.columns);
 
         // row counter
         let mut i = 0;
@@ -213,6 +217,27 @@ impl TableView {
             for (i, header) in headers.widgets.into_iter().enumerate() {
                 grid.add_item_pod(0, i, header);
             }
+
+            if params.resizeable_columns {
+                // insert transparent draggable items between each column (over the column separator).
+                // they are drag handles for resizing the columns.
+
+                // Alternatives:
+                // - read back the grid layout so that we can overlay handles on top of the whole grid (or at least the first row)
+                // - ** add precise pointer events to the grid (hit test cell borders)
+                /*for i_col in 1..1.max(params.columns.len()) {
+                    // TODO size the handle according to separator width
+                    let resize_handle = DragController::new(
+                        Container::new(Null)
+                            .background(theme::palette::RED_800)
+                            .fixed_width(3.dip())
+                            .fixed_height(100.percent())
+                            .padding_left(-1.dip()),
+                    );
+                    grid.add_item(0, i_col, resize_handle);
+                }*/
+            }
+
             i += 1;
         }
 
@@ -277,7 +302,7 @@ impl TableView {
                         })
                     });
 
-                    let mut widget_with_chevron = Grid::row(GridLength::Auto);
+                    let mut widget_with_chevron = Grid::row(GridTrackDefinition::new(GridLength::Auto));
                     widget_with_chevron.add_item(0, 0, icon);
                     widget_with_chevron.add_item(0, 1, row.widget);
                     grid.add_item(
@@ -311,5 +336,24 @@ impl TableView {
         }
 
         TableView { grid }
+    }
+}
+
+impl Widget for TableView {
+    fn widget_id(&self) -> Option<WidgetId> {
+        self.grid.widget_id()
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.grid.event(ctx, event, env);
+        // handle
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.grid.layout(ctx, constraints, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.grid.paint(ctx, env)
     }
 }

@@ -34,12 +34,11 @@ fn playground_grid(test: usize) -> impl Widget + Clone {
     #[state]
     let mut justify_items = JustifyItems::Start;
 
-    let mut grid = Grid::with_column_definitions([
-        GridTrackDefinition::new(GridLength::Fixed(200.0)),
-        GridTrackDefinition::new(GridLength::Fixed(5.0)),
-        GridTrackDefinition::new(GridLength::Flex(1.0)),
-    ])
-    .align_items(AlignItems::Baseline);
+    let mut grid = Grid::new();
+    grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(200.dip())));
+    grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(5.dip())));
+    grid.push_column_definition(GridTrackDefinition::new(GridLength::Flex(1.0)));
+    grid.set_align_items(AlignItems::Baseline);
 
     // row count
     let mut row = 0;

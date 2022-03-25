@@ -3,9 +3,9 @@ use crate::{
     drawing::ToSkia,
     style::{BoxStyle, Paint, PaintCtxExt},
     widget::prelude::*,
-    Color, Data, EnvKey, InternalEvent, Length, RoundToPixel, ValueRef, WidgetFilter, WidgetId,
+    Color, Data, EnvKey, InternalEvent, Length, PointerEventKind, RoundToPixel, State, ValueRef, WidgetFilter,
+    WidgetId,
 };
-use euclid::Size2D;
 use std::{
     cell::{Cell, RefCell},
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
@@ -13,42 +13,6 @@ use std::{
 };
 
 pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = EnvKey::new("kyute.show_grid_layout_lines");
-
-/// Description of a grid track (row or column).
-#[derive(Clone, Debug, PartialEq)]
-pub struct GridTrackDefinition {
-    /// Track length.
-    min_size: GridLength,
-    max_size: GridLength,
-    /// Optional track name.
-    pub name: Option<String>,
-}
-
-impl GridTrackDefinition {
-    pub fn new(length: impl Into<GridLength>) -> GridTrackDefinition {
-        let length = length.into();
-        GridTrackDefinition {
-            min_size: length,
-            max_size: length,
-            name: None,
-        }
-    }
-
-    pub fn named(name: impl Into<String>, length: impl Into<GridLength>) -> GridTrackDefinition {
-        let length = length.into();
-        GridTrackDefinition {
-            min_size: length,
-            max_size: length,
-            name: Some(name.into()),
-        }
-    }
-}
-
-impl From<GridLength> for GridTrackDefinition {
-    fn from(length: GridLength) -> Self {
-        GridTrackDefinition::new(length)
-    }
-}
 
 /// Length of a grid track.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -80,17 +44,49 @@ pub enum AlignItems {
     Baseline,
 }
 
-/*impl From<Length> for GridLength {
-    fn from(length: Length) -> Self {
-        GridLength::Fixed(length)
-        match length {
-            Length::Dip(dips) => GridLength::Fixed(dips),
-            _ => {
-                todo!("GridLength from Inches & Px")
-            }
+/// Description of a grid track (row or column).
+#[derive(Clone, Debug)]
+pub struct GridTrackDefinition {
+    /// Track length.
+    min_size: GridLength,
+    max_size: GridLength,
+    /// Optional track name.
+    name: Option<String>,
+    resized: Signal<f64>,
+}
+
+impl GridTrackDefinition {
+    #[composable]
+    pub fn new(length: impl Into<GridLength>) -> GridTrackDefinition {
+        let length = length.into();
+        GridTrackDefinition {
+            min_size: length,
+            max_size: length,
+            name: None,
+            resized: Signal::new(),
         }
     }
-}*/
+
+    #[composable]
+    pub fn named(name: impl Into<String>, length: impl Into<GridLength>) -> GridTrackDefinition {
+        let length = length.into();
+        GridTrackDefinition {
+            min_size: length,
+            max_size: length,
+            name: Some(name.into()),
+            resized: Signal::new(),
+        }
+    }
+
+    pub fn on_resized(self, f: impl FnOnce(f64)) -> Self {
+        self.resized.map(f);
+        self
+    }
+
+    pub fn resized(&self) -> Option<f64> {
+        self.resized.value()
+    }
+}
 
 /// Orientation of a grid track.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -110,7 +106,7 @@ impl TrackAxis {
 }
 
 #[derive(Clone, Debug)]
-pub struct GridItem {
+struct GridItem {
     row_range: Range<usize>,
     column_range: Range<usize>,
     widget: Arc<WidgetPod>,
@@ -243,6 +239,7 @@ impl<'a> GridRow<'a> {
     }
 
     /// Adds an item to the row.
+    #[composable]
     pub fn add(&mut self, column: impl Into<GridSpan<'a>>, widget: impl Widget + 'static) {
         self.items.push(GridRowItem {
             column: column.into(),
@@ -316,8 +313,10 @@ pub struct Grid {
     //column_layout: RefCell<Vec<GridTrackLayout>>,
 
     // FIXME this is ugly, there's probably the same problem with the child filter
-    cached_layout: Arc<RefCell<Option<CachedGridLayout>>>,
+    cached_layout: RefCell<Option<CachedGridLayout>>,
     cached_child_filter: Cell<Option<Bloom<WidgetId>>>,
+    // drag state
+    //drag_start: State<Option<Point>>,
 }
 
 /// Returns the size of a column span
@@ -333,18 +332,44 @@ impl Grid {
 
     /// Creates a new grid, initially without any row or column definitions.
     pub fn new() -> Grid {
-        Grid::with_rows_columns([], [])
+        Grid {
+            id: WidgetId::here(),
+            column_definitions: vec![],
+            row_definitions: vec![],
+            items: vec![],
+            row_template: GridLength::Auto,
+            column_template: GridLength::Auto,
+            row_gap: Length::Dip(0.0),
+            column_gap: Length::Dip(0.0),
+            align_items: AlignItems::Start,
+            justify_items: JustifyItems::Start,
+            row_background: Default::default(),
+            alternate_row_background: Default::default(),
+            row_gap_background: Default::default(),
+            column_gap_background: Default::default(),
+            cached_layout: Arc::new(RefCell::new(None)),
+            cached_child_filter: Cell::new(None),
+        }
     }
 
     /// Creates a single-column grid.
-    pub fn column(width: impl Into<GridTrackDefinition>) -> Grid {
-        Self::with_column_definitions([width.into()])
+    pub fn column(column: GridTrackDefinition) -> Grid {
+        let mut grid = Self::new();
+        grid.push_column_definition(column);
+        grid
     }
 
     /// Creates a single-row grid.
-    pub fn row(height: impl Into<GridTrackDefinition>) -> Grid {
-        Self::with_row_definitions([height.into()])
+    pub fn row(row: GridTrackDefinition) -> Grid {
+        let mut grid = Self::new();
+        grid.push_row_definition(row);
+        grid
     }
+
+    /*/// Returns the grid layout computed during layout.
+    ///
+    /// Returns none if not calculated yet (called before layout).
+    pub fn get_layout(&self) -> Option<&CachedGridLayout> {}*/
 
     /// Returns the current number of rows
     pub fn row_count(&self) -> usize {
@@ -356,25 +381,37 @@ impl Grid {
         self.column_definitions.len()
     }
 
-    pub fn with_column_definitions(columns: impl IntoIterator<Item = GridTrackDefinition>) -> Grid {
+    /*pub fn with_column_definitions(columns: impl IntoIterator<Item = GridTrackDefinition>) -> Grid {
         Self::with_rows_columns([], columns)
     }
 
     pub fn with_row_definitions(rows: impl IntoIterator<Item = GridTrackDefinition>) -> Grid {
         Self::with_rows_columns(rows, [])
-    }
+    }*/
 
     /// Appends a new row to this grid.
-    pub fn push_row_definition(&mut self, def: GridTrackDefinition) {
+    pub fn push_row_definition(&mut self, def: GridTrackDefinition) -> usize {
         self.row_definitions.push(def);
+        self.row_definitions.len() - 1
     }
 
     /// Appends a new column to this grid.
-    pub fn push_column_definition(&mut self, def: GridTrackDefinition) {
+    pub fn push_column_definition(&mut self, def: GridTrackDefinition) -> usize {
         self.column_definitions.push(def);
+        self.column_definitions.len() - 1
     }
 
-    /// Creates a new grid with the specified rows and columns.
+    /// Appends a new row to this grid.
+    pub fn append_row_definitions(&mut self, defs: impl IntoIterator<Item = GridTrackDefinition>) {
+        self.row_definitions.extend(defs);
+    }
+
+    /// Appends a new column to this grid.
+    pub fn append_column_definitions(&mut self, defs: impl IntoIterator<Item = GridTrackDefinition>) {
+        self.column_definitions.extend(defs);
+    }
+
+    /*/// Creates a new grid with the specified rows and columns.
     pub fn with_rows_columns(
         rows: impl IntoIterator<Item = GridTrackDefinition>,
         columns: impl IntoIterator<Item = GridTrackDefinition>,
@@ -397,23 +434,11 @@ impl Grid {
             cached_layout: Arc::new(RefCell::new(None)),
             cached_child_filter: Cell::new(None),
         }
-    }
-
-    /// Sets the size of the gap between rows.
-    pub fn row_gap(mut self, gap: impl Into<Length>) -> Self {
-        self.row_gap = gap.into();
-        self
-    }
+    }*/
 
     /// Sets the size of the gap between rows.
     pub fn set_row_gap(&mut self, gap: impl Into<Length>) {
         self.row_gap = gap.into();
-    }
-
-    /// Sets the size of the gap between columns.
-    pub fn column_gap(mut self, gap: impl Into<Length>) -> Self {
-        self.column_gap = gap.into();
-        self
     }
 
     /// Sets the size of the gap between columns.
@@ -432,25 +457,23 @@ impl Grid {
         self.row_template = size;
     }
 
-    /// Sets the template for implicit column definitions.
+    /*/// Sets the template for implicit column definitions.
     pub fn column_template(mut self, size: GridLength) -> Self {
         self.column_template = size;
         self
-    }
+    }*/
 
     /// Sets the template for implicit row definitions.
     pub fn set_column_template(&mut self, size: GridLength) {
         self.column_template = size;
     }
 
-    pub fn align_items(mut self, align_items: AlignItems) -> Self {
+    pub fn set_align_items(&mut self, align_items: AlignItems) {
         self.align_items = align_items;
-        self
     }
 
-    pub fn justify_items(mut self, justify_items: JustifyItems) -> Self {
+    pub fn set_justify_items(&mut self, justify_items: JustifyItems) {
         self.justify_items = justify_items;
-        self
     }
 
     pub fn set_row_background(&mut self, row_background: impl Into<Paint>) {
@@ -527,18 +550,24 @@ impl Grid {
         let num_columns = self.column_definitions.len();
         let extra_rows = row_range.end.saturating_sub(num_rows);
         let extra_columns = column_range.end.saturating_sub(num_columns);
+
+        // FIXME: composable scope
         for _ in 0..extra_rows {
             self.row_definitions.push(GridTrackDefinition {
                 min_size: self.row_template,
                 max_size: self.row_template,
                 name: None,
+                resized: Signal::new(),
             });
         }
+
+        // FIXME: composable scope
         for _ in 0..extra_columns {
             self.column_definitions.push(GridTrackDefinition {
                 min_size: self.column_template,
                 max_size: self.column_template,
                 name: None,
+                resized: Signal::new(),
             });
         }
 
@@ -735,6 +764,7 @@ impl Widget for Grid {
             Event::Internal(InternalEvent::UpdateChildFilter { filter }) => {
                 // intercept the UpdateChildFilter event to return the cached filter instead
                 // of recalculating it
+                // FIXME: this is pretty ugly
                 if let Some(ref cached_filter) = self.cached_child_filter.get() {
                     filter.extend(cached_filter);
                 } else {
@@ -759,6 +789,31 @@ impl Widget for Grid {
                 }
             }
         }
+
+        /*// handle column drag
+        if let Event::Pointer(ref p) = event {
+            match p.kind {
+                PointerEventKind::PointerDown => {
+                    // hit-test
+                    // start drag
+                    self.drag_start.set(Some(p.position));
+                }
+                PointerEventKind::PointerUp => {
+                    if let Some(drag_start) = self.drag_start.replace(None) {
+                        let offset = p.position - drag_start;
+                        self.drag_offset.signal(offset);
+                    }
+                }
+                PointerEventKind::PointerMove => {
+                    if let Some(drag_start) = self.drag_start.get() {
+                        let offset = p.position - drag_start;
+                        self.drag_offset.signal(offset);
+                    }
+                }
+                PointerEventKind::PointerOver => {}
+                PointerEventKind::PointerOut => {}
+            }
+        }*/
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {

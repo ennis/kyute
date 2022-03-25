@@ -4,7 +4,7 @@ mod skia;
 use crate::{
     align_boxes, cache, composable,
     core::{FocusState, GpuResourceReferences},
-    event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind},
+    event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind, WheelDeltaMode, WheelEvent},
     graal,
     graal::{vk::Handle, MemoryLocation},
     region::Region,
@@ -20,7 +20,7 @@ use kyute_shell::{
     application::Application,
     winit,
     winit::{
-        event::{DeviceId, WindowEvent},
+        event::{DeviceId, MouseScrollDelta, WindowEvent},
         platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
         window::WindowBuilder,
     },
@@ -199,9 +199,44 @@ impl WindowState {
                 // TODO
                 None
             }
-            WindowEvent::MouseWheel { .. } => {
-                // TODO
-                None
+            WindowEvent::MouseWheel {
+                device_id,
+                delta,
+                phase,
+                ..
+            } => {
+                let pointer_state = self.inputs.pointers.entry(*device_id).or_default();
+                let pointer = PointerEvent {
+                    kind: PointerEventKind::PointerMove, // TODO don't care?
+                    position: pointer_state.position,
+                    window_position: pointer_state.position,
+                    modifiers: self.inputs.modifiers,
+                    buttons: pointer_state.buttons,
+                    pointer_id: *device_id,
+                    button: None,
+                    repeat_count: 0,
+                };
+
+                let wheel_event = match *delta {
+                    MouseScrollDelta::LineDelta(x, y) => Event::Wheel(WheelEvent {
+                        pointer,
+                        delta_x: x as f64,
+                        delta_y: y as f64,
+                        delta_z: 0.0,
+                        delta_mode: WheelDeltaMode::Line,
+                    }),
+                    MouseScrollDelta::PixelDelta(pos) => {
+                        let (delta_x, delta_y): (f64, f64) = pos.to_logical::<f64>(self.scale_factor).into();
+                        Event::Wheel(WheelEvent {
+                            pointer,
+                            delta_x,
+                            delta_y,
+                            delta_z: 0.0,
+                            delta_mode: WheelDeltaMode::Pixel,
+                        })
+                    }
+                };
+                Some(wheel_event)
             }
             WindowEvent::MouseInput {
                 device_id,
@@ -302,8 +337,12 @@ impl WindowState {
             );
 
             match event {
-                Event::Pointer(ref pointer_event) => {
-                    // Pointer events are delivered to the node that is currently grabbing the pointer.
+                Event::Pointer(ref pointer_event)
+                | Event::Wheel(WheelEvent {
+                    pointer: ref pointer_event,
+                    ..
+                }) => {
+                    // Pointer and wheel events are delivered to the node that is currently grabbing the pointer.
                     // If nothing is grabbing the pointer, the pointer event is delivered to a widget
                     // that passes the hit-test
                     if let Some(pointer_grab) = self.focus_state.pointer_grab {

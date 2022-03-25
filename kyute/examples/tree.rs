@@ -5,7 +5,7 @@ use kyute::{
     theme,
     widget::{
         grid::GridTrackDefinition, Button, ColumnHeaders, Container, Flex, Grid, GridLength, Image, Label, Null, Popup,
-        TableRow, TableSelection, TableView, TableViewParams, Text, TitledPane,
+        ScrollArea, TableRow, TableSelection, TableView, TableViewParams, Text, TitledPane,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Length, Orientation, SideOffsets, Size, UnitExt,
     Widget, WidgetExt, WidgetPod, Window,
@@ -15,24 +15,29 @@ use std::sync::Arc;
 use tracing::trace;
 
 #[composable]
+fn cell(text: impl Into<String>) -> impl Widget {
+    Text::new(text.into()).padding(0.dip(), 5.dip(), 0.dip(), 5.dip())
+}
+
+#[composable]
 fn tree_test() -> impl Widget + Clone {
     #[state]
     let mut selection = TableSelection::default();
 
-    let mut root = TableRow::new(Atom::from("root"), Text::new("root"));
+    let mut root = TableRow::new(Atom::from("root"), cell("root"));
     for i in 0..3 {
         let id = Atom::from(format!("n.{}", i));
-        let mut n1 = TableRow::new(id, Text::new(format!("Node {}", i)));
-        n1.add_cell(1, Text::new("Level 1 container of nodes"));
+        let mut n1 = TableRow::new(id, cell(format!("Node {}", i)));
+        n1.add_cell(1, cell("Level 1 container of nodes"));
 
         for j in 0..3 {
             let id = Atom::from(format!("n.{}.{}", i, j));
-            let mut n2 = TableRow::new(id, Text::new(format!("Node {}.{}", i, j)));
-            n2.add_cell(1, Text::new("Level 2 container of nodes"));
+            let mut n2 = TableRow::new(id, cell(format!("Node {}.{}", i, j)));
+            n2.add_cell(1, cell("Level 2 container of nodes"));
             for k in 0..2 {
                 let id = Atom::from(format!("n.{}.{}.{}", i, j, k));
-                let mut n3 = TableRow::new(id, Text::new(format!("Node {}.{}.{}", i, j, k)));
-                n3.add_cell(1, Text::new("Leaf node. Doesn't contain anything."));
+                let mut n3 = TableRow::new(id, cell(format!("Node {}.{}.{}", i, j, k)));
+                n3.add_cell(1, cell("Leaf node. Doesn't contain anything."));
                 n2.add_row(n3);
             }
             n1.add_row(n2);
@@ -46,11 +51,7 @@ fn tree_test() -> impl Widget + Clone {
             GridTrackDefinition::new(GridLength::Fixed(200.dip())),
             GridTrackDefinition::new(GridLength::Flex(1.0)),
         ],
-        column_headers: Some(
-            ColumnHeaders::new()
-                .add(Text::new("Name"))
-                .add(Text::new("Description")),
-        ),
+        column_headers: Some(ColumnHeaders::new().add(cell("Name")).add(cell("Description"))),
         main_column: 0,
         row_height: GridLength::Fixed(20.dip()),
         rows: vec![root],
@@ -69,8 +70,7 @@ fn tree_test() -> impl Widget + Clone {
     };
 
     let table = TableView::new(params);
-
-    table.fix_size(Length::Proportional(1.0), Length::Proportional(1.0))
+    ScrollArea::new(table).fix_width(Length::Proportional(1.0))
 }
 
 #[composable]

@@ -150,6 +150,8 @@ impl Widget for Canvas {
 pub struct Viewport<Contents> {
     contents: WidgetPod<Contents>,
     transform: Transform,
+    constrain_width: bool,
+    constrain_height: bool,
 }
 
 impl<Contents: Widget + 'static> Viewport<Contents> {
@@ -158,6 +160,8 @@ impl<Contents: Widget + 'static> Viewport<Contents> {
         Viewport {
             transform: Transform::identity(),
             contents: WidgetPod::new(contents),
+            constrain_width: false,
+            constrain_height: false,
         }
     }
 
@@ -168,6 +172,17 @@ impl<Contents: Widget + 'static> Viewport<Contents> {
 
     pub fn set_transform(&mut self, transform: Transform) {
         self.transform = transform;
+    }
+
+    /// Constrain the max width of the viewport to the parent.
+    pub fn constrain_width(mut self) -> Self {
+        self.constrain_width = true;
+        self
+    }
+
+    pub fn constrain_height(mut self) -> Self {
+        self.constrain_height = true;
+        self
     }
 
     pub fn contents(&self) -> &Contents {
@@ -185,8 +200,18 @@ impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        let mut child_constraints = constraints;
+        if !self.constrain_width {
+            child_constraints.min.width = 0.0;
+            child_constraints.max.width = f64::INFINITY;
+        }
+        if !self.constrain_height {
+            child_constraints.min.height = 0.0;
+            child_constraints.max.height = f64::INFINITY;
+        }
+
         // unconstrained
-        self.contents.layout(ctx, BoxConstraints::new(.., ..), env);
+        self.contents.layout(ctx, child_constraints, env);
         self.contents.set_transform(self.transform);
 
         // always take the maximum available space
