@@ -1,5 +1,6 @@
 //! Types and functions used for layouting widgets.
 use crate::{Data, Offset, Point, Rect, SideOffsets, Size};
+use euclid::Vector2D;
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -13,12 +14,18 @@ pub struct BoxConstraints {
     pub max: Size,
 }
 
+impl Default for BoxConstraints {
+    fn default() -> Self {
+        BoxConstraints {
+            min: Size::zero(),
+            max: Size::new(f64::INFINITY, f64::INFINITY),
+        }
+    }
+}
+
 impl Data for BoxConstraints {
     fn same(&self, other: &Self) -> bool {
-        self.min.width.to_bits() == other.min.width.to_bits()
-            && self.min.height.to_bits() == other.min.height.to_bits()
-            && self.max.width.to_bits() == other.max.width.to_bits()
-            && self.max.height.to_bits() == other.max.height.to_bits()
+        self == other
     }
 }
 
@@ -260,6 +267,12 @@ impl PartialEq for Measurements {
             && self.clip_bounds.size.width.to_bits() == other.clip_bounds.size.width.to_bits()
             && self.clip_bounds.size.height.to_bits() == other.clip_bounds.size.height.to_bits()
             && matches!((self.baseline, other.baseline), (Some(a), Some(b)) if a.to_bits() == b.to_bits())
+    }
+}
+
+impl Data for Measurements {
+    fn same(&self, other: &Self) -> bool {
+        self == other
     }
 }
 

@@ -2,20 +2,21 @@ use crate::{
     application::{AppCtx, ExtEvent},
     bloom::Bloom,
     cache,
+    cache::state,
     call_id::CallId,
+    composable,
     drawing::ToSkia,
     event::{InputState, PointerEvent, PointerEventKind},
     region::Region,
+    shell::{
+        graal,
+        graal::{ash::vk, BufferId, ImageId},
+        winit::{event_loop::EventLoopWindowTarget, window::WindowId},
+    },
     style::VisualState,
     widget::{Align, ConstrainedBox, Padding},
-    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Measurements, Offset, Point, Rect, Transform,
-};
-use kyute_common::{Length, UnitExt};
-use kyute_macros::composable;
-use kyute_shell::{
-    graal,
-    graal::{ash::vk, BufferId, ImageId},
-    winit::{event_loop::EventLoopWindowTarget, window::WindowId},
+    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Length, Measurements, Offset, Point, Rect,
+    State, Transform, UnitExt,
 };
 use skia_safe as sk;
 use std::{cell::Cell, fmt, hash::Hash, sync::Arc};
@@ -767,14 +768,10 @@ struct WidgetPodState {
     layout_result: Cell<Option<LayoutResult>>,
 
     /// Any pointer hovering this widget
-    // FIXME: handle multiple pointers?
-    // FIXME: this is destroyed on recomp, probably not what we want
-    // FIXME: never mind that, this is invalidated on **relayouts**, this is totally broken
-    pointer_over: Cell<bool>,
+    pointer_over: State<bool>,
 
     /// Whether the widget is active.
-    // FIXME: don't reset on recomp
-    active: Cell<bool>,
+    active: State<bool>,
 
     /// Bloom filter to filter child widgets.
     child_filter: Cell<Option<WidgetFilter>>,
@@ -1222,8 +1219,8 @@ impl<T: Widget + 'static> WidgetPod<T> {
             state: WidgetPodState {
                 id,
                 paint_invalid: Cell::new(true),
-                pointer_over: Cell::new(false),
-                active: Cell::new(false),
+                pointer_over: state(|| false),
+                active: state(|| false),
                 layout_result: Cell::new(None),
                 child_filter: Cell::new(None),
                 transform: Cell::new(Transform::identity()),

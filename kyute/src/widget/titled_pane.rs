@@ -54,8 +54,8 @@ impl TitledPane {
                 GridTrackDefinition::new(GridLength::Flex(1.0)),
                 GridTrackDefinition::new(GridLength::Fixed(20.dip())),
             ]);
-            grid.add_item(0, 0, icon);
-            grid.add_item(0, 2, Label::new(title).aligned(Alignment::CENTER_LEFT));
+            grid.add_item(0, 0, 0, icon);
+            grid.add_item(0, 2, 0, Label::new(title).aligned(Alignment::CENTER_LEFT));
             Clickable::new(
                 Container::new(grid)
                     .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip())
@@ -65,12 +65,12 @@ impl TitledPane {
 
         let collapsed_changed = if title_bar.clicked() { Some(!collapsed) } else { None };
 
-        inner.add_item(inner.row_count(), 0, title_bar);
-        inner.add_item(inner.row_count(), 0, separator(Orientation::Horizontal));
+        inner.add_item(inner.row_count(), 0, 0, title_bar);
+        inner.add_item(inner.row_count(), 0, 0, separator(Orientation::Horizontal));
 
         // Add contents if not collapsed
         if !collapsed {
-            inner.add_item(inner.row_count(), 0, content);
+            inner.add_item(inner.row_count(), 0, 0, content);
         }
 
         TitledPane {

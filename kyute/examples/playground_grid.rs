@@ -44,10 +44,11 @@ fn playground_grid(test: usize) -> impl Widget + Clone {
     let mut row = 0;
 
     {
-        grid.add_item(row, 0, Label::new("Row count"));
+        grid.add_item(row, 0, 0, Label::new("Row count"));
         grid.add_item(
             row,
             2,
+            0,
             TextInput::number(row_count as f64).on_value_changed(|v| row_count = v as usize),
         );
 
@@ -55,20 +56,22 @@ fn playground_grid(test: usize) -> impl Widget + Clone {
     }
 
     {
-        grid.add_item(row, 0, Label::new("Column count"));
+        grid.add_item(row, 0, 0, Label::new("Column count"));
         grid.add_item(
             row,
             2,
+            0,
             TextInput::number(column_count as f64).on_value_changed(|v| column_count = v as usize),
         );
         row += 1;
     }
 
     {
-        grid.add_item(row, 0, Label::new("Item alignment"));
+        grid.add_item(row, 0, 0, Label::new("Item alignment"));
         grid.add_item(
             row,
             2,
+            0,
             DropDown::with_selected(
                 align_items,
                 vec![
@@ -86,10 +89,11 @@ fn playground_grid(test: usize) -> impl Widget + Clone {
     }
 
     {
-        grid.add_item(row, 0, Label::new("Item justify"));
+        grid.add_item(row, 0, 0, Label::new("Item justify"));
         grid.add_item(
             row,
             2,
+            0,
             DropDown::with_selected(
                 justify_items,
                 vec![
@@ -122,7 +126,7 @@ fn playground_grid(test: usize) -> impl Widget + Clone {
         });
     }
 
-    grid.add_item(row, 2, Container::new(play_grid).fixed_height(700.dip()));
+    grid.add_item(row, 2, 0, Container::new(play_grid).fixed_height(700.dip()));
 
     Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))
 }

@@ -37,14 +37,14 @@ fn canvas_playground() -> impl Widget + Clone {
     grid.push_column_definition(col_widgets);
     grid.set_align_items(AlignItems::Baseline);
 
-    grid.add_item(0, 0, Label::new("Offset X"));
-    grid.add_item(0, 2, TextInput::number(offset.x).on_value_changed(|x| offset.x = x));
+    grid.add_item(0, 0, 0, Label::new("Offset X"));
+    grid.add_item(0, 2, 0, TextInput::number(offset.x).on_value_changed(|x| offset.x = x));
 
-    grid.add_item(1, 0, Label::new("Offset Y"));
-    grid.add_item(1, 2, TextInput::number(offset.y).on_value_changed(|y| offset.y = y));
+    grid.add_item(1, 0, 0, Label::new("Offset Y"));
+    grid.add_item(1, 2, 0, TextInput::number(offset.y).on_value_changed(|y| offset.y = y));
 
-    grid.add_item(2, 0, Label::new("Scale"));
-    grid.add_item(2, 2, TextInput::number(scale).on_value_changed(|s| scale = s));
+    grid.add_item(2, 0, 0, Label::new("Scale"));
+    grid.add_item(2, 2, 0, TextInput::number(scale).on_value_changed(|s| scale = s));
 
     let mut canvas = Canvas::new();
     let canvas_transform = offset.to_transform().then_scale(scale, scale);
@@ -77,7 +77,7 @@ fn canvas_playground() -> impl Widget + Clone {
     let context_menu_area = Container::new(ContextMenu::new(context_menu, drag_controller))
         .box_style(BoxStyle::new().border(Border::inside(2.px()).paint(Color::from_hex("#FFB500"))));
 
-    grid.add_item(3, .., context_menu_area);
+    grid.add_item(3, .., 0, context_menu_area);
 
     Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))
 }

@@ -1,8 +1,9 @@
 use crate::{
+    cache::state,
     core::{HitTestResult, WindowPaintCtx},
     event::{PointerEvent, PointerEventKind},
     widget::prelude::*,
-    GpuFrameCtx,
+    GpuFrameCtx, State,
 };
 use std::cell::Cell;
 
@@ -12,19 +13,25 @@ pub struct LayoutWrapper<W> {
     offset: Cell<Offset>,
     measurements: Cell<Measurements>,
     /// Whether the inner element is hovered.
-    // FIXME: this is destroyed between recomps, we don't want that
-    // never mind that, this is invalidated on *relayouts*,
-    pointer_over: Cell<bool>,
+    pointer_over: State<bool>,
 }
 
 impl<W> LayoutWrapper<W> {
+    #[composable]
     pub fn new(inner: W) -> LayoutWrapper<W> {
         LayoutWrapper {
             inner,
             offset: Default::default(),
             measurements: Default::default(),
-            pointer_over: Cell::new(false),
+            pointer_over: state(|| false),
         }
+    }
+
+    #[composable]
+    pub fn with_offset(offset: impl Into<Offset>, inner: W) -> LayoutWrapper<W> {
+        let mut w = Self::new(inner);
+        w.set_offset(offset.into());
+        w
     }
 
     pub fn set_offset(&self, offset: Offset) {
@@ -72,8 +79,8 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         ctx.with_local_transform(self.offset.get().to_transform(), event, |ctx, event| match event {
             Event::Pointer(p) => match ctx.hit_test(p, bounds) {
                 HitTestResult::Passed => {
-                    if !self.pointer_over.get() {
-                        self.pointer_over.set(true);
+                    let was_over = self.pointer_over.replace(true);
+                    if !was_over {
                         self.inner.event(
                             ctx,
                             &mut Event::Pointer(PointerEvent {
@@ -86,8 +93,8 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
                     self.inner.event(ctx, event, env);
                 }
                 HitTestResult::Failed => {
-                    if self.pointer_over.get() {
-                        self.pointer_over.set(false);
+                    let was_over = self.pointer_over.replace(false);
+                    if was_over {
                         self.inner.event(
                             ctx,
                             &mut Event::Pointer(PointerEvent {

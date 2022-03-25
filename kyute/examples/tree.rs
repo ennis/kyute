@@ -5,7 +5,7 @@ use kyute::{
     theme,
     widget::{
         grid::GridTrackDefinition, Button, ColumnHeaders, Container, Flex, Grid, GridLength, Image, Label, Null, Popup,
-        ScrollArea, TableRow, TableSelection, TableView, TableViewParams, Text, TitledPane,
+        ScrollArea, TableRow, TableSelection, TableView, TableViewParams, Text, TextEdit, TitledPane,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Length, Orientation, SideOffsets, Size, UnitExt,
     Widget, WidgetExt, WidgetPod, Window,
@@ -20,20 +20,31 @@ fn cell(text: impl Into<String>) -> impl Widget {
 }
 
 #[composable]
+fn edit() -> impl Widget {
+    #[state]
+    let mut text: Arc<str> = Arc::from("Leaf node. Doesn't contain anything.");
+    TextEdit::new(text.clone()).padding(0.dip(), 5.dip(), 0.dip(), 5.dip())
+}
+
+#[composable]
 fn tree_test() -> impl Widget + Clone {
     #[state]
     let mut selection = TableSelection::default();
 
     let mut root = TableRow::new(Atom::from("root"), cell("root"));
+    //#[composable(scope)]
     for i in 0..3 {
         let id = Atom::from(format!("n.{}", i));
         let mut n1 = TableRow::new(id, cell(format!("Node {}", i)));
         n1.add_cell(1, cell("Level 1 container of nodes"));
 
+        //#[composable(scope)]
         for j in 0..3 {
             let id = Atom::from(format!("n.{}.{}", i, j));
             let mut n2 = TableRow::new(id, cell(format!("Node {}.{}", i, j)));
             n2.add_cell(1, cell("Level 2 container of nodes"));
+
+            //#[composable(scope)]
             for k in 0..2 {
                 let id = Atom::from(format!("n.{}.{}.{}", i, j, k));
                 let mut n3 = TableRow::new(id, cell(format!("Node {}.{}.{}", i, j, k)));
@@ -56,7 +67,7 @@ fn tree_test() -> impl Widget + Clone {
         row_height: GridLength::Fixed(20.dip()),
         rows: vec![root],
         row_indent: 20.dip(),
-        resizeable_columns: false,
+        resizeable_columns: true,
         reorderable_rows: false,
         reorderable_columns: false,
         background: theme::palette::GREY_800.into(),

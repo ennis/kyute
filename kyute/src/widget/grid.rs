@@ -1,5 +1,6 @@
 use crate::{
     bloom::Bloom,
+    cache,
     drawing::ToSkia,
     style::{BoxStyle, Paint, PaintCtxExt},
     widget::prelude::*,
@@ -52,39 +53,25 @@ pub struct GridTrackDefinition {
     max_size: GridLength,
     /// Optional track name.
     name: Option<String>,
-    resized: Signal<f64>,
 }
 
 impl GridTrackDefinition {
-    #[composable]
     pub fn new(length: impl Into<GridLength>) -> GridTrackDefinition {
         let length = length.into();
         GridTrackDefinition {
             min_size: length,
             max_size: length,
             name: None,
-            resized: Signal::new(),
         }
     }
 
-    #[composable]
     pub fn named(name: impl Into<String>, length: impl Into<GridLength>) -> GridTrackDefinition {
         let length = length.into();
         GridTrackDefinition {
             min_size: length,
             max_size: length,
             name: Some(name.into()),
-            resized: Signal::new(),
         }
-    }
-
-    pub fn on_resized(self, f: impl FnOnce(f64)) -> Self {
-        self.resized.map(f);
-        self
-    }
-
-    pub fn resized(&self) -> Option<f64> {
-        self.resized.value()
     }
 }
 
@@ -105,11 +92,64 @@ impl TrackAxis {
     }
 }
 
+pub enum GridLineItemAnchor {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+pub enum GridLine<'a> {
+    Horizontal {
+        row: usize,
+        columns: GridSpan<'a>,
+        side: GridLineItemAnchor,
+    },
+    Vertical {
+        column: usize,
+        rows: GridSpan<'a>,
+        side: GridLineItemAnchor,
+    },
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum VerticalGridLineAlign {
+    /// Position the item to the left of the vertical grid line.
+    Left,
+    /// Position the item to the right
+    Right,
+    Center,
+}
+
+impl Default for VerticalGridLineAlign {
+    fn default() -> Self {
+        VerticalGridLineAlign::Right
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum HorizontalGridLineAlign {
+    /// Position the item above the grid line.
+    Above,
+    /// Position the item below the grid line.
+    Below,
+    Center,
+}
+
+impl Default for HorizontalGridLineAlign {
+    fn default() -> Self {
+        HorizontalGridLineAlign::Below
+    }
+}
+
 #[derive(Clone, Debug)]
 struct GridItem {
     row_range: Range<usize>,
     column_range: Range<usize>,
+    z_order: i32,
     widget: Arc<WidgetPod>,
+    // only used for "degenerate" row/col spans
+    line_alignment: Alignment,
 }
 
 impl GridItem {
@@ -121,6 +161,11 @@ impl GridItem {
     }*/
 
     fn is_in_track(&self, axis: TrackAxis, index: usize) -> bool {
+        // "grid line" items (those with row_range.len() == 0 or column_range.len() == 0)
+        // are not considered to belong to any track, and don't intervene during track sizing
+        if self.row_range.is_empty() || self.column_range.is_empty() {
+            return false;
+        }
         match axis {
             TrackAxis::Row => self.row_range.start == index,
             TrackAxis::Column => self.column_range.start == index,
@@ -128,11 +173,11 @@ impl GridItem {
     }
 }
 
-#[derive(Clone, Debug)]
-struct GridTrackLayout {
-    pos: f64,
-    size: f64,
-    baseline: Option<f64>,
+#[derive(Clone, Debug, PartialEq)]
+pub struct GridTrackLayout {
+    pub pos: f64,
+    pub size: f64,
+    pub baseline: Option<f64>,
 }
 
 struct ComputeTrackSizeResult {
@@ -225,6 +270,7 @@ impl<'a> From<&'a str> for GridSpan<'a> {
 pub struct GridRowItem<'a> {
     pub column: GridSpan<'a>,
     pub widget: Arc<WidgetPod>,
+    pub z_order: i32,
 }
 
 /// Represents a row of widgets to be inserted in a grid.
@@ -241,9 +287,16 @@ impl<'a> GridRow<'a> {
     /// Adds an item to the row.
     #[composable]
     pub fn add(&mut self, column: impl Into<GridSpan<'a>>, widget: impl Widget + 'static) {
+        self.add_with_z_order(column, 0, widget)
+    }
+
+    /// Adds an item to the row, with Z order.
+    #[composable]
+    pub fn add_with_z_order(&mut self, column: impl Into<GridSpan<'a>>, z_order: i32, widget: impl Widget + 'static) {
         self.items.push(GridRowItem {
             column: column.into(),
             widget: Arc::new(WidgetPod::new(widget)),
+            z_order,
         })
     }
 }
@@ -265,14 +318,20 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
-struct CachedGridLayout {
-    constraints: BoxConstraints,
-    measurements: Measurements,
+#[derive(Clone, Debug, Default, PartialEq)]
+struct GridLayout {
     row_layout: Vec<GridTrackLayout>,
     column_layout: Vec<GridTrackLayout>,
     row_gap: f64,
     column_gap: f64,
+    width: f64,
+    height: f64,
+}
+
+impl Data for GridLayout {
+    fn same(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 // FIXME: cloning anything with a widget id in it is extremely suspect: widgets are only clone for caching,
@@ -309,11 +368,8 @@ pub struct Grid {
     column_gap_background: Paint,
 
     ///
-    //row_layout: RefCell<Vec<GridTrackLayout>>,
-    //column_layout: RefCell<Vec<GridTrackLayout>>,
+    calculated_layout: State<GridLayout>,
 
-    // FIXME this is ugly, there's probably the same problem with the child filter
-    cached_layout: RefCell<Option<CachedGridLayout>>,
     cached_child_filter: Cell<Option<Bloom<WidgetId>>>,
     // drag state
     //drag_start: State<Option<Point>>,
@@ -347,7 +403,7 @@ impl Grid {
             alternate_row_background: Default::default(),
             row_gap_background: Default::default(),
             column_gap_background: Default::default(),
-            cached_layout: Arc::new(RefCell::new(None)),
+            calculated_layout: cache::state(|| Default::default()),
             cached_child_filter: Cell::new(None),
         }
     }
@@ -500,7 +556,7 @@ impl Grid {
         column_span: impl Into<GridSpan<'a>>,
         widget: impl Widget + 'static,
     ) -> Self {
-        self.add_item(row_span, column_span, widget);
+        self.add_item(row_span, column_span, 0, widget);
         self
     }
 
@@ -509,10 +565,24 @@ impl Grid {
         &mut self,
         row_span: impl Into<GridSpan<'a>>,
         column_span: impl Into<GridSpan<'a>>,
+        z_order: i32,
         widget: impl Widget + 'static,
     ) {
         let widget = Arc::new(WidgetPod::new(widget));
-        self.push_item_inner(row_span, column_span, widget);
+        self.push_item_inner(row_span, column_span, z_order, Alignment::CENTER, widget);
+    }
+
+    #[composable]
+    pub fn add_item_with_line_alignment<'a>(
+        &mut self,
+        row_span: impl Into<GridSpan<'a>>,
+        column_span: impl Into<GridSpan<'a>>,
+        z_order: i32,
+        line_alignment: Alignment,
+        widget: impl Widget + 'static,
+    ) {
+        let widget = Arc::new(WidgetPod::new(widget));
+        self.push_item_inner(row_span, column_span, z_order, line_alignment, widget);
     }
 
     #[composable]
@@ -522,7 +592,7 @@ impl Grid {
         column_span: impl Into<GridSpan<'a>>,
         widget: Arc<WidgetPod>,
     ) {
-        self.push_item_inner(row_span, column_span, widget);
+        self.push_item_inner(row_span, column_span, 0, Alignment::CENTER, widget);
     }
 
     /// Resolves the specified column span to column indices.
@@ -540,42 +610,57 @@ impl Grid {
         &mut self,
         row_span: impl Into<GridSpan<'a>>,
         column_span: impl Into<GridSpan<'a>>,
+        z_order: i32,
+        line_alignment: Alignment,
         widget: Arc<WidgetPod>,
     ) {
         let row_range = row_span.into().resolve(&self.row_definitions);
         let column_range = column_span.into().resolve(&self.column_definitions);
 
+        let is_grid_line = row_range.is_empty() || column_range.is_empty();
+
         // add rows/columns as required
-        let num_rows = self.row_definitions.len();
-        let num_columns = self.column_definitions.len();
+        let num_rows;
+        let num_columns;
+        if is_grid_line {
+            // N+1 grid lines
+            num_rows = self.row_definitions.len() + 1;
+            num_columns = self.column_definitions.len() + 1;
+        } else {
+            // N cells
+            num_rows = self.row_definitions.len();
+            num_columns = self.column_definitions.len();
+        }
         let extra_rows = row_range.end.saturating_sub(num_rows);
         let extra_columns = column_range.end.saturating_sub(num_columns);
 
-        // FIXME: composable scope
         for _ in 0..extra_rows {
             self.row_definitions.push(GridTrackDefinition {
                 min_size: self.row_template,
                 max_size: self.row_template,
                 name: None,
-                resized: Signal::new(),
             });
         }
 
-        // FIXME: composable scope
         for _ in 0..extra_columns {
             self.column_definitions.push(GridTrackDefinition {
                 min_size: self.column_template,
                 max_size: self.column_template,
                 name: None,
-                resized: Signal::new(),
             });
         }
 
-        self.items.push(GridItem {
-            row_range,
-            column_range,
-            widget,
-        });
+        let pos = self.items.partition_point(|item| item.z_order <= z_order);
+        self.items.insert(
+            pos,
+            GridItem {
+                row_range,
+                column_range,
+                z_order,
+                widget,
+                line_alignment,
+            },
+        );
 
         self.invalidate_child_filter()
     }
@@ -585,7 +670,7 @@ impl Grid {
         let row = row.into();
         let row_index = self.row_definitions.len();
         for item in row.items {
-            self.push_item_inner(row_index, item.column, item.widget)
+            self.push_item_inner(row_index, item.column, item.z_order, Alignment::CENTER, item.widget)
         }
     }
 
@@ -746,6 +831,17 @@ impl Grid {
 
         ComputeTrackSizeResult { layout, size: pos }
     }
+
+    /// Returns the calculated column layout.
+    pub fn get_column_layout(&self) -> (f64, Vec<GridTrackLayout>) {
+        let grid_layout = self.calculated_layout.get();
+        (grid_layout.width, grid_layout.column_layout)
+    }
+
+    pub fn get_row_layout(&self) -> (f64, Vec<GridTrackLayout>) {
+        let grid_layout = self.calculated_layout.get();
+        (grid_layout.height, grid_layout.row_layout)
+    }
 }
 
 impl Default for Grid {
@@ -781,9 +877,7 @@ impl Widget for Grid {
             }
             event => {
                 // run the events through the items in reverse order
-                // in order to give priority to items inserted last. This is important given
-                // that grid items can overlap, and we have no concept of Z-order
-                // FIXME: add Z-order for overlapping widgets
+                // in order to give priority to topmost items
                 for item in self.items.iter().rev() {
                     item.widget.event(ctx, event, env);
                 }
@@ -818,14 +912,6 @@ impl Widget for Grid {
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         // try to use the cached layout first
-        {
-            let cached_layout = (&*self.cached_layout).borrow();
-            if let Some(cached_layout) = cached_layout.as_ref() {
-                if cached_layout.constraints == constraints {
-                    return cached_layout.measurements;
-                }
-            }
-        }
 
         // compute gap sizes
         let column_gap = self
@@ -835,6 +921,8 @@ impl Widget for Grid {
             .row_gap
             .to_dips(ctx.scale_factor, constraints.finite_max_height().unwrap_or(0.0));
 
+        trace!("grid: recomputing track sizes");
+        // no match, recalculate
         // first measure the width of the columns
         let ComputeTrackSizeResult {
             layout: column_layout,
@@ -864,64 +952,105 @@ impl Widget for Grid {
             Some(&column_layout[..]),
         );
 
+        // update layout
+        self.calculated_layout.update(GridLayout {
+            row_layout: row_layout.clone(),
+            column_layout: column_layout.clone(),
+            row_gap,
+            column_gap,
+            width,
+            height,
+        });
+
         // layout items
         for item in self.items.iter() {
-            let w: f64 = track_span_width(&column_layout, item.column_range.clone(), column_gap);
-            let h: f64 = track_span_width(&row_layout, item.row_range.clone(), row_gap);
+            if item.row_range.is_empty() || item.column_range.is_empty() {
+                // grid line item: position item relative to the grid line (or the point)
+                let w: f64 = track_span_width(&column_layout, item.column_range.clone(), column_gap);
+                let h: f64 = track_span_width(&row_layout, item.row_range.clone(), row_gap);
 
-            let constraints = BoxConstraints::loose(Size::new(w, h));
-            let item_measure = item.widget.layout(ctx, constraints, env);
+                let maxw = if item.column_range.is_empty() { f64::INFINITY } else { w };
+                let maxh = if item.row_range.is_empty() { f64::INFINITY } else { h };
+                let constraints = BoxConstraints {
+                    min: Size::new(0.0, 0.0),
+                    max: Size::new(maxw, maxh),
+                };
 
-            //eprintln!("item_measure({})={:?}", item.widget.widget().debug_name(), item_measure);
+                let item_measure = item.widget.layout(ctx, constraints, env);
 
-            let mut x = column_layout[item.column_range.start].pos;
-            let mut y = row_layout[item.row_range.start].pos;
-            let row_baseline = row_layout[item.row_range.start].baseline;
-            //eprintln!("row baseline={:?}", row_baseline);
+                let row = item.row_range.start;
+                let col = item.column_range.start;
+                let x = if col == column_layout.len() {
+                    width
+                } else {
+                    column_layout[col].pos
+                };
+                let y = if row == row_layout.len() {
+                    height
+                } else {
+                    row_layout[row].pos
+                };
 
-            // position item inside the cell according to alignment mode
-            match self.align_items {
-                AlignItems::End => y += h - item_measure.size().height,
-                AlignItems::Center => y += 0.5 * (h - item_measure.size().height),
-                AlignItems::Baseline => {
-                    if let Some(baseline) = item_measure.baseline {
-                        // NOTE: normally if any item in the row has a baseline, then the row itself
-                        // should have a baseline as well (row_baseline shouldn't be empty)
-                        if let Some(row_baseline) = row_baseline {
-                            // NOTE: we assume that the baseline doesn't vary between the minimal measurements
-                            // obtained during row layout and the measurement with the final constraints.
-                            y += row_baseline - baseline;
+                let ax = item.line_alignment.x;
+                let ay = item.line_alignment.y;
+                let iw = item_measure.width();
+                let ih = item_measure.height();
+
+                // derivation left as an exercise for the reader, and the bug fixes as well
+                let ox = x + 0.5 * ((1.0 - ax) * w - (1.0 + ax) * iw);
+                let oy = y + 0.5 * ((1.0 - ay) * h - (1.0 + ay) * ih);
+                item.widget.set_child_offset((ox, oy).into());
+            } else {
+                // layout a regular "cell" item
+                let w: f64 = track_span_width(&column_layout, item.column_range.clone(), column_gap);
+                let h: f64 = track_span_width(&row_layout, item.row_range.clone(), row_gap);
+
+                let constraints = BoxConstraints::loose(Size::new(w, h));
+                let item_measure = item.widget.layout(ctx, constraints, env);
+
+                //eprintln!("item_measure({})={:?}", item.widget.widget().debug_name(), item_measure);
+
+                let mut x = column_layout[item.column_range.start].pos;
+                let mut y = row_layout[item.row_range.start].pos;
+                let row_baseline = row_layout[item.row_range.start].baseline;
+                //eprintln!("row baseline={:?}", row_baseline);
+
+                // position item inside the cell according to alignment mode
+                match self.align_items {
+                    AlignItems::End => y += h - item_measure.size().height,
+                    AlignItems::Center => y += 0.5 * (h - item_measure.size().height),
+                    AlignItems::Baseline => {
+                        if let Some(baseline) = item_measure.baseline {
+                            // NOTE: normally if any item in the row has a baseline, then the row itself
+                            // should have a baseline as well (row_baseline shouldn't be empty)
+                            if let Some(row_baseline) = row_baseline {
+                                // NOTE: we assume that the baseline doesn't vary between the minimal measurements
+                                // obtained during row layout and the measurement with the final constraints.
+                                y += row_baseline - baseline;
+                            }
                         }
                     }
-                }
-                _ => {}
-            };
+                    _ => {}
+                };
 
-            // position item inside the cell according to alignment mode
-            match self.justify_items {
-                JustifyItems::End => x += w - item_measure.size().width,
-                JustifyItems::Center => x += 0.5 * (w - item_measure.size().width),
-                _ => {}
-            };
+                // position item inside the cell according to alignment mode
+                match self.justify_items {
+                    JustifyItems::End => x += w - item_measure.size().width,
+                    JustifyItems::Center => x += 0.5 * (w - item_measure.size().width),
+                    _ => {}
+                };
 
-            /*eprintln!(
-                "item offset({})={:?}",
-                item.widget.widget().debug_name(),
-                Offset::new(x, y)
-            );*/
-            item.widget
-                .set_child_offset(Offset::new(x, y).round_to_pixel(ctx.scale_factor));
+                /*eprintln!(
+                    "item offset({})={:?}",
+                    item.widget.widget().debug_name(),
+                    Offset::new(x, y)
+                );*/
+                item.widget
+                    .set_child_offset(Offset::new(x, y).round_to_pixel(ctx.scale_factor));
+            }
         }
 
         let measurements = Measurements::new(Rect::new(Point::origin(), Size::new(width, height)));
-        self.cached_layout.replace(Some(CachedGridLayout {
-            constraints,
-            measurements,
-            row_layout,
-            column_layout,
-            row_gap,
-            column_gap,
-        }));
         measurements
     }
 
@@ -930,8 +1059,7 @@ impl Widget for Grid {
         let height = ctx.bounds.size.height;
         let width = ctx.bounds.size.width;
 
-        let layout = (&*self.cached_layout).borrow();
-        let layout = layout.as_ref().expect("grid layout not calculated before paint");
+        let layout = self.calculated_layout.get();
         let row_layout = &layout.row_layout;
         let column_layout = &layout.column_layout;
 

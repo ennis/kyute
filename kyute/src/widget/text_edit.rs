@@ -291,6 +291,7 @@ impl Widget for TextEdit {
                         ctx.request_redraw();
                         ctx.request_focus();
                         ctx.capture_pointer();
+                        ctx.set_handled();
                     }
                     PointerEventKind::PointerMove => {
                         // update selection
@@ -305,10 +306,12 @@ impl Widget for TextEdit {
                                 },
                             );
                             ctx.request_redraw();
+                            ctx.set_handled();
                         }
                     }
                     PointerEventKind::PointerUp => {
                         // nothing to do (pointer grab automatically ends)
+                        ctx.set_handled();
                     }
                     _ => {}
                 }
@@ -326,6 +329,7 @@ impl Widget for TextEdit {
                         self.notify_text_changed(ctx, new_text);
                         self.notify_selection_changed(ctx, new_selection);
                         ctx.request_relayout();
+                        ctx.set_handled();
                     }
                     keyboard_types::Key::Delete => {
                         trace!("text edit: delete");
@@ -338,16 +342,19 @@ impl Widget for TextEdit {
                         self.notify_text_changed(ctx, new_text);
                         self.notify_selection_changed(ctx, new_selection);
                         ctx.request_relayout();
+                        ctx.set_handled();
                     }
                     keyboard_types::Key::ArrowLeft => {
                         let selection = self.move_cursor(Movement::Left, k.modifiers.contains(Modifiers::SHIFT));
                         self.notify_selection_changed(ctx, selection);
                         ctx.request_redraw();
+                        ctx.set_handled();
                     }
                     keyboard_types::Key::ArrowRight => {
                         let selection = self.move_cursor(Movement::Right, k.modifiers.contains(Modifiers::SHIFT));
                         self.notify_selection_changed(ctx, selection);
                         ctx.request_redraw();
+                        ctx.set_handled();
                     }
                     keyboard_types::Key::Character(ref c) => {
                         // reject control characters (handle in KeyDown instead)
@@ -356,14 +363,18 @@ impl Widget for TextEdit {
                         self.notify_text_changed(ctx, new_text);
                         self.notify_selection_changed(ctx, new_selection);
                         ctx.request_relayout();
+                        ctx.set_handled();
                     }
                     keyboard_types::Key::Enter => {
                         // enter validates
                         self.notify_editing_finished(ctx, self.formatted_text.plain_text.clone());
+                        ctx.set_handled();
                     }
                     _ => {}
                 },
-                KeyState::Up => {}
+                KeyState::Up => {
+                    ctx.set_handled();
+                }
             },
 
             Event::Composition(_) => {}

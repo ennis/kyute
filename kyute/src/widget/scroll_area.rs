@@ -60,7 +60,7 @@ impl ScrollArea {
 
         if content_height <= viewport_height {
             content_viewport.set_transform(Offset::new(0.0, 0.0).to_transform());
-            grid_container.contents_mut().add_item(0, .., content_viewport);
+            grid_container.contents_mut().add_item(0, .., 0, content_viewport);
             return ScrollArea {
                 inner: grid_container,
                 line_height: DEFAULT_LINE_HEIGHT,
@@ -99,8 +99,8 @@ impl ScrollArea {
 
         let scroll_bar = Viewport::new(scroll_thumb).transform(Offset::new(0.0, thumb_pos).to_transform());
 
-        grid_container.contents_mut().add_item(0, .., content_viewport);
-        grid_container.contents_mut().add_item(0, 1, scroll_bar);
+        grid_container.contents_mut().add_item(0, .., 0, content_viewport);
+        grid_container.contents_mut().add_item(0, 1, 1, scroll_bar);
         ScrollArea {
             inner: grid_container,
             scroll,

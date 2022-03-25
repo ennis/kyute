@@ -4,9 +4,8 @@ use crate::{
     style::{BoxStyle, VisualState},
     theme,
     widget::{prelude::*, Container, Grid, Label},
-    Color, Signal, ValueRef,
+    Color, Signal, State, UnitExt, ValueRef,
 };
-use kyute_common::UnitExt;
 
 #[derive(Clone)]
 pub struct Button {
@@ -14,7 +13,7 @@ pub struct Button {
     inner: Container<Label>,
     clicked: Signal<()>,
     // FIXME: I just want for the flag value to be retained across recomps; design something simpler
-    active: (bool, cache::State<bool>),
+    active: State<bool>,
 }
 
 impl Button {
@@ -33,7 +32,7 @@ impl Button {
                 .alternate_box_style(VisualState::ACTIVE | VisualState::HOVER, theme::BUTTON_ACTIVE)
                 .alternate_box_style(VisualState::HOVER, theme::BUTTON_HOVER),
             clicked: Signal::new(),
-            active: (active.get(), active),
+            active,
         }
     }
 
@@ -90,11 +89,11 @@ impl Widget for Button {
                     ctx.request_redraw();
                     ctx.set_handled();
                     ctx.capture_pointer();
-                    self.active.1.set(true);
+                    self.active.set(true);
                 }
                 PointerEventKind::PointerUp => {
                     ctx.request_redraw();
-                    self.active.1.set(false);
+                    self.active.set(false);
                     self.clicked.signal(());
                 }
                 PointerEventKind::PointerOver => {
@@ -119,8 +118,8 @@ impl Widget for Button {
     }
 
     fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        if self.active.0 {
-            ctx.active = true;
+        if self.active.get() {
+            ctx.active = true; // TODO set in env instead?
         }
         self.inner.paint(ctx, env)
     }

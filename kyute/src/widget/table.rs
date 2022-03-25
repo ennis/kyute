@@ -5,7 +5,7 @@ use crate::{
     theme,
     widget::{
         grid::GridTrackDefinition, prelude::*, Clickable, Container, DragController, Grid, GridLength, GridSpan, Image,
-        Null, Scaling, WidgetWrapper,
+        LayoutWrapper, Null, Scaling, WidgetWrapper,
     },
     Data, Length, UnitExt, ValueRef, WidgetExt,
 };
@@ -204,6 +204,7 @@ impl TableView {
     pub fn new<Id: Hash + Eq + Clone>(mut params: TableViewParams<Id>) -> TableView {
         // create the main grid
         let mut grid = Grid::new();
+        let num_columns = params.columns.len();
         grid.append_column_definitions(params.columns);
 
         // row counter
@@ -221,21 +222,18 @@ impl TableView {
             if params.resizeable_columns {
                 // insert transparent draggable items between each column (over the column separator).
                 // they are drag handles for resizing the columns.
-
-                // Alternatives:
-                // - read back the grid layout so that we can overlay handles on top of the whole grid (or at least the first row)
-                // - ** add precise pointer events to the grid (hit test cell borders)
-                /*for i_col in 1..1.max(params.columns.len()) {
-                    // TODO size the handle according to separator width
+                for i in 1..num_columns {
                     let resize_handle = DragController::new(
                         Container::new(Null)
                             .background(theme::palette::RED_800)
-                            .fixed_width(3.dip())
-                            .fixed_height(100.percent())
-                            .padding_left(-1.dip()),
+                            .fixed_width(4.dip())
+                            .fixed_height(100.percent()),
                     );
-                    grid.add_item(0, i_col, resize_handle);
-                }*/
+                    // positioning
+                    //let resize_handle = LayoutWrapper::with_offset((-2.0, 0.0), resize_handle);
+                    // FIXME arbitrary Z-order here should be documented
+                    grid.add_item_with_line_alignment(.., i..i, 100, Alignment::CENTER, resize_handle);
+                }
             }
 
             i += 1;
@@ -276,6 +274,7 @@ impl TableView {
                         grid.add_item(
                             i,
                             ..,
+                            -1,
                             Container::new(Null).fill().box_style(params.selected_style.clone()),
                         );
                     }
@@ -283,6 +282,7 @@ impl TableView {
                     grid.add_item(
                         i,
                         ..,
+                        -1,
                         Clickable::new(Null).on_click(|| selection.flip(row.id.clone())).fill(),
                     );
                 }
@@ -303,11 +303,12 @@ impl TableView {
                     });
 
                     let mut widget_with_chevron = Grid::row(GridTrackDefinition::new(GridLength::Auto));
-                    widget_with_chevron.add_item(0, 0, icon);
-                    widget_with_chevron.add_item(0, 1, row.widget);
+                    widget_with_chevron.add_item(0, 0, 0, icon);
+                    widget_with_chevron.add_item(0, 1, 0, row.widget);
                     grid.add_item(
                         i,
                         params.main_column,
+                        0,
                         widget_with_chevron.padding_left((level as f64) * params.row_indent),
                     );
                 } else {
@@ -315,6 +316,7 @@ impl TableView {
                     grid.add_item(
                         i,
                         params.main_column,
+                        0,
                         // first padding is the space for the chevron, second is the indent
                         row.widget
                             .padding_left(icon_size)

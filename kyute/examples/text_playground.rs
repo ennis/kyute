@@ -30,8 +30,8 @@ fn text_edit(font_size: f64, grid: &mut Grid) {
     let text_edit = TextEdit::new(formatted_text).on_text_changed(|new_text| text = new_text);
 
     let row = grid.row_count();
-    grid.add_item(row, 0, label);
-    grid.add_item(row, 2, text_edit);
+    grid.add_item(row, 0, 0, label);
+    grid.add_item(row, 2, 0, text_edit);
 }
 
 #[composable(cached)]
@@ -57,23 +57,23 @@ fn text_playground() -> impl Widget + Clone {
 
     {
         let row = grid.row_count();
-        grid.add_item(row, 0, Label::new("Custom font size".to_string()));
+        grid.add_item(row, 0, 0, Label::new("Custom font size".to_string()));
         let custom_font_size_slider =
             Slider::new(3.0, 80.0, custom_font_size).on_value_changed(|v| custom_font_size = v);
-        grid.add_item(row, 2, custom_font_size_slider);
+        grid.add_item(row, 2, 0, custom_font_size_slider);
         text_edit(custom_font_size, &mut grid);
     }
 
     // text input test
     {
         let row = grid.row_count();
-        grid.add_item(row, 0, Label::new("Validated text input".to_string()));
+        grid.add_item(row, 0, 0, Label::new("Validated text input".to_string()));
 
         let text_input = TextInput::number(input_value).on_value_changed(|value| {
             info!("input value changed: {:.6}", value);
             input_value = value;
         });
-        grid.add_item(row, 2, text_input);
+        grid.add_item(row, 2, 0, text_input);
     }
 
     Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))

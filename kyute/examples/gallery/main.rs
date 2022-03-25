@@ -51,7 +51,7 @@ impl Scaffold {
     }
 
     pub fn set_sidebar(&mut self, sidebar: impl Widget + 'static) {
-        self.grid.add_item(0..1, 0, sidebar);
+        self.grid.add_item(0..1, 0, 0, sidebar);
     }
 
     pub fn toolbar(mut self, toolbar: impl Widget + 'static) -> Self {
@@ -60,7 +60,7 @@ impl Scaffold {
     }
 
     pub fn set_toolbar(&mut self, toolbar: impl Widget + 'static) {
-        self.grid.add_item(0, 1, toolbar);
+        self.grid.add_item(0, 1, 0, toolbar);
     }
 
     pub fn content(mut self, content: impl Widget + 'static) -> Self {
@@ -69,7 +69,7 @@ impl Scaffold {
     }
 
     pub fn set_content(&mut self, content: impl Widget + 'static) {
-        self.grid.add_item(1, 1, content);
+        self.grid.add_item(1, 1, 0, content);
     }
 }
 
