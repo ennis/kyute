@@ -4,12 +4,11 @@ version = "0.1.0"
 authors = ["Alexandre Bléron <alex.bleron@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 # windowing
 anyhow = "1.0.43"
-winit = { path = "../ext/winit" }
+winit = { git = "https://github.com/ennis/winit", rev = "178cf8ebbeedce48c4abb16b9aa3aec52f9281b5" }
 #euclid = "0.22"   # basic 2D geometric types
 bitflags = "1.2.1"
 lazy_static = "1.4.0"
@@ -19,7 +18,7 @@ float-cmp = "0.9"
 raw-window-handle = "0.4"
 tracing = "0.1.25"
 thiserror = "1.0.24"
-graal = { path = "../graal" }
+graal = { git = "https://github.com/ennis/graal.git", rev = "7ecf1b5fc7c3a3ad75a8ad8c461414617cee92bd" }
 kyute-common = { path = "../kyute-common" }
 windows = { version = "0.33.0", features = ["Win32_Graphics_Direct2D",
     "Win32_Foundation",
