@@ -5,7 +5,7 @@ use std::{error::Error, fmt, marker::PhantomData};
 /// Color spec, non-linear srgb.
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Color(palette::Srgba);
+pub struct Color(pub palette::Srgba);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ColorParseError;

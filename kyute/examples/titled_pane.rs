@@ -3,7 +3,10 @@ use kyute::{
     shell::{application::Application, winit::window::WindowBuilder},
     style::BoxStyle,
     theme,
-    widget::{grid::GridTrackDefinition, Container, Flex, Grid, GridLength, Image, Label, Null, TitledPane},
+    widget::{
+        grid::GridTrackDefinition, ColorPicker, ColorPickerParams, Container, Flex, Grid, GridLength, Image, Label,
+        Null, Text, TitledPane,
+    },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, UnitExt, Widget, WidgetExt,
     WidgetPod, Window,
 };
@@ -11,8 +14,15 @@ use std::sync::Arc;
 
 #[composable]
 fn titled_pane_test() -> impl Widget + Clone {
-    let pane_1 = TitledPane::collapsible("Initially collapsed", true, Label::new("Hi!".to_string()));
-    let pane_2 = TitledPane::collapsible("Initially expanded", false, Label::new("Hey!".to_string()));
+    let pane_1 = TitledPane::collapsible("Initially collapsed", true, Text::new("Hi!".to_string()));
+    let pane_2 = TitledPane::collapsible(
+        "Initially expanded",
+        false,
+        ColorPicker::new(&ColorPickerParams {
+            enable_alpha: false,
+            palette: None,
+        }),
+    );
 
     let mut v = Grid::column(GridTrackDefinition::new(GridLength::Fixed(400.dip())));
     v.add_row(pane_1);

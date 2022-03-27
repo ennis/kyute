@@ -13,7 +13,7 @@ use skia_safe as sk;
 
 pub use border::{Border, BorderPosition, BorderStyle};
 pub use box_style::{BoxShadow, BoxShadowParams, BoxStyle};
-pub use paint::{GradientStop, LinearGradient, Paint};
+pub use paint::{GradientStop, LinearGradient, Paint, RepeatMode, UniformData};
 pub use theme::{define_theme, ThemeData, ThemeLoadError};
 
 bitflags! {

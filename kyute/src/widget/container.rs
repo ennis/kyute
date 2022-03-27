@@ -249,30 +249,37 @@ impl<Content: Widget> Widget for Container<Content> {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
+        let box_style = self.box_style.resolve(env).unwrap();
+
         // Base size for proportional length calculations
         let base_width = constraints.finite_max_width().unwrap_or(0.0);
         let base_height = constraints.finite_max_height().unwrap_or(0.0);
 
         // First, measure the child, taking into account the mandatory padding
-        let content_padding = SideOffsets::new(
+        let mut content_padding = SideOffsets::new(
             self.padding_top.to_dips(ctx.scale_factor, base_height),
             self.padding_right.to_dips(ctx.scale_factor, base_width),
             self.padding_bottom.to_dips(ctx.scale_factor, base_height),
             self.padding_left.to_dips(ctx.scale_factor, base_width),
         );
 
+        // Around-borders should be taken into account in the layout (they affect the size of the item).
+        content_padding =
+            content_padding + box_style.border_side_offsets(ctx.scale_factor, Size::new(base_width, base_height));
+
         let content_constraints = constraints.deflate(content_padding);
         let mut content_size = self.content.layout(ctx, content_constraints, env);
-        content_size.bounds = content_size.bounds.outer_rect(content_padding);
+        content_size.size = content_size.local_bounds().outer_rect(content_padding).size;
+
         let mut content_offset = Offset::new(content_padding.left, content_padding.top);
 
         // adjust content baseline so that `baseline = adjusted_content_baseline + padding.top`.
         if let Some(baseline) = self.baseline {
             // TODO do size-relative baselines make sense?
             let baseline = (baseline.to_dips(ctx.scale_factor, base_height) - content_offset.y).max(0.0);
-            let offset = baseline - content_size.baseline.unwrap_or(content_size.bounds.size.height).round();
+            let offset = baseline - content_size.baseline.unwrap_or(content_size.size.height).round();
             content_offset.y += offset;
-            content_size.bounds.size.height += offset;
+            content_size.size.height += offset;
         }
 
         // measure text
@@ -290,8 +297,8 @@ impl<Content: Widget> Widget for Container<Content> {
             x.max(min).min(max)
         }
 
-        constraints.min.width = clamp(content_size.width(), constraints.min.width, constraints.max.width);
-        constraints.min.height = clamp(content_size.height(), constraints.min.height, constraints.max.height);
+        constraints.min.width = clamp(content_size.size.width, constraints.min.width, constraints.max.width);
+        constraints.min.height = clamp(content_size.size.height, constraints.min.height, constraints.max.height);
 
         // apply additional w/h sizing constraints to the container
         //let mut additional_constraints = BoxConstraints::new(..,..);
@@ -332,7 +339,7 @@ impl<Content: Widget> Widget for Container<Content> {
             Size::new(w, h)
         } else {
             // no alignment = size to content
-            constraints.constrain(content_size.size())
+            constraints.constrain(content_size.size)
         };
 
         // Place the contents inside the box according to alignment
@@ -348,19 +355,14 @@ impl<Content: Widget> Widget for Container<Content> {
 
         self.content.set_offset(content_offset);
 
-        let bounds = Rect {
-            origin: Point::origin(),
-            size,
-        };
-
         let clip_bounds = self
             .box_style
             .resolve(env)
             .unwrap()
-            .clip_bounds(bounds, ctx.scale_factor);
+            .clip_bounds(Rect::new(Point::origin(), size), ctx.scale_factor);
 
         Measurements {
-            bounds,
+            size,
             clip_bounds,
             baseline: content_size.baseline.map(|b| b + content_offset.y),
         }

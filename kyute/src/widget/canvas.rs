@@ -126,8 +126,6 @@ impl Widget for Canvas {
             );
 
             // prevent item from going out of bounds
-            // FIXME: this assumes that the top-left corner is the origin of the item
-            // this is always the case *for now*
             offset.x = offset.x.clamp(left, right - measurements.width());
             offset.y = offset.y.clamp(top, bottom - measurements.height());
 
@@ -136,7 +134,7 @@ impl Widget for Canvas {
         }
 
         //trace!("canvas size: {}x{}", width, height);
-        Measurements::new(Rect::new(Point::origin(), Size::new(width, height)))
+        Measurements::new(Size::new(width, height))
     }
 
     fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {

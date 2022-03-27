@@ -826,18 +826,12 @@ impl Widget for Window {
             let winit_window = skia_window.window.window();
             let scale_factor = winit_window.scale_factor();
             let (width, height): (f64, f64) = winit_window.inner_size().to_logical::<f64>(scale_factor).into();
-            let mut m_window = Measurements::new(Size::new(width, height).into());
-            let (m_content, layout_changed) = self.contents.relayout(
+            self.contents.relayout(
                 ctx.app_ctx,
                 BoxConstraints::new(0.0..width, 0.0..height),
                 scale_factor,
                 env,
             );
-            if layout_changed {
-                let offset = align_boxes(Alignment::CENTER, &mut m_window, m_content).round_to_pixel(scale_factor);
-                self.contents.set_child_offset(offset);
-            }
-
             if self.contents.invalidated() {
                 winit_window.request_redraw()
             }

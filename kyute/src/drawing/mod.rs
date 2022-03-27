@@ -109,3 +109,32 @@ impl ToSkia for Transform {
         )
     }
 }
+
+/*fn make_uniform_data(effect: sk::RuntimeEffect) -> sk::Data {
+    let (u_offset, u_size) = effect
+        .uniforms()
+        .iter()
+        .find_map(|u| {
+            if u.name() == "color" {
+                Some((u.offset(), u.size_in_bytes()))
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    let uniform_size = apply_mask_effect.uniform_size();
+    assert!(u_offset < uniform_size);
+    let mut uniform_data: Vec<u8> = Vec::with_capacity(uniform_size);
+    unsafe {
+        let uniform_ptr = uniform_data.as_mut_ptr();
+        let (r, g, b, a) = color.to_rgba();
+        ptr::write(uniform_ptr.add(u_offset).cast::<[f32; 4]>(), [r, g, b, a]);
+        uniform_data.set_len(uniform_size);
+    }
+    let uniform_data = sk::Data::new_copy(&uniform_data);
+    apply_mask_effect
+        .make_blender(uniform_data, None)
+        .expect("make_blender failed")
+}
+*/

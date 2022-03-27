@@ -1,4 +1,5 @@
 //! Baseline alignment.
+use kyute_common::RoundToPixel;
 use crate::widget::{prelude::*, LayoutWrapper};
 
 /// A widget that aligns its child according to a fixed baseline.
@@ -41,8 +42,7 @@ impl<Inner: Widget> Widget for Baseline<Inner> {
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let m = self.inner.layout(ctx, constraints, env);
         // baselines are not guaranteed to fall on a pixel boundary, round it manually
-        // FIXME should do pixel snapping instead
-        let y_offset = (self.baseline - m.baseline.unwrap_or(m.bounds.size.height)).round();
+        let y_offset = (self.baseline - m.baseline.unwrap_or(m.size.height)).round_to_pixel(ctx.scale_factor);
         let offset = Offset::new(0.0, y_offset);
         self.inner.set_offset(offset);
         Measurements::new(

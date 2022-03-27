@@ -738,14 +738,14 @@ impl Grid {
             if let Some(max_natural_baseline) = max_natural_baseline {
                 if axis == TrackAxis::Row && self.align_items == AlignItems::Baseline {
                     for nat_size in natural_sizes.iter_mut() {
-                        nat_size.bounds.size.height += max_natural_baseline - nat_size.baseline.unwrap_or(0.0);
+                        nat_size.size.height += max_natural_baseline - nat_size.baseline.unwrap_or(0.0);
                     }
                 }
             }
 
             let max_natural_size = natural_sizes
                 .iter()
-                .map(|m| axis.width(m.size()))
+                .map(|m| axis.width(m.size))
                 .reduce(f64::max)
                 .unwrap_or(0.0);
 
@@ -1017,8 +1017,8 @@ impl Widget for Grid {
 
                 // position item inside the cell according to alignment mode
                 match self.align_items {
-                    AlignItems::End => y += h - item_measure.size().height,
-                    AlignItems::Center => y += 0.5 * (h - item_measure.size().height),
+                    AlignItems::End => y += h - item_measure.size.height,
+                    AlignItems::Center => y += 0.5 * (h - item_measure.size.height),
                     AlignItems::Baseline => {
                         if let Some(baseline) = item_measure.baseline {
                             // NOTE: normally if any item in the row has a baseline, then the row itself
@@ -1035,8 +1035,8 @@ impl Widget for Grid {
 
                 // position item inside the cell according to alignment mode
                 match self.justify_items {
-                    JustifyItems::End => x += w - item_measure.size().width,
-                    JustifyItems::Center => x += 0.5 * (w - item_measure.size().width),
+                    JustifyItems::End => x += w - item_measure.size.width,
+                    JustifyItems::Center => x += 0.5 * (w - item_measure.size.width),
                     _ => {}
                 };
 
@@ -1050,8 +1050,8 @@ impl Widget for Grid {
             }
         }
 
-        let measurements = Measurements::new(Rect::new(Point::origin(), Size::new(width, height)));
-        measurements
+        // TODO baseline
+        Measurements::new(Size::new(width, height))
     }
 
     fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {

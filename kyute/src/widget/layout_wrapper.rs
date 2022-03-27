@@ -74,7 +74,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         // NOTE: If we end up here before layout, the bounds may not be valid, so in theory the hit-test may fail,
         // But since the only events sent before layout should be non-pointer events, which always pass
         // the hit-test, that's not a problem.
-        let bounds = self.measurements.get().bounds;
+        let bounds = self.measurements.get().local_bounds();
 
         ctx.with_local_transform(self.offset.get().to_transform(), event, |ctx, event| match event {
             Event::Pointer(p) => match ctx.hit_test(p, bounds) {
@@ -124,7 +124,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
     fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
         let m = self.measurements.get();
         let offset = self.offset.get();
-        ctx.with_transform_and_clip(offset.to_transform(), m.bounds, m.clip_bounds, |ctx| {
+        ctx.with_transform_and_clip(offset.to_transform(), m.local_bounds(), m.clip_bounds, |ctx| {
             self.inner.paint(ctx, env);
         });
     }
@@ -199,8 +199,8 @@ impl<Content: Widget + 'static> Widget for LayoutInspector<Content> {
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let measurements = self.content.layout(ctx, constraints, env);
-        if measurements.bounds.size != self.size {
-            self.size_changed.signal(measurements.bounds.size);
+        if measurements.size != self.size {
+            self.size_changed.signal(measurements.size);
         }
         measurements
     }

@@ -19,7 +19,9 @@ mod slider;
 mod text;
 mod text_edit;
 //mod text_v1;
+mod border;
 mod canvas;
+mod color_picker;
 mod popup;
 mod scroll_area;
 mod selectable;
@@ -29,9 +31,11 @@ mod titled_pane;
 
 pub use align::Align;
 pub use baseline::Baseline;
+pub use border::Border;
 pub use button::Button;
 pub use canvas::{Canvas, Viewport};
 pub use clickable::Clickable;
+pub use color_picker::{ColorPaletteItem, ColorPicker, ColorPickerMode, ColorPickerParams, HsvColorSquare};
 pub use constrained::ConstrainedBox;
 pub use container::Container;
 pub use drop_down::DropDown;
@@ -116,33 +120,7 @@ impl<T: WidgetWrapper> Widget for T {
     }
 }
 
-/*
-/// Widgets that have only one child and wish to defer to this child's `Widget` implementation, except for event handling.
-pub trait Controller {
-    fn child(&self) -> &dyn Widget;
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
-}
-
-impl<T: Controller> Widget for T {
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        Controller::event(self, ctx, event, env)
-    }
-
-    fn layout(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: BoxConstraints,
-        env: &Environment,
-    ) -> Measurements {
-        self.child().layout(ctx, constraints, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, bounds: Rect, env: &Environment) {
-        self.child().paint(ctx, bounds, env);
-    }
-}
-*/
-
+/// Prelude containing commonly used items for writing custom widgets.
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{

@@ -1,6 +1,5 @@
 //! Types and functions used for layouting widgets.
 use crate::{Data, Offset, Point, Rect, SideOffsets, Size};
-use euclid::Vector2D;
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -77,10 +76,6 @@ impl BoxConstraints {
         }
     }
 
-    /*pub fn new(min: Size, max: Size) -> BoxConstraints {
-        BoxConstraints { min, max }
-    }*/
-
     pub fn loose(size: Size) -> BoxConstraints {
         BoxConstraints {
             min: Size::zero(),
@@ -146,22 +141,6 @@ impl BoxConstraints {
     pub fn biggest(&self) -> Size {
         self.max
     }
-
-    /*/// Returns the .
-    pub fn tight_or(&self, default: Size) -> Size {
-        Size::new(
-            if self.has_tight_width() { self.max.width } else { default.width },
-            if self.has_tight_height() { self.max.height } else { default.height },
-        )
-    }
-
-    pub fn has_bounded_width(&self) -> bool {
-        self.max.width.is_finite()
-    }
-
-    pub fn has_bounded_height(&self) -> bool {
-        self.max.height.is_finite()
-    }*/
 
     pub fn constrain(&self, size: Size) -> Size {
         Size::new(self.constrain_width(size.width), self.constrain_height(size.height))
@@ -241,13 +220,18 @@ pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measu
     offset
 }
 
-/// Layout information for a visual node, relative to a parent node.
+/// Measurements of a Widget, returned by `Widget::layout`.
 #[derive(Copy, Clone, Debug)]
 pub struct Measurements {
-    /// Bounds of this node relative to the parent node origin.
-    /// TODO replace with size+anchor point? might be more intuitive
-    pub bounds: Rect,
-    /// Clip bounds. Usually the same as the layout bounds.
+    /// Calculated size of the widget.
+    ///
+    /// The widget bounds are defined in the widget's local space as `Rect::new(Point::origin(), self.size)`.
+    pub size: Size,
+    /// Calculated clip bounds in the widget
+    ///
+    /// Usually the same as the widget bounds, but can be different if the
+    /// widget draws elements outside its bounds used for layout calculation
+    /// (e.g. drop shadows and other effects that shouldn't affect layout).
     pub clip_bounds: Rect,
     /// Baseline offset relative to *this* node.
     /// The baseline relative to the parent node is `offset.y + baseline`.
@@ -258,10 +242,8 @@ pub struct Measurements {
 // (https://rust-lang.github.io/rust-clippy/master/index.html#derive_hash_xor_eq)
 impl PartialEq for Measurements {
     fn eq(&self, other: &Self) -> bool {
-        self.bounds.origin.x.to_bits() == other.bounds.origin.x.to_bits()
-            && self.bounds.origin.y.to_bits() == other.bounds.origin.y.to_bits()
-            && self.bounds.size.width.to_bits() == other.bounds.size.width.to_bits()
-            && self.bounds.size.height.to_bits() == other.bounds.size.height.to_bits()
+        self.size.width.to_bits() == other.size.width.to_bits()
+            && self.size.height.to_bits() == other.size.height.to_bits()
             && self.clip_bounds.origin.x.to_bits() == other.clip_bounds.origin.x.to_bits()
             && self.clip_bounds.origin.y.to_bits() == other.clip_bounds.origin.y.to_bits()
             && self.clip_bounds.size.width.to_bits() == other.clip_bounds.size.width.to_bits()
@@ -278,18 +260,21 @@ impl Data for Measurements {
 
 impl Hash for Measurements {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.bounds.origin.x.to_bits().hash(state);
-        self.bounds.origin.y.to_bits().hash(state);
-        self.bounds.size.width.to_bits().hash(state);
-        self.bounds.size.height.to_bits().hash(state);
+        self.size.width.to_bits().hash(state);
+        self.size.height.to_bits().hash(state);
+        self.clip_bounds.origin.x.to_bits().hash(state);
+        self.clip_bounds.origin.y.to_bits().hash(state);
+        self.clip_bounds.size.width.to_bits().hash(state);
+        self.clip_bounds.size.height.to_bits().hash(state);
         self.baseline.map(|x| x.to_bits()).hash(state);
     }
 }
 
 impl Default for Measurements {
+    /// Returns zero-sized measurements.
     fn default() -> Self {
         Measurements {
-            bounds: Rect::zero(),
+            size: Size::zero(),
             clip_bounds: Rect::zero(),
             baseline: None,
         }
@@ -297,121 +282,59 @@ impl Default for Measurements {
 }
 
 impl Measurements {
-    /// Creates a new [`Layout`] with the given size, with no offset relative to its parent.
-    pub fn new(bounds: Rect) -> Measurements {
+    /// Creates new `Measurements` representing a widget with the given size, and no baseline specified.
+    ///
+    /// The clip bounds are are equal to the widget bounds.
+    pub fn new(size: Size) -> Measurements {
         Measurements {
-            bounds,
-            clip_bounds: bounds,
+            size,
+            clip_bounds: Rect::new(Point::origin(), size),
             baseline: None,
         }
     }
 
-    /// Replaces the baseline of this node.
-    pub fn with_baseline(mut self, baseline: f64) -> Measurements {
-        self.baseline = Some(baseline);
-        self
+    /// Creates new `Measurements` representing a widget with the given size, and the specified baseline.
+    ///
+    /// The clip bounds are are equal to the widget bounds.
+    pub fn with_baseline(size: Size, baseline: f64) -> Measurements {
+        Measurements {
+            size,
+            clip_bounds: Rect::new(Point::origin(), size),
+            baseline: Some(baseline),
+        }
     }
 
-    pub fn with_clip_bounds(mut self, clip_bounds: Rect) -> Measurements {
-        self.clip_bounds = clip_bounds;
-        self
+    /// Returns the bounding rectangle of the widget in its local space.
+    ///
+    /// The rectangle's upper-left corner is at the origin (0,0), and its size is `self.size`.
+    pub fn local_bounds(&self) -> Rect {
+        Rect::new(Point::origin(), self.size)
     }
 
-    pub fn size(&self) -> Size {
-        self.bounds.size
-    }
-
+    /// Returns the layout width of the widget.
     pub fn width(&self) -> f64 {
-        self.bounds.size.width
+        self.size.width
     }
 
+    /// Returns the layout height of the widget.
     pub fn height(&self) -> f64 {
-        self.bounds.size.height
+        self.size.height
     }
 
+    /// Returns a copy of these measurements, adjusted so that it satisfies the
+    /// given [`BoxConstraints`].
+    ///
+    /// FIXME/TODO? The clip bounds are left unchanged.
     pub fn constrain(&self, constraints: BoxConstraints) -> Measurements {
         let mut m = *self;
-        m.bounds.size = constraints.constrain(m.bounds.size);
+        m.size = constraints.constrain(m.size);
         m
     }
 }
 
-impl From<Rect> for Measurements {
-    fn from(bounds: Rect) -> Self {
-        Measurements::new(bounds)
-    }
-}
-
 impl From<Size> for Measurements {
+    /// Creates measurements from a size. See [`Measurements::new`].
     fn from(s: Size) -> Self {
         Measurements::new(s.into())
     }
 }
-
-/*
-#[derive(Clone)]
-struct LayoutItemImpl {
-    measurements: Measurements,
-    children: Vec<(Offset, LayoutItem)>,
-}
-
-/// Represents the visual layout of a widget subtree.
-#[derive(Clone)]
-pub struct LayoutItem(Arc<LayoutItemImpl>);
-
-impl fmt::Debug for LayoutItem {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{:?}", self.0.measurements)
-    }
-}
-
-impl LayoutItem {
-    pub fn new(measurements: Measurements) -> LayoutItem {
-        LayoutItem(Arc::new(LayoutItemImpl {
-            measurements,
-            children: vec![],
-        }))
-    }
-
-    pub fn with_children(
-        measurements: Measurements,
-        children: Vec<(Offset, LayoutItem)>,
-    ) -> LayoutItem {
-        LayoutItem(Arc::new(LayoutItemImpl {
-            measurements,
-            children,
-        }))
-    }
-
-    pub fn add_child(&mut self, offset: Offset, item: LayoutItem) {
-        Arc::make_mut(&mut self.0).children.push((offset, item));
-    }
-
-    pub fn size(&self) -> Size {
-        self.0.measurements.size()
-    }
-
-    pub fn measurements(&self) -> Measurements {
-        self.0.measurements
-    }
-
-    pub fn baseline(&self) -> Option<f64> {
-        self.0.measurements.baseline
-    }
-
-    pub fn bounds(&self) -> Rect {
-        Rect::new(Point::origin(), self.0.measurements.size())
-    }
-
-    pub fn children(&self) -> &[(Offset, LayoutItem)] {
-        &self.0.children
-    }
-
-    pub fn child(&self, at: usize) -> Option<LayoutItem> {
-        self.0
-            .children
-            .get(at)
-            .map(|(_offset, layout)| layout.clone())
-    }
-}
-*/

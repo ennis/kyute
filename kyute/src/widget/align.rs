@@ -52,7 +52,7 @@ impl<W: Widget> Widget for Align<W> {
         // measure child
         let child = self.inner.layout(ctx, constraints.loosen(), env);
 
-        let mut size = child.size();
+        let mut size = child.size;
 
         if let Some(width_factor) = self.width_factor {
             size.width *= width_factor;
@@ -73,16 +73,10 @@ impl<W: Widget> Widget for Align<W> {
 
         self.inner.set_offset(Offset::new(x, y));
 
-        let bounds = Rect {
-            origin: child.bounds.origin,
-            size,
-        };
-
         Measurements {
-            bounds,
-            // FIXME
-            clip_bounds: bounds,
-            baseline,
+            size,
+            clip_bounds: Rect::new(Point::origin(), size),
+            baseline
         }
     }
 

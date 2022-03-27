@@ -60,9 +60,8 @@ impl<W: Widget> Widget for Padding<W> {
         );
 
         let mut m = self.inner.layout(ctx, constraints.deflate(padding), env);
-        // TODO: decide what to do with the origin (non-zero origin messed with clip bounds)
-        m.bounds.size = m.bounds.outer_rect(padding).size;
-        m.clip_bounds.size = m.clip_bounds.outer_rect(padding).size;
+        m.size = m.local_bounds().outer_rect(padding).size;
+        m.clip_bounds = m.clip_bounds.outer_rect(padding);
         self.inner.set_offset(Offset::new(padding.left, padding.top));
         m
     }

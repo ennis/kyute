@@ -109,7 +109,7 @@ impl Widget for Flex {
 
         let max_cross_axis_len = item_measures
             .iter()
-            .map(|m| cross_axis_length(self.axis_orientation, m.size()))
+            .map(|m| cross_axis_length(self.axis_orientation, m.size))
             .fold(0.0, f64::max);
 
         // preferred size of this flex: max size in axis direction, max elem width in cross-axis direction
@@ -125,7 +125,7 @@ impl Widget for Flex {
 
         for i in 0..self.items.len() {
             //eprintln!("flex {:?} item pos {}", self.axis, d);
-            let len = main_axis_length(self.axis_orientation, item_measures[i].size()).round_to_pixel(ctx.scale_factor);
+            let len = main_axis_length(self.axis_orientation, item_measures[i].size).round_to_pixel(ctx.scale_factor);
             let offset = match self.axis_orientation {
                 Orientation::Vertical => Offset::new(0.0, d),
                 Orientation::Horizontal => Offset::new(d, 0.0),
@@ -140,7 +140,7 @@ impl Widget for Flex {
             Orientation::Horizontal => Size::new(constraints.constrain_width(d), cross_axis_len),
         };
 
-        Measurements::new(Rect::new(Point::origin(), size).round_to_pixel(ctx.scale_factor))
+        Measurements::new(size.round_to_pixel(ctx.scale_factor))
     }
 
     fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {

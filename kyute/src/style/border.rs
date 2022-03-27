@@ -5,6 +5,7 @@ use crate::{
     Color, Offset, PaintCtx, Rect, RectExt,
 };
 use approx::ulps_eq;
+use kyute_common::{SideOffsets, Size};
 use skia_safe as sk;
 
 /// Border reference position
@@ -17,6 +18,8 @@ pub enum BorderPosition {
     Center,
     #[serde(rename = "outside")]
     Outside,
+    #[serde(rename = "around")]
+    Around,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Deserialize)]
@@ -31,17 +34,17 @@ pub enum BorderStyle {
 #[derive(Clone, Debug)]
 pub struct Border {
     /// Left,top,right,bottom border widths.
-    widths: [Length; 4],
+    pub widths: [Length; 4],
     /// Position of the border relative to the bounds.
-    position: BorderPosition,
-    paint: Paint,
+    pub position: BorderPosition,
+    pub paint: Paint,
     /// Border line style.
-    style: BorderStyle,
-    opacity: f64,
-    blend_mode: BlendMode,
-    enabled: bool,
-    offset_x: Length,
-    offset_y: Length,
+    pub style: BorderStyle,
+    pub opacity: f64,
+    pub blend_mode: BlendMode,
+    pub enabled: bool,
+    pub offset_x: Length,
+    pub offset_y: Length,
 }
 
 impl Border {
@@ -75,6 +78,11 @@ impl Border {
     pub fn center(width: impl Into<Length>) -> Border {
         let width = width.into();
         Border::new(width, BorderPosition::Center)
+    }
+
+    pub fn around(width: impl Into<Length>) -> Border {
+        let width = width.into();
+        Border::new(width, BorderPosition::Around)
     }
 
     pub fn offset_x(mut self, offset_x: impl Into<Length>) -> Self {
@@ -122,6 +130,24 @@ impl Border {
         self
     }
 
+    pub fn side_offsets(&self, scale_factor: f64, available_space: Size) -> SideOffsets {
+        match self.position {
+            BorderPosition::Inside | BorderPosition::Center | BorderPosition::Outside => SideOffsets::zero(),
+            BorderPosition::Around => {
+                SideOffsets::new(
+                    self.widths[0].to_dips(scale_factor, available_space.height), // top
+                    self.widths[1].to_dips(scale_factor, available_space.width),  // right
+                    self.widths[2].to_dips(scale_factor, available_space.height), // bottom
+                    self.widths[3].to_dips(scale_factor, available_space.width),  // left
+                )
+            }
+        }
+    }
+
+    pub fn get_clip_bounds_offsets(&self) -> SideOffsets {
+        todo!()
+    }
+
     /// Draws the described border in the given paint context, around the specified bounds.
     pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, radii: [sk::Vector; 4]) {
         let offset = Offset::new(
@@ -144,7 +170,7 @@ impl Border {
         let uniform_border = widths.iter().all(|&w| ulps_eq!(w, widths[0]));
 
         let rect = match self.position {
-            BorderPosition::Inside => {
+            BorderPosition::Inside | BorderPosition::Around => {
                 let mut rect = bounds;
                 rect.origin.x += 0.5 * widths[0];
                 rect.origin.y += 0.5 * widths[1];

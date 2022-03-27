@@ -541,11 +541,11 @@ pub trait Widget {
         std::any::type_name::<Self>()
     }
 
-    /// Propagates an event through the widget hierarchy.
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
-
     /// Measures this widget and layouts the children of this widget.
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements;
+
+    /// Propagates an event through the widget hierarchy.
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
 
     /// Paints the widget in the given context.
     fn paint(&self, ctx: &mut PaintCtx, env: &Environment);
@@ -1013,7 +1013,12 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
 
         event.with_local_coordinates(self.state.transform.get(), |event| match event {
             Event::Pointer(p) => {
-                match hit_test_helper(p, measurements.bounds, self.id(), parent_ctx.focus_state.pointer_grab) {
+                match hit_test_helper(
+                    p,
+                    measurements.local_bounds(),
+                    self.id(),
+                    parent_ctx.focus_state.pointer_grab,
+                ) {
                     HitTestResult::Passed => {
                         if !self.state.pointer_over.get() {
                             self.state.pointer_over.set(true);
@@ -1081,7 +1086,7 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
             measurements
         );*/
 
-        if !measurements.size().width.is_finite() || !measurements.size().height.is_finite() {
+        if !measurements.size.width.is_finite() || !measurements.size.height.is_finite() {
             warn!(
                 "layout[{:?}({})] returned non-finite measurements: {:?}",
                 self.state.id,
@@ -1129,13 +1134,13 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
 
         parent_ctx.with_transform_and_clip(
             local_transform,
-            measurements.bounds,
+            measurements.local_bounds(),
             measurements.clip_bounds,
             |child_ctx| {
                 let inv_window_transform = child_ctx.window_transform.inverse().unwrap();
                 child_ctx.hover = child_ctx.inputs.pointers.iter().any(|(_, state)| {
                     let local_pointer_pos = inv_window_transform.transform_point(state.position);
-                    measurements.bounds.contains(local_pointer_pos)
+                    measurements.local_bounds().contains(local_pointer_pos)
                 });
 
                 self.widget.paint(child_ctx, env);

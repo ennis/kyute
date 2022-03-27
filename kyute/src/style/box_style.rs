@@ -3,7 +3,7 @@ use crate::{
     style::{border::Border, Length, Paint},
     Offset, PaintCtx, Rect,
 };
-use kyute_common::Color;
+use kyute_common::{Color, SideOffsets, Size};
 use skia_safe as sk;
 
 //--------------------------------------------------------------------------------------------------
@@ -124,9 +124,25 @@ impl BoxStyle {
         }
     }
 
+    /// Returns the side offsets added by visual features like borders that affect the size of the
+    /// styled widget.
+    pub fn border_side_offsets(&self, scale_factor: f64, available_space: Size) -> SideOffsets {
+        let mut side_offsets = SideOffsets::zero();
+        for b in self.borders.iter() {
+            let bo = b.side_offsets(scale_factor, available_space);
+            side_offsets.top = side_offsets.top.max(bo.top);
+            side_offsets.right = side_offsets.right.max(bo.right);
+            side_offsets.left = side_offsets.left.max(bo.left);
+            side_offsets.bottom = side_offsets.bottom.max(bo.bottom);
+        }
+        side_offsets
+    }
+
     pub fn clip_bounds(&self, bounds: Rect, scale_factor: f64) -> Rect {
         // FIXME: this is not very efficient since we end up resolving stuff twice: in layout, and again in paint
         // BoxStyle should already be resolved. Add "procedural entries" to env.
+
+        // FIXME: borders also extend outside of the element
         match self.box_shadow {
             Some(BoxShadow::Drop(p)) => {
                 let ox = p.offset_x.to_dips(scale_factor, bounds.width());

@@ -1,24 +1,25 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
 use crate::{
+    align_boxes,
     event::PointerEventKind,
     style::{PaintCtxExt, Path},
     theme,
     widget::prelude::*,
     SideOffsets, Signal,
 };
-use std::cell::Cell;
+use std::{cell::Cell, sync::Arc};
 
 /// Utility class representing a slider track on which a knob can move.
 #[derive(Copy, Clone, Debug, Default)]
-struct SliderTrack {
-    start: Point,
-    end: Point,
+pub struct SliderTrack {
+    pub start: Point,
+    pub end: Point,
 }
 
 impl SliderTrack {
     /// Returns the value that would be set if the cursor was at the given position.
-    fn value_from_position(&self, pos: Point, min: f64, max: f64) -> f64 {
+    pub fn value_from_position(&self, pos: Point, min: f64, max: f64) -> f64 {
         /*let hkw = 0.5 * get_knob_width(track_width, divisions, min_knob_width);
         // at the end of the sliders, there are two "dead zones" of width kw / 2 that
         // put the slider all the way left or right
@@ -33,7 +34,7 @@ impl SliderTrack {
     }
 
     /// Returns the position of the knob on the track.
-    fn knob_position(&self, value: f64) -> Point {
+    pub fn knob_position(&self, value: f64) -> Point {
         self.start + (self.end - self.start) * value
     }
 }
@@ -205,5 +206,101 @@ impl Widget for Slider {
         Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
             .fill(env.get(theme::keys::CONTROL_BORDER_COLOR).unwrap())
             .draw(ctx, knob_bounds);
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+#[derive(Clone)]
+pub struct SliderBase {
+    id: WidgetId,
+    track: Cell<SliderTrack>,
+    position: f64,
+    position_changed: Signal<f64>,
+    knob: Arc<WidgetPod>,
+    background: Arc<WidgetPod>,
+}
+
+impl SliderBase {
+    #[composable]
+    pub fn new(position: f64, background: impl Widget + 'static, knob: impl Widget + 'static) -> SliderBase {
+        SliderBase {
+            id: WidgetId::here(),
+            track: Default::default(),
+            position,
+            position_changed: Signal::new(),
+            knob: Arc::new(WidgetPod::new(knob)),
+            background: Arc::new(WidgetPod::new(background)),
+        }
+    }
+
+    /// Returns the current position of the slider.
+    pub fn current_position(&self) -> f64 {
+        self.position
+    }
+
+    pub fn position_changed(&self) -> Option<f64> {
+        self.position_changed.value()
+    }
+
+    pub fn on_position_changed(self, f: impl FnOnce(f64)) -> Self {
+        self.position_changed.map(f);
+        self
+    }
+}
+
+impl Widget for SliderBase {
+    fn widget_id(&self) -> Option<WidgetId> {
+        Some(self.id)
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        let knob_measurements = dbg!(self.knob.layout(ctx, constraints, env));
+        let background_measurements = self.background.layout(ctx, constraints, env);
+
+        let width = background_measurements.width();
+        let height = knob_measurements.height().max(background_measurements.height());
+
+        let track_y = height * 0.5;
+        let bg_offset_y = 0.5 * (height - background_measurements.height());
+        let knob_offset_y = 0.5 * (height - knob_measurements.height());
+
+        self.background.set_child_offset(Offset::new(0.0, bg_offset_y));
+
+        let hkw = 0.5 * knob_measurements.width();
+        let track = SliderTrack {
+            start: Point::new(hkw, track_y),
+            end: Point::new(width - hkw, track_y),
+        };
+        self.track.set(track);
+        self.knob
+            .set_child_offset(Offset::new(track.knob_position(self.position).x - hkw, knob_offset_y));
+        Measurements::from(Size::new(width, height))
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
+        if let Event::Pointer(p) = event {
+            match p.kind {
+                PointerEventKind::PointerDown => {
+                    let new_pos = self.track.get().value_from_position(p.position, 0.0, 1.0);
+                    self.position_changed.signal(new_pos);
+                    ctx.capture_pointer();
+                    ctx.request_focus();
+                    ctx.request_redraw();
+                }
+                PointerEventKind::PointerMove => {
+                    if ctx.is_capturing_pointer() {
+                        let new_pos = self.track.get().value_from_position(p.position, 0.0, 1.0);
+                        self.position_changed.signal(new_pos);
+                        ctx.request_redraw();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+        self.background.paint(ctx, env);
+        self.knob.paint(ctx, env);
     }
 }

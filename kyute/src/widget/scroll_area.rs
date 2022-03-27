@@ -1,5 +1,4 @@
 use crate::{
-    cache::scoped,
     event::WheelDeltaMode,
     style::BoxStyle,
     widget::{

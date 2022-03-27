@@ -2,7 +2,7 @@ use crate::{
     composable, theme,
     widget::{
         grid::GridTrackDefinition, separator::separator, Clickable, Container, Grid, GridLength, Image, Label, Scaling,
-        WidgetWrapper,
+        Text, WidgetWrapper,
     },
     Alignment, Orientation, Widget, WidgetExt,
 };
@@ -55,7 +55,7 @@ impl TitledPane {
                 GridTrackDefinition::new(GridLength::Fixed(20.dip())),
             ]);
             grid.add_item(0, 0, 0, icon);
-            grid.add_item(0, 2, 0, Label::new(title).aligned(Alignment::CENTER_LEFT));
+            grid.add_item(0, 2, 0, Text::new(title).aligned(Alignment::CENTER_LEFT));
             Clickable::new(
                 Container::new(grid)
                     .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip())

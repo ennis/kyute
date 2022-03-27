@@ -23,6 +23,43 @@ pub enum RepeatMode {
     NoRepeat,
 }
 
+#[derive(Clone, Debug)]
+pub struct UniformData(pub(crate) sk::Data);
+
+#[macro_export]
+macro_rules! make_uniform_data {
+    ( [$effect:ident] $($name:ident : $typ:ty = $value:expr;)*) => {
+        unsafe {
+            let total_size = $effect.uniform_size();
+            let mut data: Vec<u8> = Vec::with_capacity(total_size);
+            let ptr = data.as_mut_ptr();
+
+            $(
+            {
+                let (u_offset, u_size) = $effect
+                    .uniforms()
+                    .iter()
+                    .find_map(|u| {
+                        if u.name() == std::stringify!($name) {
+                            Some((u.offset(), u.size_in_bytes()))
+                        } else {
+                            None
+                        }
+                    })
+                    .expect("could not find uniform");
+
+                let v : $typ = $value;
+                assert_eq!(std::mem::size_of::<$typ>(), u_size);
+                std::ptr::write(ptr.add(u_offset).cast::<$typ>(), v);
+            }
+            )*
+
+            data.set_len(total_size);
+            $crate::style::UniformData(skia_safe::Data::new_copy(&data))
+        }
+    };
+}
+
 /// Paint.
 #[derive(Clone, Debug)]
 //#[serde(tag = "type")]
@@ -39,6 +76,11 @@ pub enum Paint {
         image: Image,
         repeat_x: RepeatMode,
         repeat_y: RepeatMode,
+    },
+    // TODO: shader effects
+    Shader {
+        effect: sk::RuntimeEffect,
+        uniforms: UniformData,
     },
 }
 
@@ -156,6 +198,14 @@ impl Paint {
                     .unwrap();
                 let mut paint = sk::Paint::default();
                 paint.set_shader(image_shader);
+                paint
+            }
+            Paint::Shader { effect, uniforms } => {
+                let shader = effect
+                    .make_shader(&uniforms.0, &[], None, true)
+                    .expect("failed to create shader");
+                let mut paint = sk::Paint::default();
+                paint.set_shader(shader);
                 paint
             }
         }

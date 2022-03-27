@@ -12,7 +12,6 @@ pub struct Button {
     id: WidgetId,
     inner: Container<Label>,
     clicked: Signal<()>,
-    // FIXME: I just want for the flag value to be retained across recomps; design something simpler
     active: State<bool>,
 }
 
@@ -23,7 +22,6 @@ impl Button {
         let active = cache::state(|| false);
         Button {
             id: WidgetId::here(),
-            // TODO: ValueRef for container
             inner: Container::new(Label::new(label))
                 .min_height(21.dip())
                 .content_padding(5.dip(), 5.dip(), 5.dip(), 5.dip())

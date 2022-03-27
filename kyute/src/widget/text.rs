@@ -1,7 +1,8 @@
 use crate::{
-    composable, drawing::ToSkia, BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx, Measurements,
-    PaintCtx, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
+    composable, drawing::ToSkia, make_uniform_data, BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx,
+    Measurements, PaintCtx, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
+use euclid::Rect;
 use kyute_text::{
     FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
     RasterizationOptions,
@@ -133,7 +134,7 @@ half4 main(vec4 src, vec4 dst) {
 "#;
 
 lazy_static! {
-    pub static ref APPLY_MASK_EFFECT: ThreadBound<sk::RuntimeEffect> =
+    static ref APPLY_MASK_EFFECT: ThreadBound<sk::RuntimeEffect> =
         ThreadBound::new(sk::RuntimeEffect::make_for_blender(LCD_MASK_BLENDER_SKSL, None).unwrap());
 }
 
@@ -149,7 +150,14 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
             let apply_mask_effect = APPLY_MASK_EFFECT.get_ref().unwrap();
 
             let mask_blender = {
-                // set color uniform
+                let (r, g, b, a) = color.to_rgba();
+                let uniform_data = make_uniform_data!([apply_mask_effect]
+                    color: [f32; 4] = [r, g, b, a];
+                );
+                apply_mask_effect
+                    .make_blender(uniform_data.0, None)
+                    .expect("make_blender failed")
+                /*// set color uniform
                 let mut u_offset = None;
                 let mut u_size = None;
                 for u in apply_mask_effect.uniforms() {
@@ -170,10 +178,7 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
                     ptr::write(uniform_ptr.add(u_offset).cast::<[f32; 4]>(), [r, g, b, a]);
                     uniform_data.set_len(uniform_size);
                 }
-                let uniform_data = sk::Data::new_copy(&uniform_data);
-                apply_mask_effect
-                    .make_blender(uniform_data, None)
-                    .expect("make_blender failed")
+                let uniform_data = sk::Data::new_copy(&uniform_data);*/
             };
 
             let mut paint = sk::Paint::new(color.to_skia(), None);
@@ -226,7 +231,11 @@ impl Widget for Text {
         // stash the laid out paragraph for rendering
         self.paragraph.replace(Some(paragraph));
 
-        Measurements::from(size).with_baseline(baseline)
+        Measurements {
+            size,
+            clip_bounds: Rect::new(Point::origin(), size),
+            baseline: Some(baseline),
+        }
     }
 
     fn paint(&self, ctx: &mut PaintCtx, _env: &Environment) {

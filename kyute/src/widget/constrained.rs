@@ -93,7 +93,7 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
         );
 
         let constraints = constraints.enforce(additional_constraints);
-        self.inner.layout(ctx, constraints, env).constrain(constraints)
+        self.inner.layout(ctx, constraints, env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
