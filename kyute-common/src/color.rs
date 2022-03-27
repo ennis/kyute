@@ -1,4 +1,4 @@
-//use kyute_shell::drawing::{FromSkia, ToSkia};
+use crate::Data;
 use palette::Shade;
 use std::{error::Error, fmt, marker::PhantomData};
 
@@ -6,6 +6,12 @@ use std::{error::Error, fmt, marker::PhantomData};
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Color(pub palette::Srgba);
+
+impl Data for Color {
+    fn same(&self, other: &Self) -> bool {
+        self.eq(other)
+    }
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ColorParseError;
@@ -43,34 +49,49 @@ impl Default for Color {
 
 impl Color {
     /// Creates a new color from RGBA values.
-    pub const fn new(red: f64, green: f64, blue: f64, alpha: f64) -> Color {
+    pub const fn new(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
         Color(palette::Srgba {
             color: palette::Srgb {
-                red: red as f32,
-                green: green as f32,
-                blue: blue as f32,
+                red,
+                green,
+                blue,
                 standard: PhantomData,
             },
             alpha: alpha as f32,
         })
     }
 
+    /// Returns the value of the red channel.
+    pub const fn red(&self) -> f32 {
+        self.0.color.red
+    }
+
+    /// Returns the value of the green channel.
+    pub const fn green(&self) -> f32 {
+        self.0.color.green
+    }
+
+    /// Returns the value of the blue channel.
+    pub const fn blue(&self) -> f32 {
+        self.0.color.blue
+    }
+
     /// Returns the alpha value.
-    pub const fn alpha(&self) -> f64 {
-        self.0.alpha as f64
+    pub const fn alpha(&self) -> f32 {
+        self.0.alpha
     }
 
     /// Replaces alpha value.
-    pub const fn with_alpha(self, alpha: f64) -> Color {
+    pub const fn with_alpha(self, alpha: f32) -> Color {
         Color(palette::Srgba {
             color: self.0.color,
-            alpha: alpha as f32,
+            alpha,
         })
     }
 
     /// TODO documentation
     pub const fn from_rgb_u8(red: u8, green: u8, blue: u8) -> Color {
-        Color::new((red as f64) / 255.0, (green as f64) / 255.0, (blue as f64) / 255.0, 1.0)
+        Color::new((red as f32) / 255.0, (green as f32) / 255.0, (blue as f32) / 255.0, 1.0)
     }
 
     pub const fn to_rgba_u8(&self) -> (u8, u8, u8, u8) {
@@ -89,21 +110,21 @@ impl Color {
     /// TODO documentation
     pub const fn from_rgba_u8(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
         Color::new(
-            (red as f64) / 255.0,
-            (green as f64) / 255.0,
-            (blue as f64) / 255.0,
-            (alpha as f64) / 255.0,
+            (red as f32) / 255.0,
+            (green as f32) / 255.0,
+            (blue as f32) / 255.0,
+            (alpha as f32) / 255.0,
         )
     }
 
     /// TODO documentation
-    pub fn lighten(&self, amount: f64) -> Color {
-        Color(Shade::lighten(&self.0.into_linear(), amount as f32).into_encoding())
+    pub fn lighten(&self, amount: f32) -> Color {
+        Color(Shade::lighten(&self.0.into_linear(), amount).into_encoding())
     }
 
     /// TODO documentation
-    pub fn darken(&self, amount: f64) -> Color {
-        Color(Shade::darken(&self.0.into_linear(), amount as f32).into_encoding())
+    pub fn darken(&self, amount: f32) -> Color {
+        Color(Shade::darken(&self.0.into_linear(), amount).into_encoding())
     }
 
     pub fn to_hex(&self) -> String {

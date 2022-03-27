@@ -88,7 +88,7 @@ impl FromSkia for Color {
     type Source = skia_safe::Color4f;
 
     fn from_skia(value: Self::Source) -> Self {
-        Color::new(value.r as f64, value.g as f64, value.b as f64, value.a as f64)
+        Color::new(value.r, value.g, value.b, value.a)
     }
 }
 

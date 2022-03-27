@@ -49,7 +49,7 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
     let inner_fields: Vec<_> = input_struct_fields
         .iter()
         .enumerate()
-        .filter(|(i, field)| field.attrs.iter().any(|attr| attr.path.is_ident("inner")))
+        .filter(|(_, field)| field.attrs.iter().any(|attr| attr.path.is_ident("inner")))
         .collect();
 
     let inner_field = if inner_fields.is_empty() {

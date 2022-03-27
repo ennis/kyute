@@ -254,7 +254,7 @@ impl Widget for SliderBase {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let knob_measurements = dbg!(self.knob.layout(ctx, constraints, env));
+        let knob_measurements = self.knob.layout(ctx, constraints, env);
         let background_measurements = self.background.layout(ctx, constraints, env);
 
         let width = background_measurements.width();

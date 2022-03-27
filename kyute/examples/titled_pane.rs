@@ -14,17 +14,24 @@ use std::sync::Arc;
 
 #[composable]
 fn titled_pane_test() -> impl Widget + Clone {
+    #[state]
+    let mut color = Color::from_hex("#022f78");
     let pane_1 = TitledPane::collapsible("Initially collapsed", true, Text::new("Hi!".to_string()));
     let pane_2 = TitledPane::collapsible(
         "Initially expanded",
         false,
-        ColorPicker::new(&ColorPickerParams {
-            enable_alpha: false,
-            palette: None,
-        }),
+        ColorPicker::new(
+            color,
+            &ColorPickerParams {
+                enable_alpha: true,
+                palette: None,
+                enable_hex_input: true,
+            },
+        )
+        .on_color_changed(|c| color = c),
     );
 
-    let mut v = Grid::column(GridTrackDefinition::new(GridLength::Fixed(400.dip())));
+    let mut v = Grid::column(GridTrackDefinition::new(GridLength::Flex(1.0)));
     v.add_row(pane_1);
     v.add_row(pane_2);
 

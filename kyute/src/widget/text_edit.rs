@@ -413,7 +413,7 @@ pub struct NumberFormatter;
 
 impl Formatter<f64> for NumberFormatter {
     fn format(&self, value: &f64) -> FormattedText {
-        format!("{}", value).into()
+        format!("{:.3}", value).into()
     }
 
     fn format_partial_input(&self, text: &str) -> FormattedText {

@@ -4,80 +4,23 @@ use crate::{
     style::{BoxStyle, Paint, PaintCtxExt},
     theme,
     widget::{
-        grid::GridTrackDefinition,
+        grid::{AlignItems, GridTrackDefinition},
         prelude::*,
         slider::{SliderBase, SliderTrack},
-        Border, Clickable, Container, Grid, GridLength, Null, WidgetWrapper,
+        Border, Clickable, Container, Grid, GridLength, GridRow, Null, Text, TextInput, ValidationResult,
+        WidgetWrapper,
     },
     Color, PointerEventKind, UnitExt, WidgetExt,
 };
+use anyhow::Error;
 use euclid::SideOffsets2D;
-use kyute_common::SideOffsets;
+use kyute_common::{Length, SideOffsets};
+use kyute_text::FormattedText;
 use lazy_static::lazy_static;
-use palette::{FromColor, Hsv, Hsva, Mix, RgbHue, Srgb, Srgba};
+use palette::{FromColor, Hsv, Hsva, LinSrgba, Mix, RgbHue, Srgb, Srgba};
 use skia_safe as sk;
-use skia_safe::canvas::lattice::RectType::Default;
 use std::cell::Cell;
 use threadbound::ThreadBound;
-
-pub struct ColorPaletteItem<'a> {
-    name: &'a str,
-    value: Color,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum ColorPickerMode {
-    RgbSliders,
-    HsvSliders,
-    HsvWheel,
-}
-
-pub struct ColorPickerParams<'a> {
-    /// Enable alpha slider.
-    pub enable_alpha: bool,
-    /// Color palette.
-    pub palette: Option<&'a [ColorPaletteItem<'a>]>,
-}
-
-#[derive(Clone, WidgetWrapper)]
-pub struct ColorPicker {
-    grid: Grid,
-    color_changed: Signal<Color>,
-}
-
-impl ColorPicker {
-    #[composable]
-    pub fn new(params: &ColorPickerParams) -> ColorPicker {
-        let color_changed = Signal::new();
-        let mut grid = Grid::new();
-        grid.push_row_definition(GridTrackDefinition::new(GridLength::Fixed(150.dip())));
-        grid.push_row_definition(GridTrackDefinition::new(GridLength::Fixed(30.dip())));
-        grid.push_row_definition(GridTrackDefinition::new(GridLength::Fixed(30.dip())));
-        grid.push_row_definition(GridTrackDefinition::new(GridLength::Fixed(30.dip())));
-        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(300.dip())));
-        let hue_square = Border::new(
-            style::Border::around(1.px()).paint(theme::palette::GREY_100),
-            HsvColorSquare::new(0.0),
-        )
-        .padding(2.dip(), 2.dip(), 2.dip(), 2.dip());
-        let hue_bar = ColorSlider::hsv(
-            Hsva::new(RgbHue::from_degrees(0.0), 1.0, 1.0, 1.0),
-            Hsva::new(RgbHue::from_degrees(360.0), 1.0, 1.0, 1.0),
-        )
-        .padding(2.dip(), 2.dip(), 2.dip(), 2.dip());
-        let alpha_bar = ColorSlider::rgb(Color::new(1.0, 0.1, 0.1, 1.0), Color::new(1.0, 0.1, 0.1, 0.0)).padding(
-            2.dip(),
-            2.dip(),
-            2.dip(),
-            2.dip(),
-        );
-        grid.add_item(0, 0, 0, hue_square);
-        grid.add_item(1, 0, 0, hue_bar);
-        grid.add_item(2, 0, 0, alpha_bar);
-        //grid.add_item(2, 0, 0, ColorKnob::new(theme::palette::AMBER_400));
-        ColorPicker { grid, color_changed }
-    }
-}
 
 //--------------------------------------------------------------------------------------------------
 
@@ -108,10 +51,261 @@ half4 main(float2 fragcoord) {
 }
 "#;
 
+const COLOR_BAR_PAINT_SKSL: &str = r#"
+uniform float4 from;
+uniform float4 to;
+uniform float2 size;
+uniform int cbSize;
+uniform int encoding;
+layout(color) uniform float3 cbColor;
+
+float3 checkerboard(float2 fragcoord) {
+    float2 p = floor(fragcoord / float(cbSize));
+    return mix(float3(1.0), cbColor, mod(p.x + p.y, 2.0));
+}
+
+float3 hsv2rgb(float3 c) {
+    float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    float3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+float4 main(float2 fragcoord) {
+    float2 pos = fragcoord / size;
+    float4 color = mix(from, to, pos.x);
+
+    if (encoding == 1) {
+        color.rgb = hsv2rgb(color.rgb);
+    }
+
+    if (cbSize > 0) {
+        color.rgb = mix(checkerboard(fragcoord), color.rgb, color.a);
+        color.a = 1.0;
+    }
+    return color;
+}
+"#;
+
+const COLOR_SWATCH_PAINT_SKSL: &str = r#"
+layout(color) uniform float4 color;
+layout(color) uniform float3 cbColor;
+uniform int cbSize;
+
+float3 checkerboard(float2 fragcoord) {
+    float2 p = floor(fragcoord / float(cbSize));
+    return mix(float3(1.0), cbColor, mod(p.x + p.y, 2.0));
+}
+
+float4 main(float2 fragcoord) {
+    float4 final = color;
+    if (cbSize > 0) {
+        final.rgb = mix(checkerboard(fragcoord), final.rgb, final.a);
+        final.a = 1.0;
+    }
+    return final;
+}
+"#;
+
 lazy_static! {
+    static ref COLOR_BAR_PAINT_EFFECT: ThreadBound<sk::RuntimeEffect> =
+        ThreadBound::new(sk::RuntimeEffect::make_for_shader(COLOR_BAR_PAINT_SKSL, None).unwrap());
+    static ref COLOR_SWATCH_PAINT_EFFECT: ThreadBound<sk::RuntimeEffect> =
+        ThreadBound::new(sk::RuntimeEffect::make_for_shader(COLOR_SWATCH_PAINT_SKSL, None).unwrap());
     static ref HSV_COLOR_SQUARE_EFFECT: ThreadBound<sk::RuntimeEffect> =
         ThreadBound::new(sk::RuntimeEffect::make_for_shader(HSV_COLOR_SQUARE_SKSL, None).unwrap());
 }
+
+#[repr(i32)]
+#[derive(Copy, Clone, Debug)]
+enum ColorEncoding {
+    Rgb = 0,
+    Hsv = 1,
+}
+
+fn make_color_bar_paint(
+    encoding: ColorEncoding,
+    from: [f32; 4],
+    to: [f32; 4],
+    size: Size,
+    checkerboard_size: i32,
+    checkerboard_color: Color,
+) -> Paint {
+    let effect = COLOR_BAR_PAINT_EFFECT.get_ref().unwrap();
+    let (cbr, cbg, cbb, cba) = checkerboard_color.to_rgba();
+    let uniforms = make_uniform_data!([effect]
+        from:     [f32; 4] = from;
+        to:       [f32; 4] = to;
+        size:     [f32; 2] = [size.width as f32, size.height as f32];
+        cbSize:   i32      = checkerboard_size;
+        cbColor:  [f32; 3] = [cbr, cbg, cbb];
+        encoding: i32      = encoding as i32;
+    );
+
+    Paint::Shader {
+        effect: effect.clone(),
+        uniforms,
+    }
+}
+
+fn make_color_swatch_paint(color: Color, checkerboard_size: i32, checkerboard_color: Color) -> Paint {
+    let effect = COLOR_SWATCH_PAINT_EFFECT.get_ref().unwrap();
+    let (cbr, cbg, cbb, cba) = checkerboard_color.to_rgba();
+    let (r, g, b, a) = color.to_rgba();
+    let uniforms = make_uniform_data!([effect]
+        color:    [f32; 4] = [r,g,b,a];
+        cbSize:   i32      = checkerboard_size;
+        cbColor:  [f32; 3] = [cbr, cbg, cbb];
+    );
+    Paint::Shader {
+        effect: effect.clone(),
+        uniforms,
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+pub struct ColorPaletteItem<'a> {
+    name: &'a str,
+    value: Color,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum ColorPickerMode {
+    RgbSliders,
+    HsvSliders,
+    HsvWheel,
+}
+
+pub struct ColorPickerParams<'a> {
+    /// Enable alpha slider.
+    pub enable_alpha: bool,
+    /// Color palette.
+    pub palette: Option<&'a [ColorPaletteItem<'a>]>,
+    pub enable_hex_input: bool,
+}
+
+#[derive(Clone, WidgetWrapper)]
+pub struct ColorPicker {
+    grid: Grid,
+    color_changed: Option<Color>,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum ColorComponent {
+    R,
+    G,
+    B,
+    A,
+}
+
+#[composable]
+fn color_component_slider(component: ColorComponent, color: &mut Color) -> GridRow {
+    let label;
+    let slider;
+    let text_input;
+
+    let (mut r, mut g, mut b, mut a) = color.0.into_linear().into_components();
+    match component {
+        ColorComponent::R => {
+            label = "R";
+            slider = ColorSlider::rgb(r, LinSrgba::new(0.0, g, b, 1.0), LinSrgba::new(1.0, g, b, 1.0))
+                .on_value_changed(|v| r = v);
+            text_input = TextInput::number(r as f64).on_value_changed(|v| r = v as f32);
+        }
+        ColorComponent::G => {
+            label = "G";
+            slider = ColorSlider::rgb(g, LinSrgba::new(r, 0.0, b, 1.0), LinSrgba::new(r, 1.0, b, 1.0))
+                .on_value_changed(|v| g = v);
+            text_input = TextInput::number(g as f64).on_value_changed(|v| g = v as f32);
+        }
+        ColorComponent::B => {
+            label = "B";
+            slider = ColorSlider::rgb(b, LinSrgba::new(r, g, 0.0, 1.0), LinSrgba::new(r, g, 1.0, 1.0))
+                .on_value_changed(|v| b = v);
+            text_input = TextInput::number(b as f64).on_value_changed(|v| b = v as f32);
+        }
+        ColorComponent::A => {
+            label = "A";
+            slider = ColorSlider::rgb(a, LinSrgba::new(r, g, b, 0.0), LinSrgba::new(r, g, b, 1.0))
+                .on_value_changed(|v| a = v);
+            text_input = TextInput::number(a as f64).on_value_changed(|v| a = v as f32);
+        }
+    };
+
+    *color = Color(LinSrgba::new(r, g, b, a).into_encoding());
+
+    let mut row = GridRow::new();
+    row.add(0, Text::new(label).aligned(Alignment::CENTER_RIGHT));
+    row.add(1, slider);
+    row.add(2, text_input);
+    row
+}
+
+struct HexColorFormatter;
+impl crate::widget::text_edit::Formatter<Color> for HexColorFormatter {
+    fn format(&self, value: &Color) -> FormattedText {
+        value.to_hex().into()
+    }
+
+    fn format_partial_input(&self, text: &str) -> FormattedText {
+        text.into()
+    }
+
+    fn validate_partial_input(&self, text: &str) -> ValidationResult {
+        if Color::try_from_hex(text).is_ok() {
+            ValidationResult::Valid
+        } else {
+            ValidationResult::Incomplete
+        }
+    }
+
+    fn parse(&self, text: &str) -> Result<Color, Error> {
+        Ok(Color::try_from_hex(text)?)
+    }
+}
+
+impl ColorPicker {
+    #[composable]
+    pub fn new(color: Color, params: &ColorPickerParams) -> ColorPicker {
+        let mut grid = Grid::new();
+
+        //grid.push_row_definition(GridTrackDefinition::new(GridLength::Fixed(150.dip())));
+        grid.set_row_template(GridLength::Auto);
+        grid.set_row_gap(2.dip());
+        grid.set_column_gap(4.dip());
+        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(20.dip())));
+        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(300.dip())));
+        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(50.dip())));
+        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(80.dip())));
+        grid.set_align_items(AlignItems::Center);
+
+        let mut new_color = color;
+        grid.add_row(color_component_slider(ColorComponent::R, &mut new_color));
+        grid.add_row(color_component_slider(ColorComponent::G, &mut new_color));
+        grid.add_row(color_component_slider(ColorComponent::B, &mut new_color));
+        if params.enable_alpha {
+            grid.add_row(color_component_slider(ColorComponent::A, &mut new_color));
+        }
+
+        grid.add_item(.., 3, 0, ColorSwatch::new(100.percent(), 100.percent(), color));
+
+        if params.enable_hex_input {
+            let hex_input = TextInput::new(new_color, HexColorFormatter).on_value_changed(|c| new_color = c);
+            grid.add_item(grid.row_count(), 3, 0, hex_input);
+        }
+
+        let color_changed = if new_color != color { Some(new_color) } else { None };
+        ColorPicker { grid, color_changed }
+    }
+
+    pub fn on_color_changed(self, f: impl FnOnce(Color)) -> Self {
+        if let Some(color) = self.color_changed {
+            f(color)
+        }
+        self
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
 
 pub struct HsvColorSquare {
     hue: f32,
@@ -152,83 +346,30 @@ impl Widget for HsvColorSquare {
 }
 
 //--------------------------------------------------------------------------------------------------
-
-const COLOR_BAR_PAINT_SKSL: &str = r#"
-layout(color) uniform float4 from;
-layout(color) uniform float4 to;
-uniform float2 size;
-uniform int cbSize;
-uniform int encoding;
-layout(color) uniform float3 cbColor;
-
-float3 checkerboard(float2 fragcoord) {
-    float2 p = floor(fragcoord / float(cbSize));
-    return mix(float3(1.0), cbColor, mod(p.x + p.y, 2.0));
+#[derive(Clone, WidgetWrapper)]
+pub struct ColorSwatch {
+    inner: Container<Null>,
 }
 
-float3 hsv2rgb(float3 c) {
-    float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    float3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
-
-float4 main(float2 fragcoord) {
-    float2 pos = fragcoord / size;
-    float4 color = mix(from, to, pos.x);
-    
-    if (encoding == 1) {
-        color.rgb = hsv2rgb(color.rgb); 
-    }
-    
-    if (cbSize > 0) {
-        color.rgb = mix(checkerboard(fragcoord), color.rgb, color.a);
-        color.a = 1.0; 
-    }
-    return color;
-}
-"#;
-
-lazy_static! {
-    static ref COLOR_BAR_PAINT_EFFECT: ThreadBound<sk::RuntimeEffect> =
-        ThreadBound::new(sk::RuntimeEffect::make_for_shader(COLOR_BAR_PAINT_SKSL, None).unwrap());
-}
-
-#[repr(i32)]
-#[derive(Copy, Clone, Debug)]
-enum ColorEncoding {
-    Rgb = 0,
-    Hsv = 1,
-}
-
-fn make_color_bar_paint(
-    encoding: ColorEncoding,
-    from: [f32; 4],
-    to: [f32; 4],
-    size: Size,
-    checkerboard_size: i32,
-    checkerboard_color: Color,
-) -> Paint {
-    let effect = COLOR_BAR_PAINT_EFFECT.get_ref().unwrap();
-    let (cbr, cbg, cbb, cba) = checkerboard_color.to_rgba();
-    let uniforms = make_uniform_data!([effect]
-        from:     [f32; 4] = from;
-        to:       [f32; 4] = to;
-        size:     [f32; 2] = [size.width as f32, size.height as f32];
-        cbSize:   i32      = checkerboard_size;
-        cbColor:  [f32; 3] = [cbr, cbg, cbb];
-        encoding: i32      = encoding as i32;
-    );
-
-    Paint::Shader {
-        effect: effect.clone(),
-        uniforms,
+impl ColorSwatch {
+    #[composable]
+    pub fn new(width: Length, height: Length, color: Color) -> ColorSwatch {
+        let inner = Container::new(Null).fixed_width(width).fixed_height(height).box_style(
+            BoxStyle::new()
+                .fill(make_color_swatch_paint(color, 8, theme::palette::GREY_400))
+                .border(style::Border::around(2.px()).paint(Color::from_hex("#000000")))
+                .border(style::Border::around(1.px()).paint(Color::from_hex("#DDDDDD"))),
+        );
+        ColorSwatch { inner }
     }
 }
+
+//--------------------------------------------------------------------------------------------------
 
 #[derive(Copy, Clone, Debug)]
 pub enum ColorBarBounds {
     Hsv { from: Hsva, to: Hsva },
-    Rgb { from: Color, to: Color },
+    Rgb { from: LinSrgba, to: LinSrgba },
 }
 
 impl ColorBarBounds {
@@ -245,9 +386,7 @@ impl ColorBarBounds {
                     alpha,
                 }))
             }
-            ColorBarBounds::Rgb { from, to } => {
-                Color(Srgba::from_color(from.0.into_linear().mix(&to.0.into_linear(), factor)))
-            }
+            ColorBarBounds::Rgb { from, to } => Color(from.mix(&to, factor).into_encoding()),
         }
     }
 }
@@ -261,7 +400,7 @@ impl ColorBar {
         ColorBar { mode }
     }
 
-    pub fn rgb(from: Color, to: Color) -> ColorBar {
+    pub fn rgb(from: LinSrgba, to: LinSrgba) -> ColorBar {
         ColorBar {
             mode: ColorBarBounds::Rgb { from, to },
         }
@@ -311,8 +450,8 @@ impl Widget for ColorBar {
                 )
             }
             ColorBarBounds::Rgb { from, to } => {
-                let (from_r, from_g, from_b, from_a) = from.to_rgba();
-                let (to_r, to_g, to_b, to_a) = to.to_rgba();
+                let (from_r, from_g, from_b, from_a) = from.into_components();
+                let (to_r, to_g, to_b, to_a) = to.into_components();
                 make_color_bar_paint(
                     ColorEncoding::Rgb,
                     [from_r, from_g, from_b, from_a],
@@ -335,6 +474,8 @@ impl Widget for ColorBar {
     }
 }
 
+//--------------------------------------------------------------------------------------------------
+
 #[derive(Clone, WidgetWrapper)]
 pub struct ColorSlider {
     slider: SliderBase,
@@ -342,13 +483,10 @@ pub struct ColorSlider {
 
 impl ColorSlider {
     #[composable]
-    pub fn new(bounds: ColorBarBounds) -> ColorSlider {
-        #[state]
-        let mut pos: f64 = 0.0;
-        let color = bounds.sample(pos as f32);
-
+    pub fn new(val: f32, bounds: ColorBarBounds) -> ColorSlider {
+        let color = bounds.sample(val);
         let slider = SliderBase::new(
-            pos,
+            val as f64,
             ColorBar::new(bounds),
             Container::new(Null)
                 .fixed_width(COLOR_BAR_KNOB_SIZE.dip())
@@ -359,19 +497,24 @@ impl ColorSlider {
                         .fill(color)
                         .border(style::Border::inside(1.px()).paint(theme::palette::GREY_50)),
                 ),
-        )
-        .on_position_changed(|p| pos = p);
-
+        );
         ColorSlider { slider }
     }
 
-    #[composable]
-    pub fn rgb(from: Color, to: Color) -> ColorSlider {
-        ColorSlider::new(ColorBarBounds::Rgb { from, to })
+    pub fn on_value_changed(self, f: impl FnOnce(f32)) -> Self {
+        if let Some(val) = self.slider.position_changed() {
+            f(val as f32)
+        }
+        self
     }
 
     #[composable]
-    pub fn hsv(from: Hsva, to: Hsva) -> ColorSlider {
-        ColorSlider::new(ColorBarBounds::Hsv { from, to })
+    pub fn rgb(val: f32, from: LinSrgba, to: LinSrgba) -> ColorSlider {
+        ColorSlider::new(val, ColorBarBounds::Rgb { from, to })
+    }
+
+    #[composable]
+    pub fn hsv(val: f32, from: Hsva, to: Hsva) -> ColorSlider {
+        ColorSlider::new(val, ColorBarBounds::Hsv { from, to })
     }
 }
