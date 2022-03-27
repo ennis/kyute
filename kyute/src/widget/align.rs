@@ -1,5 +1,6 @@
 use crate::widget::{prelude::*, LayoutWrapper};
 
+#[derive(Clone)]
 pub struct Align<W> {
     alignment: Alignment,
     width_factor: Option<f64>,
@@ -76,7 +77,7 @@ impl<W: Widget> Widget for Align<W> {
         Measurements {
             size,
             clip_bounds: Rect::new(Point::origin(), size),
-            baseline
+            baseline,
         }
     }
 

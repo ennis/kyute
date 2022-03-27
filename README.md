@@ -107,3 +107,7 @@ Hierarchical table view
 Text edit
 
 ![](docs/screenshots/text_edit.png)
+
+Color picker
+
+![](docs/screenshots/color_picker.png)

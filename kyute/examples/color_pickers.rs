@@ -10,28 +10,37 @@ use kyute::{
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, UnitExt, Widget, WidgetExt,
     WidgetPod, Window,
 };
+use kyute_shell::winit::dpi::LogicalSize;
 use std::sync::Arc;
 
 #[composable]
-fn titled_pane_test() -> impl Widget + Clone {
-    let pane_1 = TitledPane::collapsible("Initially collapsed", true, Text::new("Hi!"));
-    let pane_2 = TitledPane::collapsible("Initially expanded", false, Text::new("Hello!"));
-
-    let mut v = Grid::column(GridTrackDefinition::new(GridLength::Flex(1.0)));
-    v.add_row(pane_1);
-    v.add_row(pane_2);
-
-    Container::new(v)
+fn color_picker() -> impl Widget + Clone {
+    #[state]
+    let mut color = Color::from_hex("#022f78");
+    let picker = ColorPicker::new(
+        color,
+        &ColorPickerParams {
+            enable_alpha: true,
+            palette: None,
+            enable_hex_input: true,
+        },
+    );
+    picker.centered()
 }
 
 #[composable]
 fn ui_root() -> impl Widget {
-    Window::new(WindowBuilder::new().with_title("Titled Pane"), titled_pane_test(), None)
+    Window::new(
+        WindowBuilder::new()
+            .with_inner_size(LogicalSize::new(500, 180))
+            .with_title("Color pickers"),
+        color_picker(),
+        None,
+    )
 }
 
 fn main() {
     let _app = Application::new();
-
     tracing_subscriber::fmt()
         .compact()
         .with_target(false)
