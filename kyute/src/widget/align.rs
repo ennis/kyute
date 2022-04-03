@@ -1,11 +1,19 @@
-use crate::widget::{prelude::*, LayoutWrapper};
+use crate::{
+    core::WindowPaintCtx,
+    widget::{prelude::*, LayoutWrapper},
+    GpuFrameCtx,
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Definition
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone)]
 pub struct Align<W> {
     alignment: Alignment,
     width_factor: Option<f64>,
     height_factor: Option<f64>,
-    inner: LayoutWrapper<W>,
+    inner: W,
 }
 
 impl<W: Widget + 'static> Align<W> {
@@ -30,14 +38,18 @@ impl<W: Widget + 'static> Align<W> {
 
     /// Returns a reference to the inner widget.
     pub fn inner(&self) -> &W {
-        self.inner.inner()
+        &self.inner
     }
 
     /// Returns a mutable reference to the inner widget.
     pub fn inner_mut(&mut self) -> &mut W {
-        self.inner.inner_mut()
+        &mut self.inner
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// impl Widget
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 impl<W: Widget> Widget for Align<W> {
     fn widget_id(&self) -> Option<WidgetId> {
@@ -45,8 +57,15 @@ impl<W: Widget> Widget for Align<W> {
         self.inner.widget_id()
     }
 
+    fn layer(&self) -> &Layer {
+        self.inner.layer()
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env);
+        /*ctx.with_local_transform(self.inner.layer().transform(), event, |ctx, event| {
+            self.inner.event(ctx, event, env);
+        })*/
+        ctx.route_event(event, &self.inner, env);
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -72,16 +91,12 @@ impl<W: Widget> Widget for Align<W> {
         let y = 0.5 * size.height * (1.0 + self.alignment.y) - 0.5 * child.height() * (1.0 + self.alignment.y);
         let baseline = child.baseline.map(|b| b + y);
 
-        self.inner.set_offset(Offset::new(x, y));
+        self.inner.layer().set_offset(Offset::new(x, y));
 
         Measurements {
             size,
             clip_bounds: Rect::new(Point::origin(), size),
             baseline,
         }
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.inner.paint(ctx, env)
     }
 }

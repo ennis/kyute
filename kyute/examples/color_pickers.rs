@@ -24,7 +24,8 @@ fn color_picker() -> impl Widget + Clone {
             palette: None,
             enable_hex_input: true,
         },
-    );
+    )
+    .on_color_changed(|c| color = c);
     picker.centered()
 }
 
@@ -40,12 +41,10 @@ fn ui_root() -> impl Widget {
 }
 
 fn main() {
-    let _app = Application::new();
     tracing_subscriber::fmt()
         .compact()
         .with_target(false)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     application::run(ui_root);
-    Application::shutdown();
 }

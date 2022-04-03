@@ -1,4 +1,5 @@
 use crate::{
+    animation::layer::Layer,
     application::{AppCtx, ExtEvent},
     bloom::Bloom,
     cache,
@@ -44,34 +45,20 @@ impl<'a> LayoutCtx<'a> {
 // TODO make things private
 pub struct PaintCtx<'a> {
     pub canvas: &'a mut skia_safe::Canvas,
-    pub id: Option<WidgetId>,
+    //pub id: Option<WidgetId>,
     pub window_transform: Transform,
-    pub focus: Option<WidgetId>,
-    pub pointer_grab: Option<WidgetId>,
-    pub hot: Option<WidgetId>,
-    pub inputs: &'a InputState,
+    //pub focus: Option<WidgetId>,
+    //pub pointer_grab: Option<WidgetId>,
+    //pub hot: Option<WidgetId>,
+    //pub inputs: &'a InputState,
     pub scale_factor: f64,
     pub invalid: &'a Region,
-    pub hover: bool,
+    //pub hover: bool,
     pub bounds: Rect,
-    pub active: bool,
+    //pub active: bool,
 }
 
 impl<'a> PaintCtx<'a> {
-    /// Returns whether the cursor is hovering the widget.
-    pub fn is_hovering(&self) -> bool {
-        self.hover
-    }
-
-    /// Returns whether the widget has focus.
-    pub fn has_focus(&self) -> bool {
-        if let Some(id) = self.id {
-            self.focus == Some(id)
-        } else {
-            false
-        }
-    }
-
     pub fn with_transform_and_clip<R>(
         &mut self,
         transform: Transform,
@@ -100,84 +87,6 @@ impl<'a> PaintCtx<'a> {
         self.window_transform = prev_window_transform;
         result
     }
-
-    /*/// Sets the transformation matrix on the skia canvas.
-    pub fn save_and_set_transform(&mut self, transform: Transform) {
-        self.canvas.save();
-        self.canvas.reset_matrix();
-        self.canvas.scale((scale_factor, scale_factor));
-        self.canvas.concat(&transform.to_skia());
-    }
-
-    pub fn restore(&mut self) {
-        self.canvas.restore();
-    }*/
-
-    /// Returns whether the widget is active.
-    pub fn is_active(&self) -> bool {
-        self.active
-    }
-
-    /// Returns the current widget visual state (a bitfield summary of `is_hovering`, `has_focus`, etc.)
-    pub fn visual_state(&self) -> VisualState {
-        let mut state = VisualState::default();
-        if self.is_hovering() {
-            state |= VisualState::HOVER;
-        }
-        if self.has_focus() {
-            state |= VisualState::FOCUS;
-        }
-        if self.is_active() {
-            state |= VisualState::ACTIVE;
-        }
-        state
-    }
-
-    /*///
-    pub fn with_transform<R>(
-        &mut self,
-        transform: Transform,
-        measurements: Measurements,
-        f: impl FnOnce(&mut PaintCtx) -> R,
-    ) -> R {
-        let window_transform = transform.then(&self.window_transform);
-        let mut transformed_ctx = PaintCtx {
-            canvas: self.canvas,
-            id: self.id,
-            window_transform,
-            focus: self.focus,
-            pointer_grab: self.pointer_grab,
-            hot: self.hot,
-            inputs: self.inputs,
-            scale_factor: self.scale_factor,
-            invalid: self.invalid,
-            hover: self.hover,
-            measurements,
-            active: self.active,
-        };
-        transformed_ctx.canvas.save();
-        transformed_ctx.canvas.concat(&transform.to_skia());
-        let result = f(&mut transformed_ctx);
-        transformed_ctx.canvas.restore();
-        result
-    }*/
-
-    /*/// Returns the size of the node.
-    pub fn size(&self) -> Size {
-        self.window_bounds.size
-    }
-
-    pub fn is_hovering(&self) -> bool {
-        self.hover
-    }
-
-    pub fn is_focused(&self) -> bool {
-        self.focus == Some(self.node_id)
-    }
-
-    pub fn is_capturing_pointer(&self) -> bool {
-        self.pointer_grab == Some(self.node_id)
-    }*/
 }
 
 #[derive(Debug, Default)]
@@ -536,6 +445,11 @@ pub trait Widget {
     /// Returns the widget identity.
     fn widget_id(&self) -> Option<WidgetId>;
 
+    /// Returns this widget's animation layer.
+    fn layer(&self) -> &Layer {
+        todo!()
+    }
+
     /// Implement to give a debug name to your widget. Used only for debugging.
     fn debug_name(&self) -> &str {
         std::any::type_name::<Self>()
@@ -546,9 +460,6 @@ pub trait Widget {
 
     /// Propagates an event through the widget hierarchy.
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
-
-    /// Paints the widget in the given context.
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment);
 
     /// Called only for native window widgets.
     fn window_paint(&self, _ctx: &mut WindowPaintCtx) {}
@@ -563,20 +474,20 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::widget_id(&**self)
     }
 
-    fn debug_name(&self) -> &str {
-        Widget::debug_name(&**self)
+    fn layer(&self) -> &Layer {
+        Widget::layer(&**self)
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        Widget::event(&**self, ctx, event, env)
+    fn debug_name(&self) -> &str {
+        Widget::debug_name(&**self)
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         Widget::layout(&**self, ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        Widget::paint(&**self, ctx, env)
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        Widget::event(&**self, ctx, event, env)
     }
 
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {
@@ -753,24 +664,25 @@ struct WidgetPodState {
     /// Unique ID of the widget, if it has one.
     id: Option<WidgetId>,
 
-    /// Position of this widget relative to its parent. Set by `WidgetPod::set_child_offset`.
-    //offset: Cell<Offset>,
-
     // Transform
+    // TODO(layers): remove, transform is now in the visual tree
     transform: Cell<Transform>,
 
     /// Indicates that this widget should be repainted.
     /// Set by `layout` if the layout has changed somehow, after event handling if `EventCtx::request_redraw` was called,
     /// and by `set_child_offset`.
+    // TODO(layers): remove, invalidation is now in the visual tree
     paint_invalid: Cell<bool>,
 
     /// Layout result.
+    // TODO(layers): remove?
     layout_result: Cell<Option<LayoutResult>>,
 
     /// Any pointer hovering this widget
     pointer_over: State<bool>,
 
     /// Whether the widget is active.
+    // TODO(layers): remove
     active: State<bool>,
 
     /// Bloom filter to filter child widgets.
@@ -778,6 +690,7 @@ struct WidgetPodState {
 }
 
 impl WidgetPodState {
+    // TODO(layers): remove
     pub fn set_transform(&self, transform: Transform) {
         self.transform.set(transform);
         self.paint_invalid.set(true);

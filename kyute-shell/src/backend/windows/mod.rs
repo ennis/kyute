@@ -1,4 +1,4 @@
 mod menu;
-mod util;
+pub mod util;
 
 pub use menu::Menu;

@@ -1,6 +1,7 @@
 //! Windowing and drawing base for kyute.
 //!
 //! For now, it's win32 only.
+pub mod animation;
 pub mod application;
 mod backend;
 pub mod error;

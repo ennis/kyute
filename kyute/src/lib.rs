@@ -15,6 +15,7 @@ mod layout;
 mod state;
 mod window;
 
+pub mod animation;
 pub mod application;
 pub mod asset;
 pub mod cache;

@@ -1,6 +1,9 @@
 use crate::{
-    composable, drawing::ToSkia, make_uniform_data, BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx,
-    Measurements, PaintCtx, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
+    animation::{Layer, LayerDelegate},
+    composable,
+    drawing::ToSkia,
+    make_uniform_data, BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
+    RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
 use euclid::Rect;
 use kyute_text::{
@@ -16,35 +19,7 @@ use std::{
 };
 use threadbound::ThreadBound;
 
-/// Displays formatted text.
-#[derive(Clone)]
-pub struct Text {
-    /// Input formatted text.
-    formatted_text: FormattedText,
-    /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
-    paragraph: RefCell<Option<Paragraph>>,
-    run_masks: RefCell<Option<Arc<Vec<GlyphMaskImage>>>>,
-}
-
-impl Text {
-    /// Creates a new text element.
-    #[composable]
-    pub fn new(formatted_text: impl Into<FormattedText>) -> Text {
-        let formatted_text = formatted_text.into();
-        Text {
-            formatted_text,
-            paragraph: RefCell::new(None),
-            run_masks: RefCell::new(None),
-        }
-    }
-
-    /// Returns a reference to the formatted text paragraph.
-    pub fn paragraph(&self) -> Ref<kyute_text::Paragraph> {
-        Ref::map(self.paragraph.borrow(), |x| {
-            x.as_ref().expect("`Text::paragraph` called before layout")
-        })
-    }
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct GlyphMaskImage {
     // pixel bounds
@@ -114,6 +89,10 @@ impl GlyphMaskImage {
         GlyphMaskImage { bounds, mask }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// `kyute_text::Renderer` implementation
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct Renderer<'a, 'b> {
     ctx: &'a mut PaintCtx<'b>,
@@ -206,13 +185,71 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Text visual layer
+////////////////////////////////////////////////////////////////////////////////////////////////////
+pub struct TextLayerDelegate {
+    formatted_text: FormattedText,
+    paragraph: Paragraph,
+}
+
+impl LayerDelegate for TextLayerDelegate {
+    fn draw(&self, ctx: &mut PaintCtx) {
+        let mut renderer = Renderer { ctx, masks: vec![] };
+        // FIXME: should be a point in absolute coords?
+        self.paragraph
+            .draw(
+                Point::origin(),
+                &mut renderer,
+                &GlyphRunDrawingEffects {
+                    color: Color::from_hex("#FFFFFF"),
+                },
+            )
+            .expect("failed to draw paragraph");
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Text widget
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Displays formatted text.
+#[derive(Clone)]
+pub struct Text {
+    layer: Layer,
+    /// Input formatted text.
+    formatted_text: FormattedText,
+    /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
+    paragraph: RefCell<Option<Paragraph>>,
+    //run_masks: RefCell<Option<Arc<Vec<GlyphMaskImage>>>>,
+}
+
+impl Text {
+    /// Creates a new text element.
+    #[composable]
+    pub fn new(formatted_text: impl Into<FormattedText>) -> Text {
+        let formatted_text = formatted_text.into();
+        Text {
+            layer: Layer::new(),
+            formatted_text,
+            paragraph: RefCell::new(None),
+            //run_masks: RefCell::new(None),
+        }
+    }
+
+    /// Returns a reference to the formatted text paragraph.
+    pub fn paragraph(&self) -> Ref<kyute_text::Paragraph> {
+        Ref::map(self.paragraph.borrow(), |x| {
+            x.as_ref().expect("`Text::paragraph` called before layout")
+        })
+    }
+}
+
 impl Widget for Text {
     fn widget_id(&self) -> Option<WidgetId> {
         // no need for a stable identity
         None
     }
-
-    fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
         let paragraph = self
@@ -228,6 +265,15 @@ impl Widget for Text {
             .unwrap_or(0.0);
         let size = constraints.constrain(metrics.bounds.size.round_to_pixel(ctx.scale_factor));
 
+        // ------ update layer ------
+        self.layer.set_delegate(TextLayerDelegate {
+            formatted_text: self.formatted_text.clone(),
+            paragraph: paragraph.clone(),
+        });
+        self.layer.set_scale_factor(ctx.scale_factor);
+        self.layer.set_surface_backed(true);
+        self.layer.set_size(size);
+
         // stash the laid out paragraph for rendering
         self.paragraph.replace(Some(paragraph));
 
@@ -238,26 +284,5 @@ impl Widget for Text {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, _env: &Environment) {
-        //----------------------------------
-        let mut paragraph = self.paragraph.borrow_mut();
-        let paragraph = paragraph.as_mut().expect("paint called before layout");
-
-        // FIXME: actually cache run masks somehow
-        let runs = self.run_masks.borrow_mut();
-
-        if runs.is_none() {
-            let mut renderer = Renderer { ctx, masks: vec![] };
-            // FIXME: should be a point in absolute coords?
-            paragraph
-                .draw(
-                    Point::origin(),
-                    &mut renderer,
-                    &GlyphRunDrawingEffects {
-                        color: Color::from_hex("#FFFFFF"),
-                    },
-                )
-                .expect("failed to draw paragraph");
-        }
-    }
+    fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 }

@@ -1,11 +1,10 @@
 //! Platform-specific window creation
-use crate::{application::Application, error::Error, Menu};
-use graal::vk;
+use crate::{animation::CompositionLayer, application::Application, error::Error, Menu};
 use raw_window_handle::HasRawWindowHandle;
 use std::ptr;
 use windows::Win32::{
     Foundation::{HINSTANCE, HWND, POINT},
-    Graphics::Gdi::ClientToScreen,
+    Graphics::{DirectComposition::IDCompositionTarget, Gdi::ClientToScreen},
     UI::WindowsAndMessaging::{DestroyMenu, SetMenu, TrackPopupMenu, HMENU, TPM_LEFTALIGN},
 };
 use winit::{
@@ -110,12 +109,12 @@ pub struct Window {
     window: winit::window::Window,
     hwnd: HWND,
     hinstance: HINSTANCE,
-    //swap_chain: IDXGISwapChain1,
-    surface: vk::SurfaceKHR,
+    //surface: vk::SurfaceKHR,
     menu: Option<HMENU>,
     swap_chain: graal::Swapchain,
     swap_chain_width: u32,
     swap_chain_height: u32,
+    composition_target: IDCompositionTarget,
 }
 
 impl Window {
@@ -192,6 +191,21 @@ impl Window {
         self.swap_chain_height = height;
     }
 
+    /// Sets the root composition layer.
+    pub fn set_root_layer(&self, layer: &CompositionLayer) {
+        unsafe {
+            self.composition_target
+                .SetRoot(layer.visual.clone())
+                .expect("SetRoot failed");
+            Application::instance()
+                .composition_device
+                .get_ref()
+                .unwrap()
+                .Commit()
+                .expect("Commit failed");
+        }
+    }
+
     /// Returns the swap chain of this window.
     pub fn swap_chain(&self) -> &graal::Swapchain {
         &self.swap_chain
@@ -212,52 +226,21 @@ impl Window {
         if let Some(parent_window) = parent_window {
             builder = builder.with_parent_window(parent_window.hwnd.0 as *mut _);
         }
+        //builder = builder.with_no_redirection_bitmap(true);
         let window = builder.build(event_loop).map_err(Error::Winit)?;
-
-        /*let dxgi_factory = &platform.0.dxgi_factory;
-        let d3d11_device = &platform.0.d3d11_device;
-
-        // create a DXGI swap chain for the window
         let hinstance = HINSTANCE(window.hinstance() as isize);
         let hwnd = HWND(window.hwnd() as isize);
-        let (width, height): (u32, u32) = window.inner_size().into();
 
-        // TODO flip effects
-        let swap_effect = DXGI_SWAP_EFFECT::DXGI_SWAP_EFFECT_SEQUENTIAL;
-
-        // create the swap chain
-        let swap_chain = unsafe {
-            let mut swap_chain = None;
-
-            let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
-                Width: width,
-                Height: height,
-                Format: DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM,
-                Stereo: false.into(),
-                SampleDesc: DXGI_SAMPLE_DESC {
-                    Count: 1,
-                    Quality: 0,
-                },
-                BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                BufferCount: SWAP_CHAIN_BUFFERS,
-                Scaling: DXGI_SCALING::DXGI_SCALING_STRETCH,
-                SwapEffect: swap_effect,
-                AlphaMode: DXGI_ALPHA_MODE::DXGI_ALPHA_MODE_UNSPECIFIED,
-                Flags: 0,
-            };
-
-            dxgi_factory
-                .CreateSwapChainForHwnd(
-                    d3d11_device.0.clone(),
-                    hwnd,
-                    &swap_chain_desc,
-                    ptr::null(),
-                    None,
-                    &mut swap_chain,
-                )
-                .and_some(swap_chain)
-                .expect("failed to create swap chain")
-        };*/
+        // create composition target
+        let composition_device = app
+            .composition_device
+            .get_ref()
+            .expect("could not acquire composition device outside of main thread");
+        let composition_target = unsafe {
+            composition_device
+                .CreateTargetForHwnd(hwnd, false)
+                .expect("CreateTargetForHwnd failed")
+        };
 
         // create a swap chain for the window
         let device = app.gpu_device();
@@ -270,19 +253,17 @@ impl Window {
         }
         let swap_chain = unsafe { device.create_swapchain(surface, swapchain_size) };
 
-        let hinstance = HINSTANCE(window.hinstance() as isize);
-        let hwnd = HWND(window.hwnd() as isize);
-
         let pw = Window {
             window,
             hwnd,
             hinstance,
-            surface,
+            //surface,
             // TODO menu initializer
             menu: None,
             swap_chain,
             swap_chain_width: swapchain_size.0,
             swap_chain_height: swapchain_size.1,
+            composition_target,
         };
 
         Ok(pw)

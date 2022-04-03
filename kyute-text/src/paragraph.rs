@@ -7,7 +7,7 @@ use crate::{
 use kyute_common::{Color, Data, Point, PointI, Rect, RectI, Size, SizeI, Transform};
 use std::{cell::RefCell, ffi::c_void, mem, mem::MaybeUninit, ops::Range, ptr, sync::Arc};
 use windows::{
-    core::{implement, IUnknown, IUnknownImpl, Interface, ToImpl, HRESULT, PCWSTR},
+    core::{implement, IUnknown, Interface, ToImpl, PCWSTR},
     Win32::{
         Foundation::{BOOL, ERROR_INSUFFICIENT_BUFFER, RECT},
         Graphics::DirectWrite::{
@@ -15,9 +15,8 @@ use windows::{
             IDWriteInlineObject, IDWriteNumberSubstitution, IDWriteNumberSubstitution_Impl, IDWritePixelSnapping_Impl,
             IDWriteTextLayout, IDWriteTextRenderer, IDWriteTextRenderer_Impl, DWRITE_FONT_STRETCH_NORMAL,
             DWRITE_GLYPH_RUN, DWRITE_GLYPH_RUN_DESCRIPTION, DWRITE_HIT_TEST_METRICS, DWRITE_LINE_METRICS,
-            DWRITE_MATRIX, DWRITE_MEASURING_MODE, DWRITE_RENDERING_MODE_NATURAL,
-            DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC, DWRITE_STRIKETHROUGH, DWRITE_TEXTURE_TYPE, DWRITE_TEXT_METRICS,
-            DWRITE_TEXT_RANGE, DWRITE_UNDERLINE,
+            DWRITE_MATRIX, DWRITE_MEASURING_MODE, DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC, DWRITE_STRIKETHROUGH,
+            DWRITE_TEXTURE_TYPE, DWRITE_TEXT_METRICS, DWRITE_TEXT_RANGE, DWRITE_UNDERLINE,
         },
     },
 };
@@ -224,33 +223,29 @@ impl Paragraph {
             // maxHitTestMetricsCount = lineCount * maxBidiReorderingDepth"
             // (https://docs.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritetextlayout-hittesttextrange)
             let mut max_metrics_count = text_metrics.lineCount * text_metrics.maxBidiReorderingDepth;
-            let mut actual_metrics_count = 0;
-            let mut metrics = Vec::with_capacity(max_metrics_count as usize);
+            let mut metrics = vec![Default::default(); max_metrics_count as usize];
 
             let result = self.layout.HitTestTextRange(
                 text_position as u32,
                 text_length as u32,
                 origin.x as f32,
                 origin.y as f32,
-                metrics.as_mut_ptr(),
-                max_metrics_count,
-                &mut actual_metrics_count,
+                &mut metrics,
+                &mut max_metrics_count,
             );
 
             if let Err(e) = result {
                 if e.code() == ERROR_INSUFFICIENT_BUFFER.into() {
                     // reallocate with sufficient space
-                    metrics = Vec::with_capacity(actual_metrics_count as usize);
-                    max_metrics_count = actual_metrics_count;
+                    metrics.resize(max_metrics_count as usize, Default::default());
                     self.layout
                         .HitTestTextRange(
                             text_position as u32,
                             text_length as u32,
                             origin.x as f32,
                             origin.y as f32,
-                            metrics.as_mut_ptr(),
-                            max_metrics_count,
-                            &mut actual_metrics_count,
+                            &mut metrics,
+                            &mut max_metrics_count,
                         )
                         .expect("HitTestTextRange failed");
                 } else {
@@ -258,9 +253,9 @@ impl Paragraph {
                 }
             }
 
-            metrics.set_len(actual_metrics_count as usize);
             metrics
                 .into_iter()
+                .take(max_metrics_count as usize)
                 .map(|m| HitTestMetrics::from_dwrite(&m, &self.text, true))
                 .collect()
         }
@@ -276,23 +271,24 @@ impl Paragraph {
     pub fn line_metrics(&self) -> Vec<LineMetrics> {
         unsafe {
             let mut line_count = 1;
-            let mut metrics = Vec::with_capacity(line_count as usize);
-            let result = self
-                .layout
-                .GetLineMetrics(metrics.as_mut_ptr(), line_count, &mut line_count);
+            let mut metrics = vec![Default::default(); line_count as usize];
+            let result = self.layout.GetLineMetrics(&mut metrics, &mut line_count);
 
             if let Err(e) = result {
                 if e.code() == ERROR_INSUFFICIENT_BUFFER.into() {
                     // reallocate with sufficient space
-                    metrics = Vec::with_capacity(line_count as usize);
+                    metrics.resize(line_count as usize, Default::default());
                     self.layout
-                        .GetLineMetrics(metrics.as_mut_ptr(), line_count, &mut line_count)
+                        .GetLineMetrics(&mut metrics, &mut line_count)
                         .expect("GetLineMetrics failed");
                 }
             }
 
-            metrics.set_len(line_count as usize);
-            metrics.into_iter().map(|m| m.into()).collect()
+            metrics
+                .into_iter()
+                .take(line_count as usize)
+                .map(|m| m.into())
+                .collect()
         }
     }
 
@@ -719,8 +715,7 @@ impl FormattedText {
 
             let layout: IDWriteTextLayout = dwrite_factory()
                 .CreateTextLayout(
-                    PCWSTR(text_wide.as_ptr()),
-                    text_wide.len() as u32,
+                    &text_wide,
                     format,
                     layout_box_size.width as f32,
                     layout_box_size.height as f32,

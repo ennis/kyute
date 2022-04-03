@@ -334,12 +334,141 @@ impl Data for GridLayout {
     }
 }
 
+#[derive(Clone, PartialEq)]
+struct GridBackgroundLayerDelegate {
+    layout: GridLayout,
+    row_background: Paint,
+    alternate_row_background: Paint,
+    row_gap_background: Paint,
+    column_gap_background: Paint,
+    show_grid_lines: bool,
+}
+
+impl LayerDelegate for GridBackgroundLayerDelegate {
+    fn draw(&self, ctx: &mut PaintCtx) {
+        use skia_safe as sk;
+        let height = ctx.bounds.size.height;
+        let width = ctx.bounds.size.width;
+
+        let row_layout = &self.layout.row_layout;
+        let column_layout = &self.layout.column_layout;
+
+        // draw row backgrounds
+        if !self.row_background.is_transparent() && !self.alternate_row_background.is_transparent() {
+            for (i, row) in row_layout.iter().enumerate() {
+                // TODO start index
+                let bg = if i % 2 == 0 {
+                    self.row_background.clone()
+                } else {
+                    self.alternate_row_background.clone()
+                };
+                ctx.draw_styled_box(
+                    Rect::new(Point::new(0.0, row.pos), Size::new(width, row.size)),
+                    &BoxStyle::new().fill(bg),
+                );
+            }
+        }
+
+        // draw gap backgrounds
+        if !self.row_gap_background.is_transparent() {
+            // draw only inner gaps
+            for row in row_layout.iter().skip(1) {
+                ctx.draw_styled_box(
+                    Rect::new(
+                        Point::new(0.0, row.pos - layout.row_gap),
+                        Size::new(width, layout.row_gap),
+                    ),
+                    &BoxStyle::new().fill(self.row_gap_background.clone()),
+                );
+            }
+        }
+        if !self.column_gap_background.is_transparent() {
+            for column in column_layout.iter().skip(1) {
+                ctx.draw_styled_box(
+                    Rect::new(
+                        Point::new(column.pos - layout.column_gap, 0.0),
+                        Size::new(layout.column_gap, height),
+                    ),
+                    &BoxStyle::new().fill(self.column_gap_background.clone()),
+                );
+            }
+        }
+
+        // draw debug grid lines
+        if self.show_grid_lines {
+            let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
+            for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width - 1.0)) {
+                ctx.canvas.draw_line(
+                    Point::new(x + 0.5, 0.5).to_skia(),
+                    Point::new(x + 0.5, height + 0.5).to_skia(),
+                    &paint,
+                );
+            }
+            for y in row_layout.iter().map(|x| x.pos).chain(std::iter::once(height - 1.0)) {
+                ctx.canvas.draw_line(
+                    Point::new(0.5, y + 0.5).to_skia(),
+                    Point::new(width + 0.5, y + 0.5).to_skia(),
+                    &paint,
+                );
+            }
+        }
+    }
+}
+
+impl GridBackgroundLayerDelegate {
+    /*fn set_layout(&mut self, layout: GridLayout) -> bool {
+        if layout != self.layout {
+            self.layout = layout;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn set_row_background(&mut self, row_background: Paint) -> bool {
+        if row_background != self.row_background {
+            self.row_background = row_background;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn alternate_row_background(&mut self, alt_row_background: Paint) -> bool {
+        if alt_row_background != self.alt_row_background {
+            self.alt_row_background = alt_row_background;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn set_row_gap_background(&mut self, row_background: Paint) -> bool {
+        if row_background != self.row_background {
+            self.row_background = row_background;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn set_column_gap_background(&mut self, alt_row_background: Paint) -> bool {
+        if alt_row_background != self.alt_row_background {
+            self.alt_row_background = alt_row_background;
+            true
+        } else {
+            false
+        }
+    }*/
+}
+
 // FIXME: cloning anything with a widget id in it is extremely suspect: widgets are only clone for caching,
 // but using it in regular code to make multiple copies of a widget will break a lot of things, similar to forgetting #[composable]
 
 #[derive(Clone, Debug)]
 pub struct Grid {
     id: WidgetId,
+    layer: Layer,
     /// Column sizes.
     column_definitions: Vec<GridTrackDefinition>,
     /// Row sizes.
@@ -390,6 +519,7 @@ impl Grid {
     pub fn new() -> Grid {
         Grid {
             id: WidgetId::here(),
+            layer: Layer::new(),
             column_definitions: vec![],
             row_definitions: vec![],
             items: vec![],
@@ -832,7 +962,7 @@ impl Grid {
         ComputeTrackSizeResult { layout, size: pos }
     }
 
-    /// Returns the calculated column layout.
+    /*/// Returns the calculated column layout.
     pub fn get_column_layout(&self) -> (f64, Vec<GridTrackLayout>) {
         let grid_layout = self.calculated_layout.get();
         (grid_layout.width, grid_layout.column_layout)
@@ -841,7 +971,7 @@ impl Grid {
     pub fn get_row_layout(&self) -> (f64, Vec<GridTrackLayout>) {
         let grid_layout = self.calculated_layout.get();
         (grid_layout.height, grid_layout.row_layout)
-    }
+    }*/
 }
 
 impl Default for Grid {
@@ -910,7 +1040,7 @@ impl Widget for Grid {
         }*/
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) {
         // try to use the cached layout first
 
         // compute gap sizes
@@ -952,16 +1082,6 @@ impl Widget for Grid {
             Some(&column_layout[..]),
         );
 
-        // update layout
-        self.calculated_layout.update(GridLayout {
-            row_layout: row_layout.clone(),
-            column_layout: column_layout.clone(),
-            row_gap,
-            column_gap,
-            width,
-            height,
-        });
-
         // layout items
         for item in self.items.iter() {
             if item.row_range.is_empty() || item.column_range.is_empty() {
@@ -999,7 +1119,7 @@ impl Widget for Grid {
                 // derivation left as an exercise for the reader, and the bug fixes as well
                 let ox = x + 0.5 * ((1.0 - ax) * w - (1.0 + ax) * iw);
                 let oy = y + 0.5 * ((1.0 - ay) * h - (1.0 + ay) * ih);
-                item.widget.set_child_offset((ox, oy).into());
+                item.widget.layer().set_offset((ox, oy).into());
             } else {
                 // layout a regular "cell" item
                 let w: f64 = track_span_width(&column_layout, item.column_range.clone(), column_gap);
@@ -1040,92 +1160,34 @@ impl Widget for Grid {
                     _ => {}
                 };
 
-                /*eprintln!(
-                    "item offset({})={:?}",
-                    item.widget.widget().debug_name(),
-                    Offset::new(x, y)
-                );*/
                 item.widget
-                    .set_child_offset(Offset::new(x, y).round_to_pixel(ctx.scale_factor));
+                    .layer()
+                    .set_offset(Offset::new(x, y).round_to_pixel(ctx.scale_factor));
             }
+
+            self.layer.add_child(item.widget.layer());
         }
 
+        // ------ update layer ------
+        self.layer.set_scale_factor(ctx.scale_factor);
+        self.layer.set_size(Size::new(width, height));
         // TODO baseline
-        Measurements::new(Size::new(width, height))
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        use skia_safe as sk;
-        let height = ctx.bounds.size.height;
-        let width = ctx.bounds.size.width;
-
-        let layout = self.calculated_layout.get();
-        let row_layout = &layout.row_layout;
-        let column_layout = &layout.column_layout;
-
-        // draw row backgrounds
-        if !self.row_background.is_transparent() && !self.alternate_row_background.is_transparent() {
-            for (i, row) in row_layout.iter().enumerate() {
-                // TODO start index
-                let bg = if i % 2 == 0 {
-                    self.row_background.clone()
-                } else {
-                    self.alternate_row_background.clone()
-                };
-                ctx.draw_styled_box(
-                    Rect::new(Point::new(0.0, row.pos), Size::new(width, row.size)),
-                    &BoxStyle::new().fill(bg),
-                );
-            }
-        }
-
-        // draw gap backgrounds
-        if !self.row_gap_background.is_transparent() {
-            // draw only inner gaps
-            for row in row_layout.iter().skip(1) {
-                ctx.draw_styled_box(
-                    Rect::new(
-                        Point::new(0.0, row.pos - layout.row_gap),
-                        Size::new(width, layout.row_gap),
-                    ),
-                    &BoxStyle::new().fill(self.row_gap_background.clone()),
-                );
-            }
-        }
-        if !self.column_gap_background.is_transparent() {
-            for column in column_layout.iter().skip(1) {
-                ctx.draw_styled_box(
-                    Rect::new(
-                        Point::new(column.pos - layout.column_gap, 0.0),
-                        Size::new(layout.column_gap, height),
-                    ),
-                    &BoxStyle::new().fill(self.column_gap_background.clone()),
-                );
-            }
-        }
-
-        // draw debug grid lines
-        if env.get(SHOW_GRID_LAYOUT_LINES).unwrap_or_default() {
-            let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
-            for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width - 1.0)) {
-                ctx.canvas.draw_line(
-                    Point::new(x + 0.5, 0.5).to_skia(),
-                    Point::new(x + 0.5, height + 0.5).to_skia(),
-                    &paint,
-                );
-            }
-            for y in row_layout.iter().map(|x| x.pos).chain(std::iter::once(height - 1.0)) {
-                ctx.canvas.draw_line(
-                    Point::new(0.5, y + 0.5).to_skia(),
-                    Point::new(width + 0.5, y + 0.5).to_skia(),
-                    &paint,
-                );
-            }
-        }
-
-        // draw grid items
-        for item in self.items.iter() {
-            item.widget.paint(ctx, env);
-        }
+        let show_grid_lines = env.get(SHOW_GRID_LAYOUT_LINES).unwrap_or_default();
+        // TODO update_delegate
+        self.layer.set_delegate(GridBackgroundLayerDelegate {
+            row_background: self.row_background.clone(),
+            alternate_row_background: self.alternate_row_background.clone(),
+            row_gap_background: self.row_gap_background.clone(),
+            column_gap_background: self.column_gap_background.clone(),
+            layout: GridLayout {
+                row_layout,
+                column_layout,
+                row_gap,
+                column_gap,
+                width,
+                height,
+            },
+            show_grid_lines,
+        });
     }
 }

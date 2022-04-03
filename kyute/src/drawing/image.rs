@@ -1,5 +1,5 @@
 //! Wrapper around skia images.
-use crate::{asset::AssetLoadError, drawing::ToSkia, Asset, AssetLoader, EnvKey, SizeI};
+use crate::{asset::AssetLoadError, drawing::ToSkia, Asset, AssetLoader, Data, EnvKey, SizeI};
 use std::{
     collections::HashMap,
     io,
@@ -10,6 +10,12 @@ use std::{
 /// An image. Paper-thin wrapper around skia images.
 #[derive(Clone, Debug)]
 pub struct Image(skia_safe::Image);
+
+impl Data for Image {
+    fn same(&self, other: &Self) -> bool {
+        self.0.native() as *const _ == other.0.native() as *const _
+    }
+}
 
 impl Image {
     /// Returns the size in pixels of the image.

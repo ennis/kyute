@@ -35,6 +35,7 @@ impl<W> LayoutWrapper<W> {
     }
 
     pub fn set_offset(&self, offset: Offset) {
+        self.layer().set_offset(offset);
         self.offset.set(offset);
     }
 
@@ -121,13 +122,13 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
         m
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+    /*fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
         let m = self.measurements.get();
         let offset = self.offset.get();
         ctx.with_transform_and_clip(offset.to_transform(), m.local_bounds(), m.clip_bounds, |ctx| {
             self.inner.paint(ctx, env);
         });
-    }
+    }*/
 
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {
         self.inner.window_paint(ctx);

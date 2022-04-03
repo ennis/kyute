@@ -2,14 +2,14 @@
 use crate::{
     cache,
     drawing::{Image, ToSkia, IMAGE_CACHE},
-    Angle, Color, Offset, Rect,
+    Angle, Color, Data, Offset, Rect,
 };
 use skia_safe as sk;
 use skia_safe::gradient_shader::GradientShaderColors;
 use std::fmt;
 
 /// Represents a gradient stop.
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, Data, PartialEq, serde::Deserialize)]
 pub struct GradientStop {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -25,6 +25,12 @@ pub enum RepeatMode {
 
 #[derive(Clone, Debug)]
 pub struct UniformData(pub(crate) sk::Data);
+
+impl Data for UniformData {
+    fn same(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
 
 #[macro_export]
 macro_rules! make_uniform_data {
@@ -60,8 +66,12 @@ macro_rules! make_uniform_data {
     };
 }
 
+fn compare_runtime_effects(left: &sk::RuntimeEffect, right: &sk::RuntimeEffect) -> bool {
+    left.native() as *const _ == right.native() as *const _
+}
+
 /// Paint.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Data)]
 //#[serde(tag = "type")]
 pub enum Paint {
     //#[serde(rename = "color")]
@@ -79,6 +89,7 @@ pub enum Paint {
     },
     // TODO: shader effects
     Shader {
+        #[data(same_fn = "compare_runtime_effects")]
         effect: sk::RuntimeEffect,
         uniforms: UniformData,
     },
@@ -257,11 +268,17 @@ where
 }
 
 /// Describes a linear color gradient.
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
 pub struct LinearGradient {
     #[serde(deserialize_with = "deserialize_angle")]
     angle: Angle,
     stops: Vec<GradientStop>,
+}
+
+impl Data for LinearGradient {
+    fn same(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 impl LinearGradient {

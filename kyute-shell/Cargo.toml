@@ -18,9 +18,10 @@ float-cmp = "0.9"
 raw-window-handle = "0.4"
 tracing = "0.1.25"
 thiserror = "1.0.24"
-graal = { git = "https://github.com/ennis/graal.git", rev = "7ecf1b5fc7c3a3ad75a8ad8c461414617cee92bd" }
+#graal = { git = "https://github.com/ennis/graal.git", rev = "0b13c41bed0e33b5b30bddf1af24b04fdaac9054" }
+graal = { path = "../../graal/graal"  }
 kyute-common = { path = "../kyute-common" }
-windows = { version = "0.33.0", features = ["Win32_Graphics_Direct2D",
+windows = { version = "0.34.0", features = ["Win32_Graphics_Direct2D",
     "Win32_Foundation",
     "Win32_System_Diagnostics_Debug",
     "Win32_UI_Input_KeyboardAndMouse",
@@ -28,17 +29,26 @@ windows = { version = "0.33.0", features = ["Win32_Graphics_Direct2D",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Shell",
     "Win32_System_Com",
+    "Win32_Graphics_Direct3D12",
     "Win32_UI_Shell_Common",
     "Win32_Graphics_Gdi",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Direct2D_Common",
+    "Foundation_Numerics",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_DirectWrite",
-    "Win32_System_Com",
+    "Win32_Security",
+    "Win32_Graphics_DirectComposition",
     "Win32_Graphics_Imaging",
     "Win32_Graphics_Imaging_D2D"] }
+
 serde = { version = "1.0", optional = true }
+threadbound = "0.1.2"
+
+[dev-dependencies]
+skia-safe = { version = "0.47.0", features = ["vulkan"] }
 
 [features]
 serializing = ["serde"]

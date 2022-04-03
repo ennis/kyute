@@ -1,12 +1,31 @@
 use crate::{
+    animation::layer::LayerDrawCtx,
+    core::WindowPaintCtx,
     event::{PointerEvent, PointerEventKind},
     style::{BoxStyle, Paint, PaintCtxExt, VisualState},
     widget::{prelude::*, LayoutWrapper},
-    Color, Length, RoundToPixel, SideOffsets, UnitExt, ValueRef,
+    Color, GpuFrameCtx, Length, RoundToPixel, SideOffsets, UnitExt, ValueRef,
 };
+
+struct ContainerLayerDelegate {
+    box_style: BoxStyle,
+}
+
+impl ContainerLayerDelegate {
+    fn new(box_style: BoxStyle) -> ContainerLayerDelegate {
+        ContainerLayerDelegate { box_style }
+    }
+}
+
+impl LayerDelegate for ContainerLayerDelegate {
+    fn draw(&self, ctx: &mut PaintCtx) {
+        ctx.draw_styled_box(ctx.bounds, &self.box_style)
+    }
+}
 
 #[derive(Clone)]
 pub struct Container<Content> {
+    layer: Layer,
     alignment: Option<Alignment>,
     min_width: Option<Length>,
     min_height: Option<Length>,
@@ -20,13 +39,14 @@ pub struct Container<Content> {
     box_style: ValueRef<BoxStyle>,
     alternate_box_styles: Vec<(VisualState, ValueRef<BoxStyle>)>,
     redraw_on_hover: bool,
-    content: LayoutWrapper<Content>,
+    content: Content,
 }
 
 impl<Content: Widget + 'static> Container<Content> {
     #[composable]
     pub fn new(content: Content) -> Container<Content> {
         Container {
+            layer: Layer::new(),
             alignment: None,
             min_width: None,
             min_height: None,
@@ -40,7 +60,7 @@ impl<Content: Widget + 'static> Container<Content> {
             box_style: BoxStyle::default().into(),
             alternate_box_styles: vec![],
             redraw_on_hover: false,
-            content: LayoutWrapper::new(content),
+            content,
         }
     }
 
@@ -52,13 +72,13 @@ impl<Content: Widget + 'static> Container<Content> {
     }
 
     /// Returns a reference to the contents.
-    pub fn contents(&self) -> &Content {
-        self.content.inner()
+    pub fn inner(&self) -> &Content {
+        &self.content
     }
 
     /// Returns a mutable reference to the contents.
-    pub fn contents_mut(&mut self) -> &mut Content {
-        self.content.inner_mut()
+    pub fn inner_mut(&mut self) -> &mut Content {
+        &mut self.content
     }
 }
 
@@ -227,25 +247,8 @@ impl<Content: Widget> Widget for Container<Content> {
         self.content.widget_id()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        // if one of our alternate styles depend on HOVER, we must request a repaint on pointer over/out
-        let redraw_on_hover = self
-            .alternate_box_styles
-            .iter()
-            .any(|(state, _)| state.contains(VisualState::HOVER));
-
-        if redraw_on_hover
-            && matches!(
-                event,
-                Event::Pointer(PointerEvent {
-                    kind: PointerEventKind::PointerOver | PointerEventKind::PointerOut,
-                    ..
-                })
-            )
-        {
-            ctx.request_redraw();
-        }
-        self.content.event(ctx, event, env)
+    fn layer(&self) -> &Layer {
+        &self.layer
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -268,8 +271,9 @@ impl<Content: Widget> Widget for Container<Content> {
             content_padding + box_style.border_side_offsets(ctx.scale_factor, Size::new(base_width, base_height));
 
         let content_constraints = constraints.deflate(content_padding);
+
         let mut content_size = self.content.layout(ctx, content_constraints, env);
-        content_size.size = content_size.local_bounds().outer_rect(content_padding).size;
+        content_size.size = self.content.layer().local_bounds().outer_rect(content_padding).size;
 
         let mut content_offset = Offset::new(content_padding.left, content_padding.top);
 
@@ -355,11 +359,14 @@ impl<Content: Widget> Widget for Container<Content> {
 
         self.content.set_offset(content_offset);
 
-        let clip_bounds = self
-            .box_style
-            .resolve(env)
-            .unwrap()
-            .clip_bounds(Rect::new(Point::origin(), size), ctx.scale_factor);
+        let box_style = self.box_style.resolve(env).unwrap();
+        let clip_bounds = box_style.clip_bounds(Rect::new(Point::origin(), size), ctx.scale_factor);
+
+        // update layer
+        self.layer.set_size(size);
+        self.layer.add_child(self.content.layer());
+        // TODO update_delegate
+        self.layer.set_delegate(ContainerLayerDelegate { box_style });
 
         Measurements {
             size,
@@ -368,35 +375,24 @@ impl<Content: Widget> Widget for Container<Content> {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        let state = ctx.visual_state();
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        // if one of our alternate styles depend on HOVER, we must request a repaint on pointer over/out
+        /*let redraw_on_hover = self
+            .alternate_box_styles
+            .iter()
+            .any(|(state, _)| state.contains(VisualState::HOVER));
 
-        // check if there's a corresponding alternate style
-        let mut used_alt_style = false;
-        for (state_filter, alt_style) in self.alternate_box_styles.iter() {
-            if state.contains(*state_filter) {
-                ctx.draw_styled_box(ctx.bounds, &alt_style.resolve(env).unwrap());
-                used_alt_style = true;
-                break;
-            }
-        }
-
-        // fallback to main style
-        if !used_alt_style {
-            let style = &self.box_style;
-            ctx.draw_styled_box(ctx.bounds, &style.resolve(env).unwrap());
-        }
-
-        self.content.paint(ctx, env);
-
-        /*let overlay_box_style = self
-            .overlay_box_style
-            .as_ref()
-            .map(|(state, style)| (state, style.resolve(env).unwrap()));
-        if let Some((state, overlay)) = overlay_box_style {
-            if current_state.contains(*state) {
-                ctx.draw_styled_box(bounds, &overlay, env);
-            }
+        if redraw_on_hover
+            && matches!(
+                event,
+                Event::Pointer(PointerEvent {
+                    kind: PointerEventKind::PointerOver | PointerEventKind::PointerOut,
+                    ..
+                })
+            )
+        {
+            ctx.request_redraw();
         }*/
+        self.content.event(ctx, event, env)
     }
 }

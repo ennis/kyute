@@ -1,30 +1,27 @@
 //! Windows-specific UI stuff.
+use lazy_static::lazy_static;
 use std::{
-    cell::RefCell,
-    ffi::OsString,
+    ffi::{c_void, OsString},
     ops::Deref,
     ptr,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex, MutexGuard,
-    },
+    sync::{Arc, Mutex, MutexGuard},
     time::Duration,
 };
+use threadbound::ThreadBound;
 use windows::{
     core::Interface,
     Win32::{
         Graphics::{
-            Direct2D::{
-                D2D1CreateFactory, ID2D1Device, ID2D1DeviceContext, ID2D1Factory1, D2D1_DEBUG_LEVEL_WARNING,
-                D2D1_DEVICE_CONTEXT_OPTIONS_NONE, D2D1_FACTORY_OPTIONS, D2D1_FACTORY_TYPE_MULTI_THREADED,
+            Direct2D::{ID2D1Device, ID2D1DeviceContext, ID2D1Factory1},
+            Direct3D::D3D_FEATURE_LEVEL_12_0,
+            Direct3D11::ID3D11Device5,
+            Direct3D12::{
+                D3D12CreateDevice, D3D12GetDebugInterface, ID3D12CommandQueue, ID3D12Debug, ID3D12Device,
+                D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
             },
-            Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL, D3D_FEATURE_LEVEL_11_1},
-            Direct3D11::{
-                D3D11CreateDevice, ID3D11Device5, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_DEBUG,
-                D3D11_SDK_VERSION,
-            },
+            DirectComposition::{DCompositionCreateDevice3, IDCompositionDesktopDevice},
             DirectWrite::{DWriteCreateFactory, IDWriteFactory, DWRITE_FACTORY_TYPE_SHARED},
-            Dxgi::{CreateDXGIFactory2, IDXGIDevice, IDXGIFactory3},
+            Dxgi::{CreateDXGIFactory2, IDXGIFactory3, DXGI_CREATE_FACTORY_DEBUG},
             Imaging::{CLSID_WICImagingFactory2, D2D::IWICImagingFactory2},
         },
         System::Com::{CoCreateInstance, CoInitialize, CLSCTX_INPROC_SERVER},
@@ -75,7 +72,9 @@ macro_rules! send_com_ptr_wrapper {
 //
 // FIXME this might be a bit too optimistic...
 sync_com_ptr_wrapper! { D3D11Device(ID3D11Device5) }
+sync_com_ptr_wrapper! { D3D12Device(ID3D12Device) }
 sync_com_ptr_wrapper! { DXGIFactory3(IDXGIFactory3) }
+sync_com_ptr_wrapper! { D3D12CommandQueue(ID3D12CommandQueue) }
 sync_com_ptr_wrapper! { D2D1Factory1(ID2D1Factory1) }
 sync_com_ptr_wrapper! { DWriteFactory(IDWriteFactory) }
 sync_com_ptr_wrapper! { D2D1Device(ID2D1Device) }
@@ -88,67 +87,35 @@ send_com_ptr_wrapper! { D2D1DeviceContext(ID2D1DeviceContext) }
 /// to the screen.
 ///
 // all of this must be either directly Sync, or wrapped in a mutex, or wrapped in a main-thread-only wrapper.
-pub(crate) struct ApplicationImpl {
+pub struct Application {
     pub(crate) gpu_device: Arc<graal::Device>,
     pub(crate) gpu_context: Mutex<graal::Context>,
-    pub(crate) d3d11_device: D3D11Device, // thread safe
-    //pub(crate) d3d12_device: D3D12Device,  // thread safe
+    //pub(crate) d3d11_device: D3D11Device,  // thread safe
+    pub(crate) d3d12_device: D3D12Device,              // thread safe
+    pub(crate) d3d12_command_queue: D3D12CommandQueue, // thread safe
     //pub(crate) d3d11_device_context: Mutex<ComPtr<ID3D11DeviceContext>>,   // not thread safe (should be thread-local)
     pub(crate) dxgi_factory: DXGIFactory3,
-    pub(crate) d2d_factory: D2D1Factory1,
+    //pub(crate) d2d_factory: D2D1Factory1,
     pub(crate) dwrite_factory: DWriteFactory,
-    pub(crate) d2d_device: D2D1Device,
+    //pub(crate) d2d_device: D2D1Device,
     // FIXME: it's far too easy to clone the ID2D11DeviceContext accidentally and use it in a thread-unsafe way: maybe create it on-the-fly instead?
-    pub(crate) d2d_device_context: D2D1DeviceContext,
+    //pub(crate) d2d_device_context: D2D1DeviceContext,
     pub(crate) wic_factory: WICImagingFactory2,
+    pub(crate) composition_device: ThreadBound<IDCompositionDesktopDevice>,
 }
 
-/// Encapsulates application-global services.
-#[derive(Clone)]
-pub struct Application(pub(crate) Arc<ApplicationImpl>);
-
-thread_local! {
-    /// Platform singleton. Only accessible from the main thread, hence the `thread_local`.
-    /// Contains `None` if
-
+lazy_static! {
     // NOTE: we previously used `OnceCell` so that we could get a `&'static Platform` that lived for
     // the duration of the application, but the destructor wasn't called. This has consequences on
     // windows because the DirectX debug layers trigger panics when objects are leaked.
-    // Now we use shared ownership instead, and automatically release this global reference when
-    // `run` returns.
-    static APPLICATION: RefCell<Option<Application>> = RefCell::new(None);
+    pub static ref APPLICATION: Application = Application::new().expect("failed to initialize application");
 }
-
-/// Global flag that tells whether there's an active `Application` object in `APPLICATION`.
-static APPLICATION_CREATED: AtomicBool = AtomicBool::new(false);
 
 impl Application {
     /// Initializes the global application object.
     ///
     /// The application object will be tied to this thread (the "main thread").
-    pub fn new() -> anyhow::Result<Application> {
-        // check that we don't already have an active platform, and acquire the global flag
-        APPLICATION_CREATED
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| anyhow::anyhow!("an application has already been created."))?;
-
-        // actually create the platform
-        let application = Self::new_impl();
-
-        let application = match application {
-            Err(e) => {
-                // if creation failed, don't forget to release the global flag
-                APPLICATION_CREATED.store(false, Ordering::Release);
-                return Err(e.context("failed to create application"));
-            }
-            Ok(p) => p,
-        };
-
-        APPLICATION.with(|app| app.replace(Some(application.clone())));
-        Ok(application)
-    }
-
-    fn new_impl() -> anyhow::Result<Application> {
+    fn new() -> anyhow::Result<Application> {
         // --- Create the graal context (implying a vulkan instance and device)
         // FIXME technically we need the target surface so we can pick a device that can
         // render to it. However, on most systems, all available devices can render to window surfaces,
@@ -163,10 +130,20 @@ impl Application {
         // so skip that for now.
         //let gpu_context = graal::Context::new();
 
+        let d3d12_debug = {
+            // D3D12 debug interface
+            let mut dbg: Option<ID3D12Debug> = None;
+            unsafe {
+                D3D12GetDebugInterface(&mut dbg).expect("D3D12GetDebugInterface failed");
+                dbg.unwrap()
+            }
+        };
+
         // ---------- DXGI Factory ----------
 
         // SAFETY: the paramters are valid
-        let dxgi_factory = unsafe { DXGIFactory3(CreateDXGIFactory2::<IDXGIFactory3>(0).unwrap()) };
+        let dxgi_factory =
+            unsafe { DXGIFactory3(CreateDXGIFactory2::<IDXGIFactory3>(DXGI_CREATE_FACTORY_DEBUG).unwrap()) };
 
         // --- Enumerate adapters
         let mut adapters = Vec::new();
@@ -201,7 +178,7 @@ impl Application {
         // This is needed for D2D stuff.
 
         // SAFETY: the parameters are valid
-        let (d3d11_device, d3d11_device_context) = unsafe {
+        /*let (d3d11_device, d3d11_device_context) = unsafe {
             let mut d3d11_device = None;
             let mut feature_level = D3D_FEATURE_LEVEL::default();
             let mut _d3d11_device_context = None;
@@ -218,9 +195,7 @@ impl Application {
                 // Flags:
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG,
                 // pFeatureLevels:
-                feature_levels.as_ptr(),
-                // FeatureLevels:
-                1,
+                &feature_levels,
                 // SDKVersion
                 D3D11_SDK_VERSION,
                 // ppDevice:
@@ -237,27 +212,39 @@ impl Application {
                 D3D11Device(d3d11_device.unwrap().cast::<ID3D11Device5>().unwrap()),
                 _d3d11_device_context.unwrap(),
             )
-        };
-
-        /*let d3d12_device = unsafe {
-            let mut d3d12_device = ptr::null_mut();
-            let mut feature_level = 0;
-            check_hr(D3D12CreateDevice(
-                // pAdapter:
-                ptr::null_mut(),
-                // MinimumFeatureLevel:
-                D3D_FEATURE_LEVEL_11_1,
-                // riid:
-                &ID3D12Device::uuidof(),
-                // ppDevice:
-                &mut d3d12_device as *mut _ as *mut *mut c_void,
-                ))
-                .expect("D3D12CreateDevice failed");
-
-            D3D12Device(ComPtr::from_raw(d3d12_device))
         };*/
 
-        // SAFETY: pointers should be non-null if D3D11CreateDevice succeeds
+        unsafe {
+            d3d12_debug.EnableDebugLayer();
+        }
+
+        let d3d12_device = unsafe {
+            let mut d3d12_device: Option<ID3D12Device> = None;
+            D3D12CreateDevice(
+                // pAdapter:
+                None,
+                // MinimumFeatureLevel:
+                D3D_FEATURE_LEVEL_12_0,
+                // ppDevice:
+                &mut d3d12_device,
+            )
+            .expect("D3D12CreateDevice failed");
+            D3D12Device(d3d12_device.unwrap())
+        };
+
+        let d3d12_command_queue = unsafe {
+            let cqdesc = D3D12_COMMAND_QUEUE_DESC {
+                Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
+                Priority: 0,
+                Flags: Default::default(),
+                NodeMask: 0,
+            };
+            let cq: ID3D12CommandQueue = d3d12_device
+                .0
+                .CreateCommandQueue(&cqdesc)
+                .expect("CreateCommandQueue failed");
+            D3D12CommandQueue(cq)
+        };
 
         // ---------- Direct2D,DirectWrite factories ----------
         let dwrite_factory = unsafe {
@@ -268,7 +255,7 @@ impl Application {
             DWriteFactory(dwrite)
         };
 
-        let d2d_factory = unsafe {
+        /*let d2d_factory = unsafe {
             let mut result: Option<ID2D1Factory1> = None;
             let d2d = D2D1CreateFactory(
                 D2D1_FACTORY_TYPE_MULTI_THREADED,
@@ -280,23 +267,23 @@ impl Application {
             )
             .map(|()| result.unwrap())?;
             D2D1Factory1(d2d)
-        };
+        };*/
 
         // ---------- Create the D2D Device and Context ----------
-        let d2d_device = unsafe {
+        /*let d2d_device = unsafe {
             let dxgi_device = d3d11_device.cast::<IDXGIDevice>().unwrap();
             let device = d2d_factory.CreateDevice(&dxgi_device).unwrap();
             D2D1Device(device)
-        };
+        };*/
 
-        let d2d_device_context = unsafe {
+        /*let d2d_device_context = unsafe {
             D2D1DeviceContext(
                 d2d_device
                     .0
                     .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)
                     .unwrap(),
             )
-        };
+        };*/
 
         // ---------- Create the Windows Imaging Component (WIC) factory ----------
         let wic_factory = unsafe {
@@ -306,39 +293,45 @@ impl Application {
             WICImagingFactory2(wic)
         };
 
-        let app_impl = ApplicationImpl {
+        // --------- Compositor -----------
+        let composition_device = unsafe {
+            let mut composition_device: Option<IDCompositionDesktopDevice> = None;
+            DCompositionCreateDevice3(
+                None,
+                &IDCompositionDesktopDevice::IID,
+                &mut composition_device as *mut _ as *mut *mut c_void,
+            )
+            .expect("DCompositionCreateDevice failed");
+            ThreadBound::new(composition_device.unwrap())
+        };
+
+        let app = Application {
             gpu_device,
             gpu_context: Mutex::new(gpu_context),
             //d3d12_device,
-            d3d11_device,
+            d3d12_device,
+            d3d12_command_queue,
             dxgi_factory,
             dwrite_factory,
-            d2d_factory,
-            d2d_device,
-            d2d_device_context,
+            //d2d_factory,
+            //d2d_device,
+            //d2d_device_context,
             wic_factory,
+            composition_device,
         };
 
-        let app = Application(Arc::new(app_impl));
         Ok(app)
     }
 
-    /// Returns the global application object that was created by a call to `init`.
-    ///
-    /// # Panics
-    ///
-    /// Panics of no platform is active, or if called outside of the main thread, which is the thread
-    /// that called `Platform::new`.
-    pub fn instance() -> Application {
-        APPLICATION
-            .with(|p| p.borrow().clone())
-            .expect("either the platform instance was not initialized, or not calling from the main thread")
+    /// Returns the global application object.
+    pub fn instance() -> &'static Application {
+        &*APPLICATION
     }
 
-    /// Deletes the application object and closes the associated services.
-    pub fn shutdown() {
-        APPLICATION.with(|p| p.replace(None));
-    }
+    // Deletes the application object and closes the associated services.
+    //pub fn shutdown() {
+    //    APPLICATION.with(|p| p.replace(None));
+    //}
 
     // issue: this returns different objects before and after `run` is called.
     // bigger issue: an `&EventLoopWindowTarget` can only be retrieved from the event loop callback,
@@ -358,12 +351,12 @@ impl Application {
 
     /// Returns the `graal::Device` instance.
     pub fn gpu_device(&self) -> &Arc<graal::Device> {
-        &self.0.gpu_device
+        &self.gpu_device
     }
 
     /// Locks the GPU context.
     pub fn lock_gpu_context(&self) -> MutexGuard<graal::Context> {
-        self.0.gpu_context.lock().unwrap()
+        self.gpu_context.lock().unwrap()
     }
 
     /* pub fn run() {

@@ -1,25 +1,28 @@
 use crate::{
     cache,
+    core::WindowPaintCtx,
     event::PointerEventKind,
     style::{BoxStyle, VisualState},
     theme,
     widget::{prelude::*, Container, Grid, Label},
-    Color, Signal, State, UnitExt, ValueRef,
+    Color, GpuFrameCtx, Signal, State, UnitExt, ValueRef,
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Widget definition
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone)]
 pub struct Button {
     id: WidgetId,
     inner: Container<Label>,
     clicked: Signal<()>,
-    active: State<bool>,
 }
 
 impl Button {
     /// Creates a new button with the specified label.
     #[composable]
     pub fn new(label: String) -> Button {
-        let active = cache::state(|| false);
         Button {
             id: WidgetId::here(),
             inner: Container::new(Label::new(label))
@@ -30,7 +33,6 @@ impl Button {
                 .alternate_box_style(VisualState::ACTIVE | VisualState::HOVER, theme::BUTTON_ACTIVE)
                 .alternate_box_style(VisualState::HOVER, theme::BUTTON_HOVER),
             clicked: Signal::new(),
-            active,
         }
     }
 
@@ -70,13 +72,25 @@ impl Button {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// impl Widget
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 impl Widget for Button {
     fn widget_id(&self) -> Option<WidgetId> {
         Some(self.id)
     }
 
+    fn layer(&self) -> &Layer {
+        self.inner.layer()
+    }
+
     fn debug_name(&self) -> &str {
         std::any::type_name::<Self>()
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.inner.layout(ctx, constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -87,11 +101,11 @@ impl Widget for Button {
                     ctx.request_redraw();
                     ctx.set_handled();
                     ctx.capture_pointer();
-                    self.active.set(true);
+                    //self.active.set(true);
                 }
                 PointerEventKind::PointerUp => {
                     ctx.request_redraw();
-                    self.active.set(false);
+                    //self.active.set(false);
                     self.clicked.signal(());
                 }
                 PointerEventKind::PointerOver => {
@@ -110,19 +124,9 @@ impl Widget for Button {
             self.inner.event(ctx, event, env)
         }
     }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.inner.layout(ctx, constraints, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        if self.active.get() {
-            ctx.active = true; // TODO set in env instead?
-        }
-        self.inner.paint(ctx, env)
-    }
 }
 
+/*
 pub struct ButtonBox {
     grid: Grid,
 }
@@ -151,3 +155,4 @@ impl ButtonBox {
         }
     }
 }
+*/
