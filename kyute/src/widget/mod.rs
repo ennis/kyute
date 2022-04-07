@@ -124,7 +124,7 @@ impl<T: WidgetWrapper> Widget for T {
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
-        animation::{Layer, LayerDelegate},
+        animation::{LayerDelegate, LayerHandle},
         cache::Signal,
         composable, Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
         Orientation, PaintCtx, Point, Rect, Size, Transform, Widget, WidgetId, WidgetPod,

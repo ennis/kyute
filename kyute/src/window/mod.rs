@@ -2,8 +2,10 @@ mod key_code;
 mod skia;
 
 use crate::{
-    align_boxes, cache, composable,
-    core::{FocusState, GpuResourceReferences},
+    align_boxes,
+    animation::{layer::Layer, LayerHandle},
+    cache, composable,
+    core::{FocusState, GpuResourceReferences, WindowPaintCtx},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind, WheelDeltaMode, WheelEvent},
     graal,
     graal::{vk::Handle, MemoryLocation},
@@ -17,6 +19,7 @@ use keyboard_types::{KeyState, Modifiers};
 use kyute::GpuFrameCtx;
 use kyute_common::Transform;
 use kyute_shell::{
+    animation::CompositionLayer,
     application::Application,
     winit,
     winit::{
@@ -26,7 +29,7 @@ use kyute_shell::{
     },
 };
 use skia_safe as sk;
-use std::{cell::RefCell, env, mem, sync::Arc, time::Instant};
+use std::{borrow::Borrow, cell::RefCell, env, mem, sync::Arc, time::Instant};
 use tracing::trace;
 
 /// Stores information about the last click (for double-click handling)
@@ -45,6 +48,7 @@ pub(crate) struct WindowState {
     window: Option<SkiaWindow>,
     window_builder: Option<WindowBuilder>,
     focus_state: FocusState,
+    layer: LayerHandle,
     menu: Option<Menu>,
     inputs: InputState,
     last_click: Option<LastClick>,
@@ -116,6 +120,7 @@ impl WindowState {
                         parent_ctx,
                         self.scale_factor,
                         &mut window.window,
+                        &self.layer,
                         &mut self.focus_state,
                     );
                     content_widget.event(
@@ -350,6 +355,7 @@ impl WindowState {
                             parent_ctx,
                             self.scale_factor,
                             &mut window.window,
+                            &self.layer,
                             &mut self.focus_state,
                         );
                         trace!("routing pointer event to pointer-capturing widget {:?}", pointer_grab);
@@ -368,6 +374,7 @@ impl WindowState {
                             parent_ctx,
                             self.scale_factor,
                             &mut window.window,
+                            &self.layer,
                             &mut self.focus_state,
                         );
                         // just forward to content, will do a hit-test
@@ -383,6 +390,7 @@ impl WindowState {
                             parent_ctx,
                             self.scale_factor,
                             &mut window.window,
+                            &self.layer,
                             &mut self.focus_state,
                         );
                         content_widget.event(
@@ -413,8 +421,13 @@ impl WindowState {
                 let new_focus = self.focus_state.focus;
                 trace!("focus changed");
 
-                let mut content_ctx =
-                    EventCtx::new_subwindow(parent_ctx, self.scale_factor, &mut window.window, &mut self.focus_state);
+                let mut content_ctx = EventCtx::new_subwindow(
+                    parent_ctx,
+                    self.scale_factor,
+                    &mut window.window,
+                    &self.layer,
+                    &mut self.focus_state,
+                );
 
                 if let Some(old_focus) = old_focus {
                     content_widget.event(
@@ -459,6 +472,7 @@ impl WindowState {
 #[derive(Clone)]
 pub struct Window {
     id: WidgetId,
+    layer: LayerHandle,
     window_state: Arc<RefCell<WindowState>>,
     contents: Arc<WidgetPod>,
 }
@@ -471,12 +485,15 @@ impl Window {
     pub fn new(window_builder: WindowBuilder, contents: impl Widget + 'static, menu: Option<Menu>) -> Window {
         // create the initial window state
         // we don't want to recreate it every time, so it only depends on the call ID.
+        let layer = Layer::new();
+        let layer_clone = layer.clone();
         let window_state = cache::once(move || {
             Arc::new(RefCell::new(WindowState {
                 window: None,
                 window_builder: Some(window_builder),
                 focus_state: FocusState::default(),
                 menu: None,
+                layer: layer_clone,
                 inputs: Default::default(),
                 last_click: None,
                 scale_factor: 1.0, // initialized during window creation
@@ -502,233 +519,10 @@ impl Window {
         // TODO update title, size, position, etc.
 
         Window {
+            layer,
             id: WidgetId::here(),
             window_state,
             contents: Arc::new(WidgetPod::new(contents)),
-        }
-    }
-
-    /// Hot mess responsible for rendering the contents of the window with vulkan and skia.
-    fn do_redraw(&self, parent_ctx: &mut EventCtx, env: &Environment) {
-        //use kyute_shell::{skia, skia::gpu::vk as skia_vk};
-
-        let mut window_state = self.window_state.borrow_mut();
-        let window_state = &mut *window_state;
-        if let Some(ref mut window) = window_state.window {
-            // collect all child widgets
-            let widgets = {
-                let mut content_ctx = EventCtx::new_subwindow(
-                    parent_ctx,
-                    window_state.scale_factor,
-                    &mut window.window,
-                    &mut window_state.focus_state,
-                );
-                let mut widgets = Vec::new();
-                self.contents.event(
-                    &mut content_ctx,
-                    &mut Event::Internal(InternalEvent::Traverse { widgets: &mut widgets }),
-                    env,
-                );
-                widgets
-            };
-
-            // get and lock GPU context for frame submission
-            let app = Application::instance();
-            let device = app.gpu_device().clone();
-            let mut context = app.lock_gpu_context();
-
-            //---------------------------------------------------------------------------
-            // acquire next image in window swap chain for painting
-            // if we can't, skip the whole rendering
-            let swap_chain = window.window.swap_chain();
-            let swap_chain_image = unsafe { context.acquire_next_image(swap_chain) };
-            let swap_chain_image = match swap_chain_image {
-                Ok(image) => image,
-                Err(err) => {
-                    tracing::warn!("failed to acquire swapchain image: {}", err);
-                    return;
-                }
-            };
-
-            // start GPU context frame
-            let mut frame = context.start_frame(graal::FrameCreateInfo::default());
-
-            //---------------------------------------------------------------------------
-            // propagate GpuFrame event to child widgets, allowing them to push rendering passes
-            // at the same time, collect resources that will be referenced during the UI painting pass.
-            // TODO move this in core
-            let mut gpu_ctx = GpuFrameCtx {
-                frame: &mut frame,
-                resource_references: GpuResourceReferences::new(),
-                measurements: Default::default(),
-                scale_factor: window_state.scale_factor,
-            };
-            for widget in widgets.iter() {
-                widget.widget().gpu_frame(&mut gpu_ctx);
-            }
-            let resource_references = gpu_ctx.resource_references;
-
-            //---------------------------------------------------------------------------
-            // setup skia for rendering to a GPU image
-            let (swap_chain_width, swap_chain_height) = window.window.swap_chain_size();
-
-            // skia may not support rendering directly to the swapchain image (for example, it doesn't seem to support BGRA8888_SRGB).
-            // so allocate a separate image to use as a render target, then copy.
-            let skia_image_usage_flags = graal::vk::ImageUsageFlags::COLOR_ATTACHMENT
-                | graal::vk::ImageUsageFlags::TRANSFER_SRC
-                | graal::vk::ImageUsageFlags::TRANSFER_DST;
-            // TODO: allow the user to choose
-            let skia_image_format = graal::vk::Format::R16G16B16A16_SFLOAT;
-            let skia_image = device.create_image(
-                "skia render target",
-                MemoryLocation::GpuOnly,
-                &graal::ImageResourceCreateInfo {
-                    image_type: graal::vk::ImageType::TYPE_2D,
-                    usage: skia_image_usage_flags,
-                    format: skia_image_format,
-                    extent: graal::vk::Extent3D {
-                        width: swap_chain_width,
-                        height: swap_chain_height,
-                        depth: 1,
-                    },
-                    mip_levels: 1,
-                    array_layers: 1,
-                    samples: 1,
-                    tiling: graal::vk::ImageTiling::OPTIMAL,
-                },
-            );
-
-            //----------------------------------------------------------------------------------
-            // make a copy of the stuff we want to use in the command lambda
-            // because it has a 'static lifetime bound and thus we can't borrow anything inside it
-            // TODO: allow temporary borrows inside passes
-            let scale_factor = window.window.window().scale_factor();
-            let logical_size = window.window.window().inner_size().to_logical(scale_factor);
-            let window_bounds = Rect::new(Point::origin(), Size::new(logical_size.width, logical_size.height));
-            let focus = window_state.focus_state.focus;
-            let pointer_grab = window_state.focus_state.pointer_grab;
-            let hot = window_state.focus_state.hot;
-            // FIXME we must clone here because the lambda is 'static, and this might be expensive. Use Arc instead?
-            let inputs = window_state.inputs.clone();
-            let scale_factor = window_state.scale_factor;
-            let id = parent_ctx.widget_id();
-            let mut recording_context = window.skia_recording_context.clone();
-            let contents = self.contents.clone();
-
-            // create the skia render pass
-            {
-                let mut ui_render_pass = frame.start_graphics_pass("UI render");
-
-                // FIXME we just assume how it's going to be used by skia
-                ui_render_pass.add_image_dependency(
-                    skia_image.id,
-                    graal::vk::AccessFlags::MEMORY_READ | graal::vk::AccessFlags::MEMORY_WRITE,
-                    graal::vk::PipelineStageFlags::ALL_COMMANDS,
-                    graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                    graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                );
-
-                // add references collected during the GpuFrame pass
-                for buf in resource_references.buffers {
-                    ui_render_pass.add_buffer_dependency(buf.id, buf.access_mask, buf.stage_mask)
-                }
-                for img in resource_references.images {
-                    ui_render_pass.add_image_dependency(
-                        img.id,
-                        img.access_mask,
-                        img.stage_mask,
-                        img.initial_layout,
-                        img.final_layout,
-                    )
-                }
-
-                ui_render_pass.set_submit_callback(move |_cctx, _, _queue| {
-                    // create skia BackendRenderTarget and Surface
-                    let skia_image_info = sk::gpu::vk::ImageInfo {
-                        image: skia_image.handle.as_raw() as *mut _,
-                        alloc: Default::default(),
-                        tiling: sk::gpu::vk::ImageTiling::OPTIMAL,
-                        layout: sk::gpu::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        format: unsafe { mem::transmute(skia_image_format.as_raw()) }, // SAFETY: it's a VkFormat, and hopefully skia_vk has a definition with all the latest enumerators...
-                        image_usage_flags: skia_image_usage_flags.as_raw(),
-                        sample_count: 1,
-                        level_count: 1,
-                        current_queue_family: sk::gpu::vk::QUEUE_FAMILY_IGNORED,
-                        protected: sk::gpu::Protected::No,
-                        ycbcr_conversion_info: Default::default(),
-                        sharing_mode: sk::gpu::vk::SharingMode::EXCLUSIVE,
-                    };
-                    let render_target = sk::gpu::BackendRenderTarget::new_vulkan(
-                        (swap_chain_width as i32, swap_chain_height as i32),
-                        1,
-                        &skia_image_info,
-                    );
-                    let mut surface = sk::Surface::from_backend_render_target(
-                        &mut recording_context,
-                        &render_target,
-                        sk::gpu::SurfaceOrigin::TopLeft,
-                        sk::ColorType::RGBAF16Norm, // ???
-                        sk::ColorSpace::new_srgb_linear(),
-                        Some(&sk::SurfaceProps::new(Default::default(), sk::PixelGeometry::RGBH)),
-                    )
-                    .unwrap();
-
-                    // setup PaintCtx
-                    let canvas = surface.canvas();
-                    let mut invalid = Region::new();
-                    invalid.add_rect(window_bounds);
-
-                    // clear to default bg color
-                    canvas.scale((scale_factor as sk::scalar, scale_factor as sk::scalar));
-                    canvas.clear(sk::Color4f::new(0.0, 0.0, 0.0, 1.0));
-
-                    let mut paint_ctx = PaintCtx {
-                        canvas,
-                        id,
-                        window_transform: Transform::identity(),
-                        focus,
-                        pointer_grab,
-                        hot,
-                        inputs: &inputs,
-                        scale_factor,
-                        invalid: &invalid,
-                        hover: false,
-                        bounds: window_bounds,
-                        active: false,
-                    };
-
-                    // TODO environment
-                    //tracing::trace!("window redraw");
-                    contents.paint(&mut paint_ctx, env);
-                    surface.flush_and_submit();
-                });
-
-                ui_render_pass.finish();
-            }
-
-            graal::utils::blit_images(
-                &mut frame,
-                skia_image,
-                swap_chain_image.image_info,
-                (swap_chain_width, swap_chain_height),
-                graal::vk::ImageAspectFlags::COLOR,
-            );
-
-            device.destroy_image(skia_image.id);
-
-            // dump frame if requested
-            match env::var("KYUTE_DUMP_GPU_FRAMES") {
-                Ok(v) if v.parse() == Ok(true) => {
-                    frame.dump(Some("kyute_gpu_frame"));
-                }
-                _ => {}
-            }
-
-            // present
-            frame.present("present", &swap_chain_image);
-            frame.finish(&mut ());
-        } else {
-            tracing::warn!("WindowRedrawRequest: window has not yet been created");
         }
     }
 }
@@ -736,6 +530,10 @@ impl Window {
 impl Widget for Window {
     fn widget_id(&self) -> Option<WidgetId> {
         Some(self.id)
+    }
+
+    fn layer(&self) -> &LayerHandle {
+        &self.layer
     }
 
     fn debug_name(&self) -> &str {
@@ -810,6 +608,7 @@ impl Widget for Window {
                         ctx,
                         window_state.scale_factor,
                         &mut window.window,
+                        &self.layer,
                         &mut window_state.focus_state,
                     );
                     self.contents.event(&mut content_ctx, event, env);
@@ -840,9 +639,5 @@ impl Widget for Window {
 
     fn layout(&self, _ctx: &mut LayoutCtx, _constraints: BoxConstraints, _env: &Environment) -> Measurements {
         Measurements::default()
-    }
-
-    fn paint(&self, _ctx: &mut PaintCtx, _env: &Environment) {
-        //self.contents.paint(ctx, bounds, env)
     }
 }

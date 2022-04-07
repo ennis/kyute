@@ -1,3 +1,3 @@
 pub mod layer;
 
-pub use layer::{Layer, LayerDelegate};
+pub use layer::{LayerDelegate, LayerHandle};

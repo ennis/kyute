@@ -468,7 +468,7 @@ impl GridBackgroundLayerDelegate {
 #[derive(Clone, Debug)]
 pub struct Grid {
     id: WidgetId,
-    layer: Layer,
+    layer: LayerHandle,
     /// Column sizes.
     column_definitions: Vec<GridTrackDefinition>,
     /// Row sizes.
@@ -519,7 +519,7 @@ impl Grid {
     pub fn new() -> Grid {
         Grid {
             id: WidgetId::here(),
-            layer: Layer::new(),
+            layer: LayerHandle::new(),
             column_definitions: vec![],
             row_definitions: vec![],
             items: vec![],
@@ -1189,5 +1189,9 @@ impl Widget for Grid {
             },
             show_grid_lines,
         });
+    }
+
+    fn layer(&self) -> &LayerHandle {
+        &self.layer
     }
 }

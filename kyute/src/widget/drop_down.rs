@@ -115,8 +115,12 @@ impl<T: Clone + 'static> Widget for DropDown<T> {
         Some(self.id)
     }
 
-    fn debug_name(&self) -> &str {
-        std::any::type_name::<Self>()
+    fn layer(&self) -> &LayerHandle {
+        self.inner.layer()
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.inner.layout(ctx, constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
@@ -147,16 +151,5 @@ impl<T: Clone + 'static> Widget for DropDown<T> {
             }
             _ => {}
         }
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.inner.layout(ctx, constraints, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        //let style = self.style.resolve(env).unwrap();
-        //let box_style = style.box_style.resolve(env).unwrap();
-        //let label_color = style.label_color.resolve(env).unwrap();
-        self.inner.paint(ctx, env);
     }
 }

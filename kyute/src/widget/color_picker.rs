@@ -22,7 +22,9 @@ use skia_safe as sk;
 use std::cell::Cell;
 use threadbound::ThreadBound;
 
-//--------------------------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Shaders
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // FIXME we assume that the target is linear sRGB, thus the conversion in the shader.
 // I can't find a way to tell skia that this shader is outputting values in nonlinear sRGB.
@@ -115,6 +117,35 @@ lazy_static! {
         ThreadBound::new(sk::RuntimeEffect::make_for_shader(HSV_COLOR_SQUARE_SKSL, None).unwrap());
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Helpers
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Formats & parses a color in hex notation in a text edit (e.g. #RRGGBB)
+struct HexColorFormatter;
+
+impl crate::widget::text_edit::Formatter<Color> for HexColorFormatter {
+    fn format(&self, value: &Color) -> FormattedText {
+        value.to_hex().into()
+    }
+
+    fn format_partial_input(&self, text: &str) -> FormattedText {
+        text.into()
+    }
+
+    fn validate_partial_input(&self, text: &str) -> ValidationResult {
+        if Color::try_from_hex(text).is_ok() {
+            ValidationResult::Valid
+        } else {
+            ValidationResult::Incomplete
+        }
+    }
+
+    fn parse(&self, text: &str) -> Result<Color, Error> {
+        Ok(Color::try_from_hex(text)?)
+    }
+}
+
 #[repr(i32)]
 #[derive(Copy, Clone, Debug)]
 enum ColorEncoding {
@@ -162,7 +193,10 @@ fn make_color_swatch_paint(color: Color, checkerboard_size: i32, checkerboard_co
     }
 }
 
-//--------------------------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// ColorPicker
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 pub struct ColorPaletteItem<'a> {
     name: &'a str,
     value: Color,
@@ -175,6 +209,7 @@ pub enum ColorPickerMode {
     HsvWheel,
 }
 
+/// Color picker parameters.
 pub struct ColorPickerParams<'a> {
     /// Enable alpha slider.
     pub enable_alpha: bool,
@@ -240,29 +275,6 @@ fn color_component_slider(component: ColorComponent, color: &mut Color) -> GridR
     row
 }
 
-struct HexColorFormatter;
-impl crate::widget::text_edit::Formatter<Color> for HexColorFormatter {
-    fn format(&self, value: &Color) -> FormattedText {
-        value.to_hex().into()
-    }
-
-    fn format_partial_input(&self, text: &str) -> FormattedText {
-        text.into()
-    }
-
-    fn validate_partial_input(&self, text: &str) -> ValidationResult {
-        if Color::try_from_hex(text).is_ok() {
-            ValidationResult::Valid
-        } else {
-            ValidationResult::Incomplete
-        }
-    }
-
-    fn parse(&self, text: &str) -> Result<Color, Error> {
-        Ok(Color::try_from_hex(text)?)
-    }
-}
-
 impl ColorPicker {
     #[composable]
     pub fn new(color: Color, params: &ColorPickerParams) -> ColorPicker {
@@ -305,8 +317,11 @@ impl ColorPicker {
     }
 }
 
-//--------------------------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// HsvColorSquare
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
+///
 pub struct HsvColorSquare {
     hue: f32,
 }
@@ -345,7 +360,10 @@ impl Widget for HsvColorSquare {
     }
 }
 
-//--------------------------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// HsvColorSquare
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #[derive(Clone, WidgetWrapper)]
 pub struct ColorSwatch {
     inner: Container<Null>,
@@ -364,7 +382,9 @@ impl ColorSwatch {
     }
 }
 
-//--------------------------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// ColorBar
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Copy, Clone, Debug)]
 pub enum ColorBarBounds {
@@ -474,7 +494,9 @@ impl Widget for ColorBar {
     }
 }
 
-//--------------------------------------------------------------------------------------------------
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// ColorSlider
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, WidgetWrapper)]
 pub struct ColorSlider {

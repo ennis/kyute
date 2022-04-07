@@ -1,4 +1,5 @@
 use crate::{
+    animation::layer::Layer,
     style::{BoxStyle, PaintCtxExt},
     theme,
     widget::prelude::*,
@@ -48,6 +49,7 @@ pub enum MainAxisSize {
 #[derive(Clone)]
 pub struct Flex {
     id: WidgetId,
+    layer: LayerHandle,
     axis_orientation: Orientation,
     items: Vec<Arc<WidgetPod>>,
 }
@@ -56,7 +58,18 @@ impl Flex {
     #[deprecated(note = "use Grid::row() and Grid::column() instead")]
     #[composable]
     pub fn new(axis_orientation: Orientation) -> Flex {
+        struct FlexLayerDelegate;
+        impl LayerDelegate for FlexLayerDelegate {
+            fn draw(&self, ctx: &mut PaintCtx) {
+                ctx.draw_styled_box(ctx.bounds, &BoxStyle::new().fill(theme::palette::GREY_500));
+            }
+        }
+
+        let layer = Layer::new();
+        layer.set_delegate(FlexLayerDelegate);
+
         Flex {
+            layer: Layer::new(),
             id: WidgetId::here(),
             axis_orientation,
             items: vec![],
@@ -153,5 +166,9 @@ impl Widget for Flex {
             // eprintln!("flex {:?} paint item {:?}", self.axis, item.child_offset());
             item.paint(ctx, env);
         }
+    }
+
+    fn layer(&self) -> &LayerHandle {
+        &self.layer
     }
 }

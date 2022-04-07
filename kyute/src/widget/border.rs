@@ -32,8 +32,8 @@ impl LayerDelegate for BorderLayerDelegate {
 /// Applies a border around a widget.
 #[derive(Clone)]
 pub struct Border<Inner> {
-    layer: Layer,
-    border_layer: Layer,
+    layer: LayerHandle,
+    border_layer: LayerHandle,
     inner: LayoutWrapper<Inner>,
     border: style::Border,
 }
@@ -42,8 +42,8 @@ impl<Inner: Widget + 'static> Border<Inner> {
     #[composable]
     pub fn new(border: style::Border, inner: Inner) -> Border<Inner> {
         Border {
-            layer: Layer::new(),
-            border_layer: Layer::new(),
+            layer: LayerHandle::new(),
+            border_layer: LayerHandle::new(),
             inner: LayoutWrapper::new(inner),
             border,
         }
@@ -69,7 +69,7 @@ impl<Inner: Widget> Widget for Border<Inner> {
         self.inner.widget_id()
     }
 
-    fn layer(&self) -> &Layer {
+    fn layer(&self) -> &LayerHandle {
         &self.layer
     }
 

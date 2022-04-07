@@ -1,10 +1,8 @@
 use crate::{
-    animation::layer::LayerDrawCtx,
-    core::WindowPaintCtx,
-    event::{PointerEvent, PointerEventKind},
+    animation::layer::Layer,
     style::{BoxStyle, Paint, PaintCtxExt, VisualState},
-    widget::{prelude::*, LayoutWrapper},
-    Color, GpuFrameCtx, Length, RoundToPixel, SideOffsets, UnitExt, ValueRef,
+    widget::prelude::*,
+    Length, RoundToPixel, SideOffsets, UnitExt, ValueRef,
 };
 
 struct ContainerLayerDelegate {
@@ -25,7 +23,7 @@ impl LayerDelegate for ContainerLayerDelegate {
 
 #[derive(Clone)]
 pub struct Container<Content> {
-    layer: Layer,
+    layer: LayerHandle,
     alignment: Option<Alignment>,
     min_width: Option<Length>,
     min_height: Option<Length>,
@@ -247,7 +245,7 @@ impl<Content: Widget> Widget for Container<Content> {
         self.content.widget_id()
     }
 
-    fn layer(&self) -> &Layer {
+    fn layer(&self) -> &LayerHandle {
         &self.layer
     }
 
@@ -393,6 +391,12 @@ impl<Content: Widget> Widget for Container<Content> {
         {
             ctx.request_redraw();
         }*/
-        self.content.event(ctx, event, env)
+
+        // route_event:
+        // - by default, applies the layer transform, handle routing, and calls event
+        // - for WidgetPods: also apply filter
+
+        //ctx.route_event(&self.content, event, env);
+        self.content.route_event(ctx, event, env)
     }
 }

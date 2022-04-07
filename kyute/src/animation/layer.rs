@@ -24,11 +24,11 @@ unsafe fn downcast_layer_delegate_unchecked<T: LayerDelegate>(delegate: &mut dyn
 
 struct LayerInner {
     /// Parent layer.
-    parent: Weak<LayerImpl>,
+    parent: Weak<Layer>,
     /// Optional surface backing the visual.
     surface: Option<CompositionSurface>,
     /// Child visuals.
-    children: Vec<Layer>,
+    children: Vec<LayerHandle>,
     /// Size of the visual in DIPs.
     size: Size,
     scale_factor: f64,
@@ -44,17 +44,17 @@ pub(crate) struct SurfaceUpdateCtx {
     scale_factor: f64,
 }
 
-struct LayerImpl {
+pub struct Layer {
     /// Backend composition layer.
     layer: CompositionLayer,
     /// Parent layer.
-    parent: RefCell<Option<Weak<LayerImpl>>>,
+    parent: RefCell<Option<Weak<Layer>>>,
     ///
     surface_backed: Cell<bool>,
     /// Optional surface backing the visual.
     surface: RefCell<Option<CompositionSurface>>,
     /// Child visuals.
-    children: RefCell<Vec<Arc<LayerImpl>>>,
+    children: RefCell<Vec<Arc<Layer>>>,
     /// Size of the visual in DIPs.
     size: Cell<Size>,
     scale_factor: Cell<f64>,
@@ -68,9 +68,16 @@ struct LayerImpl {
     delegate_dirty: Cell<bool>,
 }
 
-impl LayerImpl {
-    fn new(composition_layer: CompositionLayer, scale_factor: f64) -> LayerImpl {
-        LayerImpl {
+impl Layer {
+    /// Creates a new layer, anchored at the calling location.
+    #[composable]
+    pub fn new() -> LayerHandle {
+        cache::state(|| LayerHandle::new_from_composition_layer(CompositionLayer::new(), 1.0)).get()
+    }
+
+    /// Creates a new layer.
+    pub(crate) fn new_from_composition_layer(composition_layer: CompositionLayer, scale_factor: f64) -> LayerHandle {
+        Arc::new(Layer {
             layer: composition_layer,
             parent: Default::default(),
             surface_backed: Cell::new(false),
@@ -82,10 +89,12 @@ impl LayerImpl {
             delegate: RefCell::new(None),
             dirty: Cell::new(false),
             delegate_dirty: Cell::new(false),
-        }
+        })
     }
 
-    fn set_surface_backed(&self, surface_backed: bool) {
+    /// Marks the layer as being "surface-backed" (a surface is allocated to receive the drawn contents
+    /// instead of drawing the contents in the parent layer).
+    pub fn set_surface_backed(&self, surface_backed: bool) {
         let was_surface_backed = self.surface_backed.replace(surface_backed);
         if !surface_backed {
             self.surface.replace(None);
@@ -100,6 +109,7 @@ impl LayerImpl {
         }
     }
 
+    /// Used internally.
     fn ensure_composition_surface(&self, scale_factor: f64) -> Ref<CompositionSurface> {
         {
             let mut surface = self.surface.borrow_mut();
@@ -118,7 +128,8 @@ impl LayerImpl {
         Ref::map(self.surface.borrow(), |r| r.as_ref().unwrap())
     }
 
-    fn set_scale_factor(&self, scale_factor: f64) {
+    /// Sets the scale factor of the layer.
+    pub fn set_scale_factor(&self, scale_factor: f64) {
         let old_scale_factor = self.scale_factor.replace(scale_factor);
         if old_scale_factor != scale_factor {
             if self.surface_backed.get() {
@@ -128,10 +139,15 @@ impl LayerImpl {
         }
     }
 
+    /// Returns the size of the layer.
+    pub fn size(&self) -> Size {
+        self.0.size.get()
+    }
+
     /// Sets the size of this layer.
     ///
     /// If the layer has a backing surface, this surface is deleted and will be recreated.
-    fn set_size(&self, size: Size) {
+    pub fn set_size(&self, size: Size) {
         let old_size = self.size.replace(size);
         if old_size != size {
             if self.surface_backed.get() {
@@ -151,14 +167,14 @@ impl LayerImpl {
     }
 
     /// Sets the delegate used to paint this layer.
-    fn set_delegate(&self, delegate: impl LayerDelegate + 'static) {
+    pub fn set_delegate(&self, delegate: impl LayerDelegate + 'static) {
         self.delegate.replace(Some(Box::new(delegate)));
         trace!(layer = self as *const _, "delegate changed (set_delegate)");
         self.delegate_dirty.set(true);
         self.set_dirty();
     }
 
-    fn update_delegate<T: LayerDelegate + Default>(&self, update_fn: impl FnOnce(&mut T) -> bool) {
+    pub fn update_delegate<T: LayerDelegate + Default>(&self, update_fn: impl FnOnce(&mut T) -> bool) {
         let mut delegate = self.delegate.borrow_mut();
         let delegate = &mut *delegate;
         let changed = if let Some(ref mut delegate) = delegate {
@@ -179,14 +195,19 @@ impl LayerImpl {
         };
 
         if changed {
-            trace!(layer = self as *const _, "delegate changed");
+            trace!(layer = self as *const _, "delegate changed (update_delegate)");
             self.delegate_dirty.set(true);
             self.set_dirty();
         }
     }
 
+    /// Returns the previously set transform.
+    pub fn transform(&self) -> Transform {
+        self.transform.get()
+    }
+
     /// Sets the transform of the visual.
-    fn set_transform(&self, transform: Transform) {
+    pub fn set_transform(&self, transform: Transform) {
         let old_transform = self.transform.replace(transform);
         if old_transform != transform {
             trace!(layer = self as *const _, "transform changed");
@@ -194,8 +215,12 @@ impl LayerImpl {
         }
     }
 
+    pub fn set_offset(&self, offset: Offset) {
+        self.set_transform(offset.to_transform());
+    }
+
     /// Adds a child layer.
-    fn add_child(self: &Arc<Self>, layer: &Arc<LayerImpl>) {
+    pub fn add_child(self: &Arc<Self>, layer: &Arc<Layer>) {
         assert!(layer.parent.borrow().is_none(), "Layer already has a parent");
 
         let mut children = self.children.borrow_mut();
@@ -211,7 +236,7 @@ impl LayerImpl {
     }
 
     /// Removes a child layer.
-    fn remove_child(&self, layer: &Arc<LayerImpl>) {
+    pub fn remove_child(&self, layer: &Arc<Layer>) {
         let mut children = self.children.borrow_mut();
         let pos = children
             .iter()
@@ -220,6 +245,58 @@ impl LayerImpl {
         let child = children.remove(pos);
         child.parent.replace(None);
         self.set_dirty();
+    }
+
+    /// Returns the accumulated transform to go from this layer to the specified child layer.
+    /// If this layer and the specified layer are the same, returns the identity transform.
+    ///
+    /// # Panics
+    ///
+    /// - if `self` isn't found in the list of ancestors of `to_child` while walking up the layer tree.
+    pub fn child_transform(&self, to_child: &Layer) -> Transform {
+        // same layer, point is already in the correct coordinate space, return it unchanged
+        if to_child as *const _ == self as *const _ {
+            return point;
+        }
+
+        // In principle, we walk up the layer tree, starting from the child and up to the parent, collecting
+        // transforms along the way, and then combining them.
+        //
+        // In practice, we do it recursively because this way we don't have to allocate a vector.
+
+        let parent = to_child.parent.borrow_mut();
+        if let Some(parent) = &*parent {
+            if let Some(parent) = parent.upgrade() {
+                let up_transform = self.child_transform(&parent);
+                self.transform.get().then(&up_transform)
+            } else {
+                panic!("map_to_child: invalid parent")
+            }
+        } else {
+            // we reached the root of the tree without encountering `self` along the way:
+            // the specified layer wasn't a child of us.
+            panic!("map_to_child: could not find parent in the ancestors of the layer")
+        }
+    }
+
+    /// Converts the given coordinates in this layer's coordinate space to coordinates in the specified target layer's coordinate space,
+    /// assuming that the target is a child of this layer.
+    ///
+    /// If this layer and the specified layer are the same, returns the coordinates unchanged.
+    ///
+    /// # Panics
+    ///
+    /// - if `self` isn't found in the list of ancestors of `child` while walking up the layer tree.
+    pub fn map_to_child(&self, point: Point, child: &Layer) -> Point {
+        self.child_transform(child).transform_point(point)
+    }
+
+    /// Returns whether the layer contains the given point.
+    pub fn contains(&self, point: Point) -> bool {
+        // the bounds of the layer in its local space is always (0,0->width,height), although this
+        // might change at some point if arbitrary bounds become more convenient.
+        let bounds = Rect::new(Point::origin(), self.size.get());
+        bounds.contains(point)
     }
 
     fn draw(&self, ctx: &mut PaintCtx) {
@@ -336,78 +413,4 @@ impl LayerImpl {
 }
 
 /// A visual element in the visual tree, possibly backed by a composition surface.
-#[derive(Clone, Data)]
-pub struct Layer(Arc<LayerImpl>);
-
-impl Layer {
-    #[composable]
-    pub fn new() -> Layer {
-        cache::state(|| Layer::new_from_composition_layer(CompositionLayer::new(), 1.0)).get()
-    }
-
-    /// Creates a new layer.
-    pub(crate) fn new_from_composition_layer(composition_layer: CompositionLayer, scale_factor: f64) -> Layer {
-        Layer(Arc::new(LayerImpl::new(composition_layer, scale_factor)))
-    }
-
-    /// Sets the delegate used to paint this layer.
-    pub fn set_delegate(&self, delegate: impl LayerDelegate + 'static) {
-        self.0.set_delegate(delegate);
-    }
-
-    pub fn update_delegate<T: LayerDelegate + Default>(&self, update_fn: impl FnOnce(&mut T) -> bool) {
-        self.0.update_delegate(update_fn)
-    }
-
-    /// Sets the size of the visual.
-    pub fn set_size(&self, size: Size) {
-        self.0.set_size(size);
-    }
-
-    /// Returns the size of the visual.
-    pub fn size(&self) -> Size {
-        self.0.size.get()
-    }
-
-    /// Sets the scale factor.
-    pub fn set_scale_factor(&self, scale_factor: f64) {
-        self.0.set_scale_factor(scale_factor);
-    }
-
-    /// Sets the transform of the visual.
-    pub fn set_transform(&self, transform: Transform) {
-        self.0.set_transform(transform);
-    }
-
-    pub fn transform(&self) -> Transform {
-        self.0.transform.get()
-    }
-
-    pub fn set_offset(&self, offset: Offset) {
-        self.set_transform(offset.to_transform());
-    }
-
-    /// Adds a child visual.
-    pub fn add_child(&self, layer: &Layer) {
-        self.0.add_child(&layer.0)
-    }
-
-    /// Remove all child visuals
-    pub fn remove_all(&self) {
-        todo!()
-    }
-
-    pub fn remove_child(&self, layer: &Layer) {
-        todo!()
-    }
-
-    /// Ensures that this visual is backed by a composition surface.
-    pub fn set_surface_backed(&self, surface_backed: bool) {
-        self.0.set_surface_backed(surface_backed)
-    }
-
-    /// Called internally.
-    pub(crate) fn update(&self, ctx: &SurfaceUpdateCtx) {
-        self.0.update(ctx, &Transform::identity())
-    }
-}
+pub type LayerHandle = Arc<Layer>;

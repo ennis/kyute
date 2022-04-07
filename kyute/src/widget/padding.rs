@@ -1,7 +1,4 @@
-use crate::{
-    widget::{prelude::*, LayoutWrapper},
-    Length, SideOffsets,
-};
+use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx, Length, SideOffsets};
 
 /// A widgets that insets its content by a specified padding.
 pub struct Padding<W> {
@@ -9,7 +6,7 @@ pub struct Padding<W> {
     right: Length,
     bottom: Length,
     left: Length,
-    inner: LayoutWrapper<W>,
+    inner: WidgetPod<W>,
 }
 
 impl<W: Widget + 'static> Padding<W> {
@@ -27,18 +24,18 @@ impl<W: Widget + 'static> Padding<W> {
             right: right.into(),
             bottom: bottom.into(),
             left: left.into(),
-            inner: LayoutWrapper::new(inner),
+            inner,
         }
     }
 
     /// Returns a reference to the inner widget.
     pub fn inner(&self) -> &W {
-        self.inner.inner()
+        &self.inner
     }
 
     /// Returns a mutable reference to the inner widget.
     pub fn inner_mut(&mut self) -> &mut W {
-        self.inner.inner_mut()
+        &mut self.inner
     }
 }
 
@@ -47,8 +44,8 @@ impl<W: Widget> Widget for Padding<W> {
         self.inner.widget_id()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env);
+    fn layer(&self) -> &LayerHandle {
+        self.inner.layer()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -66,7 +63,7 @@ impl<W: Widget> Widget for Padding<W> {
         m
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.inner.paint(ctx, env)
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.inner.event(ctx, event, env);
     }
 }

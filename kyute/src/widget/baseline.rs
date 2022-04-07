@@ -44,7 +44,7 @@ impl<Inner: Widget> Widget for Baseline<Inner> {
         self.inner.widget_id()
     }
 
-    fn layer(&self) -> &Layer {
+    fn layer(&self) -> &LayerHandle {
         self.inner.layer()
     }
 

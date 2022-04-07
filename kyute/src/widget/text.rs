@@ -1,5 +1,5 @@
 use crate::{
-    animation::{Layer, LayerDelegate},
+    animation::{LayerDelegate, LayerHandle},
     composable,
     drawing::ToSkia,
     make_uniform_data, BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
@@ -216,7 +216,7 @@ impl LayerDelegate for TextLayerDelegate {
 /// Displays formatted text.
 #[derive(Clone)]
 pub struct Text {
-    layer: Layer,
+    layer: LayerHandle,
     /// Input formatted text.
     formatted_text: FormattedText,
     /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
@@ -230,7 +230,7 @@ impl Text {
     pub fn new(formatted_text: impl Into<FormattedText>) -> Text {
         let formatted_text = formatted_text.into();
         Text {
-            layer: Layer::new(),
+            layer: LayerHandle::new(),
             formatted_text,
             paragraph: RefCell::new(None),
             //run_masks: RefCell::new(None),

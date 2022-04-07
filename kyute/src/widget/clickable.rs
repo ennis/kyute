@@ -46,8 +46,12 @@ impl<Content: Widget + 'static> Widget for Clickable<Content> {
         Some(self.id)
     }
 
-    fn debug_name(&self) -> &str {
-        std::any::type_name::<Self>()
+    fn layer(&self) -> &LayerHandle {
+        self.content.layer()
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.content.layout(ctx, constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -55,21 +59,13 @@ impl<Content: Widget + 'static> Widget for Clickable<Content> {
             if p.kind == PointerEventKind::PointerDown {
                 self.clicked.signal(());
                 ctx.request_focus();
-                ctx.request_redraw();
+                //ctx.request_redraw();
                 ctx.set_handled();
             }
         }
 
         if !ctx.handled() {
-            self.content.event(ctx, event, env);
+            self.content.route_event(ctx, event, env);
         }
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.content.layout(ctx, constraints, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.content.paint(ctx, env);
     }
 }

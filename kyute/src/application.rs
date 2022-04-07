@@ -6,11 +6,11 @@ use crate::{
     asset::ASSET_LOADER,
     cache,
     cache::Cache,
-    core::WidgetId,
+    core::{FocusState, WidgetId},
     drawing::{ImageCache, IMAGE_CACHE},
     theme,
     util::fs_watch::{FileSystemWatcher, FILE_SYSTEM_WATCHER},
-    AssetLoader, Environment, Event, InternalEvent, Widget, WidgetPod,
+    AssetLoader, Environment, Event, EventCtx, InternalEvent, Widget, WidgetPod,
 };
 use kyute_shell::{
     winit,
@@ -96,7 +96,9 @@ impl AppCtx {
         while !self.pending_events.is_empty() {
             let events = mem::take(&mut self.pending_events);
             for mut event in events {
-                root_widget.send_root_event(self, event_loop, &mut event, root_env)
+                let mut dummy_focus_state = FocusState::default();
+                let mut event_ctx = EventCtx::new(self, &mut dummy_focus_state, event_loop, None, &root_widget.layer());
+                root_widget.route_event(&mut event_ctx, &mut event, root_env)
             }
         }
     }

@@ -12,6 +12,8 @@ use crate::{
 // Widget definition
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// why would I need a layer if all i'm doing is delegating to another widget for rendering?
+
 #[derive(Clone)]
 pub struct Button {
     id: WidgetId,
@@ -81,7 +83,7 @@ impl Widget for Button {
         Some(self.id)
     }
 
-    fn layer(&self) -> &Layer {
+    fn layer(&self) -> &LayerHandle {
         self.inner.layer()
     }
 

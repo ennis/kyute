@@ -57,15 +57,12 @@ impl<W: Widget> Widget for Align<W> {
         self.inner.widget_id()
     }
 
-    fn layer(&self) -> &Layer {
+    fn layer(&self) -> &LayerHandle {
         self.inner.layer()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        /*ctx.with_local_transform(self.inner.layer().transform(), event, |ctx, event| {
-            self.inner.event(ctx, event, env);
-        })*/
-        ctx.route_event(event, &self.inner, env);
+        self.inner.event(ctx, event, env);
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
