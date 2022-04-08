@@ -3,6 +3,7 @@
 
 mod atom;
 mod color;
+pub mod counter;
 mod data;
 
 use std::ops::{Mul, Neg};

@@ -1,11 +1,10 @@
 use crate::{
     cache,
-    core::WindowPaintCtx,
     event::PointerEventKind,
     style::{BoxStyle, VisualState},
     theme,
     widget::{prelude::*, Container, Grid, Label},
-    Color, GpuFrameCtx, Signal, State, UnitExt, ValueRef,
+    Color, Signal, State, UnitExt, ValueRef,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -57,7 +56,7 @@ impl Button {
 
     /// Sets the text color of this button.
     pub fn set_text_color(&mut self, color: Color) {
-        self.inner.contents_mut().set_color(color);
+        self.inner.inner_mut().set_color(color);
     }
 
     /// Returns whether this button has been clicked.
@@ -100,30 +99,26 @@ impl Widget for Button {
             match p.kind {
                 PointerEventKind::PointerDown => {
                     ctx.request_focus();
-                    ctx.request_redraw();
                     ctx.set_handled();
                     ctx.capture_pointer();
                     //self.active.set(true);
                 }
                 PointerEventKind::PointerUp => {
-                    ctx.request_redraw();
                     //self.active.set(false);
                     self.clicked.signal(());
                 }
                 PointerEventKind::PointerOver => {
                     //trace!("button PointerOver");
-                    ctx.request_redraw();
                 }
                 PointerEventKind::PointerOut => {
                     //trace!("button PointerOut");
-                    ctx.request_redraw();
                 }
                 _ => {}
             }
         }
 
         if !ctx.handled() {
-            self.inner.event(ctx, event, env)
+            self.inner.route_event(ctx, event, env)
         }
     }
 }

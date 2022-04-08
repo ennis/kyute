@@ -5,7 +5,7 @@ use crate::{
     theme,
     widget::{
         grid::GridTrackDefinition, prelude::*, Clickable, Container, DragController, Grid, GridLength, GridSpan, Image,
-        LayoutWrapper, Null, Scaling, WidgetWrapper,
+        Null, Scaling, WidgetWrapper,
     },
     Data, Length, UnitExt, ValueRef, WidgetExt,
 };
@@ -224,7 +224,7 @@ impl TableView {
                 // they are drag handles for resizing the columns.
                 for i in 1..num_columns {
                     let resize_handle = DragController::new(
-                        Container::new(Null)
+                        Container::new(Null::new())
                             .background(theme::palette::RED_800)
                             .fixed_width(4.dip())
                             .fixed_height(100.percent()),
@@ -275,7 +275,9 @@ impl TableView {
                             i,
                             ..,
                             -1,
-                            Container::new(Null).fill().box_style(params.selected_style.clone()),
+                            Container::new(Null::new())
+                                .fill()
+                                .box_style(params.selected_style.clone()),
                         );
                     }
                     // also add a clickable rect, and clicking it adds the row to the selection
@@ -283,7 +285,9 @@ impl TableView {
                         i,
                         ..,
                         -1,
-                        Clickable::new(Null).on_click(|| selection.flip(row.id.clone())).fill(),
+                        Clickable::new(Null::new())
+                            .on_click(|| selection.flip(row.id.clone()))
+                            .fill(),
                     );
                 }
 
@@ -346,16 +350,16 @@ impl Widget for TableView {
         self.grid.widget_id()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.grid.event(ctx, event, env);
-        // handle
+    fn layer(&self) -> &LayerHandle {
+        self.grid.layer()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.grid.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.grid.paint(ctx, env)
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.grid.route_event(ctx, event, env);
+        // handle
     }
 }

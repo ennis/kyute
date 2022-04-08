@@ -7,10 +7,13 @@ use kyute_shell::{
     application::Application,
 };
 use skia_safe as sk;
+use skia_safe::Color4f;
 use std::{
     any::{Any, TypeId},
     borrow::Borrow,
     cell::{Cell, Ref, RefCell},
+    fmt,
+    fmt::Formatter,
     sync::{Arc, Weak},
 };
 
@@ -39,9 +42,9 @@ struct LayerInner {
     dirty: bool,
 }
 
-pub(crate) struct SurfaceUpdateCtx {
-    recording_context: sk::gpu::DirectContext,
-    scale_factor: f64,
+pub struct SurfaceUpdateCtx {
+    pub recording_context: sk::gpu::DirectContext,
+    pub scale_factor: f64,
 }
 
 pub struct Layer {
@@ -68,11 +71,17 @@ pub struct Layer {
     delegate_dirty: Cell<bool>,
 }
 
+impl fmt::Debug for Layer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Layer").finish_non_exhaustive()
+    }
+}
+
 impl Layer {
     /// Creates a new layer, anchored at the calling location.
     #[composable]
     pub fn new() -> LayerHandle {
-        cache::state(|| LayerHandle::new_from_composition_layer(CompositionLayer::new(), 1.0)).get()
+        cache::state(|| Layer::new_from_composition_layer(CompositionLayer::new(), 1.0)).get()
     }
 
     /// Creates a new layer.
@@ -102,9 +111,9 @@ impl Layer {
         if was_surface_backed != surface_backed {
             self.set_dirty();
             if was_surface_backed && !surface_backed {
-                trace!(layer = self as *const _, "layer is now a draw layer");
+                trace!(layer = ?self as *const _, "layer is now a draw layer");
             } else if !was_surface_backed && surface_backed {
-                trace!(layer = self as *const _, "layer is now a surface-backed layer");
+                trace!(layer = ?self as *const _, "layer is now a surface-backed layer");
             }
         }
     }
@@ -117,11 +126,13 @@ impl Layer {
                 let pixel_size = self.size.get() * scale_factor;
                 let pixel_size_i = SizeI::new(pixel_size.width as i32, pixel_size.height as i32);
                 trace!(
-                    layer = self as *const _,
+                    layer = ?self as *const _,
                     "allocated a composition surface of size {:?}",
                     pixel_size_i
                 );
-                *surface = Some(CompositionSurface::new(pixel_size_i));
+                let new_surface = CompositionSurface::new(pixel_size_i);
+                self.layer.set_content(&new_surface);
+                *surface = Some(new_surface);
             }
         }
 
@@ -141,7 +152,7 @@ impl Layer {
 
     /// Returns the size of the layer.
     pub fn size(&self) -> Size {
-        self.0.size.get()
+        self.size.get()
     }
 
     /// Sets the size of this layer.
@@ -160,8 +171,11 @@ impl Layer {
     fn set_dirty(&self) {
         let was_dirty = self.dirty.replace(true);
         if !was_dirty && !self.surface_backed.get() {
-            if let Some(parent) = self.parent.borrow().upgrade() {
-                parent.set_dirty()
+            let parent = self.parent.borrow();
+            if let Some(parent) = &*parent {
+                if let Some(parent) = parent.upgrade() {
+                    parent.set_dirty()
+                }
             }
         }
     }
@@ -169,33 +183,33 @@ impl Layer {
     /// Sets the delegate used to paint this layer.
     pub fn set_delegate(&self, delegate: impl LayerDelegate + 'static) {
         self.delegate.replace(Some(Box::new(delegate)));
-        trace!(layer = self as *const _, "delegate changed (set_delegate)");
+        trace!(layer = ?self as *const _, "delegate changed (set_delegate)");
         self.delegate_dirty.set(true);
         self.set_dirty();
     }
 
-    pub fn update_delegate<T: LayerDelegate + Default>(&self, update_fn: impl FnOnce(&mut T) -> bool) {
+    pub fn update_delegate<T: LayerDelegate + Any + Default>(&self, update_fn: impl FnOnce(&mut T) -> bool) {
         let mut delegate = self.delegate.borrow_mut();
         let delegate = &mut *delegate;
         let changed = if let Some(ref mut delegate) = delegate {
-            let delegate = &mut **delegate; // &mut Box<T> -> &mut <T>
-            if delegate.type_id() == TypeId::of::<T>() {
-                unsafe { update_fn(downcast_layer_delegate_unchecked(delegate)) }
+            let delegate_dyn = &mut **delegate; // &mut Box<T> -> &mut <T>
+            if Any::type_id(delegate_dyn) == TypeId::of::<T>() {
+                unsafe { update_fn(downcast_layer_delegate_unchecked(delegate_dyn)) }
             } else {
                 let mut d = T::default();
                 update_fn(&mut d);
-                *delegate = Some(d);
+                *delegate = Box::new(d);
                 true
             }
         } else {
             let mut d = T::default();
             update_fn(&mut d);
-            *delegate = Some(d);
+            *delegate = Some(Box::new(d));
             true
         };
 
         if changed {
-            trace!(layer = self as *const _, "delegate changed (update_delegate)");
+            trace!(layer = ?self as *const _, "delegate changed (update_delegate)");
             self.delegate_dirty.set(true);
             self.set_dirty();
         }
@@ -210,7 +224,8 @@ impl Layer {
     pub fn set_transform(&self, transform: Transform) {
         let old_transform = self.transform.replace(transform);
         if old_transform != transform {
-            trace!(layer = self as *const _, "transform changed");
+            trace!(layer = ?self as *const _, "transform changed");
+            self.layer.set_transform(&transform);
             self.set_dirty();
         }
     }
@@ -221,13 +236,13 @@ impl Layer {
 
     /// Adds a child layer.
     pub fn add_child(self: &Arc<Self>, layer: &Arc<Layer>) {
-        assert!(layer.parent.borrow().is_none(), "Layer already has a parent");
-
         let mut children = self.children.borrow_mut();
         if children.iter().find(|child| Arc::ptr_eq(child, layer)).is_some() {
             // already there
             return;
         }
+
+        assert!(layer.parent.borrow().is_none(), "Layer already has a parent");
 
         self.layer.add_child(&layer.layer);
         children.push(layer.clone());
@@ -243,8 +258,19 @@ impl Layer {
             .position(|child| Arc::ptr_eq(child, layer))
             .expect("Layer not a child");
         let child = children.remove(pos);
+        self.layer.remove_child(&child.layer);
         child.parent.replace(None);
         self.set_dirty();
+    }
+
+    /// Removes all children.
+    pub fn remove_all_children(&self) {
+        let mut children = self.children.take();
+        self.layer.remove_all();
+        self.set_dirty();
+        for child in children {
+            child.parent.replace(None);
+        }
     }
 
     /// Returns the accumulated transform to go from this layer to the specified child layer.
@@ -253,10 +279,10 @@ impl Layer {
     /// # Panics
     ///
     /// - if `self` isn't found in the list of ancestors of `to_child` while walking up the layer tree.
-    pub fn child_transform(&self, to_child: &Layer) -> Transform {
+    pub fn child_transform(&self, to_child: &Layer) -> Option<Transform> {
         // same layer, point is already in the correct coordinate space, return it unchanged
         if to_child as *const _ == self as *const _ {
-            return point;
+            return Some(Transform::identity());
         }
 
         // In principle, we walk up the layer tree, starting from the child and up to the parent, collecting
@@ -268,14 +294,15 @@ impl Layer {
         if let Some(parent) = &*parent {
             if let Some(parent) = parent.upgrade() {
                 let up_transform = self.child_transform(&parent);
-                self.transform.get().then(&up_transform)
+                up_transform.map(|upt| self.transform.get().then(&upt))
             } else {
                 panic!("map_to_child: invalid parent")
             }
         } else {
             // we reached the root of the tree without encountering `self` along the way:
             // the specified layer wasn't a child of us.
-            panic!("map_to_child: could not find parent in the ancestors of the layer")
+            None
+            //panic!("map_to_child: could not find parent in the ancestors of the layer")
         }
     }
 
@@ -288,7 +315,7 @@ impl Layer {
     ///
     /// - if `self` isn't found in the list of ancestors of `child` while walking up the layer tree.
     pub fn map_to_child(&self, point: Point, child: &Layer) -> Point {
-        self.child_transform(child).transform_point(point)
+        self.child_transform(child).unwrap().transform_point(point)
     }
 
     /// Returns whether the layer contains the given point.
@@ -299,7 +326,13 @@ impl Layer {
         bounds.contains(point)
     }
 
+    pub fn composition_layer(&self) -> &CompositionLayer {
+        &self.layer
+    }
+
     fn draw(&self, ctx: &mut PaintCtx) {
+        trace!("Layer[{:?}]::draw: bounds={:?}", self as *const _, ctx.bounds);
+        ctx.canvas.clear(Color4f::new(0.1, 0.2, 0.3, 1.0));
         let delegate = self.delegate.borrow();
         if let Some(delegate) = &*delegate {
             delegate.draw(ctx);
@@ -315,7 +348,7 @@ impl Layer {
         }
     }
 
-    fn update(&self, ctx: &SurfaceUpdateCtx, parent_transform: &Transform) {
+    pub fn update(&self, ctx: &SurfaceUpdateCtx, parent_transform: &Transform) {
         // skip if we're not dirty
         if !self.dirty.get() {
             return;
@@ -333,12 +366,19 @@ impl Layer {
 
             if non_surface_backed_child_dirty || self.delegate_dirty.get() {
                 let surface = self.ensure_composition_surface(ctx.scale_factor);
-                surface.draw(|_, target| {
+                surface.draw(|surface_draw_ctx, target| {
+                    trace!(
+                        "Layer[{:?}] painting native surface ({}x{})",
+                        self as *const _,
+                        surface_draw_ctx.width,
+                        surface_draw_ctx.height
+                    );
                     let mut gr_ctx = Application::instance().lock_gpu_context();
                     let mut frame = gr_ctx.start_frame(Default::default());
                     let skia_image_usage_flags = graal::vk::ImageUsageFlags::COLOR_ATTACHMENT
                         | graal::vk::ImageUsageFlags::TRANSFER_SRC
                         | graal::vk::ImageUsageFlags::TRANSFER_DST;
+                    let mut recording_context = ctx.recording_context.clone();
 
                     // create the skia render pass
                     {
@@ -370,8 +410,11 @@ impl Layer {
                                 ycbcr_conversion_info: Default::default(),
                                 sharing_mode: sk::gpu::vk::SharingMode::EXCLUSIVE,
                             };
-                            let render_target =
-                                sk::gpu::BackendRenderTarget::new_vulkan((512 as i32, 512 as i32), 1, &skia_image_info);
+                            let render_target = sk::gpu::BackendRenderTarget::new_vulkan(
+                                (surface_draw_ctx.width as i32, surface_draw_ctx.height as i32),
+                                1,
+                                &skia_image_info,
+                            );
                             let mut surface = sk::Surface::from_backend_render_target(
                                 &mut recording_context,
                                 &render_target,
@@ -386,7 +429,7 @@ impl Layer {
                             let mut ctx = PaintCtx {
                                 canvas,
                                 window_transform: Transform::identity(),
-                                scale_factor,
+                                scale_factor: self.scale_factor.get(),
                                 invalid: &Default::default(),
                                 bounds: Rect::new(Point::origin(), self.size.get()),
                             };

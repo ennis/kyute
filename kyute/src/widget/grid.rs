@@ -334,7 +334,7 @@ impl Data for GridLayout {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Data)]
 struct GridBackgroundLayerDelegate {
     layout: GridLayout,
     row_background: Paint,
@@ -375,8 +375,8 @@ impl LayerDelegate for GridBackgroundLayerDelegate {
             for row in row_layout.iter().skip(1) {
                 ctx.draw_styled_box(
                     Rect::new(
-                        Point::new(0.0, row.pos - layout.row_gap),
-                        Size::new(width, layout.row_gap),
+                        Point::new(0.0, row.pos - self.layout.row_gap),
+                        Size::new(width, self.layout.row_gap),
                     ),
                     &BoxStyle::new().fill(self.row_gap_background.clone()),
                 );
@@ -386,8 +386,8 @@ impl LayerDelegate for GridBackgroundLayerDelegate {
             for column in column_layout.iter().skip(1) {
                 ctx.draw_styled_box(
                     Rect::new(
-                        Point::new(column.pos - layout.column_gap, 0.0),
-                        Size::new(layout.column_gap, height),
+                        Point::new(column.pos - self.layout.column_gap, 0.0),
+                        Size::new(self.layout.column_gap, height),
                     ),
                     &BoxStyle::new().fill(self.column_gap_background.clone()),
                 );
@@ -519,7 +519,7 @@ impl Grid {
     pub fn new() -> Grid {
         Grid {
             id: WidgetId::here(),
-            layer: LayerHandle::new(),
+            layer: Layer::new(),
             column_definitions: vec![],
             row_definitions: vec![],
             items: vec![],
@@ -985,64 +985,11 @@ impl Widget for Grid {
         Some(self.id)
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        match event {
-            Event::Internal(InternalEvent::UpdateChildFilter { filter }) => {
-                // intercept the UpdateChildFilter event to return the cached filter instead
-                // of recalculating it
-                // FIXME: this is pretty ugly
-                if let Some(ref cached_filter) = self.cached_child_filter.get() {
-                    filter.extend(cached_filter);
-                } else {
-                    let mut child_filter = WidgetFilter::new();
-                    for item in self.items.iter() {
-                        let mut e = Event::Internal(InternalEvent::UpdateChildFilter {
-                            filter: &mut child_filter,
-                        });
-                        item.widget.event(ctx, &mut e, env);
-                    }
-                    self.cached_child_filter.set(Some(child_filter));
-                    filter.extend(&child_filter);
-                }
-            }
-            event => {
-                // run the events through the items in reverse order
-                // in order to give priority to topmost items
-                for item in self.items.iter().rev() {
-                    item.widget.event(ctx, event, env);
-                }
-            }
-        }
-
-        /*// handle column drag
-        if let Event::Pointer(ref p) = event {
-            match p.kind {
-                PointerEventKind::PointerDown => {
-                    // hit-test
-                    // start drag
-                    self.drag_start.set(Some(p.position));
-                }
-                PointerEventKind::PointerUp => {
-                    if let Some(drag_start) = self.drag_start.replace(None) {
-                        let offset = p.position - drag_start;
-                        self.drag_offset.signal(offset);
-                    }
-                }
-                PointerEventKind::PointerMove => {
-                    if let Some(drag_start) = self.drag_start.get() {
-                        let offset = p.position - drag_start;
-                        self.drag_offset.signal(offset);
-                    }
-                }
-                PointerEventKind::PointerOver => {}
-                PointerEventKind::PointerOut => {}
-            }
-        }*/
+    fn layer(&self) -> &LayerHandle {
+        &self.layer
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) {
-        // try to use the cached layout first
-
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         // compute gap sizes
         let column_gap = self
             .column_gap
@@ -1169,9 +1116,9 @@ impl Widget for Grid {
         }
 
         // ------ update layer ------
+        let size = Size::new(width, height);
         self.layer.set_scale_factor(ctx.scale_factor);
-        self.layer.set_size(Size::new(width, height));
-        // TODO baseline
+        self.layer.set_size(size);
         let show_grid_lines = env.get(SHOW_GRID_LAYOUT_LINES).unwrap_or_default();
         // TODO update_delegate
         self.layer.set_delegate(GridBackgroundLayerDelegate {
@@ -1189,9 +1136,67 @@ impl Widget for Grid {
             },
             show_grid_lines,
         });
+
+        // TODO baseline
+        Measurements {
+            size,
+            clip_bounds: Rect::new(Point::origin(), size),
+            baseline: None,
+        }
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        match event {
+            Event::Internal(InternalEvent::UpdateChildFilter { filter }) => {
+                // intercept the UpdateChildFilter event to return the cached filter instead
+                // of recalculating it
+                // FIXME: this is pretty ugly
+                if let Some(ref cached_filter) = self.cached_child_filter.get() {
+                    filter.extend(cached_filter);
+                } else {
+                    let mut child_filter = WidgetFilter::new();
+                    for item in self.items.iter() {
+                        let mut e = Event::Internal(InternalEvent::UpdateChildFilter {
+                            filter: &mut child_filter,
+                        });
+                        item.widget.route_event(ctx, &mut e, env);
+                    }
+                    self.cached_child_filter.set(Some(child_filter));
+                    filter.extend(&child_filter);
+                }
+            }
+            event => {
+                // run the events through the items in reverse order
+                // in order to give priority to topmost items
+                for item in self.items.iter().rev() {
+                    item.widget.route_event(ctx, event, env);
+                }
+            }
+        }
+
+        /*// handle column drag
+        if let Event::Pointer(ref p) = event {
+            match p.kind {
+                PointerEventKind::PointerDown => {
+                    // hit-test
+                    // start drag
+                    self.drag_start.set(Some(p.position));
+                }
+                PointerEventKind::PointerUp => {
+                    if let Some(drag_start) = self.drag_start.replace(None) {
+                        let offset = p.position - drag_start;
+                        self.drag_offset.signal(offset);
+                    }
+                }
+                PointerEventKind::PointerMove => {
+                    if let Some(drag_start) = self.drag_start.get() {
+                        let offset = p.position - drag_start;
+                        self.drag_offset.signal(offset);
+                    }
+                }
+                PointerEventKind::PointerOver => {}
+                PointerEventKind::PointerOut => {}
+            }
+        }*/
     }
 }

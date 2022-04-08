@@ -6,7 +6,7 @@ use crate::{
 };
 use skia_safe as sk;
 use skia_safe::gradient_shader::GradientShaderColors;
-use std::fmt;
+use std::{ffi::c_void, fmt, mem};
 
 /// Represents a gradient stop.
 #[derive(Clone, Debug, Data, PartialEq, serde::Deserialize)]
@@ -17,7 +17,7 @@ pub struct GradientStop {
     color: Color,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Data, serde::Deserialize)]
 pub enum RepeatMode {
     Repeat,
     NoRepeat,
@@ -67,7 +67,14 @@ macro_rules! make_uniform_data {
 }
 
 fn compare_runtime_effects(left: &sk::RuntimeEffect, right: &sk::RuntimeEffect) -> bool {
-    left.native() as *const _ == right.native() as *const _
+    // FIXME: skia_safe doesn't let us access the native pointer for some reason,
+    // so force our way though
+    //left.native() as *const _ == right.native() as *const _
+    unsafe {
+        let ptr_a: *const c_void = mem::transmute_copy(left);
+        let ptr_b: *const c_void = mem::transmute_copy(right);
+        ptr_a == ptr_b
+    }
 }
 
 /// Paint.

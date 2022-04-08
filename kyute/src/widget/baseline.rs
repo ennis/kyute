@@ -1,10 +1,5 @@
 //! Baseline alignment.
-use crate::{
-    core::WindowPaintCtx,
-    widget::{prelude::*, LayoutWrapper},
-    GpuFrameCtx,
-};
-use kyute_common::RoundToPixel;
+use crate::{widget::prelude::*, RoundToPixel};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Definition
@@ -62,6 +57,6 @@ impl<Inner: Widget> Widget for Baseline<Inner> {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env);
+        self.inner.route_event(ctx, event, env);
     }
 }

@@ -1,13 +1,6 @@
-use crate::{
-    cache::state,
-    core::{HitTestResult, WindowPaintCtx},
-    event::{PointerEvent, PointerEventKind},
-    widget::prelude::*,
-    GpuFrameCtx, State,
-};
-use std::cell::Cell;
+use crate::widget::prelude::*;
 
-#[derive(Clone)]
+/*#[derive(Clone)]
 pub struct LayoutWrapper<W> {
     inner: W,
     offset: Cell<Offset>,
@@ -137,7 +130,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
     fn gpu_frame<'a, 'b>(&'a self, ctx: &mut GpuFrameCtx<'a, 'b>) {
         self.inner.gpu_frame(ctx);
     }
-}
+}*/
 
 /// A wrapper widget that makes the result of its layout available to the composition step.
 #[derive(Clone)]
@@ -194,8 +187,8 @@ impl<Content: Widget + 'static> Widget for LayoutInspector<Content> {
         self.content.widget_id()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.content.event(ctx, event, env)
+    fn layer(&self) -> &LayerHandle {
+        self.content.layer()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -206,7 +199,7 @@ impl<Content: Widget + 'static> Widget for LayoutInspector<Content> {
         measurements
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.content.paint(ctx, env)
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.content.route_event(ctx, event, env)
     }
 }

@@ -2,11 +2,22 @@ use crate::{
     cache, drawing,
     drawing::ToSkia,
     util::fs_watch::watch_path,
-    widget::{prelude::*, LayoutWrapper, Null},
+    widget::{prelude::*, Null},
     AssetLoader, SizeI,
 };
 use std::task::Poll;
 use tracing::trace;
+
+pub struct ImageLayerDelegate {
+    image: drawing::Image,
+}
+
+impl LayerDelegate for ImageLayerDelegate {
+    fn draw(&self, ctx: &mut PaintCtx) {
+        ctx.canvas
+            .draw_image(self.image.to_skia(), Point::origin().to_skia(), None);
+    }
+}
 
 #[derive(Clone)]
 enum ImageContents<Placeholder> {
@@ -14,27 +25,13 @@ enum ImageContents<Placeholder> {
     Placeholder(Placeholder),
 }
 
-impl<Placeholder: Widget> Widget for ImageContents<Placeholder> {
-    fn widget_id(&self) -> Option<WidgetId> {
-        None
+impl<Placeholder: Widget> ImageContents<Placeholder> {
+    pub fn new(image: drawing::Image) -> ImageContents<Placeholder> {
+        ImageContents::Image(image)
     }
 
-    fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        match self {
-            ImageContents::Image(_) => Measurements::from(constraints.max),
-            ImageContents::Placeholder(ref placeholder) => placeholder.layout(ctx, constraints, env),
-        }
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        match self {
-            ImageContents::Image(ref img) => {
-                ctx.canvas.draw_image(img.to_skia(), Point::origin().to_skia(), None);
-            }
-            ImageContents::Placeholder(ref placeholder) => placeholder.paint(ctx, env),
-        }
+    pub fn placeholder(placeholder: Placeholder) -> ImageContents<Placeholder> {
+        ImageContents::Placeholder(placeholder)
     }
 }
 
@@ -46,7 +43,8 @@ pub enum Scaling {
 
 #[derive(Clone)]
 pub struct Image<Placeholder> {
-    contents: LayoutWrapper<ImageContents<Placeholder>>,
+    contents: ImageContents<Placeholder>,
+    layer: LayerHandle,
     scaling: Scaling,
 }
 
@@ -55,17 +53,20 @@ impl Image<Null> {
     #[composable]
     pub fn from_uri(uri: &str, scaling: Scaling) -> Image<Null> {
         let image: drawing::Image = AssetLoader::instance().load(uri).expect("failed to load image");
+        let layer = Layer::new();
+        layer.set_delegate(ImageLayerDelegate { image: image.clone() });
 
         Image {
-            contents: LayoutWrapper::new(ImageContents::Image(image)),
+            layer,
+            contents: ImageContents::Image(image),
             scaling,
         }
     }
 
     /// Returns the size of the image in pixels.
     pub fn pixel_size(&self) -> SizeI {
-        match self.contents.inner() {
-            ImageContents::Image(image) => image.size(),
+        match self.contents {
+            ImageContents::Image(ref image) => image.size(),
             ImageContents::Placeholder(_) => {
                 // FIXME: cannot know the size of a placeholder before layout; use LayoutInspector? ensure fixed size?
                 SizeI::new(0, 0)
@@ -98,30 +99,36 @@ impl Image<Null> {
             reload,
         );
 
+        let layer = Layer::new();
         match image {
-            Poll::Ready(Some(image)) => Image {
-                contents: LayoutWrapper::new(ImageContents::Image(image)),
-                scaling,
-            },
+            Poll::Ready(Some(image)) => {
+                layer.set_delegate(ImageLayerDelegate { image: image.clone() });
+                Image {
+                    layer,
+                    contents: ImageContents::Image(image),
+                    scaling,
+                }
+            }
             _ => Image {
-                contents: LayoutWrapper::new(ImageContents::Placeholder(Null)),
+                layer,
+                contents: ImageContents::Placeholder(Null::new()),
                 scaling,
             },
         }
     }
 
-    pub fn placeholder<Placeholder: Widget>(self, placeholder: Placeholder) -> Image<Placeholder> {
+    /*pub fn placeholder<Placeholder: Widget>(self, placeholder: Placeholder) -> Image<Placeholder> {
         match self.contents.into_inner() {
             ImageContents::Image(image) => Image {
-                contents: LayoutWrapper::new(ImageContents::Image(image)),
+                contents: ImageContents::Image(image),
                 scaling: Scaling::Cover,
             },
             ImageContents::Placeholder(_) => Image {
-                contents: LayoutWrapper::new(ImageContents::Placeholder(placeholder)),
+                contents: ImageContents::Placeholder(placeholder),
                 scaling: Scaling::Cover,
             },
         }
-    }
+    }*/
 }
 
 impl<Placeholder: Widget> Widget for Image<Placeholder> {
@@ -129,11 +136,16 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
         None
     }
 
-    fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
+    fn layer(&self) -> &LayerHandle {
+        match self.contents {
+            ImageContents::Image(_) => &self.layer,
+            ImageContents::Placeholder(ref placeholder) => placeholder.layer(),
+        }
+    }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        match self.contents.inner() {
-            ImageContents::Image(img) => {
+        match self.contents {
+            ImageContents::Image(ref img) => {
                 let size_i = img.size();
                 let size = Size::new(size_i.width as f64, size_i.height as f64) / ctx.scale_factor;
 
@@ -160,13 +172,12 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
                     }
                 };
 
-                self.contents.layout(ctx, BoxConstraints::tight(scaled_size), env)
+                self.layer.set_size(scaled_size);
+                Measurements::new(scaled_size)
             }
-            ImageContents::Placeholder(placeholder) => placeholder.layout(ctx, constraints, env),
+            ImageContents::Placeholder(ref placeholder) => placeholder.layout(ctx, constraints, env),
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.contents.paint(ctx, env);
-    }
+    fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 }

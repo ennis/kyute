@@ -1,4 +1,4 @@
-use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx, Length, SideOffsets};
+use crate::{widget::prelude::*, Length, SideOffsets};
 
 /// A widgets that insets its content by a specified padding.
 pub struct Padding<W> {
@@ -6,7 +6,7 @@ pub struct Padding<W> {
     right: Length,
     bottom: Length,
     left: Length,
-    inner: WidgetPod<W>,
+    inner: W,
 }
 
 impl<W: Widget + 'static> Padding<W> {
@@ -59,11 +59,11 @@ impl<W: Widget> Widget for Padding<W> {
         let mut m = self.inner.layout(ctx, constraints.deflate(padding), env);
         m.size = m.local_bounds().outer_rect(padding).size;
         m.clip_bounds = m.clip_bounds.outer_rect(padding);
-        self.inner.set_offset(Offset::new(padding.left, padding.top));
+        self.inner.layer().set_offset(Offset::new(padding.left, padding.top));
         m
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env);
+        self.inner.route_event(ctx, event, env);
     }
 }

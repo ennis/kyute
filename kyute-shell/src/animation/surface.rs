@@ -1,7 +1,8 @@
 use crate::{application::Application, backend::util::ToWide};
 use graal::{platform::windows::DeviceExtWindows, vk};
-use kyute_common::SizeI;
+use kyute_common::{counter::Counter, SizeI};
 use std::ptr;
+use tracing::trace;
 use windows::{
     core::{Interface, PCWSTR},
     Win32::{
@@ -17,8 +18,11 @@ use windows::{
     },
 };
 
+static COMPOSITION_SURFACE_COUNTER: Counter = Counter::new();
+
 pub struct SurfaceDrawCtx {
-    // nothing
+    pub width: u32,
+    pub height: u32,
 }
 
 pub struct CompositionSurface {
@@ -72,7 +76,15 @@ impl CompositionSurface {
                         &dx_buffer,
                         ptr::null(),
                         GENERIC_ALL,
-                        PCWSTR(format!("CompositionBuffer{}", i).to_wide().as_ptr()),
+                        PCWSTR(
+                            format!(
+                                "kyute_shell::animation::CompositionSurface@{}:{}",
+                                COMPOSITION_SURFACE_COUNTER.next(),
+                                i
+                            )
+                            .to_wide()
+                            .as_ptr(),
+                        ),
                     )
                     .expect("CreateSharedHandle failed")
             };
@@ -118,7 +130,11 @@ impl CompositionSurface {
     pub fn draw(&self, draw: impl FnOnce(&SurfaceDrawCtx, &graal::ImageInfo)) {
         let buf_index = unsafe { self.swap_chain.GetCurrentBackBufferIndex() };
         let target_image = &self.buffers[buf_index as usize];
-        let surface_draw_ctx = SurfaceDrawCtx {};
+        let surface_draw_ctx = SurfaceDrawCtx {
+            width: self.size.width as u32,
+            height: self.size.height as u32,
+        };
+        trace!("CompositionSurface::draw {:?}", self.size);
         draw(&surface_draw_ctx, &target_image);
         unsafe {
             self.swap_chain.Present(0, 0).expect("Present failed");

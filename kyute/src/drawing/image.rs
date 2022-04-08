@@ -2,8 +2,10 @@
 use crate::{asset::AssetLoadError, drawing::ToSkia, Asset, AssetLoader, Data, EnvKey, SizeI};
 use std::{
     collections::HashMap,
+    ffi::c_void,
     io,
     io::Read,
+    mem,
     sync::{Arc, Mutex},
 };
 
@@ -13,7 +15,14 @@ pub struct Image(skia_safe::Image);
 
 impl Data for Image {
     fn same(&self, other: &Self) -> bool {
-        self.0.native() as *const _ == other.0.native() as *const _
+        // FIXME: skia_safe doesn't let us access the native pointer for some reason,
+        // so force our way though
+        //self.0.native() as *const _ == other.0.native() as *const _
+        unsafe {
+            let ptr_a: *const c_void = mem::transmute_copy(&self.0);
+            let ptr_b: *const c_void = mem::transmute_copy(&other.0);
+            ptr_a == ptr_b
+        }
     }
 }
 

@@ -208,8 +208,16 @@ impl<Content: Widget + 'static> Widget for ContextMenu<Content> {
         Some(self.id)
     }
 
+    fn layer(&self) -> &LayerHandle {
+        self.content.layer()
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.content.layout(ctx, constraints, env)
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.content.event(ctx, event, env);
+        self.content.route_event(ctx, event, env);
         if !ctx.handled {
             match *event {
                 Event::Pointer(ref pointer_event)
@@ -228,13 +236,5 @@ impl<Content: Widget + 'static> Widget for ContextMenu<Content> {
                 _ => {}
             }
         }
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.content.layout(ctx, constraints, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.content.paint(ctx, env)
     }
 }

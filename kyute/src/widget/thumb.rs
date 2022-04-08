@@ -88,8 +88,16 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
         Some(self.id)
     }
 
+    fn layer(&self) -> &LayerHandle {
+        self.content.layer()
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.content.layout(ctx, constraints, env)
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.content.event(ctx, event, env);
+        self.content.route_event(ctx, event, env);
 
         if !ctx.handled {
             match event {
@@ -117,14 +125,6 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
                 _ => {}
             }
         }
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.content.layout(ctx, constraints, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.content.paint(ctx, env);
     }
 }
 
@@ -216,15 +216,15 @@ impl<Content: Widget + 'static> Widget for DragController<Content> {
         self.content.widget_id()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.content.event(ctx, event, env);
+    fn layer(&self) -> &LayerHandle {
+        self.content.layer()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.content.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.content.paint(ctx, env)
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.content.route_event(ctx, event, env);
     }
 }

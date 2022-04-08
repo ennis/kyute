@@ -1,12 +1,5 @@
 //! Baseline alignment.
-use crate::{
-    core::WindowPaintCtx,
-    style,
-    style::BorderPosition,
-    widget::{prelude::*, LayoutWrapper},
-    GpuFrameCtx, RoundToPixel,
-};
-use kyute_common::SideOffsets;
+use crate::{style, style::BorderPosition, widget::prelude::*, RoundToPixel, SideOffsets};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Layer delegate
@@ -34,7 +27,7 @@ impl LayerDelegate for BorderLayerDelegate {
 pub struct Border<Inner> {
     layer: LayerHandle,
     border_layer: LayerHandle,
-    inner: LayoutWrapper<Inner>,
+    inner: Inner,
     border: style::Border,
 }
 
@@ -42,21 +35,21 @@ impl<Inner: Widget + 'static> Border<Inner> {
     #[composable]
     pub fn new(border: style::Border, inner: Inner) -> Border<Inner> {
         Border {
-            layer: LayerHandle::new(),
-            border_layer: LayerHandle::new(),
-            inner: LayoutWrapper::new(inner),
+            layer: Layer::new(),
+            border_layer: Layer::new(),
+            inner,
             border,
         }
     }
 
     /// Returns a reference to the inner widget.
     pub fn inner(&self) -> &Inner {
-        self.inner.inner()
+        &self.inner
     }
 
     /// Returns a mutable reference to the inner widget.
     pub fn inner_mut(&mut self) -> &mut Inner {
-        self.inner.inner_mut()
+        &mut self.inner
     }
 }
 
@@ -98,6 +91,6 @@ impl<Inner: Widget> Widget for Border<Inner> {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env);
+        self.inner.route_event(ctx, event, env);
     }
 }

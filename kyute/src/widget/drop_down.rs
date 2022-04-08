@@ -130,17 +130,10 @@ impl<T: Clone + 'static> Widget for DropDown<T> {
                     // show the context menu
                     trace!("dropdown PointerDown {:?}", p.position);
                     ctx.track_popup_menu(self.create_context_menu(), p.window_position);
-                    ctx.request_redraw();
                     ctx.set_handled();
                 }
-                PointerEventKind::PointerOver => {
-                    //trace!("button PointerOver");
-                    ctx.request_redraw();
-                }
-                PointerEventKind::PointerOut => {
-                    //trace!("button PointerOut");
-                    ctx.request_redraw();
-                }
+                PointerEventKind::PointerOver => {}
+                PointerEventKind::PointerOut => {}
                 _ => {}
             },
             Event::MenuCommand(id) => {

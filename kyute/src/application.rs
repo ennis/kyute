@@ -65,6 +65,7 @@ impl AppCtx {
                 warn!("window id {:?} already registered", window_id);
             }
             Entry::Vacant(entry) => {
+                trace!("registered window id {:?} to widget {:?}", window_id, widget_id);
                 entry.insert(widget_id);
             }
         }

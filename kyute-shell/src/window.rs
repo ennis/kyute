@@ -226,7 +226,7 @@ impl Window {
         if let Some(parent_window) = parent_window {
             builder = builder.with_parent_window(parent_window.hwnd.0 as *mut _);
         }
-        //builder = builder.with_no_redirection_bitmap(true);
+        builder = builder.with_no_redirection_bitmap(true);
         let window = builder.build(event_loop).map_err(Error::Winit)?;
         let hinstance = HINSTANCE(window.hinstance() as isize);
         let hwnd = HWND(window.hwnd() as isize);

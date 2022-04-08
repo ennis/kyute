@@ -66,7 +66,8 @@ impl<Content: Widget + 'static> Container<Content> {
     ///
     /// The returned value is unspecified if this function is called before layout.
     pub fn content_offset(&self) -> Offset {
-        self.content.offset()
+        let transform = self.content.layer().transform();
+        Offset::new(transform.m31, transform.m32)
     }
 
     /// Returns a reference to the contents.
@@ -271,7 +272,7 @@ impl<Content: Widget> Widget for Container<Content> {
         let content_constraints = constraints.deflate(content_padding);
 
         let mut content_size = self.content.layout(ctx, content_constraints, env);
-        content_size.size = self.content.layer().local_bounds().outer_rect(content_padding).size;
+        content_size.size = content_size.local_bounds().outer_rect(content_padding).size;
 
         let mut content_offset = Offset::new(content_padding.left, content_padding.top);
 
@@ -355,7 +356,7 @@ impl<Content: Widget> Widget for Container<Content> {
         // finally, round to pixel boundaries
         content_offset = content_offset.round_to_pixel(ctx.scale_factor);
 
-        self.content.set_offset(content_offset);
+        self.content.layer().set_offset(content_offset);
 
         let box_style = self.box_style.resolve(env).unwrap();
         let clip_bounds = box_style.clip_bounds(Rect::new(Point::origin(), size), ctx.scale_factor);

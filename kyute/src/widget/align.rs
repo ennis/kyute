@@ -1,8 +1,4 @@
-use crate::{
-    core::WindowPaintCtx,
-    widget::{prelude::*, LayoutWrapper},
-    GpuFrameCtx,
-};
+use crate::widget::prelude::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Definition
@@ -22,7 +18,7 @@ impl<W: Widget + 'static> Align<W> {
             alignment,
             width_factor: None,
             height_factor: None,
-            inner: LayoutWrapper::new(inner),
+            inner,
         }
     }
 
@@ -61,10 +57,6 @@ impl<W: Widget> Widget for Align<W> {
         self.inner.layer()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env);
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         // measure child
         let child = self.inner.layout(ctx, constraints.loosen(), env);
@@ -95,5 +87,9 @@ impl<W: Widget> Widget for Align<W> {
             clip_bounds: Rect::new(Point::origin(), size),
             baseline,
         }
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.inner.route_event(ctx, event, env);
     }
 }

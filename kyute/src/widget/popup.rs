@@ -5,6 +5,7 @@ use kyute_shell::winit::window::WindowBuilder;
 #[derive(Clone)]
 pub struct Popup {
     id: WidgetId,
+    layer: LayerHandle,
     shown: cache::State<bool>,
     window: Option<Window>,
 }
@@ -23,6 +24,7 @@ impl Popup {
 
         Popup {
             id: WidgetId::here(),
+            layer: Layer::new(),
             shown,
             window,
         }
@@ -41,15 +43,17 @@ impl Widget for Popup {
         Some(self.id)
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        if let Some(ref window) = self.window {
-            window.event(ctx, event, env);
-        }
+    fn layer(&self) -> &LayerHandle {
+        &self.layer
     }
 
     fn layout(&self, _ctx: &mut LayoutCtx, _constraints: BoxConstraints, _env: &Environment) -> Measurements {
         Measurements::default()
     }
 
-    fn paint(&self, _ctx: &mut PaintCtx, _env: &Environment) {}
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        if let Some(ref window) = self.window {
+            window.route_event(ctx, event, env);
+        }
+    }
 }

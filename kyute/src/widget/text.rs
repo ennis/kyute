@@ -1,5 +1,5 @@
 use crate::{
-    animation::{LayerDelegate, LayerHandle},
+    animation::{Layer, LayerDelegate, LayerHandle},
     composable,
     drawing::ToSkia,
     make_uniform_data, BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
@@ -15,7 +15,6 @@ use skia_safe as sk;
 use std::{
     cell::{Ref, RefCell},
     ptr,
-    sync::Arc,
 };
 use threadbound::ThreadBound;
 
@@ -229,8 +228,9 @@ impl Text {
     #[composable]
     pub fn new(formatted_text: impl Into<FormattedText>) -> Text {
         let formatted_text = formatted_text.into();
+        trace!("Text::new {:?}", formatted_text.plain_text);
         Text {
-            layer: LayerHandle::new(),
+            layer: Layer::new(),
             formatted_text,
             paragraph: RefCell::new(None),
             //run_masks: RefCell::new(None),
@@ -249,6 +249,10 @@ impl Widget for Text {
     fn widget_id(&self) -> Option<WidgetId> {
         // no need for a stable identity
         None
+    }
+
+    fn layer(&self) -> &LayerHandle {
+        &self.layer
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {

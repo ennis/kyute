@@ -37,6 +37,16 @@ pub struct LayoutCtx<'a> {
 }
 
 impl<'a> LayoutCtx<'a> {
+    pub fn new(app_ctx: &'a mut AppCtx, scale_factor: f64) -> LayoutCtx<'a> {
+        LayoutCtx {
+            scale_factor,
+            app_ctx,
+            changed: false,
+        }
+    }
+}
+
+impl<'a> LayoutCtx<'a> {
     pub fn round_to_pixel(&self, dip_length: f64) -> f64 {
         (dip_length * self.scale_factor).round()
     }
@@ -179,16 +189,31 @@ fn hit_test_helper(
 /// * `event` the event to proagate
 /// * `skip_hit_test`: if true, skip hit-test and unconditionally propagate the event to the widget
 /// * `env` current environment
-fn do_event(
+fn do_event<W: Widget + ?Sized>(
     parent_ctx: &mut EventCtx,
-    widget: &dyn Widget,
+    widget: &W,
     widget_id: Option<WidgetId>,
     event: &mut Event,
     skip_hit_test: bool,
     env: &Environment,
 ) {
     let target_layer = widget.layer();
-    let parent_to_target_transform = parent_ctx.layer.child_transform(target_layer);
+    let parent_to_target_transform = if let Some(transform) = parent_ctx.layer.child_transform(target_layer) {
+        transform
+    } else {
+        // no transform yet, the layer may be orphaned, possible if we haven't called layout yet
+        // This is OK, because some events are sent before layout (e.g. Initialize). For those, we don't care
+        // about the transform.
+        warn!(
+            "orphaned layer during event propagation: parent widget={:?}, target widget={:?}({}), event={:?}",
+            parent_ctx.id,
+            widget_id,
+            widget.debug_name(),
+            event,
+        );
+        //assert!(matches!(event, Event::Initialize));
+        Transform::identity()
+    };
     // transform from the visual tree root to the widget's layer
     let window_transform = parent_to_target_transform.then(&parent_ctx.window_transform);
 
@@ -239,91 +264,6 @@ fn do_event(
     }*/
     // -- propagate results to parent
     //parent_ctx.relayout |= ctx.relayout;
-}
-
-/// Routes an event to a target widget.
-fn route_event(parent_ctx: &mut EventCtx, widget: &dyn Widget, event: &mut Event, env: &Environment) {
-    let id = widget.widget_id();
-
-    // ---- Handle internal events (routing mostly) ----
-    match *event {
-        ////////////////////////////////////////////////////////////////////////////////////////
-        // Routed events
-        Event::Internal(InternalEvent::RouteWindowEvent {
-            target,
-            event: ref mut window_event,
-        }) => {
-            if id == Some(target) {
-                do_event(
-                    parent_ctx,
-                    widget,
-                    id,
-                    &mut Event::WindowEvent(window_event.clone()),
-                    false,
-                    env,
-                );
-            } else {
-                do_event(parent_ctx, widget, id, event, false, env);
-            }
-        }
-        Event::Internal(InternalEvent::RouteEvent {
-            target,
-            event: ref mut inner_event,
-        }) => {
-            if id == Some(target) {
-                do_event(parent_ctx, widget, id, inner_event, false, env);
-            } else {
-                do_event(parent_ctx, widget, id, event, false, env);
-            }
-        }
-        Event::Internal(InternalEvent::RoutePointerEvent {
-            target,
-            event: ref mut pointer_event,
-        }) => {
-            // routed pointer events follow the same logic as routed events (routed to target)
-            // and pointer events (converted to local coordinates), except that they are not filtered
-            // by hit-testing.
-            if id == Some(target) {
-                //trace!("pointer event reached {:?}", target);
-                do_event(parent_ctx, widget, id, &mut Event::Pointer(*pointer_event), true, env);
-            } else {
-                do_event(parent_ctx, widget, id, event, true, env);
-            }
-        }
-        // TODO remove? not sure that's still used
-        Event::Internal(InternalEvent::RouteRedrawRequest(target)) => {
-            if id == target {
-                do_event(parent_ctx, widget, id, &mut Event::WindowRedrawRequest, false, env);
-            } else {
-                do_event(parent_ctx, widget, id, event, false, env);
-            }
-        }
-        Event::Internal(InternalEvent::Traverse { ref mut widgets }) => {
-            // T: ?Sized
-            // This is problematic: it must clone self, and thus we must either have T == dyn Widget or T:Sized
-            //widgets.push(WidgetPod(self.state.this.upgrade().unwrap()));
-        }
-
-        ////////////////////////////////////////////////////////////////////////////////////////
-        // Other internal events
-        Event::Internal(InternalEvent::UpdateChildFilter { ref mut filter }) => {
-            if let Some(id) = id {
-                filter.add(&id);
-            }
-            // propagate
-            do_event(parent_ctx, widget, id, event, false, env);
-        }
-        Event::Initialize => {
-            // directly pass to widget
-            do_event(parent_ctx, widget, id, event, false, env);
-        }
-
-        ////////////////////////////////////////////////////////////////////////////////////////
-        // Regular event flow
-        _ => {
-            do_event(parent_ctx, widget, id, event, false, env);
-        }
-    }
 }
 
 pub struct EventCtx<'a> {
@@ -440,10 +380,10 @@ impl<'a> EventCtx<'a> {
         todo!()
     }
 
-    /// Requests a redraw of the current node and its children.
+    /*/// Requests a redraw of the current node and its children.
     pub fn request_redraw(&mut self) {
         self.redraw = true;
-    }
+    }*/
 
     /// Requests a relayout of the current widget.
     pub fn request_relayout(&mut self) {
@@ -529,9 +469,91 @@ impl<'a> EventCtx<'a> {
         self.handled
     }
 
-    /// Route event to a child widget.
-    pub fn default_route_event(&mut self, widget: &dyn Widget, event: &mut Event, env: &Environment) {
-        route_event(self, widget, event, env)
+    /// Routes an event to a target widget.
+    // TODO: we could use `dyn Widget` but them we can't call the function
+    // in generic contexts (e.g. with `W: Widget + ?Sized`, no way to get a `&dyn Widget` from a `&W`)
+    pub fn default_route_event<W: Widget + ?Sized>(&mut self, widget: &W, event: &mut Event, env: &Environment) {
+        let id = widget.widget_id();
+
+        // ---- Handle internal events (routing mostly) ----
+        match *event {
+            ////////////////////////////////////////////////////////////////////////////////////////
+            // Routed events
+            Event::Internal(InternalEvent::RouteWindowEvent {
+                target,
+                event: ref mut window_event,
+            }) => {
+                if id == Some(target) {
+                    do_event(
+                        self,
+                        widget,
+                        id,
+                        &mut Event::WindowEvent(window_event.clone()),
+                        false,
+                        env,
+                    );
+                } else {
+                    do_event(self, widget, id, event, false, env);
+                }
+            }
+            Event::Internal(InternalEvent::RouteEvent {
+                target,
+                event: ref mut inner_event,
+            }) => {
+                if id == Some(target) {
+                    do_event(self, widget, id, inner_event, false, env);
+                } else {
+                    do_event(self, widget, id, event, false, env);
+                }
+            }
+            Event::Internal(InternalEvent::RoutePointerEvent {
+                target,
+                event: ref mut pointer_event,
+            }) => {
+                // routed pointer events follow the same logic as routed events (routed to target)
+                // and pointer events (converted to local coordinates), except that they are not filtered
+                // by hit-testing.
+                if id == Some(target) {
+                    //trace!("pointer event reached {:?}", target);
+                    do_event(self, widget, id, &mut Event::Pointer(*pointer_event), true, env);
+                } else {
+                    do_event(self, widget, id, event, true, env);
+                }
+            }
+            // TODO remove? not sure that's still used
+            Event::Internal(InternalEvent::RouteRedrawRequest(target)) => {
+                if id == Some(target) {
+                    do_event(self, widget, id, &mut Event::WindowRedrawRequest, false, env);
+                } else {
+                    do_event(self, widget, id, event, false, env);
+                }
+            }
+            Event::Internal(InternalEvent::Traverse { ref mut widgets }) => {
+                // T: ?Sized
+                // This is problematic: it must clone self, and thus we must either have T == dyn Widget or T:Sized
+                //widgets.push(WidgetPod(self.state.this.upgrade().unwrap()));
+            }
+
+            ////////////////////////////////////////////////////////////////////////////////////////
+            // Other internal events
+            Event::Internal(InternalEvent::UpdateChildFilter { ref mut filter }) => {
+                if let Some(id) = id {
+                    filter.add(&id);
+                }
+                // propagate
+                do_event(self, widget, id, event, false, env);
+            }
+            Event::Initialize => {
+                // directly pass to widget
+                do_event(self, widget, id, event, false, env);
+            }
+
+            ////////////////////////////////////////////////////////////////////////////////////////
+            // Regular event flow
+            _ => {
+                do_event(self, widget, id, event, false, env);
+            }
+        }
     }
 }
 
@@ -855,12 +877,37 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         self.state.id
     }
 
-    fn debug_name(&self) -> &str {
-        self.widget().debug_name()
+    fn layer(&self) -> &LayerHandle {
+        self.widget.layer()
     }
 
-    fn layer(&self) -> &LayerHandle {
-        todo!()
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        // we just forward to the inner widget; we also check for invalid size values while we're at
+        // it, but that's only for debugging convenience.
+        let measurements = self.widget.layout(ctx, constraints, env);
+
+        if !measurements.size.width.is_finite() || !measurements.size.height.is_finite() {
+            warn!(
+                "layout[{:?}({})] returned non-finite measurements: {:?}",
+                self.state.id,
+                self.widget.debug_name(),
+                measurements
+            );
+        }
+        let layer_size = self.widget.layer().size();
+        if layer_size.width == 0.0 || layer_size.height == 0.0 {
+            warn!(
+                "layout[{:?}({})] produced a zero-sized layer",
+                self.state.id,
+                self.widget.debug_name()
+            );
+        }
+
+        measurements
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.widget.event(ctx, event, env)
     }
 
     fn route_event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -896,33 +943,16 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         parent_ctx.default_route_event(self, event, env)
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.widget.event(ctx, event, env)
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        // we just forward to the inner widget; we also check for invalid size values while we're at
-        // it, but that's only for debugging convenience.
-        let measurements = self.widget.layout(ctx, constraints, env);
-
-        if !measurements.size.width.is_finite() || !measurements.size.height.is_finite() {
-            warn!(
-                "layout[{:?}({})] returned non-finite measurements: {:?}",
-                self.state.id,
-                self.widget.debug_name(),
-                measurements
-            );
-        }
-
-        measurements
-    }
-
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {
         self.widget.window_paint(ctx);
     }
 
     fn gpu_frame<'a, 'b>(&'a self, _ctx: &mut GpuFrameCtx<'a, 'b>) {
         todo!()
+    }
+
+    fn debug_name(&self) -> &str {
+        self.widget().debug_name()
     }
 }
 
@@ -982,23 +1012,6 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
         self.state.id
     }
 
-    /// Prepares the root `EventCtx` and calls `self.event()`.
-    pub(crate) fn send_root_event(
-        &self,
-        app_ctx: &mut AppCtx,
-        event_loop: &EventLoopWindowTarget<ExtEvent>,
-        event: &mut Event,
-        env: &Environment,
-    ) {
-        // FIXME callId?
-        // The dummy `FocusState` for the root `EventCtx`. It is eventually replaced with the `FocusState`
-        // managed by `Window` widgets.
-        let mut dummy_focus_state = FocusState::default();
-        let mut event_ctx = EventCtx::new(app_ctx, &mut dummy_focus_state, event_loop, None);
-        //tracing::trace!("event={:?}", event);
-        self.event(&mut event_ctx, event, env);
-    }
-
     /// Initializes and layouts the widget if necessary (propagates the `Initialize` event and
     /// calls `root_layout`.
     pub(crate) fn initialize(
@@ -1009,7 +1022,7 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
     ) {
         let mut dummy_focus_state = FocusState::default();
         let mut event_ctx = EventCtx::new(app_ctx, &mut dummy_focus_state, event_loop, None, self.layer());
-        self.event(&mut event_ctx, &mut Event::Initialize, env);
+        self.route_event(&mut event_ctx, &mut Event::Initialize, env);
     }
 
     /*pub(crate) fn root_layout(&self, app_ctx: &mut AppCtx, env: &Environment) -> bool {

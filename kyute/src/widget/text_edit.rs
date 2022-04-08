@@ -2,17 +2,14 @@
 use crate::{
     composable,
     core::Widget,
-    drawing::ToSkia,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
-    style::{BoxStyle, PaintCtxExt},
     text::{FormattedText, Selection, TextAffinity, TextPosition},
     theme,
     widget::{prelude::*, Container, Text},
-    Color, Data,
+    Color, Data, UnitExt,
 };
 use keyboard_types::KeyState;
-use kyute_common::UnitExt;
 use kyute_text::Attribute;
 use skia_safe as sk;
 use std::{marker::PhantomData, sync::Arc};
@@ -39,6 +36,7 @@ fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
 /// Text editor widget.
 pub struct TextEdit {
     id: WidgetId,
+    layer: LayerHandle,
 
     /// Input formatted text.
     formatted_text: FormattedText,
@@ -80,9 +78,13 @@ impl TextEdit {
             .box_style(theme::TEXT_EDIT)
             .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip());
 
+        let layer = Layer::new();
+        layer.add_child(inner.layer());
+
         TextEdit {
             id: WidgetId::here(),
             formatted_text,
+            layer,
             selection,
             selection_changed: Signal::new(),
             editing_finished: Signal::new(),
@@ -189,7 +191,7 @@ impl TextEdit {
 
     /// Returns the position in the text (character offset between grapheme clusters) that is closest to the given point.
     fn text_position(&self, pos: Point) -> TextPosition {
-        let paragraph = self.inner.widget().contents().paragraph();
+        let paragraph = self.inner.widget().inner().paragraph();
         TextPosition {
             position: paragraph.hit_test_point(pos - self.inner.widget().content_offset()).idx,
             affinity: TextAffinity::Upstream,
@@ -217,11 +219,18 @@ impl Widget for TextEdit {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.inner.layout(ctx, constraints.tighten(), env)
+    fn layer(&self) -> &LayerHandle {
+        &self.layer
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        let measurements = self.inner.layout(ctx, constraints.tighten(), env);
+        self.layer.set_size(measurements.size);
+        self.layer.set_scale_factor(ctx.scale_factor);
+        measurements
+    }
+
+    /*fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
         // paint the text
         self.inner.paint(ctx, env);
 
@@ -251,13 +260,12 @@ impl Widget for TextEdit {
                 &paint,
             );
         }
-    }
+    }*/
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
         match event {
             Event::FocusGained => {
                 trace!("text edit: focus gained");
-                ctx.request_redraw();
             }
             Event::FocusLost => {
                 trace!("text edit: focus lost");
@@ -266,7 +274,6 @@ impl Widget for TextEdit {
                     self.notify_selection_changed(ctx, Selection { start: pos, end: pos })
                 }
                 self.notify_editing_finished(ctx, self.formatted_text.plain_text.clone());
-                ctx.request_redraw();
             }
             Event::Pointer(p) => {
                 match p.kind {
@@ -288,7 +295,6 @@ impl Widget for TextEdit {
                                 self.notify_selection_changed(ctx, Selection::empty(text_pos.position));
                             }
                         }
-                        ctx.request_redraw();
                         ctx.request_focus();
                         ctx.capture_pointer();
                         ctx.set_handled();
@@ -305,7 +311,6 @@ impl Widget for TextEdit {
                                     end: text_pos.position,
                                 },
                             );
-                            ctx.request_redraw();
                             ctx.set_handled();
                         }
                     }
@@ -347,13 +352,11 @@ impl Widget for TextEdit {
                     keyboard_types::Key::ArrowLeft => {
                         let selection = self.move_cursor(Movement::Left, k.modifiers.contains(Modifiers::SHIFT));
                         self.notify_selection_changed(ctx, selection);
-                        ctx.request_redraw();
                         ctx.set_handled();
                     }
                     keyboard_types::Key::ArrowRight => {
                         let selection = self.move_cursor(Movement::Right, k.modifiers.contains(Modifiers::SHIFT));
                         self.notify_selection_changed(ctx, selection);
-                        ctx.request_redraw();
                         ctx.set_handled();
                     }
                     keyboard_types::Key::Character(ref c) => {
@@ -521,15 +524,15 @@ impl<T> Widget for TextInput<T> {
         self.text_edit.widget_id()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.text_edit.event(ctx, event, env)
+    fn layer(&self) -> &LayerHandle {
+        self.text_edit.layer()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.text_edit.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.text_edit.paint(ctx, env)
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.text_edit.route_event(ctx, event, env)
     }
 }

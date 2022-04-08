@@ -84,7 +84,7 @@ impl ScrollArea {
         );
 
         let scroll_thumb = DragController::new(
-            Container::new(Null)
+            Container::new(Null::new())
                 .fix_size(Size::new(5.0, thumb_size))
                 .box_style(BoxStyle::new().radius(2.dip()).fill(Color::from_hex("#FF7F31"))),
         )
@@ -118,8 +118,16 @@ impl Widget for ScrollArea {
         self.inner.widget_id()
     }
 
+    fn layer(&self) -> &LayerHandle {
+        self.inner.layer()
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.inner.layout(ctx, constraints, env)
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env);
+        self.inner.route_event(ctx, event, env);
 
         if !ctx.handled {
             if let Event::Wheel(wheel) = event {
@@ -138,13 +146,5 @@ impl Widget for ScrollArea {
                 }
             }
         }
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.inner.layout(ctx, constraints, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.inner.paint(ctx, env)
     }
 }

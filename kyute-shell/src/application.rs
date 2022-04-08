@@ -19,7 +19,7 @@ use windows::{
                 D3D12CreateDevice, D3D12GetDebugInterface, ID3D12CommandQueue, ID3D12Debug, ID3D12Device,
                 D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
             },
-            DirectComposition::{DCompositionCreateDevice3, IDCompositionDesktopDevice},
+            DirectComposition::{DCompositionCreateDevice3, IDCompositionDesktopDevice, IDCompositionDeviceDebug},
             DirectWrite::{DWriteCreateFactory, IDWriteFactory, DWRITE_FACTORY_TYPE_SHARED},
             Dxgi::{CreateDXGIFactory2, IDXGIFactory3, DXGI_CREATE_FACTORY_DEBUG},
             Imaging::{CLSID_WICImagingFactory2, D2D::IWICImagingFactory2},
@@ -215,7 +215,7 @@ impl Application {
         };*/
 
         unsafe {
-            d3d12_debug.EnableDebugLayer();
+            //d3d12_debug.EnableDebugLayer();
         }
 
         let d3d12_device = unsafe {
@@ -302,8 +302,14 @@ impl Application {
                 &mut composition_device as *mut _ as *mut *mut c_void,
             )
             .expect("DCompositionCreateDevice failed");
-            ThreadBound::new(composition_device.unwrap())
+            // enable composition device debug
+            let composition_device = composition_device.unwrap();
+            let debug: IDCompositionDeviceDebug = composition_device.cast::<IDCompositionDeviceDebug>().unwrap();
+            debug.EnableDebugCounters();
+            ThreadBound::new(composition_device)
         };
+
+        // --------- Compositor debug ---------
 
         let app = Application {
             gpu_device,

@@ -43,7 +43,7 @@ pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
 pub use grid::{Grid, GridLength, GridRow, GridSpan};
 pub use image::{Image, Scaling};
 pub use label::Label;
-pub use layout_wrapper::{LayoutInspector, LayoutWrapper};
+pub use layout_wrapper::LayoutInspector;
 pub use menu::{Action, ContextMenu, Menu, MenuItem, Shortcut};
 pub use null::Null;
 pub use padding::Padding;
@@ -60,7 +60,10 @@ pub use titled_pane::TitledPane;
 
 pub use kyute_macros::WidgetWrapper;
 
-use crate::{BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Widget, WidgetId};
+use crate::{
+    animation::LayerHandle, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Widget,
+    WidgetId,
+};
 
 // TODO move somewhere else
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -89,16 +92,20 @@ pub trait WidgetWrapper {
         self.inner().widget_id()
     }
 
+    fn layer(&self) -> &LayerHandle {
+        self.inner().layer()
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.inner().event(ctx, event, env)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.inner().layout(ctx, constraints, env)
+    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.inner().route_event(ctx, event, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.inner().paint(ctx, env);
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.inner().layout(ctx, constraints, env)
     }
 }
 
@@ -107,16 +114,20 @@ impl<T: WidgetWrapper> Widget for T {
         WidgetWrapper::widget_id(self)
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        WidgetWrapper::event(self, ctx, event, env)
+    fn layer(&self) -> &LayerHandle {
+        WidgetWrapper::layer(self)
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         WidgetWrapper::layout(self, ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        WidgetWrapper::paint(self, ctx, env)
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        WidgetWrapper::event(self, ctx, event, env)
+    }
+
+    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        WidgetWrapper::route_event(self, ctx, event, env)
     }
 }
 
@@ -124,7 +135,7 @@ impl<T: WidgetWrapper> Widget for T {
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
-        animation::{LayerDelegate, LayerHandle},
+        animation::{Layer, LayerDelegate, LayerHandle},
         cache::Signal,
         composable, Alignment, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Offset,
         Orientation, PaintCtx, Point, Rect, Size, Transform, Widget, WidgetId, WidgetPod,

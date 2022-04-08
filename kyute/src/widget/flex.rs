@@ -103,14 +103,8 @@ impl Widget for Flex {
         Some(self.id)
     }
 
-    fn debug_name(&self) -> &str {
-        std::any::type_name::<Self>()
-    }
-
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        for item in self.items.iter() {
-            item.event(ctx, event, env);
-        }
+    fn layer(&self) -> &LayerHandle {
+        &self.layer
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -143,7 +137,7 @@ impl Widget for Flex {
                 Orientation::Vertical => Offset::new(0.0, d),
                 Orientation::Horizontal => Offset::new(d, 0.0),
             };
-            self.items[i].set_child_offset(offset);
+            self.items[i].layer().set_offset(offset);
             d += len + spacing;
             d = d.ceil();
         }
@@ -153,22 +147,21 @@ impl Widget for Flex {
             Orientation::Horizontal => Size::new(constraints.constrain_width(d), cross_axis_len),
         };
 
+        let size = size.round_to_pixel(ctx.scale_factor);
+
+        self.layer.remove_all_children();
+        self.layer.set_size(size);
+        self.layer.set_scale_factor(ctx.scale_factor);
+        for item in self.items.iter() {
+            self.layer.add_child(item.layer());
+        }
+
         Measurements::new(size.round_to_pixel(ctx.scale_factor))
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        ctx.draw_styled_box(
-            ctx.bounds,
-            &BoxStyle::new().fill(theme::keys::CONTROL_BACKGROUND_COLOR.get(env).unwrap()),
-        );
-
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         for item in self.items.iter() {
-            // eprintln!("flex {:?} paint item {:?}", self.axis, item.child_offset());
-            item.paint(ctx, env);
+            item.route_event(ctx, event, env);
         }
-    }
-
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
     }
 }

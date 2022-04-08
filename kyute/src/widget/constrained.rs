@@ -80,8 +80,8 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
         self.inner.widget_id()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.event(ctx, event, env);
+    fn layer(&self) -> &LayerHandle {
+        self.inner.layer()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -96,7 +96,7 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
         self.inner.layout(ctx, constraints, env)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
-        self.inner.paint(ctx, env)
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.inner.route_event(ctx, event, env);
     }
 }
