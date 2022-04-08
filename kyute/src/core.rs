@@ -32,7 +32,7 @@ pub const DISABLED: EnvKey<bool> = EnvKey::new("kyute.core.disabled");
 /// See [`Widget::layout`].
 pub struct LayoutCtx<'a> {
     pub scale_factor: f64,
-    app_ctx: &'a mut AppCtx,
+    pub app_ctx: &'a mut AppCtx,
     changed: bool,
 }
 
@@ -198,22 +198,44 @@ fn do_event<W: Widget + ?Sized>(
     env: &Environment,
 ) {
     let target_layer = widget.layer();
-    let parent_to_target_transform = if let Some(transform) = parent_ctx.layer.child_transform(target_layer) {
-        transform
+
+    let parent_to_target_transform = if let Some(parent_layer) = parent_ctx.layer {
+        if let Some(transform) = parent_layer.child_transform(target_layer) {
+            transform
+        } else {
+            // no transform yet, the layer may be orphaned, possible if we haven't called layout yet
+            // This is OK, because some events are sent before layout (e.g. Initialize). For those, we don't care
+            // about the transform.
+            warn!(
+                "orphaned layer during event propagation: parent widget={:?}, target widget={:?}({}), event={:?}",
+                parent_ctx.id,
+                widget_id,
+                widget.debug_name(),
+                event,
+            );
+            //assert!(matches!(event, Event::Initialize));
+            Transform::identity()
+        }
     } else {
-        // no transform yet, the layer may be orphaned, possible if we haven't called layout yet
-        // This is OK, because some events are sent before layout (e.g. Initialize). For those, we don't care
-        // about the transform.
-        warn!(
-            "orphaned layer during event propagation: parent widget={:?}, target widget={:?}({}), event={:?}",
-            parent_ctx.id,
-            widget_id,
-            widget.debug_name(),
-            event,
-        );
-        //assert!(matches!(event, Event::Initialize));
-        Transform::identity()
+        // no parent layer, this is the root layer; it might have a transform though, so apply it
+        target_layer.transform()
     };
+
+    match event {
+        Event::Pointer(p) => {
+            trace!(
+                "do_event: target={:?} pointer kind={:?} position={:?} transform offset={},{} layer={:?}",
+                widget.debug_name(),
+                p.kind,
+                p.position,
+                parent_to_target_transform.m31,
+                parent_to_target_transform.m32,
+                (&**target_layer) as *const _
+            )
+        }
+        _ => {}
+    }
+
     // transform from the visual tree root to the widget's layer
     let window_transform = parent_to_target_transform.then(&parent_ctx.window_transform);
 
@@ -223,7 +245,7 @@ fn do_event<W: Widget + ?Sized>(
         parent_window: parent_ctx.parent_window.as_deref_mut(),
         focus_state: parent_ctx.focus_state,
         window_transform,
-        layer: target_layer,
+        layer: Some(target_layer),
         scale_factor: parent_ctx.scale_factor,
         id: widget.widget_id(),
         handled: false,
@@ -242,8 +264,20 @@ fn do_event<W: Widget + ?Sized>(
 
                 if exempt_from_hit_test || target_layer.contains(p.position) {
                     // hit test pass
+                    trace!(
+                        "do_event: pointer event PASS @ {:?}{:?} in {:?}",
+                        widget.debug_name(),
+                        p.position,
+                        target_layer.size()
+                    );
                     widget.event(&mut target_ctx, event, env);
                 } else {
+                    /*trace!(
+                        "do_event: pointer event FAIL @ {:?}{:?} in {:?}",
+                        widget.debug_name(),
+                        p.position,
+                        target_layer.size()
+                    );*/
                     // hit test fail, skip
                 }
             }
@@ -272,7 +306,7 @@ pub struct EventCtx<'a> {
     pub(crate) parent_window: Option<&'a mut kyute_shell::window::Window>,
     pub(crate) focus_state: &'a mut FocusState,
     pub(crate) window_transform: Transform,
-    layer: &'a Layer,
+    layer: Option<&'a Layer>,
     pub(crate) scale_factor: f64,
     pub(crate) id: Option<WidgetId>,
     pub(crate) handled: bool,
@@ -287,7 +321,7 @@ impl<'a> EventCtx<'a> {
         focus_state: &'a mut FocusState,
         event_loop: &'a EventLoopWindowTarget<ExtEvent>,
         id: Option<WidgetId>,
-        root_layer: &'a Layer,
+        //root_layer: &'a Layer,
     ) -> EventCtx<'a> {
         EventCtx {
             app_ctx,
@@ -296,7 +330,7 @@ impl<'a> EventCtx<'a> {
             focus_state,
             window_transform: Transform::identity(),
             scale_factor: 1.0,
-            layer: root_layer,
+            layer: None,
             id,
             handled: false,
             relayout: false,
@@ -323,7 +357,6 @@ impl<'a> EventCtx<'a> {
         parent: &'b mut EventCtx,
         scale_factor: f64,
         window: &'b mut kyute_shell::window::Window,
-        root_layer: &'b Layer,
         focus_state: &'b mut FocusState,
     ) -> EventCtx<'b>
     where
@@ -335,9 +368,9 @@ impl<'a> EventCtx<'a> {
             parent_window: Some(window),
             focus_state,
             window_transform: Transform::identity(),
+            layer: None,
             scale_factor,
             id: parent.id,
-            layer: root_layer,
             handled: false,
             relayout: false,
             active: None,
@@ -886,6 +919,13 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         // it, but that's only for debugging convenience.
         let measurements = self.widget.layout(ctx, constraints, env);
 
+        /*trace!(
+            "WidgetPod[{:?}({})]::layout: measurements={:?}",
+            self.state.id,
+            self.widget.debug_name(),
+            measurements
+        );*/
+
         if !measurements.size.width.is_finite() || !measurements.size.height.is_finite() {
             warn!(
                 "layout[{:?}({})] returned non-finite measurements: {:?}",
@@ -1020,9 +1060,18 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
         event_loop: &EventLoopWindowTarget<ExtEvent>,
         env: &Environment,
     ) {
-        let mut dummy_focus_state = FocusState::default();
-        let mut event_ctx = EventCtx::new(app_ctx, &mut dummy_focus_state, event_loop, None, self.layer());
-        self.route_event(&mut event_ctx, &mut Event::Initialize, env);
+        {
+            let _span = trace_span!("initialize").entered();
+            let mut dummy_focus_state = FocusState::default();
+            let mut event_ctx = EventCtx::new(app_ctx, &mut dummy_focus_state, event_loop, None);
+            self.route_event(&mut event_ctx, &mut Event::Initialize, env);
+        }
+
+        {
+            let _span = trace_span!("layout").entered();
+            let mut layout_ctx = LayoutCtx::new(app_ctx, 1.0);
+            self.layout(&mut layout_ctx, BoxConstraints::default(), env);
+        }
     }
 
     /*pub(crate) fn root_layout(&self, app_ctx: &mut AppCtx, env: &Environment) -> bool {

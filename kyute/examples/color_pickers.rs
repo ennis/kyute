@@ -41,10 +41,15 @@ fn ui_root() -> impl Widget {
 }
 
 fn main() {
+    /*use tracing_subscriber::layer::SubscriberExt;
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()))
+        .expect("set up the subscriber");*/
+
     tracing_subscriber::fmt()
         .compact()
         .with_target(false)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+
     application::run(ui_root);
 }

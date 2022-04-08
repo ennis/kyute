@@ -256,6 +256,7 @@ impl Widget for Text {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
+        trace!("Text::layout {:?}", self.formatted_text.plain_text);
         let paragraph = self
             .formatted_text
             .create_paragraph(constraints.max, &ParagraphStyle::default());

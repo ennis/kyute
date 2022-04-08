@@ -1146,57 +1146,32 @@ impl Widget for Grid {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        match event {
-            Event::Internal(InternalEvent::UpdateChildFilter { filter }) => {
-                // intercept the UpdateChildFilter event to return the cached filter instead
-                // of recalculating it
-                // FIXME: this is pretty ugly
-                if let Some(ref cached_filter) = self.cached_child_filter.get() {
-                    filter.extend(cached_filter);
-                } else {
-                    let mut child_filter = WidgetFilter::new();
-                    for item in self.items.iter() {
-                        let mut e = Event::Internal(InternalEvent::UpdateChildFilter {
-                            filter: &mut child_filter,
-                        });
-                        item.widget.route_event(ctx, &mut e, env);
-                    }
-                    self.cached_child_filter.set(Some(child_filter));
-                    filter.extend(&child_filter);
+        // run the events through the items in reverse order
+        // in order to give priority to topmost items
+        for item in self.items.iter().rev() {
+            item.widget.route_event(ctx, event, env);
+        }
+        /*match event {
+        Event::Internal(InternalEvent::UpdateChildFilter { filter }) => {
+            // intercept the UpdateChildFilter event to return the cached filter instead
+            // of recalculating it
+            // FIXME: this is pretty ugly
+            //if let Some(ref cached_filter) = self.cached_child_filter.get() {
+            //    filter.extend(cached_filter);
+            //} else {
+            //    let mut child_filter = WidgetFilter::new();
+             //   for item in self.items.iter() {
+             //       let mut e = Event::Internal(InternalEvent::UpdateChildFilter {
+             //           filter: &mut child_filter,
+              //      });
+                    item.widget.route_event(ctx, &mut e, env);
                 }
-            }
-            event => {
-                // run the events through the items in reverse order
-                // in order to give priority to topmost items
-                for item in self.items.iter().rev() {
-                    item.widget.route_event(ctx, event, env);
-                }
+                self.cached_child_filter.set(Some(child_filter));
+                filter.extend(&child_filter);
             }
         }
+        event => {*/
 
-        /*// handle column drag
-        if let Event::Pointer(ref p) = event {
-            match p.kind {
-                PointerEventKind::PointerDown => {
-                    // hit-test
-                    // start drag
-                    self.drag_start.set(Some(p.position));
-                }
-                PointerEventKind::PointerUp => {
-                    if let Some(drag_start) = self.drag_start.replace(None) {
-                        let offset = p.position - drag_start;
-                        self.drag_offset.signal(offset);
-                    }
-                }
-                PointerEventKind::PointerMove => {
-                    if let Some(drag_start) = self.drag_start.get() {
-                        let offset = p.position - drag_start;
-                        self.drag_offset.signal(offset);
-                    }
-                }
-                PointerEventKind::PointerOver => {}
-                PointerEventKind::PointerOut => {}
-            }
-        }*/
+        //    }
     }
 }

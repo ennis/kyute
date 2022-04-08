@@ -94,27 +94,35 @@ impl AppCtx {
         event_loop: &EventLoopWindowTarget<ExtEvent>,
         root_env: &Environment,
     ) {
+        let _span = trace_span!("flush_pending_events").entered();
         while !self.pending_events.is_empty() {
             let events = mem::take(&mut self.pending_events);
             for mut event in events {
                 let mut dummy_focus_state = FocusState::default();
-                let mut event_ctx = EventCtx::new(self, &mut dummy_focus_state, event_loop, None, &root_widget.layer());
+                let mut event_ctx = EventCtx::new(self, &mut dummy_focus_state, event_loop, None);
                 root_widget.route_event(&mut event_ctx, &mut event, root_env)
             }
         }
     }
 }
 
+/// Evaluates the function that produces the UI, within the application's positional cache.
+/// This is also known as *recomposition*.
 fn eval_root_widget<W: Widget + 'static>(
     app_ctx: &mut AppCtx,
     event_loop: &EventLoopWindowTarget<ExtEvent>,
     root_env: &Environment,
     ui: fn() -> W,
 ) -> Arc<WidgetPod> {
-    let root_widget = app_ctx
-        .cache
-        .recompose(root_env, || cache::memoize((), || Arc::new(WidgetPod::new(ui()))));
-    // ensures that all widgets have received the `Initialize` event.
+    let _span = trace_span!("eval_root_widget").entered();
+
+    let root_widget = {
+        let _span = trace_span!("recomposition").entered();
+        app_ctx
+            .cache
+            .recompose(root_env, || cache::memoize((), || Arc::new(WidgetPod::new(ui()))))
+        // ensures that all widgets have received the `Initialize` event.
+    };
     root_widget.initialize(app_ctx, event_loop, root_env);
     root_widget
 }

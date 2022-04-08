@@ -32,6 +32,16 @@ pub struct CompositionSurface {
     pub(crate) size: SizeI,
 }
 
+impl Drop for CompositionSurface {
+    fn drop(&mut self) {
+        // release the buffers
+        let device = Application::instance().gpu_device();
+        for img in self.buffers.iter() {
+            device.destroy_image(img.id)
+        }
+    }
+}
+
 impl CompositionSurface {
     /// Creates a new composition surface with the given size.
     pub fn new(size: SizeI) -> CompositionSurface {
@@ -137,6 +147,7 @@ impl CompositionSurface {
         trace!("CompositionSurface::draw {:?}", self.size);
         draw(&surface_draw_ctx, &target_image);
         unsafe {
+            let _span = trace_span!("composition_surface_present").entered();
             self.swap_chain.Present(0, 0).expect("Present failed");
         }
     }

@@ -1,6 +1,10 @@
 //! Windowing and drawing base for kyute.
 //!
 //! For now, it's win32 only.
+
+#[macro_use]
+extern crate tracing;
+
 pub mod animation;
 pub mod application;
 mod backend;

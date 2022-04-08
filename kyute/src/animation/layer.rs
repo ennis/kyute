@@ -231,6 +231,9 @@ impl Layer {
     }
 
     pub fn set_offset(&self, offset: Offset) {
+        if offset.x == 19.0 && offset.y == 28.5 {
+            trace!("HELP")
+        }
         self.set_transform(offset.to_transform());
     }
 
@@ -294,7 +297,7 @@ impl Layer {
         if let Some(parent) = &*parent {
             if let Some(parent) = parent.upgrade() {
                 let up_transform = self.child_transform(&parent);
-                up_transform.map(|upt| self.transform.get().then(&upt))
+                up_transform.map(|upt| to_child.transform.get().then(&upt))
             } else {
                 panic!("map_to_child: invalid parent")
             }

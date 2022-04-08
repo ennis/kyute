@@ -1,9 +1,9 @@
 mod key_code;
-mod skia;
 
 use crate::{
     align_boxes,
     animation::{Layer, LayerHandle, SurfaceUpdateCtx},
+    application::AppCtx,
     cache, composable,
     core::{FocusState, GpuResourceReferences, WindowPaintCtx},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind, WheelDeltaMode, WheelEvent},
@@ -11,7 +11,6 @@ use crate::{
     graal::{vk::Handle, MemoryLocation},
     region::Region,
     widget::Menu,
-    window::skia::SkiaWindow,
     Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, PaintCtx,
     Point, Rect, RoundToPixel, Size, Widget, WidgetId, WidgetPod,
 };
@@ -29,8 +28,55 @@ use kyute_shell::{
     },
 };
 use skia_safe as sk;
-use std::{borrow::Borrow, cell::RefCell, env, mem, sync::Arc, time::Instant};
+use std::{cell::RefCell, env, mem, sync::Arc, time::Instant};
 use tracing::trace;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Skia utils
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub(crate) fn skia_get_proc_addr(of: sk::gpu::vk::GetProcOf) -> sk::gpu::vk::GetProcResult {
+    unsafe {
+        let entry = graal::get_vulkan_entry();
+        let instance = graal::get_vulkan_instance();
+
+        match of {
+            sk::gpu::vk::GetProcOf::Instance(instance, name) => entry
+                .get_instance_proc_addr(graal::vk::Instance::from_raw(instance as u64), name)
+                .unwrap() as sk::gpu::vk::GetProcResult,
+            sk::gpu::vk::GetProcOf::Device(device, name) => instance
+                .get_device_proc_addr(graal::vk::Device::from_raw(device as u64), name)
+                .unwrap() as sk::gpu::vk::GetProcResult,
+        }
+    }
+}
+
+pub(crate) unsafe fn create_skia_vulkan_backend_context(
+    device: &graal::Device,
+) -> sk::gpu::vk::BackendContext<'static> {
+    let vk_device = device.device.handle();
+    let vk_instance = graal::get_vulkan_instance().handle();
+    let vk_physical_device = device.physical_device();
+    let (vk_queue, vk_queue_family_index) = device.graphics_queue();
+    let instance_extensions = graal::get_instance_extensions();
+
+    let mut ctx = sk::gpu::vk::BackendContext::new_with_extensions(
+        vk_instance.as_raw() as *mut _,
+        vk_physical_device.as_raw() as *mut _,
+        vk_device.as_raw() as *mut _,
+        (vk_queue.as_raw() as *mut _, vk_queue_family_index as usize),
+        &skia_get_proc_addr,
+        instance_extensions,
+        &[],
+    );
+
+    ctx.set_max_api_version(sk::gpu::vk::Version::new(1, 0, 0));
+    ctx
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Window state & event handling
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Stores information about the last click (for double-click handling)
 struct LastClick {
@@ -45,7 +91,13 @@ struct LastClick {
 ///
 /// This is stored in the cache and mutated in place.
 pub(crate) struct WindowState {
-    window: Option<SkiaWindow>,
+    // It's an `Option<Window>` because we can't create the window immediately during recomp;
+    // due to winit's architecture, we must have a ref to the EventLoop to create one,
+    // and we only pass one during event handling.
+    // TODO: at some point, replace winit with our thing and delete this horror
+    window: Option<kyute_shell::window::Window>,
+    skia_backend_context: skia_safe::gpu::vk::BackendContext<'static>,
+    skia_recording_context: skia_safe::gpu::DirectContext,
     window_builder: Option<WindowBuilder>,
     focus_state: FocusState,
     layer: LayerHandle,
@@ -69,13 +121,7 @@ impl WindowState {
             .window
             .as_mut()
             .expect("process_window_event received but window not initialized");
-        let mut content_ctx = EventCtx::new_subwindow(
-            parent_ctx,
-            self.scale_factor,
-            &mut window.window,
-            &self.layer,
-            &mut self.focus_state,
-        );
+        let mut content_ctx = EventCtx::new_subwindow(parent_ctx, self.scale_factor, window, &mut self.focus_state);
         widget.route_event(&mut content_ctx, event, env);
         content_ctx.relayout
     }
@@ -93,6 +139,8 @@ impl WindowState {
         window_event: &winit::event::WindowEvent,
         env: &Environment,
     ) -> bool {
+        let _span = trace_span!("process_window_event").entered();
+
         let mut should_relayout = false;
         //let _span = trace_span!("process_window_event", ?window_event).entered();
 
@@ -126,7 +174,7 @@ impl WindowState {
                     None
                 }
                 WindowEvent::Resized(size) => {
-                    window.window.resize((size.width, size.height));
+                    window.resize((size.width, size.height));
                     should_relayout = true;
                     None
                 }
@@ -141,13 +189,8 @@ impl WindowState {
                 WindowEvent::Command(id) => {
                     // send to popup menu target if any
                     if let Some(target) = self.focus_state.popup_target.take() {
-                        let mut content_ctx = EventCtx::new_subwindow(
-                            parent_ctx,
-                            self.scale_factor,
-                            &mut window.window,
-                            &self.layer,
-                            &mut self.focus_state,
-                        );
+                        let mut content_ctx =
+                            EventCtx::new_subwindow(parent_ctx, self.scale_factor, window, &mut self.focus_state);
                         content_widget.event(
                             &mut content_ctx,
                             &mut Event::Internal(InternalEvent::RouteEvent {
@@ -457,17 +500,21 @@ impl WindowState {
 
     /// Updates the window menu if the window is created.
     fn update_menu(&mut self) {
-        if let Some(ref mut skia_window) = self.window {
+        if let Some(ref mut window) = self.window {
             if let Some(ref menu) = self.menu {
                 menu.assign_menu_item_indices();
                 let m = menu.to_shell_menu(false);
-                skia_window.window.set_menu(Some(m));
+                window.set_menu(Some(m));
             } else {
-                skia_window.window.set_menu(None);
+                window.set_menu(None);
             }
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Window widget
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// A window managed by kyute.
 #[derive(Clone)]
@@ -488,8 +535,18 @@ impl Window {
         let layer = contents.layer().clone();
         layer.set_surface_backed(true);
         let window_state = cache::once(move || {
+            let application = kyute_shell::application::Application::instance();
+            let device = application.gpu_device().clone();
+            let skia_backend_context = unsafe { create_skia_vulkan_backend_context(&device) };
+            let recording_context_options = skia_safe::gpu::ContextOptions::new();
+            let skia_recording_context =
+                skia_safe::gpu::DirectContext::new_vulkan(&skia_backend_context, &recording_context_options)
+                    .expect("failed to create skia recording context");
+
             Arc::new(RefCell::new(WindowState {
                 window: None,
+                skia_backend_context,
+                skia_recording_context,
                 window_builder: Some(window_builder),
                 focus_state: FocusState::default(),
                 menu: None,
@@ -524,7 +581,49 @@ impl Window {
             contents: Arc::new(WidgetPod::new(contents)),
         }
     }
+
+    /// Relayouts the contents of the window.
+    fn layout_contents(&self, app_ctx: &mut AppCtx, env: &Environment) {
+        {
+            let mut window_state = self.window_state.borrow_mut();
+
+            if let Some(ref mut window) = window_state.window {
+                let scale_factor = window.window().scale_factor();
+                let _span = trace_span!("window_relayout").entered();
+
+                let (width, height): (f64, f64) = window.window().inner_size().to_logical::<f64>(scale_factor).into();
+                {
+                    let mut layout_ctx = LayoutCtx::new(app_ctx, scale_factor);
+                    self.contents
+                        .layout(&mut layout_ctx, BoxConstraints::new(0.0..width, 0.0..height), env);
+                }
+            }
+        }
+        self.update_layers()
+    }
+
+    /// Redraws the dirty composition layers.
+    fn update_layers(&self) {
+        let mut window_state = self.window_state.borrow_mut();
+        let window_state = &mut *window_state;
+
+        if let Some(ref mut window) = window_state.window {
+            let _span = trace_span!("update_layers").entered();
+            let scale_factor = window.window().scale_factor();
+            let root_layer = self.contents.layer();
+            let surface_update_ctx = SurfaceUpdateCtx {
+                recording_context: window_state.skia_recording_context.clone(),
+                scale_factor,
+            };
+            root_layer.update(&surface_update_ctx, &Transform::identity());
+            window.set_root_layer(root_layer.composition_layer());
+        }
+    }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// impl Widget
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 impl Widget for Window {
     fn widget_id(&self) -> Option<WidgetId> {
@@ -535,7 +634,8 @@ impl Widget for Window {
         self.contents.layer()
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: BoxConstraints, _env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, _constraints: BoxConstraints, env: &Environment) -> Measurements {
+        self.layout_contents(ctx.app_ctx, env);
         Measurements::default()
     }
 
@@ -566,36 +666,32 @@ impl Widget for Window {
                         .expect("failed to create window");
                     window.set_root_layer(self.contents.layer().composition_layer());
 
-                    // create skia stuff
-                    let skia_window = SkiaWindow::new(window);
-
                     // register it to the AppCtx, necessary so that the event loop can route window events
                     // to this widget
-                    ctx.register_window(skia_window.window.id());
+                    ctx.register_window(window.id());
 
-                    let scale_factor = skia_window.window.window().scale_factor();
-                    let (width, height): (f64, f64) = skia_window
-                        .window
-                        .window()
-                        .inner_size()
-                        .to_logical::<f64>(scale_factor)
-                        .into();
+                    let scale_factor = window.window().scale_factor();
+                    let (width, height): (f64, f64) =
+                        window.window().inner_size().to_logical::<f64>(scale_factor).into();
 
-                    // perform initial layout of contents
+                    /*// perform initial layout of contents
                     {
-                        trace!("window (id={:?}) initial layout", skia_window.window.window().id());
+                        trace!("window (id={:?}) initial layout", window.window().id());
                         let mut layout_ctx = LayoutCtx::new(ctx.app_ctx, scale_factor);
                         self.contents
                             .layout(&mut layout_ctx, BoxConstraints::new(0.0..width, 0.0..height), env);
-                    }
+                    }*/
 
                     // update window state
                     window_state.scale_factor = scale_factor;
-                    window_state.window = Some(skia_window);
+                    window_state.window = Some(window);
 
                     // create the window menu
                     window_state.update_menu();
                 }
+
+                // `Initialize` is special, and we don't need to do anything else
+                return;
             }
             Event::WindowEvent(window_event) => {
                 let mut window_state = self.window_state.borrow_mut();
@@ -616,29 +712,12 @@ impl Widget for Window {
             }
         }
 
-        let mut window_state = self.window_state.borrow_mut();
-        if let Some(ref mut skia_window) = window_state.window {
-            let window = &skia_window.window;
-            let scale_factor = window.window().scale_factor();
-
-            if should_relayout {
-                let (width, height): (f64, f64) = window.window().inner_size().to_logical::<f64>(scale_factor).into();
-                {
-                    let mut layout_ctx = LayoutCtx::new(ctx.app_ctx, scale_factor);
-                    self.contents
-                        .layout(&mut layout_ctx, BoxConstraints::new(0.0..width, 0.0..height), env);
-                }
-            }
-
-            {
-                let root_layer = self.contents.layer();
-                let surface_update_ctx = SurfaceUpdateCtx {
-                    recording_context: skia_window.skia_recording_context.clone(),
-                    scale_factor,
-                };
-                root_layer.update(&surface_update_ctx, &Transform::identity());
-                window.set_root_layer(root_layer.composition_layer());
-            }
+        if should_relayout {
+            self.layout_contents(ctx.app_ctx, env);
+        } else {
+            // event propagation may have launched animations or layer updates.
+            // layout_contents() calls it so no need to call it again if we relayouted
+            self.update_layers()
         }
     }
 
