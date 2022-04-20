@@ -99,7 +99,7 @@ impl AppCtx {
             let events = mem::take(&mut self.pending_events);
             for mut event in events {
                 let mut dummy_focus_state = FocusState::default();
-                let mut event_ctx = EventCtx::new(self, &mut dummy_focus_state, event_loop, None);
+                let mut event_ctx = EventCtx::with_app_ctx(self, &mut dummy_focus_state, event_loop, None);
                 root_widget.route_event(&mut event_ctx, &mut event, root_env)
             }
         }

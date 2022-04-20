@@ -636,18 +636,9 @@ impl CacheWriter {
     fn compare_and_update<T: Data>(&mut self, new_value: T) -> bool {
         let CacheEntryInsertResult { key, inserted, .. } = self.get_or_insert_entry(|| new_value.clone());
         inserted || {
-            if let Some(var) = self.state_stack.last() {
-                key.0.dep_node.add_dependent(&var.dep_node);
-            }
             let mut value = key.0.value.lock();
             if !new_value.same(&*value) {
                 *value = new_value;
-                #[cfg(debug_assertions)]
-                key.0
-                    .dep_node
-                    .invalidate_dependents((Location::caller(), "compare_and_update"));
-                #[cfg(not(debug_assertions))]
-                key.0.dep_node.invalidate_dependents();
                 true
             } else {
                 false

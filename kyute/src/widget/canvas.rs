@@ -1,4 +1,4 @@
-use crate::{animation::layer::Layer, widget::prelude::*, Length, Transform};
+use crate::{widget::prelude::*, Length, Transform};
 use std::sync::Arc;
 
 pub enum PositioningMode {
@@ -21,7 +21,6 @@ struct CanvasItem {
 #[derive(Clone)]
 pub struct Canvas {
     id: WidgetId,
-    layer: LayerHandle,
     transform: Transform,
     left: Length,
     right: Length,
@@ -35,7 +34,6 @@ impl Canvas {
     pub fn new() -> Canvas {
         Canvas {
             id: WidgetId::here(),
-            layer: Layer::new(),
             transform: Transform::identity(),
             left: Length::Dip(f64::NEG_INFINITY),
             right: Length::Dip(f64::INFINITY),
@@ -103,10 +101,6 @@ impl Widget for Canvas {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         // a canvas always takes the maximum available space
         let width = constraints.finite_max_width().unwrap_or(0.0);
@@ -130,17 +124,10 @@ impl Widget for Canvas {
             offset.y = offset.y.clamp(top, bottom - measurements.height());
 
             let transform = offset.to_transform().then(&self.transform);
-            item.widget.layer().set_transform(transform);
+            item.widget.set_transform(transform);
         }
 
         let size = Size::new(width, height);
-        self.layer.remove_all_children();
-        for item in self.items.iter() {
-            self.layer.add_child(item.widget.layer());
-        }
-        self.layer.set_size(size);
-
-        //trace!("canvas size: {}x{}", width, height);
         Measurements::new(size)
     }
 
@@ -149,11 +136,16 @@ impl Widget for Canvas {
             item.widget.route_event(ctx, event, env)
         }
     }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        for item in self.items.iter() {
+            item.widget.paint(ctx)
+        }
+    }
 }
 
 #[derive(Clone)]
 pub struct Viewport<Contents> {
-    layer: LayerHandle,
     contents: WidgetPod<Contents>,
     transform: Transform,
     constrain_width: bool,
@@ -163,10 +155,7 @@ pub struct Viewport<Contents> {
 impl<Contents: Widget + 'static> Viewport<Contents> {
     #[composable]
     pub fn new(contents: Contents) -> Viewport<Contents> {
-        let layer = Layer::new();
-        layer.add_child(contents.layer());
         Viewport {
-            layer,
             transform: Transform::identity(),
             contents: WidgetPod::new(contents),
             constrain_width: false,
@@ -195,17 +184,13 @@ impl<Contents: Widget + 'static> Viewport<Contents> {
     }
 
     pub fn contents(&self) -> &Contents {
-        self.contents.widget()
+        self.contents.inner()
     }
 }
 
 impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
     fn widget_id(&self) -> Option<WidgetId> {
-        self.contents.widget().widget_id()
-    }
-
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
+        self.contents.inner().widget_id()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -221,17 +206,20 @@ impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
 
         // unconstrained
         self.contents.layout(ctx, child_constraints, env);
-        self.contents.layer().set_transform(self.transform);
+        self.contents.set_transform(self.transform);
 
         // always take the maximum available space
         let width = constraints.finite_max_width().unwrap_or(0.0);
         let height = constraints.finite_max_height().unwrap_or(0.0);
         let size = Size::new(width, height);
-        self.layer.set_size(size);
         Measurements::from(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.contents.route_event(ctx, event, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.contents.paint(ctx)
     }
 }

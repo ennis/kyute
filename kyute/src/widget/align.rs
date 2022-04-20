@@ -1,4 +1,5 @@
-use crate::widget::prelude::*;
+use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx};
+use kyute_common::RoundToPixel;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Definition
@@ -9,7 +10,7 @@ pub struct Align<W> {
     alignment: Alignment,
     width_factor: Option<f64>,
     height_factor: Option<f64>,
-    inner: W,
+    inner: WidgetPod<W>,
 }
 
 impl<W: Widget + 'static> Align<W> {
@@ -18,7 +19,7 @@ impl<W: Widget + 'static> Align<W> {
             alignment,
             width_factor: None,
             height_factor: None,
-            inner,
+            inner: WidgetPod::new(inner),
         }
     }
 
@@ -34,12 +35,12 @@ impl<W: Widget + 'static> Align<W> {
 
     /// Returns a reference to the inner widget.
     pub fn inner(&self) -> &W {
-        &self.inner
+        self.inner.inner()
     }
 
     /// Returns a mutable reference to the inner widget.
     pub fn inner_mut(&mut self) -> &mut W {
-        &mut self.inner
+        self.inner.inner_mut()
     }
 }
 
@@ -51,10 +52,6 @@ impl<W: Widget> Widget for Align<W> {
     fn widget_id(&self) -> Option<WidgetId> {
         // inherit the identity of the contents
         self.inner.widget_id()
-    }
-
-    fn layer(&self) -> &LayerHandle {
-        self.inner.layer()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -80,7 +77,10 @@ impl<W: Widget> Widget for Align<W> {
         let y = 0.5 * size.height * (1.0 + self.alignment.y) - 0.5 * child.height() * (1.0 + self.alignment.y);
         let baseline = child.baseline.map(|b| b + y);
 
-        self.inner.layer().set_offset(Offset::new(x, y));
+        if !ctx.speculative {
+            self.inner
+                .set_offset(Offset::new(x, y).round_to_pixel(ctx.scale_factor));
+        }
 
         Measurements {
             size,
@@ -91,5 +91,9 @@ impl<W: Widget> Widget for Align<W> {
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.inner.route_event(ctx, event, env);
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.inner.paint(ctx)
     }
 }

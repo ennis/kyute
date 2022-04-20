@@ -220,7 +220,7 @@ impl Paint {
             }
             Paint::Shader { effect, uniforms } => {
                 let shader = effect
-                    .make_shader(&uniforms.0, &[], None, true)
+                    .make_shader(&uniforms.0, &[], None)
                     .expect("failed to create shader");
                 let mut paint = sk::Paint::default();
                 paint.set_shader(shader);

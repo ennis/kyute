@@ -1,8 +1,12 @@
 use crate::{
-    count_until_utf16, count_utf16,
-    factory::dwrite_factory,
-    formatted_text::{FormattedText, ParagraphStyle},
-    Attribute, Error, FontStyle, FontWeight, TextAffinity, TextAlignment, TextPosition, ToDirectWrite, ToWString,
+    application::Application,
+    backend::text::{count_until_utf16, count_utf16, dwrite_factory, ToDirectWrite, ToWString},
+    text::{
+        Attribute, FontStyle, FontWeight, FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRunDrawingEffects,
+        HitTestMetrics, HitTestPoint, HitTestTextPosition, LineMetrics, ParagraphStyle, RasterizationOptions, Renderer,
+        TextAffinity, TextAlignment, TextMetrics, TextPosition,
+    },
+    Error,
 };
 use kyute_common::{Color, Data, Point, PointI, Rect, RectI, Size, SizeI, Transform};
 use std::{cell::RefCell, ffi::c_void, mem, mem::MaybeUninit, ops::Range, ptr, sync::Arc};
@@ -39,17 +43,8 @@ fn to_dwrite_text_range(text: &str, range: Range<usize>) -> DWRITE_TEXT_RANGE {
     }
 }
 
-/// Text hit-test metrics.
-#[derive(Copy, Clone, Debug, PartialEq, Data)]
-pub struct HitTestMetrics {
-    /// Text position in UTF-8 code units (bytes).
-    pub text_position: TextPosition,
-    pub length: usize,
-    pub bounds: Rect,
-}
-
 impl HitTestMetrics {
-    pub(crate) fn from_dwrite(metrics: &DWRITE_HIT_TEST_METRICS, text: &str, is_trailing: bool) -> HitTestMetrics {
+    pub fn from_dwrite(metrics: &DWRITE_HIT_TEST_METRICS, text: &str, is_trailing: bool) -> HitTestMetrics {
         // convert utf16 code unit offset to utf8
         //dbg!(metrics.textPosition);
         let text_position = count_until_utf16(text, metrics.textPosition as usize);
@@ -75,29 +70,6 @@ impl HitTestMetrics {
     }
 }
 
-/// Return value of [TextLayout::hit_test_point].
-#[derive(Copy, Clone, Debug, PartialEq, Data)]
-pub struct HitTestPoint {
-    pub is_inside: bool,
-    // use idx instead of position to better disambiguate "character index in the text string" and "position on screen"
-    pub idx: usize,
-}
-
-/// Return value of [TextLayout::hit_test_text_position].
-#[derive(Copy, Clone, Debug, PartialEq, Data)]
-pub struct HitTestTextPosition {
-    pub point: Point,
-    pub metrics: HitTestMetrics,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Data)]
-pub struct TextMetrics {
-    pub bounds: Rect,
-    pub width_including_trailing_whitespace: f32,
-    pub line_count: u32,
-    pub max_bidi_reordering_depth: u32,
-}
-
 impl From<DWRITE_TEXT_METRICS> for TextMetrics {
     fn from(m: DWRITE_TEXT_METRICS) -> Self {
         TextMetrics {
@@ -110,16 +82,6 @@ impl From<DWRITE_TEXT_METRICS> for TextMetrics {
             line_count: m.lineCount,
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Data)]
-pub struct LineMetrics {
-    pub length: u32,
-    pub trailing_whitespace_length: u32,
-    pub newline_length: u32,
-    pub height: f64,
-    pub baseline: f64,
-    pub is_trimmed: bool,
 }
 
 impl From<DWRITE_LINE_METRICS> for LineMetrics {
@@ -320,37 +282,9 @@ impl Paragraph {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum RasterizationOptions {
-    Bilevel,
-    Grayscale,
-    Subpixel,
-}
-
 #[derive(Clone, Debug)]
 pub struct FontFace {
     font_face: IDWriteFontFace,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct GlyphOffset {
-    pub advance_offset: f32,
-    pub ascender_offset: f32,
-}
-
-impl ToDirectWrite for Transform {
-    type Target = DWRITE_MATRIX;
-
-    fn to_dwrite(&self) -> Self::Target {
-        DWRITE_MATRIX {
-            m11: self.m11 as f32,
-            m12: self.m12 as f32,
-            m21: self.m21 as f32,
-            m22: self.m22 as f32,
-            dx: self.m31 as f32,
-            dy: self.m32 as f32,
-        }
-    }
 }
 
 fn to_dwrite_texture_type(rasterization_options: RasterizationOptions) -> DWRITE_TEXTURE_TYPE {
@@ -361,44 +295,11 @@ fn to_dwrite_texture_type(rasterization_options: RasterizationOptions) -> DWRITE
     }
 }
 
-/// Format of a rasterized glyph mask.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum GlyphMaskFormat {
-    // 3 bytes per pixel, RGB subpixel mask
-    Rgb8,
-    // one byte per pixel, alpha mask
-    Alpha8,
-}
-
-/// Pixel data of a rasterized glyph run.
-#[derive(Debug)]
-pub struct GlyphMaskData {
-    size: SizeI,
-    format: GlyphMaskFormat,
-    data: Vec<u8>,
-}
-
-impl GlyphMaskData {
-    /// Returns the size of this mask.
-    pub fn size(&self) -> SizeI {
-        self.size
-    }
-
-    /// Returns a reference to the pixel data.
-    pub fn data(&self) -> &[u8] {
-        self.data.as_slice()
-    }
-
-    /// Returns the format of the mask data.
-    pub fn format(&self) -> GlyphMaskFormat {
-        self.format
-    }
-}
-
 /// Information needed to draw a glyph run.
 ///
 /// Contains rendering information calculated after taking into account a text transform and the
 /// render target scale factor.
+#[derive(Clone)]
 pub struct GlyphRunAnalysis {
     analysis: IDWriteGlyphRunAnalysis,
 }
@@ -521,35 +422,6 @@ impl<'a> GlyphRun<'a> {
     }
 }
 
-/// Drawing parameters passed to `draw_glyph_run`.
-#[derive(Clone, Debug)]
-pub struct GlyphRunDrawingEffects {
-    /// The color of the glyph run.
-    pub color: Color,
-    // TODO application-defined drawing effects
-}
-
-impl Default for GlyphRunDrawingEffects {
-    fn default() -> Self {
-        GlyphRunDrawingEffects {
-            color: Color::new(0.0, 0.0, 0.0, 1.0),
-        }
-    }
-}
-
-/// Trait for rendering a series of glyph runs.
-pub trait Renderer {
-    /// Draw a glyph run.
-    // TODO error handling?
-    fn draw_glyph_run(&mut self, glyph_run: &GlyphRun, drawing_effects: &GlyphRunDrawingEffects);
-
-    /// Returns the current text transformation.
-    fn transform(&self) -> Transform;
-
-    /// Returns the scale factor (Physical pixels per DIP).
-    fn scale_factor(&self) -> f64;
-}
-
 /// Drawing attributes passed to IDWriteTextLayout (via SetDrawingEffect).
 // FIXME: `#[implement(IUnknown)]` doesn't work for now, so instead implement a random-ass interface without any methods
 #[implement(IDWriteNumberSubstitution)]
@@ -564,11 +436,11 @@ struct DWriteRendererProxy {
 }
 
 impl IDWritePixelSnapping_Impl for DWriteRendererProxy {
-    fn IsPixelSnappingDisabled(&self, _clientdrawingcontext: *const c_void) -> ::windows::core::Result<BOOL> {
+    fn IsPixelSnappingDisabled(&self, _clientdrawingcontext: *const c_void) -> windows::core::Result<BOOL> {
         Ok(false.into())
     }
 
-    fn GetCurrentTransform(&self, _clientdrawingcontext: *const c_void) -> ::windows::core::Result<DWRITE_MATRIX> {
+    fn GetCurrentTransform(&self, _clientdrawingcontext: *const c_void) -> windows::core::Result<DWRITE_MATRIX> {
         let transform = unsafe {
             // SAFETY: ensured by lifetime of DWriteRendererProxy in Paragraph::draw
             (&*self.renderer).transform()
@@ -576,7 +448,7 @@ impl IDWritePixelSnapping_Impl for DWriteRendererProxy {
         Ok(transform.to_dwrite())
     }
 
-    fn GetPixelsPerDip(&self, _clientdrawingcontext: *const c_void) -> ::windows::core::Result<f32> {
+    fn GetPixelsPerDip(&self, _clientdrawingcontext: *const c_void) -> windows::core::Result<f32> {
         let scale_factor = unsafe {
             // SAFETY: ensured by lifetime of DWriteRendererProxy in Paragraph::draw
             (&*self.renderer).scale_factor()
@@ -595,9 +467,9 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
         glyphrun: *const DWRITE_GLYPH_RUN,
         glyphrundescription: *const DWRITE_GLYPH_RUN_DESCRIPTION,
         clientdrawingeffect: &Option<IUnknown>,
-    ) -> ::windows::core::Result<()> {
+    ) -> windows::core::Result<()> {
         unsafe {
-            let glyph_run = GlyphRun {
+            let glyph_run = crate::text::GlyphRun(GlyphRun {
                 client_drawing_context: clientdrawingcontext,
                 baseline_origin_x: baselineoriginx,
                 baseline_origin_y: baselineoriginy,
@@ -606,7 +478,7 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
                 glyph_run: &*glyphrun,
                 glyph_run_description: &*glyphrundescription,
                 analysis: RefCell::new(None),
-            };
+            });
 
             if let Some(client_drawing_effect) = clientdrawingeffect {
                 // SAFETY: the only drawing effect passed here is an instance of DWriteRendererProxy.
@@ -631,7 +503,7 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
         _baselineoriginy: f32,
         _underline: *const DWRITE_UNDERLINE,
         _clientdrawingeffect: &Option<::windows::core::IUnknown>,
-    ) -> ::windows::core::Result<()> {
+    ) -> windows::core::Result<()> {
         todo!()
     }
 
@@ -642,7 +514,7 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
         _baselineoriginy: f32,
         _strikethrough: *const DWRITE_STRIKETHROUGH,
         _clientdrawingeffect: &Option<::windows::core::IUnknown>,
-    ) -> ::windows::core::Result<()> {
+    ) -> windows::core::Result<()> {
         todo!()
     }
 
@@ -655,53 +527,58 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
         _issideways: BOOL,
         _isrighttoleft: BOOL,
         _clientdrawingeffect: &Option<::windows::core::IUnknown>,
-    ) -> ::windows::core::Result<()> {
+    ) -> windows::core::Result<()> {
         todo!()
     }
 }
 
-impl FormattedText {
-    pub fn create_paragraph(&self, layout_box_size: Size, default_paragraph_style: &ParagraphStyle) -> Paragraph {
+impl Paragraph {
+    pub fn new(
+        formatted_text: &FormattedText,
+        layout_box_size: Size,
+        default_paragraph_style: &ParagraphStyle,
+    ) -> Paragraph {
         unsafe {
-            let text_wide = self.plain_text.to_wstring();
+            let dwrite_factory = &Application::instance().backend.dwrite_factory.0;
+            let text_wide = formatted_text.plain_text.to_wstring();
 
             // FIXME get last-resort defaults from system settings
             const DEFAULT_FONT_FAMILY: &str = "Segoe UI";
             const DEFAULT_FONT_SIZE: f64 = 14.0;
             let locale_name = "".to_wstring();
 
-            let paragraph_font_family = self
+            let paragraph_font_family = formatted_text
                 .paragraph_style
                 .font_family
                 .as_deref()
                 .or(default_paragraph_style.font_family.as_deref())
                 .unwrap_or(DEFAULT_FONT_FAMILY)
                 .to_wstring();
-            let paragraph_font_style = self
+            let paragraph_font_style = formatted_text
                 .paragraph_style
                 .font_style
                 .or(default_paragraph_style.font_style)
                 .unwrap_or(FontStyle::Normal)
                 .to_dwrite();
-            let paragraph_font_weight = self
+            let paragraph_font_weight = formatted_text
                 .paragraph_style
                 .font_weight
                 .or(default_paragraph_style.font_weight)
                 .unwrap_or(FontWeight::NORMAL)
                 .to_dwrite();
-            let paragraph_text_alignment = self
+            let paragraph_text_alignment = formatted_text
                 .paragraph_style
                 .text_alignment
                 .or(default_paragraph_style.text_alignment)
                 .unwrap_or(TextAlignment::Leading)
                 .to_dwrite();
-            let paragraph_font_size = self
+            let paragraph_font_size = formatted_text
                 .paragraph_style
                 .font_size
                 .or(default_paragraph_style.font_size)
                 .unwrap_or(DEFAULT_FONT_SIZE);
 
-            let format = dwrite_factory()
+            let format = dwrite_factory
                 .CreateTextFormat(
                     PCWSTR(paragraph_font_family.as_ptr()),
                     None,
@@ -713,7 +590,7 @@ impl FormattedText {
                 )
                 .expect("CreateTextFormat failed");
 
-            let layout: IDWriteTextLayout = dwrite_factory()
+            let layout: IDWriteTextLayout = dwrite_factory
                 .CreateTextLayout(
                     &text_wide,
                     format,
@@ -727,7 +604,7 @@ impl FormattedText {
                 .expect("SetTextAlignment failed");
 
             // apply style ranges
-            for run in self.runs.runs.iter() {
+            for run in formatted_text.runs.runs.iter() {
                 let mut font_family = None;
                 let mut font_weight = None;
                 let mut font_style = None;
@@ -753,10 +630,10 @@ impl FormattedText {
                     }
                 }
 
-                let range = to_dwrite_text_range(&self.plain_text, run.range.clone());
+                let range = to_dwrite_text_range(&formatted_text.plain_text, run.range.clone());
 
                 if let Some(ff) = font_family {
-                    let ff_name = ff.0.to_wstring();
+                    let ff_name = ff.name().to_wstring();
                     layout
                         .SetFontFamilyName(PCWSTR(ff_name.as_ptr()), range)
                         .expect("SetFontFamilyName failed");
@@ -784,7 +661,7 @@ impl FormattedText {
 
             Paragraph {
                 layout,
-                text: self.plain_text.clone(),
+                text: formatted_text.plain_text.clone(),
             }
         }
     }

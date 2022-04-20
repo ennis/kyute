@@ -1,23 +1,14 @@
 use crate::{
-    cache, drawing,
+    cache,
+    core::WindowPaintCtx,
+    drawing,
     drawing::ToSkia,
     util::fs_watch::watch_path,
     widget::{prelude::*, Null},
-    AssetLoader, SizeI,
+    AssetLoader, GpuFrameCtx, SizeI,
 };
 use std::task::Poll;
 use tracing::trace;
-
-pub struct ImageLayerDelegate {
-    image: drawing::Image,
-}
-
-impl LayerDelegate for ImageLayerDelegate {
-    fn draw(&self, ctx: &mut PaintCtx) {
-        ctx.canvas
-            .draw_image(self.image.to_skia(), Point::origin().to_skia(), None);
-    }
-}
 
 #[derive(Clone)]
 enum ImageContents<Placeholder> {
@@ -44,7 +35,6 @@ pub enum Scaling {
 #[derive(Clone)]
 pub struct Image<Placeholder> {
     contents: ImageContents<Placeholder>,
-    layer: LayerHandle,
     scaling: Scaling,
 }
 
@@ -53,11 +43,7 @@ impl Image<Null> {
     #[composable]
     pub fn from_uri(uri: &str, scaling: Scaling) -> Image<Null> {
         let image: drawing::Image = AssetLoader::instance().load(uri).expect("failed to load image");
-        let layer = Layer::new();
-        layer.set_delegate(ImageLayerDelegate { image: image.clone() });
-
         Image {
-            layer,
             contents: ImageContents::Image(image),
             scaling,
         }
@@ -99,19 +85,13 @@ impl Image<Null> {
             reload,
         );
 
-        let layer = Layer::new();
         match image {
-            Poll::Ready(Some(image)) => {
-                layer.set_delegate(ImageLayerDelegate { image: image.clone() });
-                Image {
-                    layer,
-                    contents: ImageContents::Image(image),
-                    scaling,
-                }
-            }
+            Poll::Ready(Some(image)) => Image {
+                contents: ImageContents::Image(image),
+                scaling,
+            },
             _ => Image {
-                layer,
-                contents: ImageContents::Placeholder(Null::new()),
+                contents: ImageContents::Placeholder(Null),
                 scaling,
             },
         }
@@ -134,13 +114,6 @@ impl Image<Null> {
 impl<Placeholder: Widget> Widget for Image<Placeholder> {
     fn widget_id(&self) -> Option<WidgetId> {
         None
-    }
-
-    fn layer(&self) -> &LayerHandle {
-        match self.contents {
-            ImageContents::Image(_) => &self.layer,
-            ImageContents::Placeholder(ref placeholder) => placeholder.layer(),
-        }
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -172,7 +145,6 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
                     }
                 };
 
-                self.layer.set_size(scaled_size);
                 Measurements::new(scaled_size)
             }
             ImageContents::Placeholder(ref placeholder) => placeholder.layout(ctx, constraints, env),
@@ -180,4 +152,15 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
     }
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        match self.contents {
+            ImageContents::Image(ref image) => {
+                ctx.surface
+                    .canvas()
+                    .draw_image(image.to_skia(), Point::origin().to_skia(), None);
+            }
+            ImageContents::Placeholder(ref placeholder) => placeholder.paint(ctx),
+        }
+    }
 }

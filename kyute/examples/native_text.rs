@@ -16,6 +16,29 @@ fn native_text_test() -> impl Widget + Clone {
         .attribute(0..6, kyute_text::Attribute::Color(Color::from_hex("#DDDDDD")))
         .attribute(.., kyute_text::Attribute::FontSize(15.0));
 
+    /*let text2 = text::html! {
+        <html>
+            <head>
+                <title>"Hello Kitty"</title>
+                <meta name=Metadata::Author content="Not Sanrio Co., Ltd"/>
+            </head>
+            <body>
+                <h1>"Hello Kitty"</h1>
+                <p class="official">
+                    "She is not a cat. She is a human girl."
+                </p>
+                { (0..3).map(|_| html!(
+                    <p class="emphasis">
+                        "Her name is Kitty White."
+                    </p>
+                )) }
+                <p class="citation-needed">
+                    "We still don't know how she eats."
+                </p>
+            </body>
+        </html>
+    };*/
+
     let text_widget = Text::new(text);
 
     /*let paragraph = text.create_paragraph(Size::new(500.0, 500.0));

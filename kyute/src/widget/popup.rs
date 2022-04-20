@@ -1,11 +1,10 @@
-use crate::{cache, widget::prelude::*, Window};
+use crate::{cache, core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx, Window};
 use kyute_shell::winit::window::WindowBuilder;
 
 /// Pop-up window with contents.
 #[derive(Clone)]
 pub struct Popup {
     id: WidgetId,
-    layer: LayerHandle,
     shown: cache::State<bool>,
     window: Option<Window>,
 }
@@ -24,7 +23,6 @@ impl Popup {
 
         Popup {
             id: WidgetId::here(),
-            layer: Layer::new(),
             shown,
             window,
         }
@@ -43,10 +41,6 @@ impl Widget for Popup {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, _ctx: &mut LayoutCtx, _constraints: BoxConstraints, _env: &Environment) -> Measurements {
         Measurements::default()
     }
@@ -55,5 +49,9 @@ impl Widget for Popup {
         if let Some(ref window) = self.window {
             window.route_event(ctx, event, env);
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        // nothing to paint
     }
 }

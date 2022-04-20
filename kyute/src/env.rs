@@ -1,4 +1,4 @@
-use crate::{Color, Data, Length, SideOffsets};
+use crate::{cache, Color, Data, Length, SideOffsets};
 use std::{
     any::Any,
     collections::HashMap,
@@ -222,6 +222,11 @@ impl<T: EnvValue> ValueRef<T> {
             ValueRef::Env(k) => k.get(env),
             ValueRef::Fn(f) => Some(f(env)),
         }
+    }
+
+    pub fn resolve_here(&self) -> Option<T> {
+        let env = cache::environment();
+        self.resolve(&env)
     }
 }
 

@@ -1,6 +1,7 @@
-use crate::{composable, event::PointerButton, widget::prelude::*, Data, PointerEventKind, WidgetId};
+use crate::{composable, event::PointerButton, widget::prelude::*, Data, GpuFrameCtx, PointerEventKind, WidgetId};
 use std::cell::Cell;
 
+use crate::core::WindowPaintCtx;
 pub use kyute_shell::Shortcut;
 
 #[derive(Clone, Debug, Data)]
@@ -208,10 +209,6 @@ impl<Content: Widget + 'static> Widget for ContextMenu<Content> {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.content.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.content.layout(ctx, constraints, env)
     }
@@ -236,5 +233,9 @@ impl<Content: Widget + 'static> Widget for ContextMenu<Content> {
                 _ => {}
             }
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.content.paint(ctx)
     }
 }

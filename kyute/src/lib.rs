@@ -29,11 +29,12 @@ pub mod widget;
 pub use kyute_macros::composable;
 
 pub use crate::{
+    animation::PaintCtx,
     asset::{Asset, AssetId, AssetLoader, AssetUri},
     bloom::Bloom,
     cache::{changed, environment, memoize, once, run_async, state, with_environment, Signal, State},
     core::{
-        EventCtx, GpuFrameCtx, LayoutCtx, PaintCtx, Widget, WidgetExt, WidgetFilter, WidgetId, WidgetPod,
+        EventCtx, GpuFrameCtx, LayoutCache, LayoutCtx, Widget, WidgetExt, WidgetFilter, WidgetId, WidgetPod,
         SHOW_DEBUG_OVERLAY,
     },
     env::{EnvKey, EnvValue, Environment, ValueRef},
@@ -44,8 +45,6 @@ pub use crate::{
 };
 
 pub use kyute_shell as shell;
-pub use kyute_text as text;
-// re-export graal
 pub use kyute_shell::graal;
 
 // re-export basic types from kyute-common

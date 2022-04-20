@@ -1,5 +1,5 @@
 use crate::{
-    animation::layer::{Layer, LayerHandle},
+    animation::PaintCtx,
     application::{AppCtx, ExtEvent},
     bloom::Bloom,
     cache,
@@ -19,8 +19,16 @@ use crate::{
     Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Length, Measurements, Offset, Point, Rect,
     State, Transform, UnitExt,
 };
+use kyute_common::{PointI, Size};
+use kyute_shell::animation::Layer;
 use skia_safe as sk;
-use std::{cell::Cell, fmt, hash::Hash, sync::Arc};
+use std::{
+    cell::{Cell, Ref, RefCell},
+    collections::HashSet,
+    fmt,
+    hash::Hash,
+    sync::Arc,
+};
 use tracing::{trace, warn};
 
 pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.core.show_debug_overlay");
@@ -32,6 +40,7 @@ pub const DISABLED: EnvKey<bool> = EnvKey::new("kyute.core.disabled");
 /// See [`Widget::layout`].
 pub struct LayoutCtx<'a> {
     pub scale_factor: f64,
+    pub speculative: bool,
     pub app_ctx: &'a mut AppCtx,
     changed: bool,
 }
@@ -40,6 +49,7 @@ impl<'a> LayoutCtx<'a> {
     pub fn new(app_ctx: &'a mut AppCtx, scale_factor: f64) -> LayoutCtx<'a> {
         LayoutCtx {
             scale_factor,
+            speculative: false,
             app_ctx,
             changed: false,
         }
@@ -49,53 +59,6 @@ impl<'a> LayoutCtx<'a> {
 impl<'a> LayoutCtx<'a> {
     pub fn round_to_pixel(&self, dip_length: f64) -> f64 {
         (dip_length * self.scale_factor).round()
-    }
-}
-
-// TODO make things private
-pub struct PaintCtx<'a> {
-    pub canvas: &'a mut skia_safe::Canvas,
-    //pub id: Option<WidgetId>,
-    pub window_transform: Transform,
-    //pub focus: Option<WidgetId>,
-    //pub pointer_grab: Option<WidgetId>,
-    //pub hot: Option<WidgetId>,
-    //pub inputs: &'a InputState,
-    pub scale_factor: f64,
-    pub invalid: &'a Region,
-    //pub hover: bool,
-    pub bounds: Rect,
-    //pub active: bool,
-}
-
-impl<'a> PaintCtx<'a> {
-    pub fn with_transform_and_clip<R>(
-        &mut self,
-        transform: Transform,
-        bounds: Rect,
-        clip: Rect,
-        f: impl FnOnce(&mut PaintCtx) -> R,
-    ) -> R {
-        let prev_window_transform = self.window_transform;
-        let prev_bounds = self.bounds;
-
-        self.window_transform = transform.then(&self.window_transform);
-        self.bounds = bounds;
-
-        self.canvas.save();
-        self.canvas.reset_matrix();
-        let scale_factor = self.scale_factor as sk::scalar;
-        self.canvas.scale((scale_factor, scale_factor));
-        self.canvas.concat(&self.window_transform.to_skia());
-        self.canvas.clip_rect(clip.to_skia(), None, None);
-
-        let result = f(self);
-
-        self.canvas.restore();
-
-        self.bounds = prev_bounds;
-        self.window_transform = prev_window_transform;
-        result
     }
 }
 
@@ -118,7 +81,7 @@ impl GpuResourceReferences {
 pub struct EventResult {
     pub handled: bool,
     pub relayout: bool,
-    pub redraw: bool,
+    pub paint_damage: Option<PaintDamage>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -154,7 +117,7 @@ pub enum HitTestResult {
     Skipped,
 }
 
-/// Helper function to perform hit-test of a pointer event in the given bounds.
+/*/// Helper function to perform hit-test of a pointer event in the given bounds.
 ///
 /// Returns:
 /// - Skipped: if the hit test was skipped, because the kind of pointer event ignores hit test (e.g. pointerout)
@@ -176,7 +139,7 @@ fn hit_test_helper(
     } else {
         HitTestResult::Failed
     }
-}
+}*/
 
 /// Used internally by `route_event`. In charge of converting the event to the target widget's local coordinates,
 /// performing hit-testing, calling the `event` method on the widget with the child `EventCtx`, and handling its result.
@@ -185,8 +148,9 @@ fn hit_test_helper(
 ///
 /// * `parent_ctx` EventCtx of the calling context
 /// * `widget` the widget to send the event to
+/// * `transform` parent to target transform
 /// * `widget_id` the ID of the `widget` (equivalent to `widget.widget_id()`, but we pass it as an argument to avoid calling the function again)
-/// * `event` the event to proagate
+/// * `event` the event to propagate
 /// * `skip_hit_test`: if true, skip hit-test and unconditionally propagate the event to the widget
 /// * `env` current environment
 fn do_event<W: Widget + ?Sized>(
@@ -194,10 +158,10 @@ fn do_event<W: Widget + ?Sized>(
     widget: &W,
     widget_id: Option<WidgetId>,
     event: &mut Event,
-    skip_hit_test: bool,
+    transform: &Transform,
     env: &Environment,
-) {
-    let target_layer = widget.layer();
+) -> EventResult {
+    /*let target_layer = widget.layer();
 
     let parent_to_target_transform = if let Some(parent_layer) = parent_ctx.layer {
         if let Some(transform) = parent_layer.child_transform(target_layer) {
@@ -219,129 +183,114 @@ fn do_event<W: Widget + ?Sized>(
     } else {
         // no parent layer, this is the root layer; it might have a transform though, so apply it
         target_layer.transform()
-    };
+    };*/
 
     match event {
         Event::Pointer(p) => {
             trace!(
-                "do_event: target={:?} pointer kind={:?} position={:?} transform offset={},{} layer={:?}",
+                "do_event: target={:?} pointer kind={:?} position={:?} transform offset={},{}",
                 widget.debug_name(),
                 p.kind,
                 p.position,
-                parent_to_target_transform.m31,
-                parent_to_target_transform.m32,
-                (&**target_layer) as *const _
+                transform.m31,
+                transform.m32,
             )
         }
         _ => {}
     }
 
     // transform from the visual tree root to the widget's layer
-    let window_transform = parent_to_target_transform.then(&parent_ctx.window_transform);
+    let window_transform = transform.then(&parent_ctx.window_transform);
 
     let mut target_ctx = EventCtx {
-        app_ctx: parent_ctx.app_ctx,
-        event_loop: parent_ctx.event_loop,
+        app_ctx: parent_ctx.app_ctx.as_deref_mut(),
+        event_loop: parent_ctx.event_loop.as_deref(),
         parent_window: parent_ctx.parent_window.as_deref_mut(),
-        focus_state: parent_ctx.focus_state,
+        focus_state: parent_ctx.focus_state.as_deref_mut(),
         window_transform,
-        layer: Some(target_layer),
-        scale_factor: parent_ctx.scale_factor,
         id: widget.widget_id(),
         handled: false,
         relayout: false,
-        active: None,
+        paint_damage: None,
     };
-    event.with_local_coordinates(parent_to_target_transform, |event| {
-        match event {
-            Event::Pointer(p) if !skip_hit_test => {
-                // pointer events undergo hit-testing, with some exceptions:
-                // - pointer out events are exempt from hit-test: if the pointer leaves
-                // the parent widget, we also want the child elements to know that.
-                // - if the widget is a pointer-grabbing widget, don't hit test
-                let exempt_from_hit_test = p.kind == PointerEventKind::PointerOut
-                    || (widget_id.is_some() && target_ctx.focus_state.pointer_grab == widget_id);
-
-                if exempt_from_hit_test || target_layer.contains(p.position) {
-                    // hit test pass
-                    trace!(
-                        "do_event: pointer event PASS @ {:?}{:?} in {:?}",
-                        widget.debug_name(),
-                        p.position,
-                        target_layer.size()
-                    );
-                    widget.event(&mut target_ctx, event, env);
-                } else {
-                    /*trace!(
-                        "do_event: pointer event FAIL @ {:?}{:?} in {:?}",
-                        widget.debug_name(),
-                        p.position,
-                        target_layer.size()
-                    );*/
-                    // hit test fail, skip
-                }
-            }
-            _ => {
-                widget.event(&mut target_ctx, event, env);
-            }
-        }
+    event.with_local_coordinates(transform, |event| {
+        widget.event(&mut target_ctx, event, env);
     });
 
-    parent_ctx.handled = target_ctx.handled;
+    EventResult {
+        handled: target_ctx.handled,
+        relayout: target_ctx.relayout,
+        paint_damage: target_ctx.paint_damage,
+    }
+}
 
-    // -- update widget state from ctx
-    // relayout and redraws
-    /*if ctx.relayout {
-        //tracing::trace!(widget_id = ?self.state.id, "requested relayout");
-        // relayout requested by the widget: invalidate cached measurements
-        self.state.layout_result.set(None);
-    }*/
-    // -- propagate results to parent
-    //parent_ctx.relayout |= ctx.relayout;
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum PaintDamage {
+    /// Some layers under this widget need to be repainted.
+    SubLayers,
+    /// The widget needs to be repainted (supersedes a child layer update).
+    Repaint,
 }
 
 pub struct EventCtx<'a> {
-    pub(crate) app_ctx: &'a mut AppCtx,
-    pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
+    // The Option fields are here because we sometimes send "utility events" that, for practical reasons,
+    // we'd like to send without having a parent window (`parent_window`, `focus_state`) or an event loop in context (`event_loop`).
+    // For those, we create an EventCtx with those fields set to None.
+    //
+    // Unfortunately this leads to cancerous code in the methods that access those fields (`as_deref_mut` and other atrocities).
+    //
+    // Alternatively, we could use another type of context for those utility events, without those fields,
+    // but this adds another method to the `Widget` trait which has a very high ergonomic cost.
+    pub(crate) app_ctx: Option<&'a mut AppCtx>,
+    pub(crate) event_loop: Option<&'a EventLoopWindowTarget<ExtEvent>>,
     pub(crate) parent_window: Option<&'a mut kyute_shell::window::Window>,
-    pub(crate) focus_state: &'a mut FocusState,
+    pub(crate) focus_state: Option<&'a mut FocusState>,
     pub(crate) window_transform: Transform,
-    layer: Option<&'a Layer>,
-    pub(crate) scale_factor: f64,
     pub(crate) id: Option<WidgetId>,
     pub(crate) handled: bool,
     pub(crate) relayout: bool,
-    active: Option<bool>,
+    pub(crate) paint_damage: Option<PaintDamage>,
 }
 
 impl<'a> EventCtx<'a> {
+    pub(crate) fn new() -> EventCtx<'a> {
+        EventCtx {
+            app_ctx: None,
+            event_loop: None,
+            parent_window: None,
+            focus_state: None,
+            window_transform: Transform::identity(),
+            id: None,
+            handled: false,
+            relayout: false,
+            paint_damage: None,
+        }
+    }
+
     /// Creates the root `EventCtx`
-    pub(crate) fn new(
+    pub(crate) fn with_app_ctx(
         app_ctx: &'a mut AppCtx,
         focus_state: &'a mut FocusState,
         event_loop: &'a EventLoopWindowTarget<ExtEvent>,
         id: Option<WidgetId>,
-        //root_layer: &'a Layer,
     ) -> EventCtx<'a> {
         EventCtx {
-            app_ctx,
-            event_loop,
+            app_ctx: Some(app_ctx),
+            event_loop: Some(event_loop),
             parent_window: None,
-            focus_state,
+            focus_state: Some(focus_state),
             window_transform: Transform::identity(),
-            scale_factor: 1.0,
-            layer: None,
             id,
             handled: false,
             relayout: false,
-            active: None,
+            paint_damage: None,
         }
     }
 
     /// Creates a new `EventCtx` to propagate events in a subwindow.
     pub fn with_local_transform<R>(
         &mut self,
-        transform: Transform,
+        transform: &Transform,
         event: &mut Event,
         f: impl FnOnce(&mut EventCtx, &mut Event) -> R,
     ) -> R {
@@ -353,9 +302,8 @@ impl<'a> EventCtx<'a> {
     }
 
     /// Creates a new `EventCtx` to propagate events in a subwindow.
-    pub(crate) fn new_subwindow<'b>(
-        parent: &'b mut EventCtx,
-        scale_factor: f64,
+    pub(crate) fn with_window<'b>(
+        &'b mut self,
         window: &'b mut kyute_shell::window::Window,
         focus_state: &'b mut FocusState,
     ) -> EventCtx<'b>
@@ -363,32 +311,28 @@ impl<'a> EventCtx<'a> {
         'a: 'b,
     {
         EventCtx {
-            app_ctx: parent.app_ctx,
-            event_loop: parent.event_loop,
+            app_ctx: self.app_ctx.as_deref_mut(),
+            event_loop: self.event_loop,
             parent_window: Some(window),
-            focus_state,
+            focus_state: Some(focus_state),
             window_transform: Transform::identity(),
-            layer: None,
-            scale_factor,
-            id: parent.id,
+            id: self.id,
             handled: false,
             relayout: false,
-            active: None,
+            paint_damage: None,
         }
     }
 
-    /// Performs hit-testing of the specified event in the given sub-bounds.
     ///
-    /// The behavior of hit-testing is as follows:
-    /// - if the event is not a pointer event, the hit-test passes automatically
-    /// - otherwise, do the pointer event hit-test
-    ///     - TODO details
-    ///
-    /// The function returns whether the hit-test passed, and, if it was successful and the event
-    /// was a pointer event, the pointer event with coordinates relative to the given sub-bounds.
-    /*pub fn hit_test(&mut self, pointer_event: &PointerEvent, bounds: Rect) -> HitTestResult {
-        hit_test_helper(pointer_event, bounds, self.id, self.focus_state.pointer_grab)
-    }*/
+    pub fn merge_event_result(&mut self, event_result: EventResult) {
+        self.relayout |= event_result.relayout;
+        self.handled |= event_result.handled;
+        match (self.paint_damage, event_result.paint_damage) {
+            (None, _) => self.paint_damage = event_result.paint_damage,
+            (Some(PaintDamage::SubLayers), Some(PaintDamage::Repaint)) => self.paint_damage = event_result.paint_damage,
+            _ => {}
+        }
+    }
 
     /// Returns the parent widget ID.
     pub fn widget_id(&self) -> Option<WidgetId> {
@@ -399,9 +343,23 @@ impl<'a> EventCtx<'a> {
         &self.window_transform
     }
 
+    /// Requests a repaint of the widget.
+    pub fn request_repaint(&mut self) {
+        self.paint_damage = Some(PaintDamage::Repaint);
+    }
+
+    pub fn request_layer_repaint(&mut self) {
+        if self.paint_damage.is_none() {
+            self.paint_damage = Some(PaintDamage::SubLayers);
+        }
+    }
+
     pub fn register_window(&mut self, window_id: WindowId) {
         if let Some(id) = self.id {
-            self.app_ctx.register_window_widget(window_id, id);
+            self.app_ctx
+                .as_deref_mut()
+                .expect("invalid EventCtx call")
+                .register_window_widget(window_id, id);
         } else {
             warn!("register_window: the widget registering the window must have an ID")
         }
@@ -426,7 +384,10 @@ impl<'a> EventCtx<'a> {
     /// Requests that the current node grabs all pointer events in the parent window.
     pub fn capture_pointer(&mut self) {
         if let Some(id) = self.id {
-            self.focus_state.pointer_grab = Some(id);
+            self.focus_state
+                .as_deref_mut()
+                .expect("invalid EventCtx call")
+                .pointer_grab = Some(id);
         } else {
             warn!("capture_pointer: the widget capturing the pointer must have an ID")
         }
@@ -436,7 +397,7 @@ impl<'a> EventCtx<'a> {
     #[must_use]
     pub fn is_capturing_pointer(&self) -> bool {
         if let Some(id) = self.id {
-            self.focus_state.pointer_grab == Some(id)
+            self.focus_state.as_deref().expect("invalid EventCtx call").pointer_grab == Some(id)
         } else {
             false
         }
@@ -445,7 +406,7 @@ impl<'a> EventCtx<'a> {
     /// Releases the pointer grab, if the current node is holding it.
     pub fn release_pointer(&mut self) {
         if let Some(id) = self.id {
-            if self.focus_state.pointer_grab == Some(id) {
+            if self.focus_state.as_deref().expect("invalid EventCtx call").pointer_grab == Some(id) {
                 trace!("releasing pointer grab");
             } else {
                 warn!("pointer capture release requested but the current widget isn't capturing the pointer");
@@ -458,7 +419,7 @@ impl<'a> EventCtx<'a> {
     /// Acquires the focus.
     pub fn request_focus(&mut self) {
         if let Some(id) = self.id {
-            self.focus_state.focus = Some(id);
+            self.focus_state.as_deref_mut().expect("invalid EventCtx call").focus = Some(id);
         } else {
             warn!("request_focus: the calling widget must have an ID")
         }
@@ -468,7 +429,7 @@ impl<'a> EventCtx<'a> {
     #[must_use]
     pub fn has_focus(&self) -> bool {
         if let Some(id) = self.id {
-            self.focus_state.focus == Some(id)
+            self.focus_state.as_deref().expect("invalid EventCtx call").focus == Some(id)
         } else {
             false
         }
@@ -476,12 +437,14 @@ impl<'a> EventCtx<'a> {
 
     pub fn track_popup_menu(&mut self, menu: kyute_shell::Menu, at: Point) {
         if let Some(id) = self.id {
-            self.focus_state.popup_target = Some(id);
-            let at = ((at.x * self.scale_factor) as i32, (at.y * self.scale_factor) as i32);
-            self.parent_window
-                .as_mut()
-                .expect("EventCtx::track_popup_menu called without a parent window")
-                .show_context_menu(menu, at);
+            let parent_window = self.parent_window.as_deref_mut().expect("invalid EventCtx call");
+            self.focus_state
+                .as_deref_mut()
+                .expect("invalid EventCtx call")
+                .popup_target = Some(id);
+            let scale_factor = parent_window.scale_factor();
+            let at = PointI::new((at.x * scale_factor) as i32, (at.y * scale_factor) as i32);
+            parent_window.show_context_menu(menu, at);
         } else {
             warn!("track_popup_menu: the calling widget must have an ID")
         }
@@ -492,11 +455,6 @@ impl<'a> EventCtx<'a> {
         self.handled = true;
     }
 
-    /// Signals that the widget became active or inactive.
-    pub fn set_active(&mut self, active: bool) {
-        self.active = Some(active);
-    }
-
     #[must_use]
     pub fn handled(&self) -> bool {
         self.handled
@@ -505,11 +463,17 @@ impl<'a> EventCtx<'a> {
     /// Routes an event to a target widget.
     // TODO: we could use `dyn Widget` but them we can't call the function
     // in generic contexts (e.g. with `W: Widget + ?Sized`, no way to get a `&dyn Widget` from a `&W`)
-    pub fn default_route_event<W: Widget + ?Sized>(&mut self, widget: &W, event: &mut Event, env: &Environment) {
+    pub fn default_route_event<W: Widget + ?Sized>(
+        &mut self,
+        widget: &W,
+        event: &mut Event,
+        transform: &Transform,
+        env: &Environment,
+    ) -> Option<EventResult> {
         let id = widget.widget_id();
 
         // ---- Handle internal events (routing mostly) ----
-        match *event {
+        let result = match *event {
             ////////////////////////////////////////////////////////////////////////////////////////
             // Routed events
             Event::Internal(InternalEvent::RouteWindowEvent {
@@ -522,11 +486,11 @@ impl<'a> EventCtx<'a> {
                         widget,
                         id,
                         &mut Event::WindowEvent(window_event.clone()),
-                        false,
+                        transform,
                         env,
-                    );
+                    )
                 } else {
-                    do_event(self, widget, id, event, false, env);
+                    do_event(self, widget, id, event, transform, env)
                 }
             }
             Event::Internal(InternalEvent::RouteEvent {
@@ -534,9 +498,9 @@ impl<'a> EventCtx<'a> {
                 event: ref mut inner_event,
             }) => {
                 if id == Some(target) {
-                    do_event(self, widget, id, inner_event, false, env);
+                    do_event(self, widget, id, inner_event, transform, env)
                 } else {
-                    do_event(self, widget, id, event, false, env);
+                    do_event(self, widget, id, event, transform, env)
                 }
             }
             Event::Internal(InternalEvent::RoutePointerEvent {
@@ -548,23 +512,24 @@ impl<'a> EventCtx<'a> {
                 // by hit-testing.
                 if id == Some(target) {
                     //trace!("pointer event reached {:?}", target);
-                    do_event(self, widget, id, &mut Event::Pointer(*pointer_event), true, env);
+                    do_event(self, widget, id, &mut Event::Pointer(*pointer_event), transform, env)
                 } else {
-                    do_event(self, widget, id, event, true, env);
+                    do_event(self, widget, id, event, transform, env)
                 }
             }
             // TODO remove? not sure that's still used
             Event::Internal(InternalEvent::RouteRedrawRequest(target)) => {
                 if id == Some(target) {
-                    do_event(self, widget, id, &mut Event::WindowRedrawRequest, false, env);
+                    do_event(self, widget, id, &mut Event::WindowRedrawRequest, transform, env)
                 } else {
-                    do_event(self, widget, id, event, false, env);
+                    do_event(self, widget, id, event, transform, env)
                 }
             }
             Event::Internal(InternalEvent::Traverse { ref mut widgets }) => {
                 // T: ?Sized
                 // This is problematic: it must clone self, and thus we must either have T == dyn Widget or T:Sized
                 //widgets.push(WidgetPod(self.state.this.upgrade().unwrap()));
+                return None;
             }
 
             ////////////////////////////////////////////////////////////////////////////////////////
@@ -574,19 +539,19 @@ impl<'a> EventCtx<'a> {
                     filter.add(&id);
                 }
                 // propagate
-                do_event(self, widget, id, event, false, env);
+                do_event(self, widget, id, event, transform, env)
             }
             Event::Initialize => {
                 // directly pass to widget
-                do_event(self, widget, id, event, false, env);
+                do_event(self, widget, id, event, transform, env)
             }
 
             ////////////////////////////////////////////////////////////////////////////////////////
             // Regular event flow
-            _ => {
-                do_event(self, widget, id, event, false, env);
-            }
-        }
+            _ => do_event(self, widget, id, event, transform, env),
+        };
+
+        Some(result)
     }
 }
 
@@ -665,8 +630,13 @@ pub trait Widget {
     /// Returns the widget identity.
     fn widget_id(&self) -> Option<WidgetId>;
 
-    /// Returns this widget's animation layer.
-    fn layer(&self) -> &LayerHandle;
+    fn speculative_layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+        let was_speculative = ctx.speculative;
+        ctx.speculative = true;
+        let measurements = self.layout(ctx, constraints, env);
+        ctx.speculative = was_speculative;
+        measurements
+    }
 
     /// Measures this widget and layouts the children of this widget.
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements;
@@ -674,9 +644,14 @@ pub trait Widget {
     /// Propagates an event through the widget hierarchy.
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
 
+    fn paint(&self, ctx: &mut PaintCtx);
+
     ///
     fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        ctx.default_route_event(self, event, env)
+        let event_result = ctx.default_route_event(self, event, &Transform::identity(), env);
+        if let Some(event_result) = event_result {
+            ctx.merge_event_result(event_result);
+        }
     }
 
     /// Called only for native window widgets.
@@ -697,14 +672,6 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::widget_id(&**self)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        Widget::layer(&**self)
-    }
-
-    fn debug_name(&self) -> &str {
-        Widget::debug_name(&**self)
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         Widget::layout(&**self, ctx, constraints, env)
     }
@@ -713,12 +680,24 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::event(&**self, ctx, event, env)
     }
 
+    fn paint(&self, ctx: &mut PaintCtx) {
+        Widget::paint(&**self, ctx)
+    }
+
+    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        Widget::route_event(&**self, ctx, event, env)
+    }
+
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {
         Widget::window_paint(&**self, ctx)
     }
 
     fn gpu_frame<'a, 'b>(&'a self, ctx: &mut GpuFrameCtx<'a, 'b>) {
         Widget::gpu_frame(&**self, ctx)
+    }
+
+    fn debug_name(&self) -> &str {
+        Widget::debug_name(&**self)
     }
 }
 
@@ -842,10 +821,70 @@ impl fmt::Debug for WidgetId {
 
 pub type WidgetFilter = Bloom<WidgetId>;
 
-#[derive(Copy, Clone, Debug, Hash)]
-struct LayoutResult {
+#[derive(Clone)]
+pub struct LayoutCacheInner<T: Clone> {
     constraints: BoxConstraints,
-    measurements: Measurements,
+    scale_factor: f64,
+    layout: Option<T>,
+}
+
+#[derive(Clone)]
+pub struct LayoutCache<T: Clone>(RefCell<LayoutCacheInner<T>>);
+
+impl<T: Clone> Default for LayoutCache<T> {
+    fn default() -> Self {
+        LayoutCache::new()
+    }
+}
+
+impl<T: Clone> LayoutCache<T> {
+    pub fn new() -> LayoutCache<T> {
+        LayoutCache(RefCell::new(LayoutCacheInner {
+            constraints: Default::default(),
+            scale_factor: 0.0,
+            layout: None,
+        }))
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.0.borrow().layout.is_some()
+    }
+
+    pub fn update(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, f: impl FnOnce(&mut LayoutCtx) -> T) -> T {
+        // don't cache speculative layouts
+        if ctx.speculative {
+            f(ctx)
+        } else {
+            let mut inner = self.0.borrow_mut();
+            if inner.layout.is_none() || inner.constraints != constraints || inner.scale_factor != ctx.scale_factor {
+                let layout = f(ctx);
+                inner.layout = Some(layout.clone());
+                inner.constraints = constraints;
+                inner.scale_factor = ctx.scale_factor;
+                layout
+            } else {
+                inner.layout.as_ref().unwrap().clone()
+            }
+        }
+    }
+
+    pub fn get_cached(&self) -> Ref<T> {
+        Ref::map(self.0.borrow(), |inner| {
+            inner.layout.as_ref().expect("layout not calculated")
+        })
+    }
+
+    pub fn get_cached_constraints(&self) -> BoxConstraints {
+        self.0.borrow().constraints
+    }
+
+    pub fn get_cached_scale_factor(&self) -> f64 {
+        self.0.borrow().scale_factor
+    }
+
+    pub fn invalidate(&self) {
+        self.0.borrow_mut().layout = None;
+    }
 }
 
 #[derive(Clone)]
@@ -853,9 +892,10 @@ struct WidgetPodState {
     /// Unique ID of the widget, if it has one.
     id: Option<WidgetId>,
 
+    transform: Cell<Transform>,
+
     /// Layout result.
-    // TODO(layers): remove?
-    layout_result: Cell<Option<LayoutResult>>,
+    layout_result: LayoutCache<Measurements>,
 
     /// Any pointer hovering this widget
     pointer_over: State<bool>,
@@ -886,7 +926,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                 &self.widget,
                 self.state.id,
                 &mut Event::Internal(InternalEvent::UpdateChildFilter { filter: &mut filter }),
-                false,
+                &self.state.transform.get(),
                 env,
             );
             self.state.child_filter.set(Some(filter));
@@ -903,6 +943,18 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
             true
         }
     }
+
+    pub fn set_offset(&self, offset: Offset) {
+        self.state.transform.set(offset.to_transform());
+    }
+
+    pub fn set_transform(&self, transform: Transform) {
+        self.state.transform.set(transform)
+    }
+
+    pub fn transform(&self) -> Transform {
+        self.state.transform.get()
+    }
 }
 
 impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
@@ -910,50 +962,58 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         self.state.id
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.widget.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        // we just forward to the inner widget; we also check for invalid size values while we're at
-        // it, but that's only for debugging convenience.
-        let measurements = self.widget.layout(ctx, constraints, env);
+        self.state
+            .layout_result
+            .update(ctx, constraints, |ctx| {
+                let _span = trace_span!("layout", 
+                    id = ?self.state.id,
+                    name = self.widget.debug_name())
+                .entered();
 
-        /*trace!(
-            "WidgetPod[{:?}({})]::layout: measurements={:?}",
-            self.state.id,
-            self.widget.debug_name(),
-            measurements
-        );*/
+                // we just forward to the inner widget; we also check for invalid size values while we're at
+                // it, but that's only for debugging convenience.
+                let measurements = self.widget.layout(ctx, constraints, env);
+                trace!(
+                    id = ?self.state.id,
+                    name = self.widget.debug_name(),
+                    "layout[{:?}({})]: measurements={:?}",
+                    self.state.id,
+                    self.widget.debug_name(),
+                    measurements
+                );
 
-        if !measurements.size.width.is_finite() || !measurements.size.height.is_finite() {
-            warn!(
-                "layout[{:?}({})] returned non-finite measurements: {:?}",
-                self.state.id,
-                self.widget.debug_name(),
+                if !measurements.size.width.is_finite() || !measurements.size.height.is_finite() {
+                    warn!(
+                        "layout[{:?}({})] returned non-finite measurements: {:?}",
+                        self.state.id,
+                        self.widget.debug_name(),
+                        measurements
+                    );
+                }
+
                 measurements
-            );
-        }
-        let layer_size = self.widget.layer().size();
-        if layer_size.width == 0.0 || layer_size.height == 0.0 {
-            warn!(
-                "layout[{:?}({})] produced a zero-sized layer",
-                self.state.id,
-                self.widget.debug_name()
-            );
-        }
-
-        measurements
+            })
+            .clone()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.widget.event(ctx, event, env)
     }
 
+    fn paint(&self, ctx: &mut PaintCtx) {
+        let layout = self.state.layout_result.get_cached();
+        ctx.with_transform_and_clip(
+            &self.state.transform.get(),
+            layout.local_bounds(),
+            layout.clip_bounds,
+            |ctx| self.widget.paint(ctx),
+        )
+    }
+
     fn route_event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         // ensure that the child filter has been computed and the child widgets are initialized
         self.compute_child_filter(parent_ctx, env);
-
         match *event {
             // do not propagate routed events that are not directed to us, or to one of our children;
             // use the child filter to determine if we may contain a specific children; it might be a false
@@ -976,11 +1036,51 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                 filter.extend(&child_filter);
                 return;
             }
+
+            // pointer events undergo hit-testing, with some exceptions:
+            // - pointer out events are exempt from hit-test: if the pointer leaves
+            // the parent widget, we also want the child elements to know that.
+            // - if the widget is a pointer-grabbing widget, don't hit test
+            Event::Pointer(p) => {
+                let exempt_from_hit_test = p.kind == PointerEventKind::PointerOut
+                    || (self.state.id.is_some()
+                        && parent_ctx.focus_state.as_deref().unwrap().pointer_grab == self.state.id);
+
+                if !exempt_from_hit_test {
+                    let local_pointer_pos = self
+                        .state
+                        .transform
+                        .get()
+                        .inverse()
+                        .unwrap()
+                        .transform_point(p.position);
+
+                    if !self
+                        .state
+                        .layout_result
+                        .get_cached()
+                        .local_bounds()
+                        .contains(local_pointer_pos)
+                    {
+                        // hit test pass
+                        trace!(
+                            "do_event: pointer event FAIL @ {:?}{:?}",
+                            self.widget.debug_name(),
+                            p.position,
+                        );
+                        return;
+                    }
+                }
+            }
+
             _ => {}
         }
 
         // continue with default routing behavior
-        parent_ctx.default_route_event(self, event, env)
+        let event_result = parent_ctx.default_route_event(self, event, &self.state.transform.get(), env);
+        if let Some(event_result) = event_result {
+            parent_ctx.merge_event_result(event_result);
+        }
     }
 
     fn window_paint(&self, ctx: &mut WindowPaintCtx) {
@@ -992,7 +1092,7 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
     }
 
     fn debug_name(&self) -> &str {
-        self.widget().debug_name()
+        self.inner().debug_name()
     }
 }
 
@@ -1013,8 +1113,9 @@ impl<T: Widget + 'static> WidgetPod<T> {
             state: WidgetPodState {
                 id,
                 pointer_over: state(|| false),
-                layout_result: Cell::new(None),
+                layout_result: Default::default(),
                 child_filter: Cell::new(None),
+                transform: Cell::new(Default::default()),
             },
             widget,
         }
@@ -1043,8 +1144,13 @@ impl<T: Widget + 'static> From<WidgetPod<T>> for WidgetPod {
 
 impl<T: ?Sized + Widget> WidgetPod<T> {
     /// Returns a reference to the wrapped widget.
-    pub fn widget(&self) -> &T {
+    pub fn inner(&self) -> &T {
         &self.widget
+    }
+
+    /// Returns a mutable reference to the wrapped widget.
+    pub fn inner_mut(&mut self) -> &mut T {
+        &mut self.widget
     }
 
     /// Returns the widget id.
@@ -1060,10 +1166,16 @@ impl<T: ?Sized + Widget> WidgetPod<T> {
         event_loop: &EventLoopWindowTarget<ExtEvent>,
         env: &Environment,
     ) {
+        // three steps:
+        // - initialization
+        // - layout (skipped if not invalidated)
+        // - painting
+        //      - painting should skip layers that are not dirty
+
         {
             let _span = trace_span!("initialize").entered();
             let mut dummy_focus_state = FocusState::default();
-            let mut event_ctx = EventCtx::new(app_ctx, &mut dummy_focus_state, event_loop, None);
+            let mut event_ctx = EventCtx::with_app_ctx(app_ctx, &mut dummy_focus_state, event_loop, None);
             self.route_event(&mut event_ctx, &mut Event::Initialize, env);
         }
 

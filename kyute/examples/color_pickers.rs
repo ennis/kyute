@@ -12,6 +12,7 @@ use kyute::{
 };
 use kyute_shell::winit::dpi::LogicalSize;
 use std::sync::Arc;
+use tracing::trace_span;
 
 #[composable]
 fn color_picker() -> impl Widget + Clone {
@@ -26,7 +27,7 @@ fn color_picker() -> impl Widget + Clone {
         },
     )
     .on_color_changed(|c| color = c);
-    picker.centered()
+    Container::new(picker.centered()).background(theme::palette::BLUE_GREY_900)
 }
 
 #[composable]
@@ -41,15 +42,15 @@ fn ui_root() -> impl Widget {
 }
 
 fn main() {
-    /*use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::layer::SubscriberExt;
     tracing::subscriber::set_global_default(tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()))
-        .expect("set up the subscriber");*/
+        .expect("set up the subscriber");
 
-    tracing_subscriber::fmt()
-        .compact()
-        .with_target(false)
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    /*tracing_subscriber::fmt()
+    .compact()
+    .with_target(false)
+    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    .init();*/
 
     application::run(ui_root);
 }

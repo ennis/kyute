@@ -1,7 +1,8 @@
 use crate::{
+    animation::PaintCtx,
     drawing::ToSkia,
     style::{border::Border, Length, Paint},
-    Offset, PaintCtx, Rect,
+    Offset, Rect,
 };
 use kyute_common::{Color, SideOffsets, Size};
 use skia_safe as sk;
@@ -226,7 +227,7 @@ impl BoxStyle {
                     shadow_bounds.origin += Offset::new(offset_x, offset_y);
                     shadow_bounds = shadow_bounds.inflate(spread, spread);
                     let rrect = sk::RRect::new_rect_radii(shadow_bounds.to_skia(), &radii);
-                    ctx.canvas.draw_rrect(rrect, &blur);
+                    ctx.surface.canvas().draw_rrect(rrect, &blur);
                 }
                 BoxShadow::Inset(_) => {
                     // TODO
@@ -239,7 +240,7 @@ impl BoxStyle {
             let mut paint = brush.to_sk_paint(bounds);
             paint.set_style(sk::PaintStyle::Fill);
             let rrect = sk::RRect::new_rect_radii(bounds.to_skia(), &radii);
-            ctx.canvas.draw_rrect(rrect, &paint);
+            ctx.surface.canvas().draw_rrect(rrect, &paint);
         }
 
         // borders

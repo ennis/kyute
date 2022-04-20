@@ -1,9 +1,9 @@
 use crate::{
-    animation::layer::Layer,
+    core::WindowPaintCtx,
     style::{BoxStyle, PaintCtxExt},
     theme,
     widget::prelude::*,
-    RoundToPixel,
+    GpuFrameCtx, RoundToPixel,
 };
 use std::sync::Arc;
 
@@ -49,7 +49,6 @@ pub enum MainAxisSize {
 #[derive(Clone)]
 pub struct Flex {
     id: WidgetId,
-    layer: LayerHandle,
     axis_orientation: Orientation,
     items: Vec<Arc<WidgetPod>>,
 }
@@ -58,33 +57,12 @@ impl Flex {
     #[deprecated(note = "use Grid::row() and Grid::column() instead")]
     #[composable]
     pub fn new(axis_orientation: Orientation) -> Flex {
-        struct FlexLayerDelegate;
-        impl LayerDelegate for FlexLayerDelegate {
-            fn draw(&self, ctx: &mut PaintCtx) {
-                ctx.draw_styled_box(ctx.bounds, &BoxStyle::new().fill(theme::palette::GREY_500));
-            }
-        }
-
-        let layer = Layer::new();
-        layer.set_delegate(FlexLayerDelegate);
-
         Flex {
-            layer: Layer::new(),
             id: WidgetId::here(),
             axis_orientation,
             items: vec![],
         }
     }
-
-    /*#[deprecated(note = "use Grid::row() and Grid::column() instead")]
-    pub fn horizontal() -> Flex {
-        Flex::new(Orientation::Horizontal)
-    }
-
-    #[deprecated(note = "use Grid::row() and Grid::column() instead")]
-    pub fn vertical() -> Flex {
-        Flex::new(Orientation::Vertical)
-    }*/
 
     #[composable]
     pub fn with(mut self, widget: impl Widget + 'static) -> Self {
@@ -101,10 +79,6 @@ impl Flex {
 impl Widget for Flex {
     fn widget_id(&self) -> Option<WidgetId> {
         Some(self.id)
-    }
-
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
@@ -137,7 +111,9 @@ impl Widget for Flex {
                 Orientation::Vertical => Offset::new(0.0, d),
                 Orientation::Horizontal => Offset::new(d, 0.0),
             };
-            self.items[i].layer().set_offset(offset);
+            if !ctx.speculative {
+                self.items[i].set_offset(offset);
+            }
             d += len + spacing;
             d = d.ceil();
         }
@@ -148,20 +124,16 @@ impl Widget for Flex {
         };
 
         let size = size.round_to_pixel(ctx.scale_factor);
-
-        self.layer.remove_all_children();
-        self.layer.set_size(size);
-        self.layer.set_scale_factor(ctx.scale_factor);
-        for item in self.items.iter() {
-            self.layer.add_child(item.layer());
-        }
-
-        Measurements::new(size.round_to_pixel(ctx.scale_factor))
+        Measurements::new(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         for item in self.items.iter() {
             item.route_event(ctx, event, env);
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        ctx.draw_styled_box(ctx.bounds, &BoxStyle::new().fill(theme::palette::GREY_500));
     }
 }

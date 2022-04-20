@@ -20,7 +20,7 @@ use tracing::{info, trace};
 #[composable]
 fn fixed_size_widget(w: f64, h: f64, name: impl Into<String> + Data) -> impl Widget {
     // TODO "debug widget" that draws a background pattern, with a border
-    Label::new(name).fix_size(Size::new(w, h))
+    Label::new(name).fix_size(w.dip(), h.dip())
 }
 
 #[composable(cached)]
@@ -147,9 +147,7 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let _app = Application::new();
     let mut env = Environment::new();
     env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
     application::run_with_env(ui_root, env);
-    Application::shutdown();
 }

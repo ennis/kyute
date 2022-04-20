@@ -1,5 +1,5 @@
 use crate::{
-    animation::layer::Layer,
+    core::WindowPaintCtx,
     drawing::ToSkia,
     make_uniform_data, style,
     style::{BoxStyle, Paint, PaintCtxExt},
@@ -11,12 +11,12 @@ use crate::{
         Border, Clickable, Container, Grid, GridLength, GridRow, Null, Text, TextInput, ValidationResult,
         WidgetWrapper,
     },
-    Color, PointerEventKind, UnitExt, WidgetExt,
+    Color, GpuFrameCtx, PointerEventKind, UnitExt, WidgetExt,
 };
 use anyhow::Error;
 use euclid::SideOffsets2D;
 use kyute_common::{Length, SideOffsets};
-use kyute_text::FormattedText;
+use kyute_shell::text::FormattedText;
 use lazy_static::lazy_static;
 use palette::{FromColor, Hsv, Hsva, LinSrgba, Mix, RgbHue, Srgb, Srgba};
 use skia_safe as sk;
@@ -323,36 +323,12 @@ impl ColorPicker {
 
 ///
 pub struct HsvColorSquare {
-    layer: LayerHandle,
+    hue: f32,
 }
 
 impl HsvColorSquare {
     pub fn new(hue: f32) -> HsvColorSquare {
-        struct HsvColorSquareLayerDelegate {
-            hue: f32,
-        }
-        impl LayerDelegate for HsvColorSquareLayerDelegate {
-            fn draw(&self, ctx: &mut PaintCtx) {
-                let mut bounds = ctx.bounds;
-                let size = bounds.size;
-                let effect = HSV_COLOR_SQUARE_EFFECT.get_ref().unwrap();
-                let uniforms = make_uniform_data!([effect]
-                    hue: f32 = self.hue;
-                    size: [f32; 2] = [size.width as f32, size.height as f32];
-                );
-                let paint = Paint::Shader {
-                    effect: effect.clone(),
-                    uniforms,
-                };
-                let style = BoxStyle::new().fill(paint);
-                ctx.draw_styled_box(bounds, &style);
-            }
-        }
-
-        let layer = Layer::new();
-        layer.set_delegate(HsvColorSquareLayerDelegate { hue });
-
-        HsvColorSquare { layer }
+        HsvColorSquare { hue }
     }
 }
 
@@ -361,15 +337,27 @@ impl Widget for HsvColorSquare {
         None
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, _ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
         Measurements::new(constraints.max)
     }
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        let mut bounds = ctx.bounds;
+        let size = bounds.size;
+        let effect = HSV_COLOR_SQUARE_EFFECT.get_ref().unwrap();
+        let uniforms = make_uniform_data!([effect]
+            hue: f32 = self.hue;
+            size: [f32; 2] = [size.width as f32, size.height as f32];
+        );
+        let paint = Paint::Shader {
+            effect: effect.clone(),
+            uniforms,
+        };
+        let style = BoxStyle::new().fill(paint);
+        ctx.draw_styled_box(bounds, &style);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -384,15 +372,12 @@ pub struct ColorSwatch {
 impl ColorSwatch {
     #[composable]
     pub fn new(width: Length, height: Length, color: Color) -> ColorSwatch {
-        let inner = Container::new(Null::new())
-            .fixed_width(width)
-            .fixed_height(height)
-            .box_style(
-                BoxStyle::new()
-                    .fill(make_color_swatch_paint(color, 8, theme::palette::GREY_400))
-                    .border(style::Border::around(2.px()).paint(Color::from_hex("#000000")))
-                    .border(style::Border::around(1.px()).paint(Color::from_hex("#DDDDDD"))),
-            );
+        let inner = Container::new(Null).fixed_width(width).fixed_height(height).box_style(
+            BoxStyle::new()
+                .fill(make_color_swatch_paint(color, 8, theme::palette::GREY_400))
+                .border(style::Border::around(2.px()).paint(Color::from_hex("#000000")))
+                .border(style::Border::around(1.px()).paint(Color::from_hex("#DDDDDD"))),
+        );
         ColorSwatch { inner }
     }
 }
@@ -428,61 +413,12 @@ impl ColorBarBounds {
 
 // TODO eventually replace by a more generic "ColorGradientBar"
 pub struct ColorBar {
-    layer: LayerHandle,
+    color_bounds: ColorBarBounds,
 }
 
 impl ColorBar {
     pub fn new(color_bounds: ColorBarBounds) -> ColorBar {
-        struct ColorBarLayerDelegate {
-            color_bounds: ColorBarBounds,
-        }
-        impl LayerDelegate for ColorBarLayerDelegate {
-            fn draw(&self, ctx: &mut PaintCtx) {
-                let bounds = ctx.bounds;
-                // paint bar
-                let size = bounds.size;
-                let paint = match self.color_bounds {
-                    ColorBarBounds::Hsv { from, to } => {
-                        let (from_hue, from_sat, from_val, from_alpha) = from.into_components();
-                        let (to_hue, to_sat, to_val, to_alpha) = to.into_components();
-                        make_color_bar_paint(
-                            ColorEncoding::Hsv,
-                            [from_hue.to_raw_degrees() / 360.0, from_sat, from_val, from_alpha],
-                            [to_hue.to_raw_degrees() / 360.0, to_sat, to_val, to_alpha],
-                            size,
-                            (8.0 * ctx.scale_factor).round() as i32,
-                            Color::new(0.7, 0.7, 0.7, 1.0),
-                        )
-                    }
-                    ColorBarBounds::Rgb { from, to } => {
-                        let (from_r, from_g, from_b, from_a) = from.into_components();
-                        let (to_r, to_g, to_b, to_a) = to.into_components();
-                        make_color_bar_paint(
-                            ColorEncoding::Rgb,
-                            [from_r, from_g, from_b, from_a],
-                            [to_r, to_g, to_b, to_a],
-                            size,
-                            (8.0 * ctx.scale_factor).round() as i32,
-                            Color::new(0.7, 0.7, 0.7, 1.0),
-                        )
-                    }
-                };
-
-                let style = BoxStyle::new()
-                    .radius(0.5 * COLOR_BAR_SLIDER_SIZE_DIP.dip())
-                    .fill(paint)
-                    .border(style::Border::outside(1.px()).paint(theme::palette::GREY_500));
-                ctx.draw_styled_box(
-                    bounds.inner_rect(SideOffsets2D::new_all_same(1.0 / ctx.scale_factor)),
-                    &style,
-                );
-            }
-        }
-
-        let layer = Layer::new();
-        layer.set_delegate(ColorBarLayerDelegate { color_bounds });
-
-        ColorBar { layer }
+        ColorBar { color_bounds }
     }
 
     pub fn rgb(from: LinSrgba, to: LinSrgba) -> ColorBar {
@@ -503,21 +439,56 @@ impl Widget for ColorBar {
         None
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, _ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
         let size = Size::new(
             constraints.finite_max_width().unwrap_or(300.0),
             COLOR_BAR_SLIDER_SIZE_DIP,
         );
-
-        self.layer.set_size(size);
         Measurements::new(size)
     }
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        let bounds = ctx.bounds;
+        // paint bar
+        let size = bounds.size;
+        let paint = match self.color_bounds {
+            ColorBarBounds::Hsv { from, to } => {
+                let (from_hue, from_sat, from_val, from_alpha) = from.into_components();
+                let (to_hue, to_sat, to_val, to_alpha) = to.into_components();
+                make_color_bar_paint(
+                    ColorEncoding::Hsv,
+                    [from_hue.to_raw_degrees() / 360.0, from_sat, from_val, from_alpha],
+                    [to_hue.to_raw_degrees() / 360.0, to_sat, to_val, to_alpha],
+                    size,
+                    (8.0 * ctx.scale_factor).round() as i32,
+                    Color::new(0.7, 0.7, 0.7, 1.0),
+                )
+            }
+            ColorBarBounds::Rgb { from, to } => {
+                let (from_r, from_g, from_b, from_a) = from.into_components();
+                let (to_r, to_g, to_b, to_a) = to.into_components();
+                make_color_bar_paint(
+                    ColorEncoding::Rgb,
+                    [from_r, from_g, from_b, from_a],
+                    [to_r, to_g, to_b, to_a],
+                    size,
+                    (8.0 * ctx.scale_factor).round() as i32,
+                    Color::new(0.7, 0.7, 0.7, 1.0),
+                )
+            }
+        };
+
+        let style = BoxStyle::new()
+            .radius(0.5 * COLOR_BAR_SLIDER_SIZE_DIP.dip())
+            .fill(paint)
+            .border(style::Border::outside(1.px()).paint(theme::palette::GREY_500));
+        ctx.draw_styled_box(
+            bounds.inner_rect(SideOffsets2D::new_all_same(1.0 / ctx.scale_factor)),
+            &style,
+        );
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -536,7 +507,7 @@ impl ColorSlider {
         let slider = SliderBase::new(
             val as f64,
             ColorBar::new(bounds),
-            Container::new(Null::new())
+            Container::new(Null)
                 .fixed_width(COLOR_BAR_KNOB_SIZE.dip())
                 .fixed_height(COLOR_BAR_KNOB_SIZE.dip())
                 .box_style(

@@ -3,7 +3,6 @@ use crate::widget::{prelude::*, Clickable};
 use std::marker::PhantomData;
 
 pub struct Selectable<W, T> {
-    layer: LayerHandle,
     inner: Clickable<W>,
     selected: bool,
     _phantom: PhantomData<T>,
@@ -27,7 +26,6 @@ where
         };
 
         Selectable {
-            layer: Layer::new(),
             inner,
             selected,
             _phantom: PhantomData,
@@ -44,19 +42,15 @@ impl<W: Widget + 'static, T> Widget for Selectable<W, T> {
         self.inner.widget_id()
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let m = self.inner.layout(ctx, constraints, env);
-        self.layer.add_child(self.inner.layer());
-        self.layer.set_scale_factor(ctx.scale_factor);
-        self.layer.set_size(m.size);
-        m
+        self.inner.layout(ctx, constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.inner.event(ctx, event, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        todo!()
     }
 }

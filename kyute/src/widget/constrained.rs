@@ -1,4 +1,4 @@
-use crate::{widget::prelude::*, Length};
+use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx, Length};
 
 #[derive(Clone)]
 pub struct ConstrainedBox<W> {
@@ -80,10 +80,6 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
         self.inner.widget_id()
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.inner.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let additional_constraints = BoxConstraints::new(
             self.min_width.to_dips(ctx.scale_factor, constraints.max_width())
@@ -98,5 +94,9 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.inner.route_event(ctx, event, env);
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.inner.paint(ctx)
     }
 }

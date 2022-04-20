@@ -1,4 +1,4 @@
-use crate::widget::prelude::*;
+use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx};
 
 /*#[derive(Clone)]
 pub struct LayoutWrapper<W> {
@@ -187,10 +187,6 @@ impl<Content: Widget + 'static> Widget for LayoutInspector<Content> {
         self.content.widget_id()
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.content.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let measurements = self.content.layout(ctx, constraints, env);
         if measurements.size != self.size {
@@ -201,5 +197,9 @@ impl<Content: Widget + 'static> Widget for LayoutInspector<Content> {
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.content.route_event(ctx, event, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.content.paint(ctx)
     }
 }

@@ -1,13 +1,14 @@
 //! Text elements
 use crate::{
     composable,
+    core::WindowPaintCtx,
     env::Environment,
     event::Event,
     theme,
     widget::{prelude::*, Text},
-    Color, Data, ValueRef,
+    Color, Data, GpuFrameCtx, ValueRef,
 };
-use kyute_text::FormattedText;
+use kyute_shell::text::FormattedText;
 
 /// Simple text label.
 #[derive(Clone)]
@@ -44,15 +45,15 @@ impl Widget for Label {
         self.text.widget_id()
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.text.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.text.layout(ctx, constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.text.route_event(ctx, event, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.text.paint(ctx)
     }
 }

@@ -9,6 +9,7 @@ edition = "2018"
 # windowing
 anyhow = "1.0.43"
 winit = { git = "https://github.com/ennis/winit", rev = "178cf8ebbeedce48c4abb16b9aa3aec52f9281b5" }
+skia-safe = { version = "0.49.0", features = ["vulkan"] }
 #euclid = "0.22"   # basic 2D geometric types
 bitflags = "1.2.1"
 lazy_static = "1.4.0"
@@ -18,11 +19,15 @@ float-cmp = "0.9"
 raw-window-handle = "0.4"
 tracing = "0.1.25"
 thiserror = "1.0.24"
+parking_lot = "0.12.0"
 #graal = { git = "https://github.com/ennis/graal.git", rev = "0b13c41bed0e33b5b30bddf1af24b04fdaac9054" }
 graal = { path = "../../graal/graal"  }
 kyute-common = { path = "../kyute-common" }
-windows = { version = "0.34.0", features = ["Win32_Graphics_Direct2D",
+windows = { version = "0.34.0", features = [
+    "implement",
+    "Win32_Graphics_Direct2D",
     "Win32_Foundation",
+    "Win32_System_Threading",
     "Win32_System_Diagnostics_Debug",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_SystemServices",
@@ -46,9 +51,6 @@ windows = { version = "0.34.0", features = ["Win32_Graphics_Direct2D",
 
 serde = { version = "1.0", optional = true }
 threadbound = "0.1.2"
-
-[dev-dependencies]
-skia-safe = { version = "0.47.0", features = ["vulkan"] }
 
 [features]
 serializing = ["serde"]

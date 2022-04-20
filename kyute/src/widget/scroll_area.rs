@@ -1,4 +1,5 @@
 use crate::{
+    core::WindowPaintCtx,
     event::WheelDeltaMode,
     style::BoxStyle,
     widget::{
@@ -84,7 +85,7 @@ impl ScrollArea {
         );
 
         let scroll_thumb = DragController::new(
-            Container::new(Null::new())
+            Container::new(Null)
                 .fix_size(Size::new(5.0, thumb_size))
                 .box_style(BoxStyle::new().radius(2.dip()).fill(Color::from_hex("#FF7F31"))),
         )
@@ -118,10 +119,6 @@ impl Widget for ScrollArea {
         self.inner.widget_id()
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.inner.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.inner.layout(ctx, constraints, env)
     }
@@ -136,7 +133,12 @@ impl Widget for ScrollArea {
                         self.scroll.signal(-wheel.delta_y);
                     }
                     WheelDeltaMode::Line => {
-                        let line_height_dips = self.line_height.to_dips(ctx.scale_factor, self.inner.size().height);
+                        let scale_factor = ctx
+                            .parent_window
+                            .as_ref()
+                            .expect("event received without parent window")
+                            .scale_factor();
+                        let line_height_dips = self.line_height.to_dips(scale_factor, self.inner.size().height);
                         self.scroll.signal(-line_height_dips * wheel.delta_y);
                     }
                     WheelDeltaMode::Page => {
@@ -146,5 +148,9 @@ impl Widget for ScrollArea {
                 }
             }
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.inner.paint(ctx)
     }
 }

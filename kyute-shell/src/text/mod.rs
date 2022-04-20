@@ -1,35 +1,17 @@
-pub(crate) mod factory;
 mod formatted_text;
 mod paragraph;
 
-use kyute_common::{Color, Data};
+pub use formatted_text::{FormattedText, ParagraphStyle};
+pub use paragraph::{
+    GlyphRun, GlyphRunAnalysis, GlyphRunDrawingEffects, HitTestMetrics, HitTestPoint, HitTestTextPosition, LineMetrics,
+    Paragraph, Renderer, TextMetrics,
+};
+
+use kyute_common::{Color, Data, SizeI};
 use std::{
     ops::{Bound, Range, RangeBounds},
     sync::Arc,
 };
-use windows::Win32::Graphics::DirectWrite::{
-    DWRITE_FONT_STYLE, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STYLE_OBLIQUE,
-    DWRITE_FONT_WEIGHT, DWRITE_TEXT_ALIGNMENT, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_JUSTIFIED,
-    DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_TEXT_ALIGNMENT_TRAILING,
-};
-
-pub use formatted_text::{FormattedText, ParagraphStyle};
-pub use paragraph::{
-    FontFace, GlyphMaskData, GlyphMaskFormat, GlyphOffset, GlyphRun, GlyphRunAnalysis, GlyphRunDrawingEffects,
-    HitTestMetrics, HitTestPoint, HitTestTextPosition, LineMetrics, Paragraph, RasterizationOptions, Renderer,
-    TextMetrics,
-};
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("OS error")]
-    OsError(#[from] windows::core::Error),
-}
-
-trait ToDirectWrite {
-    type Target;
-    fn to_dwrite(&self) -> Self::Target;
-}
 
 /// Text selection.
 ///
@@ -66,7 +48,7 @@ impl Default for Selection {
 }
 
 /// Resolves a `RangeBounds` into a range in the range 0..len.
-pub fn resolve_range(range: impl RangeBounds<usize>, len: usize) -> Range<usize> {
+pub(crate) fn resolve_range(range: impl RangeBounds<usize>, len: usize) -> Range<usize> {
     let start = match range.start_bound() {
         Bound::Unbounded => 0,
         Bound::Included(n) => *n,
@@ -80,48 +62,6 @@ pub fn resolve_range(range: impl RangeBounds<usize>, len: usize) -> Range<usize>
     };
 
     start.min(len)..end.min(len)
-}
-
-/// From [piet-direct2d](https://github.com/linebender/piet/blob/master/piet-direct2d/src/text.rs):
-/// Counts the number of utf-16 code units in the given string.
-/// from xi-editor
-pub(crate) fn count_utf16(s: &str) -> usize {
-    let mut utf16_count = 0;
-    for &b in s.as_bytes() {
-        if (b as i8) >= -0x40 {
-            utf16_count += 1;
-        }
-        if b >= 0xf0 {
-            utf16_count += 1;
-        }
-    }
-    utf16_count
-}
-
-/// From [piet-direct2d](https://github.com/linebender/piet/blob/master/piet-direct2d/src/text.rs):
-/// returns utf8 text position (code unit offset)
-/// at the given utf-16 text position
-pub(crate) fn count_until_utf16(s: &str, utf16_text_position: usize) -> usize {
-    let mut utf16_count = 0;
-
-    for (i, c) in s.char_indices() {
-        utf16_count += c.len_utf16();
-        if utf16_count > utf16_text_position {
-            return i;
-        }
-    }
-
-    s.len()
-}
-
-trait ToWString {
-    fn to_wstring(&self) -> Vec<u16>;
-}
-
-impl ToWString for str {
-    fn to_wstring(&self) -> Vec<u16> {
-        self.encode_utf16().chain(std::iter::once(0)).collect()
-    }
 }
 
 /// Describes a font weight.
@@ -148,20 +88,17 @@ impl FontWeight {
     pub const HEAVY: FontWeight = FontWeight(900);
 }
 
-impl ToDirectWrite for FontWeight {
-    type Target = DWRITE_FONT_WEIGHT;
-    fn to_dwrite(&self) -> Self::Target {
-        DWRITE_FONT_WEIGHT(self.0 as i32)
-    }
-}
-
 /// Describes a font family.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct FontFamily(Arc<str>);
+pub struct FontFamily(pub(crate) Arc<str>);
 
 impl FontFamily {
     pub fn new(name: impl Into<Arc<str>>) -> FontFamily {
         FontFamily(name.into())
+    }
+
+    pub fn name(&self) -> &str {
+        &self.0
     }
 }
 
@@ -173,17 +110,6 @@ pub enum FontStyle {
     Normal,
     Italic,
     Oblique,
-}
-
-impl ToDirectWrite for FontStyle {
-    type Target = DWRITE_FONT_STYLE;
-    fn to_dwrite(&self) -> Self::Target {
-        match *self {
-            FontStyle::Normal => DWRITE_FONT_STYLE_NORMAL,
-            FontStyle::Italic => DWRITE_FONT_STYLE_ITALIC,
-            FontStyle::Oblique => DWRITE_FONT_STYLE_OBLIQUE,
-        }
-    }
 }
 
 /// Text alignment within a text paragraph.
@@ -198,18 +124,6 @@ pub enum TextAlignment {
 impl Default for TextAlignment {
     fn default() -> Self {
         TextAlignment::Leading
-    }
-}
-
-impl ToDirectWrite for TextAlignment {
-    type Target = DWRITE_TEXT_ALIGNMENT;
-    fn to_dwrite(&self) -> Self::Target {
-        match *self {
-            TextAlignment::Leading => DWRITE_TEXT_ALIGNMENT_LEADING,
-            TextAlignment::Trailing => DWRITE_TEXT_ALIGNMENT_TRAILING,
-            TextAlignment::Center => DWRITE_TEXT_ALIGNMENT_CENTER,
-            TextAlignment::Justified => DWRITE_TEXT_ALIGNMENT_JUSTIFIED,
-        }
     }
 }
 
@@ -258,37 +172,56 @@ pub struct TextPosition {
     pub affinity: TextAffinity,
 }
 
-/*
-#[derive(Clone, Debug, Default)]
-pub struct ParagraphStyle(pub(crate) sk::textlayout::ParagraphStyle);
-
-impl ParagraphStyle {
-    pub fn new() -> ParagraphStyle {
-        ParagraphStyle(sk::textlayout::ParagraphStyle::new())
-    }
-
-    /// Sets the default text style of this paragraph (?)
-    pub fn text_style(mut self, text_style: &TextStyle) -> Self {
-        self.0.set_text_style(&text_style.0);
-        self
-    }
-
-    /// Sets the text alignment.
-    pub fn text_alignment(mut self, align: sk::textlayout::TextAlign) -> Self {
-        self.0.set_text_align(align);
-        self
-    }
+#[derive(Copy, Clone, Debug)]
+pub struct GlyphOffset {
+    pub advance_offset: f32,
+    pub ascender_offset: f32,
 }
 
-impl Data for ParagraphStyle {
-    fn same(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum RasterizationOptions {
+    Bilevel,
+    Grayscale,
+    Subpixel,
+}
+
+/// Format of a rasterized glyph mask.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum GlyphMaskFormat {
+    // 3 bytes per pixel, RGB subpixel mask
+    Rgb8,
+    // one byte per pixel, alpha mask
+    Alpha8,
+}
+
+/// Pixel data of a rasterized glyph run.
+#[derive(Debug)]
+pub struct GlyphMaskData {
+    pub size: SizeI,
+    pub format: GlyphMaskFormat,
+    pub data: Vec<u8>,
+}
+
+/*impl GlyphMaskData {
+    /// Returns the size of this mask.
+    pub fn size(&self) -> SizeI {
+        self.size
+    }
+
+    /// Returns a reference to the pixel data.
+    pub fn data(&self) -> &[u8] {
+        self.data.as_slice()
+    }
+
+    /// Returns the format of the mask data.
+    pub fn format(&self) -> GlyphMaskFormat {
+        self.format
     }
 }*/
 
 #[cfg(test)]
 mod tests {
-    use crate::{
+    use super::{
         formatted_text::{TextRun, TextRuns},
         Attribute, FontStyle, FontWeight,
     };

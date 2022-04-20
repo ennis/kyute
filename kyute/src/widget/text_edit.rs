@@ -1,16 +1,17 @@
 //! Text editor widget.
 use crate::{
     composable,
-    core::Widget,
+    core::{Widget, WindowPaintCtx},
+    drawing::ToSkia,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
-    text::{FormattedText, Selection, TextAffinity, TextPosition},
+    style::{BoxStyle, PaintCtxExt},
     theme,
     widget::{prelude::*, Container, Text},
-    Color, Data, UnitExt,
+    Color, Data, GpuFrameCtx, UnitExt,
 };
 use keyboard_types::KeyState;
-use kyute_text::Attribute;
+use kyute_shell::text::{Attribute, FormattedText, Selection, TextAffinity, TextPosition};
 use skia_safe as sk;
 use std::{marker::PhantomData, sync::Arc};
 use tracing::trace;
@@ -36,7 +37,6 @@ fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
 /// Text editor widget.
 pub struct TextEdit {
     id: WidgetId,
-    layer: LayerHandle,
 
     /// Input formatted text.
     formatted_text: FormattedText,
@@ -78,13 +78,9 @@ impl TextEdit {
             .box_style(theme::TEXT_EDIT)
             .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip());
 
-        let layer = Layer::new();
-        layer.add_child(inner.layer());
-
         TextEdit {
             id: WidgetId::here(),
             formatted_text,
-            layer,
             selection,
             selection_changed: Signal::new(),
             editing_finished: Signal::new(),
@@ -191,9 +187,9 @@ impl TextEdit {
 
     /// Returns the position in the text (character offset between grapheme clusters) that is closest to the given point.
     fn text_position(&self, pos: Point) -> TextPosition {
-        let paragraph = self.inner.widget().inner().paragraph();
+        let paragraph = self.inner.inner().inner().paragraph();
         TextPosition {
-            position: paragraph.hit_test_point(pos - self.inner.widget().content_offset()).idx,
+            position: paragraph.hit_test_point(pos - self.inner.inner().content_offset()).idx,
             affinity: TextAffinity::Upstream,
         }
     }
@@ -219,24 +215,18 @@ impl Widget for TextEdit {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let measurements = self.inner.layout(ctx, constraints.tighten(), env);
-        self.layer.set_size(measurements.size);
-        self.layer.set_scale_factor(ctx.scale_factor);
         measurements
     }
 
-    /*fn paint(&self, ctx: &mut PaintCtx, env: &Environment) {
+    fn paint(&self, ctx: &mut PaintCtx) {
         // paint the text
-        self.inner.paint(ctx, env);
+        self.inner.paint(ctx);
 
         // paint the selection over it
-        let offset = self.inner.widget().content_offset();
-        let paragraph = self.inner.widget().contents().paragraph();
+        let offset = self.inner.inner().content_offset();
+        let paragraph = self.inner.inner().inner().paragraph();
         let selection_boxes =
             paragraph.hit_test_text_range(self.selection.min()..self.selection.max(), Point::origin());
         for mut tb in selection_boxes {
@@ -245,22 +235,22 @@ impl Widget for TextEdit {
         }
 
         // paint the caret
-        if ctx.has_focus() {
+        /*if ctx.has_focus() {
             let caret_hit_test = paragraph.hit_test_text_position(TextPosition {
                 position: self.selection.end,
                 affinity: TextAffinity::Downstream,
             });
 
             //dbg!(caret_hit_test);
-            let caret_color = env.get(theme::CARET_COLOR).unwrap();
+            /*let caret_color = env.get(theme::CARET_COLOR).unwrap();
             let paint = sk::Paint::new(caret_color.to_skia(), None);
             let pos = caret_hit_test.point + offset;
-            ctx.canvas.draw_rect(
+            ctx.canvas().draw_rect(
                 Rect::new(pos.floor(), Size::new(1.0, caret_hit_test.metrics.bounds.size.height)).to_skia(),
                 &paint,
-            );
-        }
-    }*/
+            );*/
+        }*/
+    }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
         match event {
@@ -524,15 +514,15 @@ impl<T> Widget for TextInput<T> {
         self.text_edit.widget_id()
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.text_edit.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.text_edit.layout(ctx, constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.text_edit.route_event(ctx, event, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.text_edit.paint(ctx)
     }
 }

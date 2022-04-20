@@ -1,17 +1,16 @@
 use crate::{
     cache,
+    core::WindowPaintCtx,
     event::PointerEventKind,
     style::{BoxStyle, VisualState},
     theme,
     widget::{prelude::*, Container, Grid, Label},
-    Color, Signal, State, UnitExt, ValueRef,
+    Color, GpuFrameCtx, Signal, State, UnitExt, ValueRef,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Widget definition
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// why would I need a layer if all i'm doing is delegating to another widget for rendering?
 
 #[derive(Clone)]
 pub struct Button {
@@ -38,13 +37,13 @@ impl Button {
     }
 
     /// Sets the style of this button.
-    pub fn box_style(mut self, style: impl Into<ValueRef<BoxStyle>>) -> Button {
+    pub fn box_style(mut self, style: impl Into<BoxStyle>) -> Button {
         self.set_box_style(style);
         self
     }
 
     /// Sets the style of this button.
-    pub fn set_box_style(&mut self, style: impl Into<ValueRef<BoxStyle>>) {
+    pub fn set_box_style(&mut self, style: impl Into<BoxStyle>) {
         self.inner.set_box_style(style.into());
     }
 
@@ -82,14 +81,6 @@ impl Widget for Button {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.inner.layer()
-    }
-
-    fn debug_name(&self) -> &str {
-        std::any::type_name::<Self>()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.inner.layout(ctx, constraints, env)
     }
@@ -120,6 +111,10 @@ impl Widget for Button {
         if !ctx.handled() {
             self.inner.route_event(ctx, event, env)
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.inner.paint(ctx)
     }
 }
 

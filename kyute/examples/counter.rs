@@ -76,7 +76,5 @@ fn main_window() -> impl Widget {
 }
 
 fn main() {
-    let _app = Application::new();
     application::run(main_window);
-    Application::shutdown();
 }

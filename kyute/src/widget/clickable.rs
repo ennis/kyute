@@ -1,4 +1,4 @@
-use crate::{event::PointerEventKind, widget::prelude::*, Signal};
+use crate::{core::WindowPaintCtx, event::PointerEventKind, widget::prelude::*, GpuFrameCtx, Signal};
 
 #[derive(Clone)]
 pub struct Clickable<Content> {
@@ -46,10 +46,6 @@ impl<Content: Widget + 'static> Widget for Clickable<Content> {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.content.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.content.layout(ctx, constraints, env)
     }
@@ -67,5 +63,9 @@ impl<Content: Widget + 'static> Widget for Clickable<Content> {
         if !ctx.handled() {
             self.content.route_event(ctx, event, env);
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.content.paint(ctx)
     }
 }

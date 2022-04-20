@@ -95,9 +95,7 @@ fn main() {
         .with_target(false)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let _app = Application::new();
     let mut env = Environment::new();
     //env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
     application::run_with_env(ui_root, env);
-    Application::shutdown();
 }

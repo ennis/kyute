@@ -10,7 +10,10 @@ use crate::{
     GpuFrameCtx, SideOffsets, Signal,
 };
 use kyute_common::Color;
-use std::{cell::Cell, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    sync::Arc,
+};
 
 /// Utility class representing a slider track on which a knob can move.
 #[derive(Copy, Clone, Debug, Default)]
@@ -60,7 +63,8 @@ impl SliderTrack {
     ctx.fill_rectangle(knob, &knob_brush);
 }*/
 
-struct SliderLayerDelegate {
+#[derive(Clone, Default)]
+struct SliderLayout {
     track_y: f64,
     track_h: f64,
     knob_w: f64,
@@ -71,53 +75,14 @@ struct SliderLayerDelegate {
     track_style: BoxStyle,
 }
 
-impl LayerDelegate for SliderLayerDelegate {
-    fn draw(&self, ctx: &mut PaintCtx) {
-        /*let background_gradient = LinearGradient::new()
-        .angle(90.0.degrees())
-        .stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
-        .stop(BUTTON_BACKGROUND_TOP_COLOR, 1.0);*/
-
-        /*let track_y = env.get(theme::SLIDER_TRACK_Y).unwrap_or_default();
-        let track_h = env.get(theme::SLIDER_TRACK_HEIGHT).unwrap_or_default();
-        let knob_w = env.get(theme::SLIDER_KNOB_WIDTH).unwrap_or_default();
-        let knob_h = env.get(theme::SLIDER_KNOB_HEIGHT).unwrap_or_default();
-        let knob_y = env.get(theme::SLIDER_KNOB_Y).unwrap_or_default();*/
-
-        let track_x_start = self.track.start.x;
-        let track_x_end = self.track.end.x;
-
-        // track bounds
-        let track_bounds = Rect::new(
-            Point::new(track_x_start, self.track_y - 0.5 * self.track_h),
-            Size::new(track_x_end - track_x_start, self.track_h),
-        );
-
-        let kpos = self.track.knob_position(self.value_norm);
-        let kx = kpos.x.round() + 0.5;
-
-        let knob_bounds = Rect::new(
-            Point::new(kx - 0.5 * self.knob_w, self.track_y - self.knob_y),
-            Size::new(self.knob_w, self.knob_h),
-        );
-
-        // track
-        ctx.draw_styled_box(track_bounds, &self.track_style);
-
-        Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
-            .fill(Color::new(0.0, 0.0, 0.0, 0.6))
-            .draw(ctx, knob_bounds);
-    }
-}
-
 pub struct Slider {
     id: WidgetId,
-    layer: LayerHandle,
     track: Cell<SliderTrack>,
     value: f64,
     value_changed: Signal<f64>,
     min: f64,
     max: f64,
+    layout: RefCell<SliderLayout>,
 }
 
 impl Slider {
@@ -133,12 +98,12 @@ impl Slider {
     pub fn new(min: f64, max: f64, value: f64) -> Slider {
         Slider {
             id: WidgetId::here(),
-            layer: Layer::new(),
             track: Default::default(),
             value,
             value_changed: Signal::new(),
             min,
             max,
+            layout: RefCell::new(Default::default()),
         }
     }
 
@@ -167,10 +132,6 @@ impl Widget for Slider {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let padding = SideOffsets::new_all_same(0.0);
         let height = env.get(theme::SLIDER_HEIGHT).unwrap();
@@ -194,23 +155,23 @@ impl Widget for Slider {
         let y = 0.5 * size.height;
 
         // center vertically, add some padding on the sides to account for padding and half-knob size
-        self.track.set(SliderTrack {
-            start: Point::new(inner_bounds.min_x() + hkw, y),
-            end: Point::new(inner_bounds.max_x() - hkw, y),
-        });
+        if !ctx.speculative {
+            self.track.set(SliderTrack {
+                start: Point::new(inner_bounds.min_x() + hkw, y),
+                end: Point::new(inner_bounds.max_x() - hkw, y),
+            });
 
-        self.layer.set_delegate(SliderLayerDelegate {
-            track_y,
-            track_h,
-            knob_w,
-            knob_h,
-            knob_y,
-            value_norm: self.value_norm(),
-            track: self.track.get(),
-            track_style: theme::SLIDER_TRACK.get(env).unwrap(),
-        });
-        self.layer.set_size(size);
-        self.layer.set_scale_factor(ctx.scale_factor);
+            self.layout.replace(SliderLayout {
+                track_y,
+                track_h,
+                knob_w,
+                knob_h,
+                knob_y,
+                value_norm: self.value_norm(),
+                track: self.track.get(),
+                track_style: theme::SLIDER_TRACK.get(env).unwrap(),
+            });
+        }
 
         Measurements::from(size)
     }
@@ -237,9 +198,43 @@ impl Widget for Slider {
             }
         }
     }
+    fn paint(&self, ctx: &mut PaintCtx) {
+        /*let background_gradient = LinearGradient::new()
+        .angle(90.0.degrees())
+        .stop(BUTTON_BACKGROUND_BOTTOM_COLOR, 0.0)
+        .stop(BUTTON_BACKGROUND_TOP_COLOR, 1.0);*/
 
-    fn debug_name(&self) -> &str {
-        std::any::type_name::<Self>()
+        /*let track_y = env.get(theme::SLIDER_TRACK_Y).unwrap_or_default();
+        let track_h = env.get(theme::SLIDER_TRACK_HEIGHT).unwrap_or_default();
+        let knob_w = env.get(theme::SLIDER_KNOB_WIDTH).unwrap_or_default();
+        let knob_h = env.get(theme::SLIDER_KNOB_HEIGHT).unwrap_or_default();
+        let knob_y = env.get(theme::SLIDER_KNOB_Y).unwrap_or_default();*/
+
+        let layout = self.layout.borrow();
+
+        let track_x_start = layout.track.start.x;
+        let track_x_end = layout.track.end.x;
+
+        // track bounds
+        let track_bounds = Rect::new(
+            Point::new(track_x_start, layout.track_y - 0.5 * layout.track_h),
+            Size::new(track_x_end - track_x_start, layout.track_h),
+        );
+
+        let kpos = layout.track.knob_position(layout.value_norm);
+        let kx = kpos.x.round() + 0.5;
+
+        let knob_bounds = Rect::new(
+            Point::new(kx - 0.5 * layout.knob_w, layout.track_y - layout.knob_y),
+            Size::new(layout.knob_w, layout.knob_h),
+        );
+
+        // track
+        ctx.draw_styled_box(track_bounds, &layout.track_style);
+
+        Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
+            .fill(Color::new(0.0, 0.0, 0.0, 0.6))
+            .draw(ctx, knob_bounds);
     }
 }
 
@@ -247,7 +242,6 @@ impl Widget for Slider {
 #[derive(Clone)]
 pub struct SliderBase {
     id: WidgetId,
-    layer: LayerHandle,
     track: Cell<SliderTrack>,
     position: f64,
     position_changed: Signal<f64>,
@@ -258,13 +252,8 @@ pub struct SliderBase {
 impl SliderBase {
     #[composable]
     pub fn new(position: f64, background: impl Widget + 'static, knob: impl Widget + 'static) -> SliderBase {
-        let layer = Layer::new();
-        layer.add_child(background.layer());
-        layer.add_child(knob.layer());
-
         SliderBase {
             id: WidgetId::here(),
-            layer,
             track: Default::default(),
             position,
             position_changed: Signal::new(),
@@ -293,10 +282,6 @@ impl Widget for SliderBase {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let knob_measurements = self.knob.layout(ctx, constraints, env);
         let background_measurements = self.background.layout(ctx, constraints, env);
@@ -308,7 +293,9 @@ impl Widget for SliderBase {
         let bg_offset_y = 0.5 * (height - background_measurements.height());
         let knob_offset_y = 0.5 * (height - knob_measurements.height());
 
-        self.background.layer().set_offset(Offset::new(0.0, bg_offset_y));
+        if !ctx.speculative {
+            self.background.set_offset(Offset::new(0.0, bg_offset_y));
+        }
 
         let hkw = 0.5 * knob_measurements.width();
         let track = SliderTrack {
@@ -316,13 +303,13 @@ impl Widget for SliderBase {
             end: Point::new(width - hkw, track_y),
         };
         self.track.set(track);
-        self.knob
-            .layer()
-            .set_offset(Offset::new(track.knob_position(self.position).x - hkw, knob_offset_y));
+
+        if !ctx.speculative {
+            self.knob
+                .set_offset(Offset::new(track.knob_position(self.position).x - hkw, knob_offset_y));
+        }
 
         let size = Size::new(width, height);
-        self.layer.set_size(size);
-        self.layer.set_scale_factor(ctx.scale_factor);
         Measurements::from(size)
     }
 
@@ -344,5 +331,10 @@ impl Widget for SliderBase {
                 _ => {}
             }
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.background.paint(ctx);
+        self.knob.paint(ctx);
     }
 }

@@ -5,9 +5,6 @@ members = [
     "kyute-common/macros",   # user interface library - common types - proc macros
     "kyute/macros",          # user interface library - widgets and application architecture - proc macros
     "kyute-shell",           # user interface library - windowing, drawing and system integration
-    "kyute-style",           # user interface library - style files
-    "kyute-text",            # user interface library - rich text
-    "kyute-style-editor"     # user interface library - style files
 ]
 
 

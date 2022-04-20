@@ -1,12 +1,10 @@
 use crate::{
-    animation::{Layer, LayerDelegate, LayerHandle},
-    composable,
-    drawing::ToSkia,
-    make_uniform_data, BoxConstraints, Color, Environment, Event, EventCtx, LayoutCtx, Measurements, PaintCtx, Point,
-    RectI, RoundToPixel, Transform, Widget, WidgetId,
+    animation::PaintCtx, composable, core::WindowPaintCtx, drawing::ToSkia, make_uniform_data, BoxConstraints, Color,
+    Data, Environment, Event, EventCtx, GpuFrameCtx, LayoutCache, LayoutCtx, Measurements, Point, RectI, RoundToPixel,
+    Transform, Widget, WidgetId,
 };
 use euclid::Rect;
-use kyute_text::{
+use kyute_shell::text::{
     FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
     RasterizationOptions,
 };
@@ -28,7 +26,7 @@ struct GlyphMaskImage {
 
 impl GlyphMaskImage {
     pub fn new(bounds: RectI, data: GlyphMaskData) -> GlyphMaskImage {
-        let (_src_bpp, dst_bpp) = match data.format() {
+        let (_src_bpp, dst_bpp) = match data.format {
             GlyphMaskFormat::Rgb8 => (3usize, 4usize),
             GlyphMaskFormat::Alpha8 => (1usize, 1usize),
         };
@@ -38,8 +36,8 @@ impl GlyphMaskImage {
         let mut rgba_buf: Vec<u8> = Vec::with_capacity(n * dst_bpp);
 
         for i in 0..n {
-            let src = data.data();
-            match data.format() {
+            let src = &data.data;
+            match data.format {
                 GlyphMaskFormat::Rgb8 => unsafe {
                     // SAFETY: rgba_buf and src sized accordingly
                     ptr::write(rgba_buf.as_mut_ptr().add(i * 4), src[i * 3]);
@@ -60,7 +58,7 @@ impl GlyphMaskImage {
 
         // upload RGBA data to a skia image
         let alpha_data = sk::Data::new_copy(&rgba_buf);
-        let mask = match data.format() {
+        let mask = match data.format {
             GlyphMaskFormat::Rgb8 => sk::Image::from_raster_data(
                 &sk::ImageInfo::new(
                     sk::ISize::new(bounds.width(), bounds.height()),
@@ -116,9 +114,9 @@ lazy_static! {
         ThreadBound::new(sk::RuntimeEffect::make_for_blender(LCD_MASK_BLENDER_SKSL, None).unwrap());
 }
 
-impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
+impl<'a, 'b> kyute_shell::text::Renderer for Renderer<'a, 'b> {
     fn draw_glyph_run(&mut self, glyph_run: &GlyphRun, drawing_effects: &GlyphRunDrawingEffects) {
-        let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.ctx.window_transform);
+        let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.ctx.layer_transform());
         let raster_opts = RasterizationOptions::Subpixel;
         let bounds = analysis.raster_bounds(raster_opts);
         if let Some(mask) = analysis.rasterize(raster_opts) {
@@ -162,21 +160,22 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
             let mut paint = sk::Paint::new(color.to_skia(), None);
             paint.set_blender(mask_blender);
 
-            self.ctx.canvas.save();
+            let canvas = self.ctx.surface.canvas();
+            canvas.save();
             //let inv_scale_factor = 1.0 / self.ctx.scale_factor as f32;
             //self.ctx.canvas.scale((inv_scale_factor, inv_scale_factor));
-            self.ctx.canvas.reset_matrix();
-            self.ctx.canvas.draw_image(
+            canvas.reset_matrix();
+            canvas.draw_image(
                 &mask_image.mask,
                 sk::Point::new(bounds.origin.x as sk::scalar, bounds.origin.y as sk::scalar),
                 Some(&paint),
             );
-            self.ctx.canvas.restore();
+            canvas.restore();
         }
     }
 
     fn transform(&self) -> Transform {
-        self.ctx.window_transform
+        self.ctx.layer_transform().clone()
     }
 
     fn scale_factor(&self) -> f64 {
@@ -185,63 +184,39 @@ impl<'a, 'b> kyute_text::Renderer for Renderer<'a, 'b> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Text visual layer
-////////////////////////////////////////////////////////////////////////////////////////////////////
-pub struct TextLayerDelegate {
-    formatted_text: FormattedText,
-    paragraph: Paragraph,
-}
-
-impl LayerDelegate for TextLayerDelegate {
-    fn draw(&self, ctx: &mut PaintCtx) {
-        let mut renderer = Renderer { ctx, masks: vec![] };
-        // FIXME: should be a point in absolute coords?
-        self.paragraph
-            .draw(
-                Point::origin(),
-                &mut renderer,
-                &GlyphRunDrawingEffects {
-                    color: Color::from_hex("#FFFFFF"),
-                },
-            )
-            .expect("failed to draw paragraph");
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 // Text widget
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone)]
+struct TextLayoutResult {
+    paragraph: Paragraph,
+    measurements: Measurements,
+}
 
 /// Displays formatted text.
 #[derive(Clone)]
 pub struct Text {
-    layer: LayerHandle,
     /// Input formatted text.
     formatted_text: FormattedText,
     /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
-    paragraph: RefCell<Option<Paragraph>>,
-    //run_masks: RefCell<Option<Arc<Vec<GlyphMaskImage>>>>,
+    cached_layout: LayoutCache<TextLayoutResult>,
 }
 
 impl Text {
     /// Creates a new text element.
-    #[composable]
-    pub fn new(formatted_text: impl Into<FormattedText>) -> Text {
+    #[composable(cached)]
+    pub fn new(formatted_text: impl Into<FormattedText> + Clone + Data) -> Text {
         let formatted_text = formatted_text.into();
         trace!("Text::new {:?}", formatted_text.plain_text);
         Text {
-            layer: Layer::new(),
             formatted_text,
-            paragraph: RefCell::new(None),
-            //run_masks: RefCell::new(None),
+            cached_layout: Default::default(),
         }
     }
 
     /// Returns a reference to the formatted text paragraph.
-    pub fn paragraph(&self) -> Ref<kyute_text::Paragraph> {
-        Ref::map(self.paragraph.borrow(), |x| {
-            x.as_ref().expect("`Text::paragraph` called before layout")
-        })
+    pub fn paragraph(&self) -> Ref<kyute_shell::text::Paragraph> {
+        Ref::map(self.cached_layout.get_cached(), |layout| &layout.paragraph)
     }
 }
 
@@ -251,43 +226,49 @@ impl Widget for Text {
         None
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
-        trace!("Text::layout {:?}", self.formatted_text.plain_text);
-        let paragraph = self
-            .formatted_text
-            .create_paragraph(constraints.max, &ParagraphStyle::default());
+        let layout = self.cached_layout.update(ctx, constraints, |ctx| {
+            trace!("Text::layout {:?}", self.formatted_text.plain_text);
+            let paragraph = Paragraph::new(&self.formatted_text, constraints.max, &ParagraphStyle::default());
 
-        // measure the paragraph
-        let metrics = paragraph.metrics();
-        let baseline = paragraph
-            .line_metrics()
-            .first()
-            .map(|line| line.baseline)
-            .unwrap_or(0.0);
-        let size = constraints.constrain(metrics.bounds.size.round_to_pixel(ctx.scale_factor));
+            // measure the paragraph
+            let metrics = paragraph.metrics();
+            let baseline = paragraph
+                .line_metrics()
+                .first()
+                .map(|line| line.baseline)
+                .unwrap_or(0.0);
+            let size = constraints.constrain(metrics.bounds.size.round_to_pixel(ctx.scale_factor));
 
-        // ------ update layer ------
-        self.layer.set_delegate(TextLayerDelegate {
-            formatted_text: self.formatted_text.clone(),
-            paragraph: paragraph.clone(),
+            TextLayoutResult {
+                paragraph,
+                measurements: Measurements {
+                    size,
+                    clip_bounds: Rect::new(Point::origin(), size),
+                    baseline: Some(baseline),
+                },
+            }
         });
-        self.layer.set_scale_factor(ctx.scale_factor);
-        self.layer.set_surface_backed(true);
-        self.layer.set_size(size);
 
-        // stash the laid out paragraph for rendering
-        self.paragraph.replace(Some(paragraph));
-
-        Measurements {
-            size,
-            clip_bounds: Rect::new(Point::origin(), size),
-            baseline: Some(baseline),
-        }
+        layout.measurements
     }
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        let mut renderer = Renderer { ctx, masks: vec![] };
+        // FIXME: should be a point in absolute coords?
+        self.cached_layout
+            .get_cached()
+            .paragraph
+            .draw(
+                Point::origin(),
+                &mut renderer,
+                &GlyphRunDrawingEffects {
+                    // TODO default text color
+                    color: Color::from_hex("#FFFFFF"),
+                },
+            )
+            .expect("failed to draw paragraph");
+    }
 }

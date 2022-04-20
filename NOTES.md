@@ -129,6 +129,13 @@ Alternatives:
 - Garbage-collect orphaned layers during update
   - easy to stash a layer ID and forget to 
 
+Problem: if the layer tree is immutable, then we must rebuild it on every event (an event that starts an animation
+would have to be followed by a layout).
+-> hence, must be an "imperative, mutable" kind of API
+
+### Examples of GUI frameworks with compositing layers
+- JavaFX? Not exposed through the API, not sure if it uses a compositor
+- Flutter? RenderObjects, owned by widgets (via "elements"), dropped on unmount  
 
 ### Issue: duplicated widget bounds
 - Need to set the widget position in WidgetPod::offset AND in the widget's visual layer
@@ -138,3 +145,71 @@ Alternatives:
   - alternatively: what value do we read back for the position when it's animating?
     - the *current* position? no way to get that when an animation is in progress (DirectComposition doesn't provide a way to read back values)
     - the *target* position?
+
+
+## Layers during painting
+
+
+```rust
+
+struct RenderLayer {
+  id: WidgetId,
+  layer: Layer,
+  dirty: Cell<bool>,
+  contents: impl Widget
+}
+
+impl Widget for RenderLayer {
+  fn paint(&self, ctx: &mut PaintCtx) {
+    if self.dirty.get() {
+      // must redraw
+      // begin a new layer, using the specified layer ID
+      // may reuse old comp layer with the same ID 
+      ctx.layer(&self.layer, ...);
+    } else {
+      // reuse 
+      ctx.add_layer(&self.layer);
+    }
+  }
+}
+
+// Issue:
+// Parent
+// - Child A (direct draw)
+// - Child B (Layered)
+// - Child C (direct draw)
+// For correct rendering, the layered child must be "pasted" (and thus child A and C must be rendered as well)
+//      OR A and C must be layered as well
+//
+// paint(parent)
+//  -> child A: direct paint on parent layer
+//  -> child B: start layer, push it on parent
+//  -> child C: start another layer (implicit layer), push it on parent
+// 
+// Problem: animating a layer
+//  e.g. animating B: 
+//  -> will repaint A, but it's not needed
+//  
+// Animating a layer == setting offset on the RenderLayer
+//  -> and then, call `request_compositing()`: to tell that a layer property has changed
+
+
+// when a RenderLayer receives a RenderLayerRequest, it builds a PaintCtx on its layer, and repaints it.
+
+impl<Content: Widget> Widget for Container<Content> {
+  fn paint(&self, ctx: &mut PaintCtx) {
+    
+    // paint here
+    
+    
+    ctx.layer(&self.layer_id, |ctx| {
+      // paint child (if necessary)
+      // how do we know if it's necessary?
+      // 1. a child might have requested a repaint (ctx.request_repaint()), which sets a bit in the closest parent comp layer
+      // how do we reach this place?
+      // 1. we know the ID of the widget with the dirty layer, so send it here
+    })
+  }
+}
+
+```

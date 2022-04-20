@@ -115,10 +115,6 @@ impl<T: Clone + 'static> Widget for DropDown<T> {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.inner.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.inner.layout(ctx, constraints, env)
     }
@@ -144,5 +140,9 @@ impl<T: Clone + 'static> Widget for DropDown<T> {
             }
             _ => {}
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.inner.paint(ctx)
     }
 }

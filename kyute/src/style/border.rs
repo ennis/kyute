@@ -1,8 +1,9 @@
 //! Border description.
 use crate::{
+    animation::PaintCtx,
     drawing::ToSkia,
     style::{BlendMode, Length, Paint},
-    Color, Offset, PaintCtx, Rect, RectExt,
+    Color, Offset, Rect, RectExt,
 };
 use approx::ulps_eq;
 use kyute_common::{SideOffsets, Size};
@@ -196,37 +197,41 @@ impl Border {
             // left
             if !ulps_eq!(widths[0], 0.0) {
                 paint.set_stroke_width(widths[0] as sk::scalar);
-                ctx.canvas
+                ctx.surface
+                    .canvas()
                     .draw_line(rect.top_left().to_skia(), rect.bottom_left().to_skia(), &paint);
             }
 
             // top
             if !ulps_eq!(widths[1], 0.0) {
                 paint.set_stroke_width(widths[1] as sk::scalar);
-                ctx.canvas
+                ctx.surface
+                    .canvas()
                     .draw_line(rect.top_left().to_skia(), rect.top_right().to_skia(), &paint);
             }
 
             // right
             if !ulps_eq!(widths[2], 0.0) {
                 paint.set_stroke_width(widths[2] as sk::scalar);
-                ctx.canvas
+                ctx.surface
+                    .canvas()
                     .draw_line(rect.top_right().to_skia(), rect.bottom_right().to_skia(), &paint);
             }
 
             // bottom
             if !ulps_eq!(widths[3], 0.0) {
                 paint.set_stroke_width(widths[3] as sk::scalar);
-                ctx.canvas
+                ctx.surface
+                    .canvas()
                     .draw_line(rect.bottom_left().to_skia(), rect.bottom_right().to_skia(), &paint);
             }
         } else {
             paint.set_stroke_width(widths[0] as sk::scalar);
             if radii[0].is_zero() && radii[1].is_zero() && radii[2].is_zero() && radii[3].is_zero() {
-                ctx.canvas.draw_rect(rect.to_skia(), &paint);
+                ctx.surface.canvas().draw_rect(rect.to_skia(), &paint);
             } else {
                 let rrect = sk::RRect::new_rect_radii(rect.to_skia(), &radii);
-                ctx.canvas.draw_rrect(rrect, &paint);
+                ctx.surface.canvas().draw_rrect(rrect, &paint);
             }
         }
     }

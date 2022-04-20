@@ -1,214 +1,60 @@
-//! Platform-specific window creation
-use crate::{animation::CompositionLayer, application::Application, error::Error, Menu};
+//! window creation
+use crate::{animation::Layer, application::Application, backend, error::Error, Menu};
+use kyute_common::{PointI, Size, SizeI};
 use raw_window_handle::HasRawWindowHandle;
 use std::ptr;
-use windows::Win32::{
-    Foundation::{HINSTANCE, HWND, POINT},
-    Graphics::{DirectComposition::IDCompositionTarget, Gdi::ClientToScreen},
-    UI::WindowsAndMessaging::{DestroyMenu, SetMenu, TrackPopupMenu, HMENU, TPM_LEFTALIGN},
-};
 use winit::{
     event_loop::EventLoopWindowTarget,
-    platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
     window::{WindowBuilder, WindowId},
 };
 
-//const SWAP_CHAIN_BUFFERS: u32 = 2;
-
-/*/// Context object to draw on a window.
-///
-/// It implicitly derefs to [`DrawContext`], which has methods to draw primitives on the
-/// window surface.
-///
-/// [`DrawContext`]: crate::drawing::context::DrawContext
-pub struct WindowDrawContext<'a> {
-    window: &'a mut PlatformWindow,
-    draw_context: DrawContext,
-}
-
-impl<'a> WindowDrawContext<'a> {
-    /// Creates a new [`WindowDrawContext`] for the specified window, allowing to draw on the window.
-    pub fn new(window: &'a mut PlatformWindow) -> WindowDrawContext<'a> {
-        let platform = Platform::instance();
-        let d2d_device_context = &platform.0.d2d_device_context;
-
-        let swap_chain = &window.swap_chain;
-        let backbuffer = unsafe { swap_chain.GetBuffer::<IDXGISurface>(0).unwrap() };
-        let dpi = 96.0 * window.window.scale_factor() as f32;
-
-        // create target bitmap
-        let mut bitmap = unsafe {
-            let props = D2D1_BITMAP_PROPERTIES1 {
-                pixelFormat: D2D1_PIXEL_FORMAT {
-                    format: DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM,
-                    alphaMode: D2D1_ALPHA_MODE::D2D1_ALPHA_MODE_IGNORE,
-                },
-                dpiX: dpi,
-                dpiY: dpi,
-                bitmapOptions: D2D1_BITMAP_OPTIONS::D2D1_BITMAP_OPTIONS_TARGET
-                    | D2D1_BITMAP_OPTIONS::D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-                colorContext: None,
-            };
-            let mut bitmap = None;
-            d2d_device_context
-                .CreateBitmapFromDxgiSurface(backbuffer, &props, &mut bitmap)
-                .and_some(bitmap)
-                .expect("CreateBitmapFromDxgiSurface failed")
-        };
-
-        // create draw context
-        let draw_context = unsafe {
-            // set the target on the DC
-            d2d_device_context.SetTarget(bitmap);
-            d2d_device_context.SetDpi(dpi, dpi);
-            // the draw context acquires shared ownership of the device context, but that's OK since we borrow the window,
-            // so we can't create another WindowDrawContext that would conflict with it.
-            DrawContext::from_device_context(
-                platform.0.d2d_factory.0.clone(),
-                d2d_device_context.0.clone(),
-            )
-        };
-
-        WindowDrawContext {
-            window,
-            draw_context,
-        }
-    }
-
-    /// Returns the [`PlatformWindow`] that is being drawn to.
-    pub fn window(&self) -> &PlatformWindow {
-        self.window
-    }
-}
-
-impl<'a> Drop for WindowDrawContext<'a> {
-    fn drop(&mut self) {
-        // set the target to null to release the borrow of the backbuffer surface
-        // (otherwise it will fail to resize)
-        unsafe {
-            self.ctx.SetTarget(None);
-        }
-    }
-}
-
-impl<'a> Deref for WindowDrawContext<'a> {
-    type Target = DrawContext;
-    fn deref(&self) -> &DrawContext {
-        &self.draw_context
-    }
-}
-
-impl<'a> DerefMut for WindowDrawContext<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.draw_context
-    }
-}*/
-
-/// Encapsulates a Win32 window and associated resources for drawing to it.
-pub struct Window {
-    window: winit::window::Window,
-    hwnd: HWND,
-    hinstance: HINSTANCE,
-    //surface: vk::SurfaceKHR,
-    menu: Option<HMENU>,
-    swap_chain: graal::Swapchain,
-    swap_chain_width: u32,
-    swap_chain_height: u32,
-    composition_target: IDCompositionTarget,
-}
+/// Encapsulates a window and associated resources for drawing to it.
+pub struct Window(backend::Window);
 
 impl Window {
-    /// Returns the underlying winit [`Window`].
+    /*/// Returns the underlying winit [`Window`].
     ///
     /// [`Window`]: winit::Window
     pub fn window(&self) -> &winit::window::Window {
         &self.window
-    }
+    }*/
 
     /// Returns the underlying winit [`WindowId`].
     /// Equivalent to calling `self.window().id()`.
     ///
     /// [`WindowId`]: winit::WindowId
     pub fn id(&self) -> WindowId {
-        self.window.id()
+        self.0.id()
     }
 
     /// Sets this window's main menu bar.
     pub fn set_menu(&mut self, new_menu: Option<Menu>) {
-        unsafe {
-            // SAFETY: TODO
-            if let Some(current_menu) = self.menu.take() {
-                SetMenu(self.hwnd, None);
-                DestroyMenu(current_menu);
-            }
-            if let Some(menu) = new_menu {
-                let hmenu = menu.into_hmenu();
-                SetMenu(self.hwnd, hmenu);
-                self.menu = Some(hmenu);
-            }
-        }
+        self.0.set_menu(new_menu.map(Menu::into_inner))
     }
 
     /// Shows a context menu at the specified pixel location.
-    pub fn show_context_menu(&self, menu: Menu, at: (i32, i32)) {
-        unsafe {
-            let hmenu = menu.into_hmenu();
-            /*let scale_factor = self.window.scale_factor();
-            let x = at.x * scale_factor;
-            let y = at.y * scale_factor;*/
-            let mut point = POINT { x: at.0, y: at.1 };
-            ClientToScreen(self.hwnd, &mut point);
-            if TrackPopupMenu(hmenu, TPM_LEFTALIGN, point.x, point.y, 0, self.hwnd, ptr::null()) == false {
-                tracing::warn!("failed to track popup menu");
-            }
-        }
-    }
-
-    /// Returns the current swap chain size in physical pixels.
-    pub fn swap_chain_size(&self) -> (u32, u32) {
-        (self.swap_chain_width, self.swap_chain_height)
-    }
-
-    /// Resizes the swap chain and associated resources of the window.
-    ///
-    /// Must be called whenever winit sends a resize message.
-    pub fn resize(&mut self, (width, height): (u32, u32)) {
-        let app = Application::instance();
-
-        tracing::trace!("resizing swap chain: {}x{}", width, height);
-
-        // resizing to 0x0 will fail, so don't bother
-        if width == 0 || height == 0 {
-            return;
-        }
-
-        unsafe {
-            let device = app.gpu_device();
-            device.resize_swapchain(&mut self.swap_chain, (width, height));
-        }
-
-        self.swap_chain_width = width;
-        self.swap_chain_height = height;
+    pub fn show_context_menu(&self, menu: Menu, at: PointI) {
+        self.0.show_context_menu(menu.into_inner(), at);
     }
 
     /// Sets the root composition layer.
-    pub fn set_root_layer(&self, layer: &CompositionLayer) {
-        unsafe {
-            self.composition_target
-                .SetRoot(layer.visual.clone())
-                .expect("SetRoot failed");
-            Application::instance()
-                .composition_device
-                .get_ref()
-                .unwrap()
-                .Commit()
-                .expect("Commit failed");
-        }
+    pub fn set_root_composition_layer(&self, layer: &Layer) {
+        self.0.set_root_composition_layer(&layer.0);
     }
 
-    /// Returns the swap chain of this window.
-    pub fn swap_chain(&self) -> &graal::Swapchain {
-        &self.swap_chain
+    /// Returns the scale factor.
+    pub fn scale_factor(&self) -> f64 {
+        self.0.scale_factor()
+    }
+
+    /// Returns the logical size of the window's _client area_ in DIPs.
+    pub fn logical_inner_size(&self) -> Size {
+        self.0.logical_inner_size()
+    }
+
+    /// Returns the size of the window's _client area_ in physical pixels.
+    pub fn physical_inner_size(&self) -> SizeI {
+        self.0.physical_inner_size()
     }
 
     /// Creates a new window from the options given in the provided [`WindowBuilder`].
@@ -216,172 +62,16 @@ impl Window {
     /// To create the window with an OpenGL context, `with_gl` should be `true`.
     ///
     /// [`WindowBuilder`]: winit::WindowBuilder
-    pub fn new<T>(
+    pub fn from_builder<T>(
         event_loop: &EventLoopWindowTarget<T>,
         mut builder: WindowBuilder,
         parent_window: Option<&Window>,
     ) -> Result<Window, Error> {
-        let app = Application::instance();
-
-        if let Some(parent_window) = parent_window {
-            builder = builder.with_parent_window(parent_window.hwnd.0 as *mut _);
-        }
-        builder = builder.with_no_redirection_bitmap(true);
-        let window = builder.build(event_loop).map_err(Error::Winit)?;
-        let hinstance = HINSTANCE(window.hinstance() as isize);
-        let hwnd = HWND(window.hwnd() as isize);
-
-        // create composition target
-        let composition_device = app
-            .composition_device
-            .get_ref()
-            .expect("could not acquire composition device outside of main thread");
-        let composition_target = unsafe {
-            composition_device
-                .CreateTargetForHwnd(hwnd, false)
-                .expect("CreateTargetForHwnd failed")
-        };
-
-        // create a swap chain for the window
-        let device = app.gpu_device();
-        let surface = graal::surface::get_vulkan_surface(window.raw_window_handle());
-        let swapchain_size = window.inner_size().into();
-        // ensure that the surface can be drawn to with the device that we created. must be called to
-        // avoid validation errors.
-        unsafe {
-            assert!(device.is_compatible_for_presentation(surface));
-        }
-        let swap_chain = unsafe { device.create_swapchain(surface, swapchain_size) };
-
-        let pw = Window {
-            window,
-            hwnd,
-            hinstance,
-            //surface,
-            // TODO menu initializer
-            menu: None,
-            swap_chain,
-            swap_chain_width: swapchain_size.0,
-            swap_chain_height: swapchain_size.1,
-            composition_target,
-        };
-
-        Ok(pw)
+        backend::Window::new(event_loop, builder, parent_window.map(|w| &w.0)).map(Window)
     }
 
-    /*pub fn draw_skia(&mut self, f: impl FnOnce(&mut skia_safe::Canvas)) {
-        let context = Platform::instance().gpu_context();
-        let mut context = context.lock().unwrap();
-
-        let swapchain_image = unsafe { self.swap_chain.acquire_next_image(&mut context) };
-
-        let swap_chain_width = self.swap_chain_width;
-        let swap_chain_height = self.swap_chain_height;
-
-        // do the dance required to create a skia context on the swapchain image
-        let graphics_queue_family = context.device().graphics_queue().1;
-
-        // start our frame
-        context.start_frame(Default::default());
-
-        // skia may not support rendering directly to the swapchain image (for example, it doesn't seem to support BGRA8888_SRGB).
-        // so allocate a separate image to use as a render target, then copy.
-        let skia_image_usage_flags = graal::vk::ImageUsageFlags::COLOR_ATTACHMENT
-            | graal::vk::ImageUsageFlags::TRANSFER_SRC
-            | graal::vk::ImageUsageFlags::TRANSFER_DST;
-        let skia_image_format = graal::vk::Format::R16G16B16A16_SFLOAT;
-
-        let skia_image = .context().create_image(
-            "skia render target",
-            MemoryLocation::GpuOnly,
-            &graal::ImageResourceCreateInfo {
-                image_type: graal::vk::ImageType::TYPE_2D,
-                usage: skia_image_usage_flags,
-                format: skia_image_format,
-                extent: graal::vk::Extent3D {
-                    width: swap_chain_width,
-                    height: swap_chain_height,
-                    depth: 1,
-                },
-                mip_levels: 1,
-                array_layers: 1,
-                samples: 1,
-                tiling: graal::vk::ImageTiling::OPTIMAL,
-            },
-        );
-
-        let skia_recording_context = &mut self.skia_recording_context;
-
-        // create the skia render pass
-        frame.add_graphics_pass("skia render", |pass| {
-            // register access by skia, just assume how it's going to be used
-            pass.register_image_access(
-                skia_image.id,
-                graal::vk::AccessFlags::MEMORY_READ | graal::vk::AccessFlags::MEMORY_WRITE,
-                graal::vk::PipelineStageFlags::ALL_COMMANDS,
-                graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            );
-
-            pass.set_queue_commands(move |cctx, _queue| {
-                // now do something with skia or whatever
-                let skia_image_info = skia_vk::ImageInfo {
-                    image: skia_image.handle.as_raw() as *mut _,
-                    alloc: Default::default(),
-                    tiling: skia_vk::ImageTiling::OPTIMAL,
-                    layout: skia_vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                    format: unsafe { mem::transmute(skia_image_format.as_raw()) }, // SAFETY: it's a VkFormat, and hopefully skia_vk has a definition with all the latest enumerators...
-                    image_usage_flags: skia_image_usage_flags.as_raw(),
-                    sample_count: 1,
-                    level_count: 1,
-                    current_queue_family: graphics_queue_family,
-                    protected: skia_safe::gpu::Protected::No,
-                    ycbcr_conversion_info: Default::default(),
-                    sharing_mode: skia_vk::SharingMode::EXCLUSIVE,
-                };
-                let render_target = skia_safe::gpu::BackendRenderTarget::new_vulkan(
-                    (swap_chain_width as i32, swap_chain_height as i32),
-                    1,
-                    &skia_image_info,
-                );
-                let mut surface = skia_safe::Surface::from_backend_render_target(
-                    skia_recording_context,
-                    &render_target,
-                    skia_safe::gpu::SurfaceOrigin::TopLeft,
-                    skia_safe::ColorType::RGBAF16Norm, // ???
-                    sk::ColorSpace::new_srgb_linear(),
-                    Some(&sk::SurfaceProps::new(
-                        Default::default(),
-                        sk::PixelGeometry::RGBH,
-                    )),
-                )
-                .unwrap();
-
-                let canvas = surface.canvas();
-                f(canvas);
-                surface.flush_and_submit();
-            });
-        });
-
-        // copy skia result to swapchain image
-        graal::utils::blit_images(
-            &frame,
-            skia_image,
-            swapchain_image.image_info,
-            (self.swap_chain_width, self.swap_chain_height),
-            graal::vk::ImageAspectFlags::COLOR,
-        );
-
-        // present
-        frame.present("present", &swapchain_image);
-        frame.finish();
-    }*/
-
-    /*pub fn present(&mut self) {
-        unsafe {
-            if let Err(err) = self.swap_chain.Present(1, 0).ok() {
-                tracing::error!("IDXGISwapChain::Present failed: {}", err)
-            }
-        }
-    }*/
+    /// Creates a new window with the given title.
+    pub fn new<T>(event_loop: &EventLoopWindowTarget<T>, title: impl Into<String>) -> Result<Window, Error> {
+        backend::Window::new(event_loop, winit::window::WindowBuilder::new().with_title(title), None).map(Window)
+    }
 }

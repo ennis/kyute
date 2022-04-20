@@ -2,23 +2,21 @@ mod key_code;
 
 use crate::{
     align_boxes,
-    animation::{Layer, LayerHandle, SurfaceUpdateCtx},
+    animation::PaintCtx,
     application::AppCtx,
     cache, composable,
-    core::{FocusState, GpuResourceReferences, WindowPaintCtx},
+    core::{FocusState, WindowPaintCtx},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind, WheelDeltaMode, WheelEvent},
     graal,
     graal::{vk::Handle, MemoryLocation},
     region::Region,
-    widget::Menu,
-    Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, PaintCtx,
-    Point, Rect, RoundToPixel, Size, Widget, WidgetId, WidgetPod,
+    widget::{LayerWidget, Menu},
+    Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, Point, Rect,
+    RoundToPixel, Size, Widget, WidgetId, WidgetPod,
 };
 use keyboard_types::{KeyState, Modifiers};
-use kyute::GpuFrameCtx;
 use kyute_common::Transform;
 use kyute_shell::{
-    animation::CompositionLayer,
     application::Application,
     winit,
     winit::{
@@ -100,7 +98,6 @@ pub(crate) struct WindowState {
     skia_recording_context: skia_safe::gpu::DirectContext,
     window_builder: Option<WindowBuilder>,
     focus_state: FocusState,
-    layer: LayerHandle,
     menu: Option<Menu>,
     inputs: InputState,
     last_click: Option<LastClick>,
@@ -113,17 +110,16 @@ impl WindowState {
     fn do_event(
         &mut self,
         parent_ctx: &mut EventCtx,
-        widget: &WidgetPod,
+        widget: &LayerWidget<Arc<WidgetPod>>,
         event: &mut Event,
         env: &Environment,
-    ) -> bool {
-        let window = self
-            .window
-            .as_mut()
-            .expect("process_window_event received but window not initialized");
-        let mut content_ctx = EventCtx::new_subwindow(parent_ctx, self.scale_factor, window, &mut self.focus_state);
-        widget.route_event(&mut content_ctx, event, env);
-        content_ctx.relayout
+    ) {
+        if let Some(ref mut window) = self.window {
+            let mut content_ctx = parent_ctx.with_window(window, &mut self.focus_state);
+            widget.route_event(&mut content_ctx, event, env);
+        } else {
+            widget.route_event(parent_ctx, event, env);
+        }
     }
 
     /// Processes a winit `WindowEvent` sent to this window.
@@ -135,13 +131,12 @@ impl WindowState {
     fn process_window_event(
         &mut self,
         parent_ctx: &mut EventCtx,
-        content_widget: &WidgetPod,
+        content_widget: &LayerWidget<Arc<WidgetPod>>,
         window_event: &winit::event::WindowEvent,
         env: &Environment,
-    ) -> bool {
+    ) {
         let _span = trace_span!("process_window_event").entered();
 
-        let mut should_relayout = false;
         //let _span = trace_span!("process_window_event", ?window_event).entered();
 
         let event = {
@@ -170,14 +165,9 @@ impl WindowState {
                 }
                 WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                     self.scale_factor = *scale_factor;
-                    should_relayout = true;
                     None
                 }
-                WindowEvent::Resized(size) => {
-                    window.resize((size.width, size.height));
-                    should_relayout = true;
-                    None
-                }
+                WindowEvent::Resized(size) => None,
                 WindowEvent::Focused(true) => {
                     // TODO
                     None
@@ -189,16 +179,10 @@ impl WindowState {
                 WindowEvent::Command(id) => {
                     // send to popup menu target if any
                     if let Some(target) = self.focus_state.popup_target.take() {
-                        let mut content_ctx =
-                            EventCtx::new_subwindow(parent_ctx, self.scale_factor, window, &mut self.focus_state);
-                        content_widget.event(
-                            &mut content_ctx,
-                            &mut Event::Internal(InternalEvent::RouteEvent {
-                                target,
-                                event: Box::new(Event::MenuCommand(*id)),
-                            }),
-                            env,
-                        );
+                        Some(Event::Internal(InternalEvent::RouteEvent {
+                            target,
+                            event: Box::new(Event::MenuCommand(*id)),
+                        }))
                     } else {
                         // command from the window menu
                         // find matching action and trigger it
@@ -207,8 +191,8 @@ impl WindowState {
                                 action.triggered.signal(());
                             }
                         }
+                        None
                     }
-                    None
                 }
                 WindowEvent::KeyboardInput {
                     device_id: _,
@@ -422,7 +406,7 @@ impl WindowState {
                     if let Some(pointer_grab) = self.focus_state.pointer_grab {
                         trace!("routing pointer event to pointer-capturing widget {:?}", pointer_grab);
                         // must use RoutePointerEvent so that relative pointer positions are computed during propagation
-                        should_relayout |= self.do_event(
+                        self.do_event(
                             parent_ctx,
                             content_widget,
                             &mut Event::Internal(InternalEvent::RoutePointerEvent {
@@ -433,14 +417,14 @@ impl WindowState {
                         );
                     } else {
                         // just forward to content, will do a hit-test
-                        should_relayout |= self.do_event(parent_ctx, content_widget, &mut event, env);
+                        self.do_event(parent_ctx, content_widget, &mut event, env);
                     };
                 }
                 Event::Keyboard(_) => {
                     // keyboard events are delivered to the widget that has the focus.
                     // if no widget has focus, the event is dropped.
                     if let Some(focus) = self.focus_state.focus {
-                        should_relayout |= self.do_event(
+                        self.do_event(
                             parent_ctx,
                             content_widget,
                             &mut Event::Internal(InternalEvent::RouteEvent {
@@ -470,7 +454,7 @@ impl WindowState {
                 trace!("focus changed");
 
                 if let Some(old_focus) = old_focus {
-                    should_relayout |= self.do_event(
+                    self.do_event(
                         parent_ctx,
                         content_widget,
                         &mut Event::Internal(InternalEvent::RouteEvent {
@@ -482,7 +466,7 @@ impl WindowState {
                 }
 
                 if let Some(new_focus) = new_focus {
-                    should_relayout |= self.do_event(
+                    self.do_event(
                         parent_ctx,
                         content_widget,
                         &mut Event::Internal(InternalEvent::RouteEvent {
@@ -494,8 +478,6 @@ impl WindowState {
                 }
             }
         }
-
-        should_relayout
     }
 
     /// Updates the window menu if the window is created.
@@ -521,7 +503,7 @@ impl WindowState {
 pub struct Window {
     id: WidgetId,
     window_state: Arc<RefCell<WindowState>>,
-    contents: Arc<WidgetPod>,
+    contents: LayerWidget<Arc<WidgetPod>>,
 }
 
 impl Window {
@@ -532,8 +514,6 @@ impl Window {
     pub fn new(window_builder: WindowBuilder, contents: impl Widget + 'static, menu: Option<Menu>) -> Window {
         // create the initial window state
         // we don't want to recreate it every time, so it only depends on the call ID.
-        let layer = contents.layer().clone();
-        layer.set_surface_backed(true);
         let window_state = cache::once(move || {
             let application = kyute_shell::application::Application::instance();
             let device = application.gpu_device().clone();
@@ -543,6 +523,8 @@ impl Window {
                 skia_safe::gpu::DirectContext::new_vulkan(&skia_backend_context, &recording_context_options)
                     .expect("failed to create skia recording context");
 
+            // --- create the root composition layer ---
+            // We don't need a ref to the event loop for it, so create it here
             Arc::new(RefCell::new(WindowState {
                 window: None,
                 skia_backend_context,
@@ -550,7 +532,6 @@ impl Window {
                 window_builder: Some(window_builder),
                 focus_state: FocusState::default(),
                 menu: None,
-                layer,
                 inputs: Default::default(),
                 last_click: None,
                 scale_factor: 1.0, // initialized during window creation
@@ -578,45 +559,7 @@ impl Window {
         Window {
             id: WidgetId::here(),
             window_state,
-            contents: Arc::new(WidgetPod::new(contents)),
-        }
-    }
-
-    /// Relayouts the contents of the window.
-    fn layout_contents(&self, app_ctx: &mut AppCtx, env: &Environment) {
-        {
-            let mut window_state = self.window_state.borrow_mut();
-
-            if let Some(ref mut window) = window_state.window {
-                let scale_factor = window.window().scale_factor();
-                let _span = trace_span!("window_relayout").entered();
-
-                let (width, height): (f64, f64) = window.window().inner_size().to_logical::<f64>(scale_factor).into();
-                {
-                    let mut layout_ctx = LayoutCtx::new(app_ctx, scale_factor);
-                    self.contents
-                        .layout(&mut layout_ctx, BoxConstraints::new(0.0..width, 0.0..height), env);
-                }
-            }
-        }
-        self.update_layers()
-    }
-
-    /// Redraws the dirty composition layers.
-    fn update_layers(&self) {
-        let mut window_state = self.window_state.borrow_mut();
-        let window_state = &mut *window_state;
-
-        if let Some(ref mut window) = window_state.window {
-            let _span = trace_span!("update_layers").entered();
-            let scale_factor = window.window().scale_factor();
-            let root_layer = self.contents.layer();
-            let surface_update_ctx = SurfaceUpdateCtx {
-                recording_context: window_state.skia_recording_context.clone(),
-                scale_factor,
-            };
-            root_layer.update(&surface_update_ctx, &Transform::identity());
-            window.set_root_layer(root_layer.composition_layer());
+            contents: LayerWidget::new(Arc::new(WidgetPod::new(contents))),
         }
     }
 }
@@ -630,18 +573,12 @@ impl Widget for Window {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.contents.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, _constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.layout_contents(ctx.app_ctx, env);
+        //self.layout_contents(ctx.app_ctx, env);
         Measurements::default()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        let mut should_relayout = false;
-
         match event {
             Event::Initialize => {
                 let mut window_state = self.window_state.borrow_mut();
@@ -655,35 +592,21 @@ impl Widget for Window {
                     }
                 } else {
                     tracing::trace!("creating window");
+
+                    // --- actually create the window ---
                     let mut window_builder = window_state.window_builder.take().unwrap();
+                    let window = kyute_shell::window::Window::from_builder(
+                        ctx.event_loop.unwrap(),
+                        window_builder,
+                        ctx.parent_window.as_deref(),
+                    )
+                    .expect("failed to create window");
 
-                    // set parent window
-                    if let Some(ref mut parent_window) = ctx.parent_window {
-                        window_builder = window_builder.with_owner_window(parent_window.window().hwnd() as *mut _);
-                    }
-
-                    let window = kyute_shell::window::Window::new(ctx.event_loop, window_builder, None)
-                        .expect("failed to create window");
-                    window.set_root_layer(self.contents.layer().composition_layer());
-
-                    // register it to the AppCtx, necessary so that the event loop can route window events
-                    // to this widget
+                    // register it to the AppCtx, necessary so that the event loop can route window events to this widget
                     ctx.register_window(window.id());
 
-                    let scale_factor = window.window().scale_factor();
-                    let (width, height): (f64, f64) =
-                        window.window().inner_size().to_logical::<f64>(scale_factor).into();
-
-                    /*// perform initial layout of contents
-                    {
-                        trace!("window (id={:?}) initial layout", window.window().id());
-                        let mut layout_ctx = LayoutCtx::new(ctx.app_ctx, scale_factor);
-                        self.contents
-                            .layout(&mut layout_ctx, BoxConstraints::new(0.0..width, 0.0..height), env);
-                    }*/
-
                     // update window state
-                    window_state.scale_factor = scale_factor;
+                    window_state.scale_factor = window.scale_factor();
                     window_state.window = Some(window);
 
                     // create the window menu
@@ -695,7 +618,7 @@ impl Widget for Window {
             }
             Event::WindowEvent(window_event) => {
                 let mut window_state = self.window_state.borrow_mut();
-                should_relayout |= window_state.process_window_event(ctx, &self.contents, window_event, env);
+                window_state.process_window_event(ctx, &self.contents, window_event, env);
             }
             //Event::WindowRedrawRequest => self.do_redraw(ctx, env),
             _ => {
@@ -703,25 +626,35 @@ impl Widget for Window {
                 let window_state = &mut *window_state; // hrmpf...
 
                 if window_state.window.is_some() {
-                    should_relayout |= window_state.do_event(ctx, &self.contents, event, env);
+                    window_state.do_event(ctx, &self.contents, event, env);
                 } else {
                     //tracing::warn!("received window event before initialization: {:?}", event);
-                    self.contents.event(ctx, event, env);
-                    should_relayout |= ctx.relayout;
+                    self.contents.route_event(ctx, event, env);
                 }
             }
         }
 
-        if should_relayout {
-            self.layout_contents(ctx.app_ctx, env);
-        } else {
-            // event propagation may have launched animations or layer updates.
-            // layout_contents() calls it so no need to call it again if we relayouted
-            self.update_layers()
+        // --- update layout ---
+        let mut window_state = self.window_state.borrow_mut();
+        if let Some(ref mut window) = window_state.window {
+            let _span = trace_span!("window_relayout").entered();
+            let scale_factor = window.scale_factor();
+            let size = window.logical_inner_size();
+            {
+                let mut layout_ctx = LayoutCtx::new(ctx.app_ctx.as_deref_mut().unwrap(), scale_factor);
+                self.contents.layout(&mut layout_ctx, BoxConstraints::loose(size), env);
+            }
+        }
+
+        let window_state = &mut *window_state;
+        if let Some(ref mut window) = window_state.window {
+            // --- update composition layers ---
+            self.contents.repaint(window_state.skia_recording_context.clone());
+            window.set_root_composition_layer(self.contents.layer());
         }
     }
 
-    fn debug_name(&self) -> &str {
-        std::any::type_name::<Self>()
+    fn paint(&self, ctx: &mut PaintCtx) {
+        panic!("shouldn't be called")
     }
 }

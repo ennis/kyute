@@ -1,7 +1,8 @@
 use crate::{
+    core::WindowPaintCtx,
     event::{PointerButton, PointerButtons, PointerEventKind},
     widget::prelude::*,
-    Signal,
+    GpuFrameCtx, Signal,
 };
 
 /// Widget that provides feedback on the pointer position and status when the pointer is over it.
@@ -88,10 +89,6 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
         Some(self.id)
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.content.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.content.layout(ctx, constraints, env)
     }
@@ -125,6 +122,10 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
                 _ => {}
             }
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.content.paint(ctx)
     }
 }
 
@@ -216,15 +217,15 @@ impl<Content: Widget + 'static> Widget for DragController<Content> {
         self.content.widget_id()
     }
 
-    fn layer(&self) -> &LayerHandle {
-        self.content.layer()
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         self.content.layout(ctx, constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.content.route_event(ctx, event, env);
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.content.paint(ctx)
     }
 }

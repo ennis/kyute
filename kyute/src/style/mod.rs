@@ -6,11 +6,12 @@ mod theme;
 
 use crate::{
     drawing::{svg_path_to_skia, ToSkia},
-    Color, Length, PaintCtx, Rect, RectExt, UnitExt, ValueRef,
+    Color, Length, Rect, RectExt, UnitExt, ValueRef,
 };
 use bitflags::bitflags;
 use skia_safe as sk;
 
+use crate::animation::PaintCtx;
 pub use border::{Border, BorderPosition, BorderStyle};
 pub use box_style::{BoxShadow, BoxShadowParams, BoxStyle};
 pub use paint::{GradientStop, LinearGradient, Paint, RepeatMode, UniformData};
@@ -140,23 +141,24 @@ impl Path {
 
     pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect) {
         // fill
+        let canvas = ctx.surface.canvas();
         if let Some(ref brush) = self.fill {
             let mut paint = brush.to_sk_paint(bounds);
             paint.set_style(sk::PaintStyle::Fill);
-            ctx.canvas.save();
-            ctx.canvas.translate(bounds.top_left().to_skia());
-            ctx.canvas.draw_path(&self.path, &paint);
-            ctx.canvas.restore();
+            canvas.save();
+            canvas.translate(bounds.top_left().to_skia());
+            canvas.draw_path(&self.path, &paint);
+            canvas.restore();
         }
 
         // stroke
         if let Some(ref stroke) = self.stroke {
             let mut paint = stroke.to_sk_paint(bounds);
             paint.set_style(sk::PaintStyle::Stroke);
-            ctx.canvas.save();
-            ctx.canvas.translate(bounds.top_left().to_skia());
-            ctx.canvas.draw_path(&self.path, &paint);
-            ctx.canvas.restore();
+            canvas.save();
+            canvas.translate(bounds.top_left().to_skia());
+            canvas.draw_path(&self.path, &paint);
+            canvas.restore();
         }
     }
 }

@@ -1,29 +1,12 @@
 use crate::{
-    animation::layer::Layer,
+    core::WindowPaintCtx,
     style::{BoxStyle, Paint, PaintCtxExt, VisualState},
     widget::prelude::*,
-    Length, RoundToPixel, SideOffsets, UnitExt, ValueRef,
+    GpuFrameCtx, Length, RoundToPixel, SideOffsets, UnitExt, ValueRef,
 };
-
-struct ContainerLayerDelegate {
-    box_style: BoxStyle,
-}
-
-impl ContainerLayerDelegate {
-    fn new(box_style: BoxStyle) -> ContainerLayerDelegate {
-        ContainerLayerDelegate { box_style }
-    }
-}
-
-impl LayerDelegate for ContainerLayerDelegate {
-    fn draw(&self, ctx: &mut PaintCtx) {
-        ctx.draw_styled_box(ctx.bounds, &self.box_style)
-    }
-}
 
 #[derive(Clone)]
 pub struct Container<Content> {
-    layer: LayerHandle,
     alignment: Option<Alignment>,
     min_width: Option<Length>,
     min_height: Option<Length>,
@@ -34,17 +17,16 @@ pub struct Container<Content> {
     padding_right: Length,
     padding_bottom: Length,
     padding_left: Length,
-    box_style: ValueRef<BoxStyle>,
-    alternate_box_styles: Vec<(VisualState, ValueRef<BoxStyle>)>,
+    box_style: BoxStyle,
+    alternate_box_styles: Vec<(VisualState, BoxStyle)>,
     redraw_on_hover: bool,
-    content: Content,
+    content: WidgetPod<Content>,
 }
 
 impl<Content: Widget + 'static> Container<Content> {
     #[composable]
     pub fn new(content: Content) -> Container<Content> {
         Container {
-            layer: Layer::new(),
             alignment: None,
             min_width: None,
             min_height: None,
@@ -58,7 +40,7 @@ impl<Content: Widget + 'static> Container<Content> {
             box_style: BoxStyle::default().into(),
             alternate_box_styles: vec![],
             redraw_on_hover: false,
-            content,
+            content: WidgetPod::new(content),
         }
     }
 
@@ -66,18 +48,18 @@ impl<Content: Widget + 'static> Container<Content> {
     ///
     /// The returned value is unspecified if this function is called before layout.
     pub fn content_offset(&self) -> Offset {
-        let transform = self.content.layer().transform();
+        let transform = self.content.transform();
         Offset::new(transform.m31, transform.m32)
     }
 
     /// Returns a reference to the contents.
     pub fn inner(&self) -> &Content {
-        &self.content
+        self.content.inner()
     }
 
     /// Returns a mutable reference to the contents.
     pub fn inner_mut(&mut self) -> &mut Content {
-        &mut self.content
+        self.content.inner_mut()
     }
 }
 
@@ -222,7 +204,7 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Sets the style used to paint the box of the container.
     pub fn set_box_style(&mut self, box_style: impl Into<ValueRef<BoxStyle>>) {
-        self.box_style = box_style.into();
+        self.box_style = box_style.into().resolve_here().unwrap();
     }
 
     /// Adds an alternate style, which replaces the main style when the widget is in the specified state.
@@ -233,7 +215,8 @@ impl<Content: Widget + 'static> Container<Content> {
 
     /// Sets the overlay style, only active when the widget is in the specified state.
     pub fn push_alternate_box_style(&mut self, state: VisualState, box_style: impl Into<ValueRef<BoxStyle>>) {
-        self.alternate_box_styles.push((state, box_style.into()));
+        self.alternate_box_styles
+            .push((state, box_style.into().resolve_here().unwrap()));
         if state.contains(VisualState::HOVER) {
             self.redraw_on_hover = true;
         }
@@ -246,43 +229,38 @@ impl<Content: Widget> Widget for Container<Content> {
         self.content.widget_id()
     }
 
-    fn layer(&self) -> &LayerHandle {
-        &self.layer
-    }
-
     fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let box_style = self.box_style.resolve(env).unwrap();
-
         // Base size for proportional length calculations
         let base_width = constraints.finite_max_width().unwrap_or(0.0);
         let base_height = constraints.finite_max_height().unwrap_or(0.0);
 
         // First, measure the child, taking into account the mandatory padding
-        let mut content_padding = SideOffsets::new(
+        let mut insets = SideOffsets::new(
             self.padding_top.to_dips(ctx.scale_factor, base_height),
             self.padding_right.to_dips(ctx.scale_factor, base_width),
             self.padding_bottom.to_dips(ctx.scale_factor, base_height),
             self.padding_left.to_dips(ctx.scale_factor, base_width),
         );
-
         // Around-borders should be taken into account in the layout (they affect the size of the item).
-        content_padding =
-            content_padding + box_style.border_side_offsets(ctx.scale_factor, Size::new(base_width, base_height));
+        insets = insets
+            + self
+                .box_style
+                .border_side_offsets(ctx.scale_factor, Size::new(base_width, base_height));
 
-        let content_constraints = constraints.deflate(content_padding);
+        let content_constraints = constraints.deflate(insets);
+        let mut content_layout = self.content.layout(ctx, content_constraints, env);
+        content_layout.size.width += insets.horizontal();
+        content_layout.size.height += insets.vertical();
 
-        let mut content_size = self.content.layout(ctx, content_constraints, env);
-        content_size.size = content_size.local_bounds().outer_rect(content_padding).size;
-
-        let mut content_offset = Offset::new(content_padding.left, content_padding.top);
+        let mut content_offset = Offset::new(insets.left, insets.top);
 
         // adjust content baseline so that `baseline = adjusted_content_baseline + padding.top`.
         if let Some(baseline) = self.baseline {
             // TODO do size-relative baselines make sense?
             let baseline = (baseline.to_dips(ctx.scale_factor, base_height) - content_offset.y).max(0.0);
-            let offset = baseline - content_size.baseline.unwrap_or(content_size.size.height).round();
+            let offset = baseline - content_layout.baseline.unwrap_or(content_layout.size.height).round();
             content_offset.y += offset;
-            content_size.size.height += offset;
+            content_layout.size.height += offset;
         }
 
         // measure text
@@ -300,8 +278,12 @@ impl<Content: Widget> Widget for Container<Content> {
             x.max(min).min(max)
         }
 
-        constraints.min.width = clamp(content_size.size.width, constraints.min.width, constraints.max.width);
-        constraints.min.height = clamp(content_size.size.height, constraints.min.height, constraints.max.height);
+        constraints.min.width = clamp(content_layout.size.width, constraints.min.width, constraints.max.width);
+        constraints.min.height = clamp(
+            content_layout.size.height,
+            constraints.min.height,
+            constraints.max.height,
+        );
 
         // apply additional w/h sizing constraints to the container
         //let mut additional_constraints = BoxConstraints::new(..,..);
@@ -332,23 +314,23 @@ impl<Content: Widget> Widget for Container<Content> {
                 constraints.max_width()
             } else {
                 // size to contents
-                constraints.constrain_width(content_size.width())
+                constraints.constrain_width(content_layout.width())
             };
             let h = if constraints.max_height().is_finite() {
                 constraints.max_height()
             } else {
-                constraints.constrain_height(content_size.height())
+                constraints.constrain_height(content_layout.height())
             };
             Size::new(w, h)
         } else {
             // no alignment = size to content
-            constraints.constrain(content_size.size)
+            constraints.constrain(content_layout.size)
         };
 
         // Place the contents inside the box according to alignment
         if let Some(alignment) = self.alignment {
-            let x = 0.5 * size.width * (1.0 + alignment.x) - 0.5 * content_size.width() * (1.0 + alignment.x);
-            let y = 0.5 * size.height * (1.0 + alignment.y) - 0.5 * content_size.height() * (1.0 + alignment.y);
+            let x = 0.5 * size.width * (1.0 + alignment.x) - 0.5 * content_layout.width() * (1.0 + alignment.x);
+            let y = 0.5 * size.height * (1.0 + alignment.y) - 0.5 * content_layout.height() * (1.0 + alignment.y);
             content_offset.x += x;
             content_offset.y += y;
         }
@@ -356,21 +338,18 @@ impl<Content: Widget> Widget for Container<Content> {
         // finally, round to pixel boundaries
         content_offset = content_offset.round_to_pixel(ctx.scale_factor);
 
-        self.content.layer().set_offset(content_offset);
+        let clip_bounds = self
+            .box_style
+            .clip_bounds(Rect::new(Point::origin(), size), ctx.scale_factor);
 
-        let box_style = self.box_style.resolve(env).unwrap();
-        let clip_bounds = box_style.clip_bounds(Rect::new(Point::origin(), size), ctx.scale_factor);
-
-        // update layer
-        self.layer.set_size(size);
-        self.layer.add_child(self.content.layer());
-        // TODO update_delegate
-        self.layer.set_delegate(ContainerLayerDelegate { box_style });
+        if !ctx.speculative {
+            self.content.set_offset(content_offset);
+        }
 
         Measurements {
             size,
             clip_bounds,
-            baseline: content_size.baseline.map(|b| b + content_offset.y),
+            baseline: content_layout.baseline.map(|b| b + content_offset.y),
         }
     }
 
@@ -399,5 +378,10 @@ impl<Content: Widget> Widget for Container<Content> {
 
         //ctx.route_event(&self.content, event, env);
         self.content.route_event(ctx, event, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        ctx.draw_styled_box(ctx.bounds, &self.box_style);
+        self.content.paint(ctx);
     }
 }

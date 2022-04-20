@@ -1,4 +1,4 @@
-use crate::{resolve_range, Attribute, FontStyle, FontWeight, TextAlignment};
+use crate::text::{resolve_range, Attribute, FontStyle, FontWeight, TextAlignment};
 use kyute_common::Data;
 use std::{
     cmp::Ordering,
@@ -8,9 +8,9 @@ use std::{
 
 /// A run of text sharing the same text attributes.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TextRun {
-    pub(crate) range: Range<usize>,
-    pub(crate) attributes: Vec<Attribute>,
+pub struct TextRun {
+    pub range: Range<usize>,
+    pub attributes: Vec<Attribute>,
 }
 
 impl TextRun {
@@ -54,8 +54,8 @@ impl TextRun {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct TextRuns {
-    pub(crate) runs: Vec<TextRun>,
+pub struct TextRuns {
+    pub runs: Vec<TextRun>,
 }
 
 impl TextRuns {
@@ -132,7 +132,7 @@ impl TextRuns {
         (start_run, end_run)
     }
 
-    pub(crate) fn merge_attribute(&mut self, range: Range<usize>, attribute: &Attribute) {
+    pub fn merge_attribute(&mut self, range: Range<usize>, attribute: &Attribute) {
         if range.is_empty() {
             return;
         }
@@ -157,8 +157,23 @@ pub struct ParagraphStyle {
 #[derive(Clone, Data)]
 pub struct FormattedText {
     pub plain_text: Arc<str>,
-    pub(crate) runs: Arc<TextRuns>,
-    pub(crate) paragraph_style: ParagraphStyle,
+    pub runs: Arc<TextRuns>,
+    pub paragraph_style: ParagraphStyle,
+}
+
+impl Default for FormattedText {
+    fn default() -> Self {
+        FormattedText {
+            plain_text: Arc::from(""),
+            runs: Arc::new(TextRuns {
+                runs: vec![TextRun {
+                    range: 0..0,
+                    attributes: vec![],
+                }],
+            }),
+            paragraph_style: Default::default(),
+        }
+    }
 }
 
 impl<T> From<T> for FormattedText
