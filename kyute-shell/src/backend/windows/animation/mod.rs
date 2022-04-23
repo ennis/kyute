@@ -24,7 +24,7 @@ use windows::{
             Dxgi::{
                 Common::{DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC},
                 IDXGISwapChain3, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_DISCARD,
-                DXGI_USAGE_RENDER_TARGET_OUTPUT,
+                DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT,
             },
         },
         System::SystemServices::GENERIC_ALL,
@@ -77,7 +77,8 @@ impl CompositionSwapChain {
                         &dx_buffer,
                         ptr::null(),
                         GENERIC_ALL,
-                        PCWSTR(
+                        None,
+                        /*PCWSTR(
                             format!(
                                 "kyute_shell::animation::CompositionSurface@{}:{}",
                                 COMPOSITION_SWAP_CHAIN_COUNTER.next(),
@@ -85,7 +86,7 @@ impl CompositionSwapChain {
                             )
                             .to_wide()
                             .as_ptr(),
-                        ),
+                        ),*/
                     )
                     .expect("CreateSharedHandle failed")
             };
@@ -159,7 +160,7 @@ impl CompositionSwapChain {
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
             BufferCount: 2,
             Scaling: DXGI_SCALING_STRETCH,
-            SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
+            SwapEffect: DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
             AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
             Flags: 0,
         };
@@ -184,6 +185,10 @@ impl CompositionSwapChain {
 
     /// Resizes the surface.
     fn set_size(&mut self, new_size: SizeI) {
+        if new_size == self.size {
+            return;
+        }
+
         self.release_interop();
         self.size = new_size;
         unsafe {

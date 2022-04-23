@@ -152,7 +152,7 @@ impl Application {
         }
 
         unsafe {
-            d3d12_debug.EnableDebugLayer();
+            //d3d12_debug.EnableDebugLayer();
         }
 
         let d3d12_device = unsafe {

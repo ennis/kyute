@@ -19,7 +19,7 @@ use crate::{
     Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Length, Measurements, Offset, Point, Rect,
     State, Transform, UnitExt,
 };
-use kyute_common::{PointI, Size};
+use kyute_common::{Data, PointI, Size};
 use kyute_shell::animation::Layer;
 use skia_safe as sk;
 use std::{
@@ -35,28 +35,55 @@ pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.core.show_debug_
 //pub const SELECTED: EnvKey<bool> = EnvKey::new("kyute.core.selected");
 pub const DISABLED: EnvKey<bool> = EnvKey::new("kyute.core.disabled");
 
-/// Context passed to widgets during the layout pass.
-///
-/// See [`Widget::layout`].
-pub struct LayoutCtx<'a> {
-    pub scale_factor: f64,
-    pub speculative: bool,
-    pub app_ctx: &'a mut AppCtx,
-    changed: bool,
+#[derive(Clone, Debug)]
+pub struct DebugWidgetTreeNode {
+    pub name: String,
+    pub debug_node: DebugNode,
+    pub id: Option<WidgetId>,
+    pub cached_measurements: Option<Measurements>,
+    pub transform: Option<Transform>,
+    pub children: Vec<DebugWidgetTreeNode>,
 }
 
-impl<'a> LayoutCtx<'a> {
-    pub fn new(app_ctx: &'a mut AppCtx, scale_factor: f64) -> LayoutCtx<'a> {
-        LayoutCtx {
-            scale_factor,
-            speculative: false,
-            app_ctx,
-            changed: false,
-        }
+impl DebugWidgetTreeNode {
+    /// Try to extract the base widget type name (e.g. `Container` in `kyute::widgets::Container<...>`).
+    pub fn base_type_name(&self) -> &str {
+        let first_angle_bracket = self.name.find('<');
+        let last_double_colon = if let Some(p) = first_angle_bracket {
+            self.name[0..p].rfind("::").map(|p| p + 2)
+        } else {
+            self.name.rfind("::").map(|p| p + 2)
+        };
+        &self.name[last_double_colon.unwrap_or(0)..first_angle_bracket.unwrap_or(self.name.len())]
     }
 }
 
-impl<'a> LayoutCtx<'a> {
+/// Context passed to widgets during the layout pass.
+///
+/// See [`Widget::layout`].
+pub struct LayoutCtx {
+    pub scale_factor: f64,
+    pub speculative: bool,
+    pub paint_damage: Option<PaintDamage>,
+}
+
+impl LayoutCtx {
+    /// Creates a new `LayoutCtx`.
+    pub fn new(scale_factor: f64) -> LayoutCtx {
+        LayoutCtx {
+            scale_factor,
+            speculative: false,
+            paint_damage: None,
+        }
+    }
+
+    /// Signals that the current widget should be repainted as a result of a layout change.
+    pub fn request_repaint(&mut self) {
+        self.paint_damage = Some(PaintDamage::Repaint);
+    }
+}
+
+impl LayoutCtx {
     pub fn round_to_pixel(&self, dip_length: f64) -> f64 {
         (dip_length * self.scale_factor).round()
     }
@@ -81,7 +108,7 @@ impl GpuResourceReferences {
 pub struct EventResult {
     pub handled: bool,
     pub relayout: bool,
-    pub paint_damage: Option<PaintDamage>,
+    pub paint_damage: PaintDamage,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -211,7 +238,7 @@ fn do_event<W: Widget + ?Sized>(
         id: widget.widget_id(),
         handled: false,
         relayout: false,
-        paint_damage: None,
+        paint_damage: PaintDamage::None,
     };
     event.with_local_coordinates(transform, |event| {
         widget.event(&mut target_ctx, event, env);
@@ -224,12 +251,32 @@ fn do_event<W: Widget + ?Sized>(
     }
 }
 
+/// Damage done to the contents of a layer that possibly justifies a repaint.
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum PaintDamage {
-    /// Some layers under this widget need to be repainted.
+    /// This layer and its sublayers are undamaged and do not need a repaint.
+    None,
+    /// This layer is undamaged, but one or more of its sublayers are.
     SubLayers,
-    /// The widget needs to be repainted (supersedes a child layer update).
+    /// This layer is damaged and needs to be repainted.
     Repaint,
+}
+
+impl Default for PaintDamage {
+    fn default() -> Self {
+        PaintDamage::None
+    }
+}
+
+impl PaintDamage {
+    pub fn merge_up(&mut self, down: PaintDamage) {
+        match (*self, down) {
+            (PaintDamage::None, _) | (PaintDamage::SubLayers, PaintDamage::Repaint) => {
+                *self = down;
+            }
+            _ => {}
+        }
+    }
 }
 
 pub struct EventCtx<'a> {
@@ -249,7 +296,7 @@ pub struct EventCtx<'a> {
     pub(crate) id: Option<WidgetId>,
     pub(crate) handled: bool,
     pub(crate) relayout: bool,
-    pub(crate) paint_damage: Option<PaintDamage>,
+    pub(crate) paint_damage: PaintDamage,
 }
 
 impl<'a> EventCtx<'a> {
@@ -263,7 +310,7 @@ impl<'a> EventCtx<'a> {
             id: None,
             handled: false,
             relayout: false,
-            paint_damage: None,
+            paint_damage: PaintDamage::None,
         }
     }
 
@@ -283,7 +330,7 @@ impl<'a> EventCtx<'a> {
             id,
             handled: false,
             relayout: false,
-            paint_damage: None,
+            paint_damage: PaintDamage::None,
         }
     }
 
@@ -319,7 +366,7 @@ impl<'a> EventCtx<'a> {
             id: self.id,
             handled: false,
             relayout: false,
-            paint_damage: None,
+            paint_damage: PaintDamage::None,
         }
     }
 
@@ -327,11 +374,7 @@ impl<'a> EventCtx<'a> {
     pub fn merge_event_result(&mut self, event_result: EventResult) {
         self.relayout |= event_result.relayout;
         self.handled |= event_result.handled;
-        match (self.paint_damage, event_result.paint_damage) {
-            (None, _) => self.paint_damage = event_result.paint_damage,
-            (Some(PaintDamage::SubLayers), Some(PaintDamage::Repaint)) => self.paint_damage = event_result.paint_damage,
-            _ => {}
-        }
+        self.paint_damage.merge_up(event_result.paint_damage);
     }
 
     /// Returns the parent widget ID.
@@ -345,14 +388,14 @@ impl<'a> EventCtx<'a> {
 
     /// Requests a repaint of the widget.
     pub fn request_repaint(&mut self) {
-        self.paint_damage = Some(PaintDamage::Repaint);
+        self.paint_damage = PaintDamage::Repaint;
     }
 
-    pub fn request_layer_repaint(&mut self) {
+    /*pub fn request_layer_repaint(&mut self) {
         if self.paint_damage.is_none() {
             self.paint_damage = Some(PaintDamage::SubLayers);
         }
-    }
+    }*/
 
     pub fn register_window(&mut self, window_id: WindowId) {
         if let Some(id) = self.id {
@@ -468,6 +511,7 @@ impl<'a> EventCtx<'a> {
         widget: &W,
         event: &mut Event,
         transform: &Transform,
+        cached_measurements: Option<Measurements>,
         env: &Environment,
     ) -> Option<EventResult> {
         let id = widget.widget_id();
@@ -525,10 +569,26 @@ impl<'a> EventCtx<'a> {
                     do_event(self, widget, id, event, transform, env)
                 }
             }
-            Event::Internal(InternalEvent::Traverse { ref mut widgets }) => {
-                // T: ?Sized
-                // This is problematic: it must clone self, and thus we must either have T == dyn Widget or T:Sized
-                //widgets.push(WidgetPod(self.state.this.upgrade().unwrap()));
+
+            ////////////////////////////////////////////////////////////////////////////////////////
+            // Debug events
+            Event::Internal(InternalEvent::DumpTree { ref mut nodes }) => {
+                let mut children = Vec::new();
+
+                {
+                    let mut child_event = Event::Internal(InternalEvent::DumpTree { nodes: &mut children });
+                    do_event(self, widget, id, &mut child_event, transform, env);
+                }
+
+                nodes.push(DebugWidgetTreeNode {
+                    name: widget.debug_name().to_string(),
+                    debug_node: widget.debug_node(),
+                    id: widget.widget_id(),
+                    cached_measurements,
+                    transform: Some(transform.clone()),
+                    children,
+                });
+
                 return None;
             }
 
@@ -625,6 +685,11 @@ impl<'a, 'b> GpuFrameCtx<'a, 'b> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct DebugNode {
+    pub content: Option<String>,
+}
+
 /// Trait that defines the behavior of a widget.
 pub trait Widget {
     /// Returns the widget identity.
@@ -648,7 +713,7 @@ pub trait Widget {
 
     ///
     fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        let event_result = ctx.default_route_event(self, event, &Transform::identity(), env);
+        let event_result = ctx.default_route_event(self, event, &Transform::identity(), None, env);
         if let Some(event_result) = event_result {
             ctx.merge_event_result(event_result);
         }
@@ -663,6 +728,11 @@ pub trait Widget {
     /// Implement to give a debug name to your widget. Used only for debugging.
     fn debug_name(&self) -> &str {
         std::any::type_name::<Self>()
+    }
+
+    /// Implement to give a debug name to your widget. Used only for debugging.
+    fn debug_node(&self) -> DebugNode {
+        DebugNode { content: None }
     }
 }
 
@@ -696,8 +766,8 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::gpu_frame(&**self, ctx)
     }
 
-    fn debug_name(&self) -> &str {
-        Widget::debug_name(&**self)
+    fn debug_node(&self) -> DebugNode {
+        Widget::debug_node(&**self)
     }
 }
 
@@ -850,21 +920,46 @@ impl<T: Clone> LayoutCache<T> {
         self.0.borrow().layout.is_some()
     }
 
+    pub fn get(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints) -> Option<T> {
+        let mut inner = self.0.borrow();
+        if let Some(ref layout) = inner.layout {
+            if inner.constraints == constraints && inner.scale_factor == ctx.scale_factor {
+                return Some(layout.clone());
+            }
+        }
+        None
+    }
+
+    pub fn set(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, value: T) {
+        let mut inner = self.0.borrow_mut();
+        inner.constraints = constraints;
+        inner.scale_factor = ctx.scale_factor;
+    }
+
     pub fn update(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, f: impl FnOnce(&mut LayoutCtx) -> T) -> T {
-        // don't cache speculative layouts
-        if ctx.speculative {
-            f(ctx)
-        } else {
-            let mut inner = self.0.borrow_mut();
-            if inner.layout.is_none() || inner.constraints != constraints || inner.scale_factor != ctx.scale_factor {
-                let layout = f(ctx);
+        let mut inner = self.0.borrow_mut();
+        if inner.layout.is_none() || inner.constraints != constraints || inner.scale_factor != ctx.scale_factor {
+            let layout = f(ctx);
+            // don't cache speculative layouts
+            if !ctx.speculative {
+                if inner.layout.is_none() {
+                    trace!("initial layout");
+                } else {
+                    trace!(
+                        "layout update: constraints:{:?}->{:?}, scale_factor:{:?}->{:?}",
+                        inner.constraints,
+                        constraints,
+                        inner.scale_factor,
+                        ctx.scale_factor
+                    );
+                }
                 inner.layout = Some(layout.clone());
                 inner.constraints = constraints;
                 inner.scale_factor = ctx.scale_factor;
-                layout
-            } else {
-                inner.layout.as_ref().unwrap().clone()
             }
+            layout
+        } else {
+            inner.layout.as_ref().unwrap().clone()
         }
     }
 
@@ -883,319 +978,59 @@ impl<T: Clone> LayoutCache<T> {
     }
 
     pub fn invalidate(&self) {
+        trace!("layout explicitly invalidated");
         self.0.borrow_mut().layout = None;
     }
 }
 
-#[derive(Clone)]
-struct WidgetPodState {
-    /// Unique ID of the widget, if it has one.
-    id: Option<WidgetId>,
-
-    transform: Cell<Transform>,
-
-    /// Layout result.
-    layout_result: LayoutCache<Measurements>,
-
-    /// Any pointer hovering this widget
-    pointer_over: State<bool>,
-
-    /// Bloom filter to filter child widgets.
-    child_filter: Cell<Option<WidgetFilter>>,
+pub(crate) fn get_debug_widget_tree<W: Widget>(w: &W) -> DebugWidgetTreeNode {
+    let mut nodes = Vec::new();
+    let mut event_ctx = EventCtx::new();
+    w.route_event(
+        &mut event_ctx,
+        &mut Event::Internal(InternalEvent::DumpTree { nodes: &mut nodes }),
+        &Environment::new(),
+    );
+    assert_eq!(nodes.len(), 1);
+    nodes.into_iter().next().unwrap()
 }
 
-/// A container for a widget.
-/// TODO fix the docs.
-/// TODO I'm not sure that we should allow it to be Clone-able
-#[derive(Clone)]
-pub struct WidgetPod<T: ?Sized = dyn Widget> {
-    state: WidgetPodState,
-    widget: T,
-}
+pub(crate) fn dump_widget_tree_rec(node: &DebugWidgetTreeNode, indent: usize, lines: &mut Vec<usize>, is_last: bool) {
+    let mut pad = vec![' '; indent];
+    for &p in lines.iter() {
+        pad[p] = '│';
+    }
 
-impl<T: Widget + ?Sized> WidgetPod<T> {
-    fn compute_child_filter(&self, parent_ctx: &mut EventCtx, env: &Environment) -> Bloom<WidgetId> {
-        if let Some(filter) = self.state.child_filter.get() {
-            // already computed
-            filter
+    let mut msg: String = pad.into_iter().collect();
+    msg += &format!("{}{}", if is_last { "└" } else { "├" }, node.base_type_name());
+    if let Some(id) = node.id {
+        msg += &format!("({:?})", id);
+    }
+    if let Some(ref content) = node.debug_node.content {
+        msg += "  `";
+        msg += content;
+        msg += "`";
+    }
+    println!("{}", msg);
+
+    if !is_last {
+        lines.push(indent);
+    }
+
+    for (i, n) in node.children.iter().enumerate() {
+        if i == node.children.len() - 1 {
+            dump_widget_tree_rec(n, indent + 2, lines, true);
         } else {
-            //tracing::trace!("computing child filter");
-            let mut filter = Default::default();
-            do_event(
-                parent_ctx,
-                &self.widget,
-                self.state.id,
-                &mut Event::Internal(InternalEvent::UpdateChildFilter { filter: &mut filter }),
-                &self.state.transform.get(),
-                env,
-            );
-            self.state.child_filter.set(Some(filter));
-            filter
+            dump_widget_tree_rec(n, indent + 2, lines, false);
         }
     }
 
-    /// Returns whether this widget may contain the specified widget as a child (direct or not).
-    fn may_contain(&self, widget: WidgetId) -> bool {
-        if let Some(filter) = self.state.child_filter.get() {
-            filter.may_contain(&widget)
-        } else {
-            warn!("`may_contain` called but child filter not initialized");
-            true
-        }
-    }
-
-    pub fn set_offset(&self, offset: Offset) {
-        self.state.transform.set(offset.to_transform());
-    }
-
-    pub fn set_transform(&self, transform: Transform) {
-        self.state.transform.set(transform)
-    }
-
-    pub fn transform(&self) -> Transform {
-        self.state.transform.get()
+    if !is_last {
+        lines.pop();
     }
 }
 
-impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
-    fn widget_id(&self) -> Option<WidgetId> {
-        self.state.id
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.state
-            .layout_result
-            .update(ctx, constraints, |ctx| {
-                let _span = trace_span!("layout", 
-                    id = ?self.state.id,
-                    name = self.widget.debug_name())
-                .entered();
-
-                // we just forward to the inner widget; we also check for invalid size values while we're at
-                // it, but that's only for debugging convenience.
-                let measurements = self.widget.layout(ctx, constraints, env);
-                trace!(
-                    id = ?self.state.id,
-                    name = self.widget.debug_name(),
-                    "layout[{:?}({})]: measurements={:?}",
-                    self.state.id,
-                    self.widget.debug_name(),
-                    measurements
-                );
-
-                if !measurements.size.width.is_finite() || !measurements.size.height.is_finite() {
-                    warn!(
-                        "layout[{:?}({})] returned non-finite measurements: {:?}",
-                        self.state.id,
-                        self.widget.debug_name(),
-                        measurements
-                    );
-                }
-
-                measurements
-            })
-            .clone()
-    }
-
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.widget.event(ctx, event, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx) {
-        let layout = self.state.layout_result.get_cached();
-        ctx.with_transform_and_clip(
-            &self.state.transform.get(),
-            layout.local_bounds(),
-            layout.clip_bounds,
-            |ctx| self.widget.paint(ctx),
-        )
-    }
-
-    fn route_event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        // ensure that the child filter has been computed and the child widgets are initialized
-        self.compute_child_filter(parent_ctx, env);
-        match *event {
-            // do not propagate routed events that are not directed to us, or to one of our children;
-            // use the child filter to determine if we may contain a specific children; it might be a false
-            // positive, but on average it saves some unnecessary traversals.
-            Event::Internal(InternalEvent::RouteWindowEvent { target, .. })
-            | Event::Internal(InternalEvent::RouteEvent { target, .. })
-            | Event::Internal(InternalEvent::RoutePointerEvent { target, .. })
-            | Event::Internal(InternalEvent::RouteRedrawRequest(target)) => {
-                if Some(target) != self.state.id && !self.may_contain(target) {
-                    return;
-                }
-            }
-            // for UpdateChildFilter, if we already have computed and cached the child filter, use that
-            // instead of propagating down the tree.
-            Event::Internal(InternalEvent::UpdateChildFilter { ref mut filter }) => {
-                if let Some(id) = self.state.id {
-                    filter.add(&id);
-                }
-                let child_filter = self.compute_child_filter(parent_ctx, env);
-                filter.extend(&child_filter);
-                return;
-            }
-
-            // pointer events undergo hit-testing, with some exceptions:
-            // - pointer out events are exempt from hit-test: if the pointer leaves
-            // the parent widget, we also want the child elements to know that.
-            // - if the widget is a pointer-grabbing widget, don't hit test
-            Event::Pointer(p) => {
-                let exempt_from_hit_test = p.kind == PointerEventKind::PointerOut
-                    || (self.state.id.is_some()
-                        && parent_ctx.focus_state.as_deref().unwrap().pointer_grab == self.state.id);
-
-                if !exempt_from_hit_test {
-                    let local_pointer_pos = self
-                        .state
-                        .transform
-                        .get()
-                        .inverse()
-                        .unwrap()
-                        .transform_point(p.position);
-
-                    if !self
-                        .state
-                        .layout_result
-                        .get_cached()
-                        .local_bounds()
-                        .contains(local_pointer_pos)
-                    {
-                        // hit test pass
-                        trace!(
-                            "do_event: pointer event FAIL @ {:?}{:?}",
-                            self.widget.debug_name(),
-                            p.position,
-                        );
-                        return;
-                    }
-                }
-            }
-
-            _ => {}
-        }
-
-        // continue with default routing behavior
-        let event_result = parent_ctx.default_route_event(self, event, &self.state.transform.get(), env);
-        if let Some(event_result) = event_result {
-            parent_ctx.merge_event_result(event_result);
-        }
-    }
-
-    fn window_paint(&self, ctx: &mut WindowPaintCtx) {
-        self.widget.window_paint(ctx);
-    }
-
-    fn gpu_frame<'a, 'b>(&'a self, _ctx: &mut GpuFrameCtx<'a, 'b>) {
-        todo!()
-    }
-
-    fn debug_name(&self) -> &str {
-        self.inner().debug_name()
-    }
-}
-
-impl fmt::Debug for WidgetPod {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // TODO
-        f.debug_tuple("WidgetPod").finish()
-    }
-}
-
-impl<T: Widget + 'static> WidgetPod<T> {
-    /// Creates a new `WidgetPod` wrapping the specified widget.
-    #[composable]
-    pub fn new(widget: T) -> WidgetPod<T> {
-        let id = widget.widget_id();
-
-        WidgetPod {
-            state: WidgetPodState {
-                id,
-                pointer_over: state(|| false),
-                layout_result: Default::default(),
-                child_filter: Cell::new(None),
-                transform: Cell::new(Default::default()),
-            },
-            widget,
-        }
-    }
-}
-
-/*impl<T: Widget + ?Sized> Deref for WidgetPod<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.widget
-    }
-}
-
-impl<T: Widget + ?Sized> DerefMut for WidgetPod<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.widget
-    }
-}*/
-
-/*// TODO remove this once we have unsized coercions
-impl<T: Widget + 'static> From<WidgetPod<T>> for WidgetPod {
-    fn from(other: WidgetPod<T>) -> Self {
-        WidgetPod(other.0)
-    }
-}*/
-
-impl<T: ?Sized + Widget> WidgetPod<T> {
-    /// Returns a reference to the wrapped widget.
-    pub fn inner(&self) -> &T {
-        &self.widget
-    }
-
-    /// Returns a mutable reference to the wrapped widget.
-    pub fn inner_mut(&mut self) -> &mut T {
-        &mut self.widget
-    }
-
-    /// Returns the widget id.
-    pub fn id(&self) -> Option<WidgetId> {
-        self.state.id
-    }
-
-    /// Initializes and layouts the widget if necessary (propagates the `Initialize` event and
-    /// calls `root_layout`.
-    pub(crate) fn initialize(
-        &self,
-        app_ctx: &mut AppCtx,
-        event_loop: &EventLoopWindowTarget<ExtEvent>,
-        env: &Environment,
-    ) {
-        // three steps:
-        // - initialization
-        // - layout (skipped if not invalidated)
-        // - painting
-        //      - painting should skip layers that are not dirty
-
-        {
-            let _span = trace_span!("initialize").entered();
-            let mut dummy_focus_state = FocusState::default();
-            let mut event_ctx = EventCtx::with_app_ctx(app_ctx, &mut dummy_focus_state, event_loop, None);
-            self.route_event(&mut event_ctx, &mut Event::Initialize, env);
-        }
-
-        {
-            let _span = trace_span!("layout").entered();
-            let mut layout_ctx = LayoutCtx::new(app_ctx, 1.0);
-            self.layout(&mut layout_ctx, BoxConstraints::default(), env);
-        }
-    }
-
-    /*pub(crate) fn root_layout(&self, app_ctx: &mut AppCtx, env: &Environment) -> bool {
-        let mut ctx = LayoutCtx { changed: false };
-        self.layout(
-            &mut ctx,
-            BoxConstraints {
-                min: Size::new(0.0, 0.0),
-                max: Size::new(f64::INFINITY, f64::INFINITY),
-            },
-            env,
-        );
-        ctx.changed
-    }*/
+pub(crate) fn dump_widget_tree<W: Widget>(w: &W) {
+    let node = get_debug_widget_tree(w);
+    dump_widget_tree_rec(&node, 0, &mut Vec::new(), true);
 }

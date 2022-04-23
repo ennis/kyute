@@ -2,6 +2,7 @@
 use crate::{Data, Offset, Point, Rect, SideOffsets, Size};
 use std::{
     fmt,
+    fmt::Formatter,
     hash::{Hash, Hasher},
     ops::{Bound, RangeBounds},
 };
@@ -186,7 +187,7 @@ impl fmt::Debug for BoxConstraints {
 }
 
 /// Alignment.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct Alignment {
     pub x: f64,
     pub y: f64,
@@ -202,6 +203,12 @@ impl Alignment {
     pub const TOP_CENTER: Alignment = Alignment { x: 0.0, y: -1.0 };
     pub const BOTTOM_CENTER: Alignment = Alignment { x: 0.0, y: 1.0 };
     pub const CENTER: Alignment = Alignment { x: 0.0, y: 0.0 };
+}
+
+impl fmt::Debug for Alignment {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({},{})", self.x, self.y)
+    }
 }
 
 /// Aligns a child box into a parent box. Returns the offset of the child into the parent,

@@ -1,12 +1,18 @@
 use crate::{
-    animation::PaintCtx, composable, core::WindowPaintCtx, drawing::ToSkia, make_uniform_data, BoxConstraints, Color,
-    Data, Environment, Event, EventCtx, GpuFrameCtx, LayoutCache, LayoutCtx, Measurements, Point, RectI, RoundToPixel,
-    Transform, Widget, WidgetId,
+    animation::PaintCtx,
+    cache, composable,
+    core::{DebugNode, WindowPaintCtx},
+    drawing::ToSkia,
+    make_uniform_data, BoxConstraints, Color, Data, Environment, Event, EventCtx, GpuFrameCtx, LayoutCache, LayoutCtx,
+    Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
 use euclid::Rect;
-use kyute_shell::text::{
-    FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
-    RasterizationOptions,
+use kyute_shell::{
+    animation::Layer,
+    text::{
+        FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
+        RasterizationOptions,
+    },
 };
 use lazy_static::lazy_static;
 use skia_safe as sk;
@@ -26,6 +32,7 @@ struct GlyphMaskImage {
 
 impl GlyphMaskImage {
     pub fn new(bounds: RectI, data: GlyphMaskData) -> GlyphMaskImage {
+        let _span = trace_span!("Create glyph mask image").entered();
         let (_src_bpp, dst_bpp) = match data.format {
             GlyphMaskFormat::Rgb8 => (3usize, 4usize),
             GlyphMaskFormat::Alpha8 => (1usize, 1usize),
@@ -116,10 +123,17 @@ lazy_static! {
 
 impl<'a, 'b> kyute_shell::text::Renderer for Renderer<'a, 'b> {
     fn draw_glyph_run(&mut self, glyph_run: &GlyphRun, drawing_effects: &GlyphRunDrawingEffects) {
-        let analysis = glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.ctx.layer_transform());
+        let analysis = {
+            let _span = trace_span!("Analyze glyph run").entered();
+            glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.ctx.layer_transform())
+        };
         let raster_opts = RasterizationOptions::Subpixel;
         let bounds = analysis.raster_bounds(raster_opts);
-        if let Some(mask) = analysis.rasterize(raster_opts) {
+        let mask = {
+            let _span = trace_span!("Rasterize glyph run").entered();
+            analysis.rasterize(raster_opts)
+        };
+        if let Some(mask) = mask {
             let mask_image = GlyphMaskImage::new(bounds, mask);
             let color = drawing_effects.color;
 
@@ -160,17 +174,20 @@ impl<'a, 'b> kyute_shell::text::Renderer for Renderer<'a, 'b> {
             let mut paint = sk::Paint::new(color.to_skia(), None);
             paint.set_blender(mask_blender);
 
-            let canvas = self.ctx.surface.canvas();
-            canvas.save();
-            //let inv_scale_factor = 1.0 / self.ctx.scale_factor as f32;
-            //self.ctx.canvas.scale((inv_scale_factor, inv_scale_factor));
-            canvas.reset_matrix();
-            canvas.draw_image(
-                &mask_image.mask,
-                sk::Point::new(bounds.origin.x as sk::scalar, bounds.origin.y as sk::scalar),
-                Some(&paint),
-            );
-            canvas.restore();
+            {
+                let _span = trace_span!("Draw glyph mask image").entered();
+                let canvas = self.ctx.surface.canvas();
+                canvas.save();
+                //let inv_scale_factor = 1.0 / self.ctx.scale_factor as f32;
+                //self.ctx.canvas.scale((inv_scale_factor, inv_scale_factor));
+                canvas.reset_matrix();
+                canvas.draw_image(
+                    &mask_image.mask,
+                    sk::Point::new(bounds.origin.x as sk::scalar, bounds.origin.y as sk::scalar),
+                    Some(&paint),
+                );
+                canvas.restore();
+            }
         }
     }
 
@@ -256,6 +273,7 @@ impl Widget for Text {
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
     fn paint(&self, ctx: &mut PaintCtx) {
+        let _span = trace_span!("Text paint").entered();
         let mut renderer = Renderer { ctx, masks: vec![] };
         // FIXME: should be a point in absolute coords?
         self.cached_layout
@@ -270,5 +288,12 @@ impl Widget for Text {
                 },
             )
             .expect("failed to draw paragraph");
+    }
+
+    /// Implement to give a debug name to your widget. Used only for debugging.
+    fn debug_node(&self) -> DebugNode {
+        DebugNode {
+            content: Some(format!("plain text: {:?}", self.formatted_text.plain_text.as_ref())),
+        }
     }
 }

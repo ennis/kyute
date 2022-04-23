@@ -5,18 +5,23 @@ use kyute::{
     theme,
     widget::{
         grid::GridTrackDefinition, Button, ColumnHeaders, Container, Flex, Grid, GridLength, Image, Label, Null, Popup,
-        ScrollArea, TableRow, TableSelection, TableView, TableViewParams, Text, TextEdit, TitledPane,
+        ScrollArea, TableRow, TableSelection, TableView, TableViewParams, Text, TextEdit, TitledPane, WidgetPod,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Length, Orientation, SideOffsets, Size, UnitExt,
-    Widget, WidgetExt, WidgetPod, Window,
+    Widget, WidgetExt, Window,
 };
-use kyute_common::Atom;
+use kyute_common::{Atom, Data};
 use std::sync::Arc;
 use tracing::trace;
 
-#[composable]
-fn cell(text: impl Into<String>) -> impl Widget {
-    Text::new(text.into()).padding(0.dip(), 5.dip(), 0.dip(), 5.dip())
+#[composable(cached)]
+fn cell(text: impl Into<String> + Data) -> impl Widget {
+    Arc::new(WidgetPod::layered(Text::new(text.into()).padding(
+        0.dip(),
+        5.dip(),
+        0.dip(),
+        5.dip(),
+    )))
 }
 
 #[composable]
@@ -90,12 +95,17 @@ fn ui_root() -> impl Widget {
 }
 
 fn main() {
-    tracing_subscriber::fmt()
-        .compact()
-        .with_target(false)
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    /*tracing_subscriber::fmt()
+    .compact()
+    .with_target(false)
+    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    .init();*/
+    use tracing_subscriber::layer::SubscriberExt;
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new().with_stackdepth(0)),
+    )
+    .expect("set up the subscriber");
     let mut env = Environment::new();
-    //env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
+    env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
     application::run_with_env(ui_root, env);
 }

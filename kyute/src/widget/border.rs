@@ -3,7 +3,7 @@ use crate::{
     core::WindowPaintCtx,
     style,
     style::BorderPosition,
-    widget::{prelude::*, Container, LayerWidget, Null},
+    widget::{prelude::*, Container, Null},
     GpuFrameCtx, RoundToPixel, SideOffsets,
 };
 use kyute_shell::animation::Layer;
@@ -32,7 +32,7 @@ impl LayerDelegate for BorderLayerDelegate {
 /// Applies a border around a widget.
 #[derive(Clone)]
 pub struct Border<Inner> {
-    border_layer: LayerWidget<Container<Null>>,
+    border_layer: WidgetPod<Container<Null>>,
     inner: WidgetPod<Inner>,
     border: style::Border,
 }
@@ -41,7 +41,7 @@ impl<Inner: Widget + 'static> Border<Inner> {
     #[composable]
     pub fn new(border: style::Border, inner: Inner) -> Border<Inner> {
         Border {
-            border_layer: LayerWidget::new(Container::new(Null)),
+            border_layer: WidgetPod::layered(Container::new(Null)),
             inner: WidgetPod::new(inner),
             border,
         }

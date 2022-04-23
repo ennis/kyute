@@ -6,11 +6,12 @@ use crate::{
     asset::ASSET_LOADER,
     cache,
     cache::Cache,
-    core::{FocusState, WidgetId},
+    core::{dump_widget_tree, FocusState, WidgetId},
     drawing::{ImageCache, IMAGE_CACHE},
     theme,
     util::fs_watch::{FileSystemWatcher, FILE_SYSTEM_WATCHER},
-    AssetLoader, Environment, Event, EventCtx, InternalEvent, Widget, WidgetPod,
+    widget::WidgetPod,
+    AssetLoader, Environment, Event, EventCtx, InternalEvent, Widget,
 };
 use kyute_shell::{
     winit,
@@ -79,7 +80,7 @@ impl AppCtx {
 
     fn send_event(
         &mut self,
-        root_widget: &WidgetPod,
+        root_widget: &dyn Widget,
         event_loop: &EventLoopWindowTarget<ExtEvent>,
         event: Event<'static>,
         root_env: &Environment,
@@ -90,7 +91,7 @@ impl AppCtx {
 
     fn flush_pending_events(
         &mut self,
-        root_widget: &WidgetPod,
+        root_widget: &dyn Widget,
         event_loop: &EventLoopWindowTarget<ExtEvent>,
         root_env: &Environment,
     ) {
@@ -108,22 +109,32 @@ impl AppCtx {
 
 /// Evaluates the function that produces the UI, within the application's positional cache.
 /// This is also known as *recomposition*.
-fn eval_root_widget<W: Widget + 'static>(
+fn update_ui<W: Widget + 'static>(
     app_ctx: &mut AppCtx,
     event_loop: &EventLoopWindowTarget<ExtEvent>,
     root_env: &Environment,
     ui: fn() -> W,
-) -> Arc<WidgetPod> {
-    let _span = trace_span!("eval_root_widget").entered();
+) -> Arc<W> {
+    let _span = trace_span!("UI update").entered();
 
+    // evaluate the root widget
     let root_widget = {
-        let _span = trace_span!("recomposition").entered();
+        let _span = trace_span!("UI recomposition").entered();
         app_ctx
             .cache
-            .recompose(root_env, || cache::memoize((), || Arc::new(WidgetPod::new(ui()))))
+            .recompose(root_env, || cache::memoize((), || Arc::new(ui())))
         // ensures that all widgets have received the `Initialize` event.
     };
-    root_widget.initialize(app_ctx, event_loop, root_env);
+
+    // send the initialize event
+    {
+        let _span = trace_span!("UI initialize event").entered();
+        let mut dummy_focus_state = FocusState::default();
+        let mut event_ctx = EventCtx::with_app_ctx(app_ctx, &mut dummy_focus_state, event_loop, None);
+        root_widget.route_event(&mut event_ctx, &mut Event::Initialize, root_env);
+    }
+
+    //dump_widget_tree(&root_widget);
     root_widget
 }
 
@@ -183,7 +194,7 @@ fn run_inner<W: Widget + 'static>(ui: fn() -> W, env_overrides: Environment) {
     let _rt_guard = rt.enter();
 
     // initial evaluation of the root widget in the main UI cache.
-    let mut root_widget = eval_root_widget(&mut app_ctx, &event_loop, &env, ui);
+    let mut root_widget = update_ui(&mut app_ctx, &event_loop, &env, ui);
 
     // run event loop
     event_loop.run(move |event, elwt, control_flow| {
@@ -213,7 +224,7 @@ fn run_inner<W: Widget + 'static>(ui: fn() -> W, env_overrides: Environment) {
                 // Re-evaluate the root widget.
                 // If no state variable in the cache has changed (because of an event), then it will simply
                 // return the same root widget.
-                root_widget = eval_root_widget(&mut app_ctx, elwt, &env, ui);
+                root_widget = update_ui(&mut app_ctx, elwt, &env, ui);
             }
             // --- EXT EVENTS ----------------------------------------------------------------------
             winit::event::Event::UserEvent(ext_event) => match ext_event {

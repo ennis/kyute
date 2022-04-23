@@ -1,4 +1,4 @@
-use crate::{drawing::ToSkia, graal, graal::vk::Handle, Rect, Transform};
+use crate::{core::PaintDamage, drawing::ToSkia, graal, graal::vk::Handle, Rect, Transform};
 use kyute_common::SizeI;
 use kyute_shell::{
     animation::{Layer, Surface},
@@ -6,6 +6,11 @@ use kyute_shell::{
 };
 use skia_safe as sk;
 use std::{fmt, fmt::Formatter};
+
+pub struct DebugLayerNode {
+    size: SizeI,
+    damage: PaintDamage,
+}
 
 /// Painting context passed to `LayerDelegate::draw`.
 pub struct PaintCtx<'a> {
@@ -125,6 +130,11 @@ impl<'a> PaintCtx<'a> {
 
     ///
     pub fn finish(&mut self) {
+        if self.finished {
+            return;
+        }
+
+        let _span = trace_span!("PaintCtx flush").entered();
         let mut gr_ctx = Application::instance().lock_gpu_context();
         let mut frame = gr_ctx.start_frame(Default::default());
         let mut pass = frame.start_graphics_pass("UI render");
@@ -140,6 +150,7 @@ impl<'a> PaintCtx<'a> {
         // draw callback
         pass.set_submit_callback(move |_cctx, _, _queue| {
             self.surface.flush_and_submit();
+            self.finished = true;
         });
         pass.finish();
         frame.finish(&mut ());
@@ -180,23 +191,25 @@ impl<'a> PaintCtx<'a> {
 
     /// Enters a layer.
     pub fn layer<R>(&mut self, layer: &Layer, mut f: impl FnMut(&mut PaintCtx) -> R) -> R {
-        self.finish();
-        self.finished = true;
+        //self.finish();
+
         layer.remove_all_children();
         self.parent_layer.add_child(layer);
+        layer.set_transform(&self.layer_transform);
 
-        let mut child_ctx = PaintCtx::new(layer, self.scale_factor, self.skia_direct_context.clone());
-        let result = f(&mut child_ctx);
-        child_ctx.finish();
-
-        result
+        {
+            let _span = trace_span!("PaintCtx paint layer").entered();
+            let mut child_ctx = PaintCtx::new(layer, self.scale_factor, self.skia_direct_context.clone());
+            let result = f(&mut child_ctx);
+            child_ctx.finish();
+            result
+        }
     }
 
     /// Adds a layer as a child of the parent layer, without redrawing it.
     pub fn add_layer(&mut self, layer: &Layer) {
-        self.finish();
-        self.finished = true;
+        //self.finish();
         self.parent_layer.add_child(layer);
-        self.parent_layer.set_transform(&self.layer_transform);
+        layer.set_transform(&self.layer_transform);
     }
 }

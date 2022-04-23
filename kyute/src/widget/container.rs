@@ -1,9 +1,10 @@
 use crate::{
-    core::WindowPaintCtx,
+    core::{DebugNode, WindowPaintCtx},
     style::{BoxStyle, Paint, PaintCtxExt, VisualState},
     widget::prelude::*,
     GpuFrameCtx, Length, RoundToPixel, SideOffsets, UnitExt, ValueRef,
 };
+use serde_json::Value::String;
 
 #[derive(Clone)]
 pub struct Container<Content> {
@@ -383,5 +384,34 @@ impl<Content: Widget> Widget for Container<Content> {
     fn paint(&self, ctx: &mut PaintCtx) {
         ctx.draw_styled_box(ctx.bounds, &self.box_style);
         self.content.paint(ctx);
+    }
+
+    fn debug_node(&self) -> DebugNode {
+        let mut content = "container".to_string();
+        if let Some(min_width) = self.min_width {
+            content += &format!(", min_width:{:?}", min_width);
+        }
+        if let Some(max_width) = self.max_width {
+            content += &format!(", max_width:{:?}", max_width);
+        }
+        if let Some(min_height) = self.min_height {
+            content += &format!(", min_height:{:?}", min_height);
+        }
+        if let Some(max_height) = self.max_height {
+            content += &format!(", max_height:{:?}", max_height);
+        }
+        if let Some(alignment) = self.alignment {
+            content += &format!(", alignment:{:?}", alignment);
+        }
+        if let Some(baseline) = self.baseline {
+            content += &format!(", baseline:{:?}", baseline);
+        }
+
+        content += &format!(", padding_left:{:?}", self.padding_left);
+        content += &format!(", padding_top:{:?}", self.padding_top);
+        content += &format!(", padding_right:{:?}", self.padding_right);
+        content += &format!(", padding_bottom:{:?}", self.padding_bottom);
+
+        DebugNode { content: Some(content) }
     }
 }

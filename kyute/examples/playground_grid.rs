@@ -2,7 +2,6 @@ use kyute::{
     application, cache, composable,
     shell::{application::Application, winit::window::WindowBuilder},
     style::BoxStyle,
-    text::{Attribute, FormattedText},
     theme,
     widget::{
         drop_down,
@@ -13,7 +12,6 @@ use kyute::{
     Alignment, AssetId, BoxConstraints, Color, Data, EnvKey, Environment, Orientation, Point, Size, UnitExt, Widget,
     WidgetExt, WidgetPod, Window,
 };
-use kyute_text::{Selection, TextAlignment};
 use std::sync::Arc;
 use tracing::{info, trace};
 
@@ -111,17 +109,19 @@ fn playground_grid(test: usize) -> impl Widget + Clone {
 
     eprintln!("rows,columns = ({},{})", row_count, column_count);
 
-    let row_defs = vec![GridLength::Flex(1.0).into(); row_count];
-    let column_defs = vec![GridLength::Flex(1.0).into(); column_count];
+    let row_defs = vec![GridTrackDefinition::new(GridLength::Flex(1.0)); row_count];
+    let column_defs = vec![GridTrackDefinition::new(GridLength::Flex(1.0)); column_count];
 
-    let mut play_grid = Grid::with_rows_columns(row_defs, column_defs)
-        .align_items(align_items)
-        .justify_items(justify_items);
+    let mut play_grid = Grid::new();
+    play_grid.set_align_items(align_items);
+    play_grid.set_justify_items(justify_items);
+    play_grid.append_row_definitions(row_defs);
+    play_grid.append_column_definitions(column_defs);
 
     for i in 0..row_count {
         cache::scoped(i, || {
             for j in 0..column_count {
-                cache::scoped(j, || play_grid.add_item(i, j, Thumb::new(Label::new("hello"))));
+                cache::scoped(j, || play_grid.add_item(i, j, 0, Thumb::new(Label::new("hello"))));
             }
         });
     }

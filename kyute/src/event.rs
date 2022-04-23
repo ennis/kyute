@@ -1,8 +1,9 @@
 //! [`Events`](Event) sent to widgets, and related types.
-use crate::{bloom::Bloom, PaintCtx, Point, WidgetId, WidgetPod};
+use crate::{bloom::Bloom, Measurements, PaintCtx, Point, WidgetId};
 use std::{collections::HashMap, sync::Arc};
 use winit::event::DeviceId;
 // FIXME: reexport/import from kyute-shell?
+use crate::core::DebugWidgetTreeNode;
 pub use keyboard_types::{CompositionEvent, Key, KeyboardEvent, Modifiers};
 use kyute_common::Transform;
 use kyute_shell::winit;
@@ -162,10 +163,8 @@ pub enum InternalEvent<'a> {
     UpdateChildFilter {
         filter: &'a mut Bloom<WidgetId>,
     },
-    /// Used to get a list of all widgets in depth-first traversal order.
-    /// FIXME this doesn't work anymore
-    Traverse {
-        widgets: &'a mut Vec<Arc<WidgetPod>>,
+    DumpTree {
+        nodes: &'a mut Vec<DebugWidgetTreeNode>,
     },
 }
 

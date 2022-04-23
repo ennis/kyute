@@ -1,7 +1,7 @@
 use crate::{
     bloom::Bloom,
     cache,
-    core::WindowPaintCtx,
+    core::{DebugNode, WindowPaintCtx},
     drawing::ToSkia,
     style::{BoxStyle, Paint, PaintCtxExt},
     widget::prelude::*,
@@ -1000,7 +1000,7 @@ impl Widget for Grid {
                 let constraints = BoxConstraints::loose(Size::new(w, h));
                 let item_measure = item.widget.layout(ctx, constraints, env);
 
-                //eprintln!("item_measure({})={:?}", item.widget.widget().debug_name(), item_measure);
+                //eprintln!("item_measure({})={:?}", item.widget.debug_name(), item_measure);
 
                 let mut x = column_layout[item.column_range.start].pos;
                 let mut y = row_layout[item.row_range.start].pos;
@@ -1154,6 +1154,12 @@ impl Widget for Grid {
                     &paint,
                 );
             }
+        }
+    }
+
+    fn debug_node(&self) -> DebugNode {
+        DebugNode {
+            content: Some(format!("{} by {} grid", self.row_count(), self.column_count())),
         }
     }
 }

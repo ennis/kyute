@@ -1,6 +1,11 @@
-use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx, Length, SideOffsets};
+use crate::{
+    core::{DebugNode, WindowPaintCtx},
+    widget::prelude::*,
+    GpuFrameCtx, Length, SideOffsets,
+};
 
 /// A widgets that insets its content by a specified padding.
+#[derive(Clone)]
 pub struct Padding<W> {
     top: Length,
     right: Length,
@@ -54,7 +59,7 @@ impl<W: Widget> Widget for Padding<W> {
 
         let mut m = self.inner.layout(ctx, constraints.deflate(padding), env);
         m.size = m.local_bounds().outer_rect(padding).size;
-        m.clip_bounds = m.clip_bounds.outer_rect(padding);
+        m.clip_bounds.size = m.clip_bounds.outer_rect(padding).size;
         if !ctx.speculative {
             self.inner.set_offset(Offset::new(padding.left, padding.top));
         }
@@ -67,5 +72,14 @@ impl<W: Widget> Widget for Padding<W> {
 
     fn paint(&self, ctx: &mut PaintCtx) {
         self.inner.paint(ctx)
+    }
+
+    fn debug_node(&self) -> DebugNode {
+        DebugNode {
+            content: Some(format!(
+                "left:{:?},top:{:?},right:{:?},bottom:{:?}",
+                self.left, self.top, self.right, self.bottom
+            )),
+        }
     }
 }

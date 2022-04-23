@@ -1,6 +1,6 @@
 use crate::{
     cache,
-    core::WindowPaintCtx,
+    core::{DebugNode, WindowPaintCtx},
     drawing,
     drawing::ToSkia,
     util::fs_watch::watch_path,
@@ -12,13 +12,13 @@ use tracing::trace;
 
 #[derive(Clone)]
 enum ImageContents<Placeholder> {
-    Image(drawing::Image),
+    Image { uri: Option<String>, image: drawing::Image },
     Placeholder(Placeholder),
 }
 
 impl<Placeholder: Widget> ImageContents<Placeholder> {
-    pub fn new(image: drawing::Image) -> ImageContents<Placeholder> {
-        ImageContents::Image(image)
+    pub fn new(uri: Option<String>, image: drawing::Image) -> ImageContents<Placeholder> {
+        ImageContents::Image { uri, image }
     }
 
     pub fn placeholder(placeholder: Placeholder) -> ImageContents<Placeholder> {
@@ -44,7 +44,7 @@ impl Image<Null> {
     pub fn from_uri(uri: &str, scaling: Scaling) -> Image<Null> {
         let image: drawing::Image = AssetLoader::instance().load(uri).expect("failed to load image");
         Image {
-            contents: ImageContents::Image(image),
+            contents: ImageContents::new(uri.to_string().into(), image),
             scaling,
         }
     }
@@ -52,7 +52,7 @@ impl Image<Null> {
     /// Returns the size of the image in pixels.
     pub fn pixel_size(&self) -> SizeI {
         match self.contents {
-            ImageContents::Image(ref image) => image.size(),
+            ImageContents::Image { ref image, .. } => image.size(),
             ImageContents::Placeholder(_) => {
                 // FIXME: cannot know the size of a placeholder before layout; use LayoutInspector? ensure fixed size?
                 SizeI::new(0, 0)
@@ -66,18 +66,18 @@ impl Image<Null> {
     pub fn from_uri_async(uri: &str, scaling: Scaling) -> Image<Null> {
         let image_future = AssetLoader::instance().load_async::<drawing::Image>(uri);
         let reload = watch_path(uri);
-        let uri = uri.to_owned();
+        let uri_owned = uri.to_owned();
 
         let image = cache::run_async(
             async move {
                 let image_result = image_future.await;
                 match image_result {
                     Ok(image) => {
-                        trace!("image `{}` successfully loaded", uri);
+                        trace!("image `{}` successfully loaded", uri_owned);
                         Some(image)
                     }
                     Err(err) => {
-                        trace!("failed to load image `{}`: {}", uri, err);
+                        trace!("failed to load image `{}`: {}", uri_owned, err);
                         None
                     }
                 }
@@ -87,7 +87,7 @@ impl Image<Null> {
 
         match image {
             Poll::Ready(Some(image)) => Image {
-                contents: ImageContents::Image(image),
+                contents: ImageContents::new(Some(uri.to_string()), image),
                 scaling,
             },
             _ => Image {
@@ -118,8 +118,8 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         match self.contents {
-            ImageContents::Image(ref img) => {
-                let size_i = img.size();
+            ImageContents::Image { ref image, .. } => {
+                let size_i = image.size();
                 let size = Size::new(size_i.width as f64, size_i.height as f64) / ctx.scale_factor;
 
                 let image_aspect_ratio = size.width / size.height;
@@ -155,12 +155,27 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
 
     fn paint(&self, ctx: &mut PaintCtx) {
         match self.contents {
-            ImageContents::Image(ref image) => {
+            ImageContents::Image { ref image, .. } => {
                 ctx.surface
                     .canvas()
                     .draw_image(image.to_skia(), Point::origin().to_skia(), None);
             }
             ImageContents::Placeholder(ref placeholder) => placeholder.paint(ctx),
+        }
+    }
+
+    fn debug_node(&self) -> DebugNode {
+        DebugNode {
+            content: Some(match self.contents {
+                ImageContents::Image { ref image, ref uri } => {
+                    let mut msg = format!("{}px x {}px image", image.size().width, image.size().height);
+                    if let Some(ref uri) = uri {
+                        msg += &format!("({})", uri);
+                    }
+                    msg
+                }
+                ImageContents::Placeholder(ref placeholder) => "placeholder".to_string(),
+            }),
         }
     }
 }

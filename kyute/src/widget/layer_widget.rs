@@ -1,7 +1,7 @@
 use crate::{
     application::AppCtx,
     cache,
-    core::{EventResult, FocusState, PaintDamage, WindowPaintCtx},
+    core::{DebugNode, EventResult, FocusState, PaintDamage, WindowPaintCtx},
     widget::{prelude::*, WidgetWrapper},
     GpuFrameCtx, InternalEvent,
 };
@@ -16,7 +16,8 @@ pub struct LayerWidget<W> {
     id: WidgetId,
     layer: Layer,
     measurements: LayoutCache<Measurements>,
-    paint_damage: Cell<Option<PaintDamage>>,
+    /// Damage done to the contents of the layer.
+    paint_damage: Cell<PaintDamage>,
     contents: W,
 }
 
@@ -29,7 +30,7 @@ impl<W: Widget> LayerWidget<W> {
             id: WidgetId::here(),
             layer,
             measurements: Default::default(),
-            paint_damage: Cell::new(Some(PaintDamage::Repaint)),
+            paint_damage: Cell::new(PaintDamage::Repaint),
             contents,
         }
     }
@@ -39,33 +40,32 @@ impl<W: Widget> LayerWidget<W> {
         &self.layer
     }
 
-    pub(crate) fn repaint(&self, skia_direct_context: sk::gpu::DirectContext) {
+    pub(crate) fn repaint(&self, skia_direct_context: sk::gpu::DirectContext) -> bool {
         assert!(self.measurements.is_valid(), "repaint called before layout");
-        if let Some(paint_damage) = self.paint_damage.get() {
+        let repainted = if let Some(paint_damage) = self.paint_damage.get() {
             match paint_damage {
                 PaintDamage::Repaint => {
                     // straight recursive repaint
+                    let _span = trace_span!("Layer repaint", id=?self.id).entered();
+
+                    self.layer.remove_all_children();
                     let scale_factor = self.measurements.get_cached_scale_factor();
                     let mut ctx = PaintCtx::new(&self.layer, scale_factor, skia_direct_context);
+                    ctx.surface.canvas().clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
                     self.contents.paint(&mut ctx);
                     ctx.finish();
                 }
                 PaintDamage::SubLayers => {
+                    let _span = trace_span!("Layer update", id=?self.id).entered();
                     self.update_child_layers(skia_direct_context);
                 }
             }
-        }
-        self.paint_damage.set(None);
-    }
-
-    fn update_child_layers<'a>(&self, skia_direct_context: sk::gpu::DirectContext) {
-        // "skip" this layer's items and repaint internal layers
-        let mut event_ctx = EventCtx::new();
-        self.contents.route_event(
-            &mut event_ctx,
-            &mut Event::Internal(InternalEvent::UpdateLayers { skia_direct_context }),
-            &Environment::new(),
-        );
+            true
+        } else {
+            false
+        };
+        self.paint_damage.set(PaintDamage::Repaint);
+        repainted
     }
 }
 
@@ -86,9 +86,16 @@ impl<W: Widget> Widget for LayerWidget<W> {
                     self.layer.set_size(size);
                 }
             }
+
+            // FIXME: here we need to differentiate between two cases:
+            // 1. we recalculated because the cached value has been invalidated because a child requested a relayout during eval
+            // 2. we recalculated because constraints have changed
+            //
+            // If 2., then we can skip repaint if the resulting measurements are the same.
+
             // TODO technically we can call layout and end up with the exact same measurements
             // so a repaint may not be always necessary.
-            self.paint_damage.set(Some(PaintDamage::Repaint));
+            self.paint_damage.set(PaintDamage::Repaint);
             m
         })
     }
@@ -102,25 +109,20 @@ impl<W: Widget> Widget for LayerWidget<W> {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx) {
-        if let Some(paint_damage) = self.paint_damage.get() {
-            match paint_damage {
-                PaintDamage::Repaint => {
-                    // the contents of the layer are dirty
-                    ctx.layer(&self.layer, |ctx| self.contents.paint(ctx));
-                }
-                PaintDamage::SubLayers => {
-                    // this layer's contents are still valid, but some sublayers may need to be repainted.
-                    ctx.add_layer(&self.layer);
-                    self.update_child_layers(ctx.skia_direct_context.clone());
-                }
-            }
-        }
-        self.paint_damage.set(None);
-    }
+    fn paint(&self, ctx: &mut PaintCtx) {}
 
     fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        let event_result = ctx.default_route_event(&self.contents, event, &Transform::identity(), env);
+        let event_result = ctx.default_route_event(
+            self,
+            event,
+            &Transform::identity(),
+            if self.measurements.is_valid() {
+                Some(self.measurements.get_cached().clone())
+            } else {
+                None
+            },
+            env,
+        );
         if let Some(mut event_result) = event_result {
             if event_result.relayout {
                 self.measurements.invalidate();
@@ -132,12 +134,19 @@ impl<W: Widget> Widget for LayerWidget<W> {
                 }
                 _ => {}
             }
-            if event_result.paint_damage == Some(PaintDamage::Repaint) {
+            if event_result.paint_damage == PaintDamage::Repaint {
                 // downgrade `Repaint` to `SubLayers`: if the contents of a layer need to be redrawn,
                 // its parent doesn't necessarily need to.
-                event_result.paint_damage = Some(PaintDamage::SubLayers);
+                event_result.paint_damage = PaintDamage::SubLayers;
             }
             ctx.merge_event_result(event_result);
+        }
+    }
+
+    /// Implement to give a debug name to your widget. Used only for debugging.
+    fn debug_node(&self) -> DebugNode {
+        DebugNode {
+            content: Some(format!("{:?} px", self.layer.size())),
         }
     }
 }

@@ -6,7 +6,11 @@ mod color;
 pub mod counter;
 mod data;
 
-use std::ops::{Mul, Neg};
+use std::{
+    fmt,
+    fmt::Formatter,
+    ops::{Mul, Neg},
+};
 
 pub use crate::{
     atom::{make_unique_atom, Atom},
@@ -130,7 +134,7 @@ impl RectExt for Rect {
 }
 
 /// Length specification.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
 #[cfg_attr(feature = "serializing", serde(tag = "unit", content = "value"))]
 pub enum Length {
@@ -145,6 +149,28 @@ pub enum Length {
     In(f64),
     /// Length relative to the parent element.
     Proportional(f64),
+}
+
+impl fmt::Debug for Length {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Length::Px(v) | Length::Dip(v) | Length::In(v) | Length::Proportional(v) if v == 0.0 => {
+                write!(f, "0")
+            }
+            Length::Px(v) => {
+                write!(f, "{}px", v)
+            }
+            Length::Dip(v) => {
+                write!(f, "{}dip", v)
+            }
+            Length::In(v) => {
+                write!(f, "{}in", v)
+            }
+            Length::Proportional(v) => {
+                write!(f, "{}%", v * 100.0)
+            }
+        }
+    }
 }
 
 impl Length {

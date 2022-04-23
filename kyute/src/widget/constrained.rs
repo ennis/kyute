@@ -1,4 +1,8 @@
-use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx, Length};
+use crate::{
+    core::{DebugNode, WindowPaintCtx},
+    widget::prelude::*,
+    GpuFrameCtx, Length,
+};
 
 #[derive(Clone)]
 pub struct ConstrainedBox<W> {
@@ -98,5 +102,14 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
 
     fn paint(&self, ctx: &mut PaintCtx) {
         self.inner.paint(ctx)
+    }
+
+    fn debug_node(&self) -> DebugNode {
+        DebugNode {
+            content: Some(format!(
+                "[{:?} x {:?} => {:?} x {:?}]",
+                self.min_width, self.min_height, self.max_width, self.max_height
+            )),
+        }
     }
 }

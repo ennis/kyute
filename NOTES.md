@@ -213,3 +213,25 @@ impl<Content: Widget> Widget for Container<Content> {
 }
 
 ```
+
+
+## Formalizing relayout
+
+Relayout is the process of recalculating the size of widgets under new constraints, and placing child widgets.
+It may happen because: 
+- a widget explicitly requested a relayout during event handling (by calling `ctx.request_relayout`)
+  - in which case, the `layout` method *will* be called at some point in the future on the widget that requested the update
+- an external factor influencing the layout has changed: this includes the _box constraints_ and the _scale factor_. 
+  - Typically, this relayout is triggered by the parent window when it is resized.
+
+By default, the only retained state modified by the layout process is the offset of child widgets, which is typically managed by the `WidgetPod` wrapper.
+However, it's important to cache the calculation of subtrees if they are known to never change. This is also done in
+`WidgetPod`: if the box constraints & scale factor haven't changed, then it returns the previously computed measurements, otherwise
+it calls `layout` on the child. In the event that a child widget called `request_layout` during propagation, `WidgetPod` invalidates
+its cached measurements, so `layout` will always be called.
+
+Currently, a layout is always followed by a repaint: this is because `LayerWidget`
+(which manages the composition layers on which the widgets are drawn, and which are in charge of repainting),
+schedules a repaint if it's cached layout is invalidated.
+
+Relayout is closely related to repaint: usually, calling `layout` on a widget is usually followed by a repaint. 

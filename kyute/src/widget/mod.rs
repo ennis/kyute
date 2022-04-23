@@ -22,13 +22,14 @@ mod text_edit;
 mod border;
 mod canvas;
 mod color_picker;
-mod layer_widget;
+//mod layer_widget;
 mod popup;
 mod scroll_area;
 mod selectable;
 mod table;
 mod thumb;
 mod titled_pane;
+mod widget_pod;
 
 pub use align::Align;
 pub use baseline::Baseline;
@@ -43,8 +44,9 @@ pub use drop_down::DropDown;
 pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
 pub use grid::{Grid, GridLength, GridRow, GridSpan};
 pub use image::{Image, Scaling};
+pub use kyute_macros::WidgetWrapper;
 pub use label::Label;
-pub use layer_widget::LayerWidget;
+//pub use layer_widget::LayerWidget;
 pub use layout_wrapper::LayoutInspector;
 pub use menu::{Action, ContextMenu, Menu, MenuItem, Shortcut};
 pub use null::Null;
@@ -59,8 +61,7 @@ pub use text::Text;
 pub use text_edit::{Formatter, TextEdit, TextInput, ValidationResult};
 pub use thumb::{DragController, Thumb};
 pub use titled_pane::TitledPane;
-
-pub use kyute_macros::WidgetWrapper;
+pub use widget_pod::WidgetPod;
 
 use crate::{
     animation::PaintCtx, BoxConstraints, Environment, Event, EventCtx, LayoutCtx, Measurements, Widget, WidgetId,
@@ -136,8 +137,8 @@ impl<T: WidgetWrapper> Widget for T {
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
-        animation::PaintCtx, cache::Signal, composable, Alignment, BoxConstraints, Environment, Event, EventCtx,
-        LayoutCache, LayoutCtx, Measurements, Offset, Orientation, Point, Rect, Size, Transform, Widget, WidgetId,
-        WidgetPod,
+        animation::PaintCtx, cache::Signal, composable, widget::WidgetPod, Alignment, BoxConstraints, Environment,
+        Event, EventCtx, LayoutCache, LayoutCtx, Measurements, Offset, Orientation, Point, Rect, Size, Transform,
+        Widget, WidgetId,
     };
 }

@@ -34,8 +34,7 @@ pub use crate::{
     bloom::Bloom,
     cache::{changed, environment, memoize, once, run_async, state, with_environment, Signal, State},
     core::{
-        EventCtx, GpuFrameCtx, LayoutCache, LayoutCtx, Widget, WidgetExt, WidgetFilter, WidgetId, WidgetPod,
-        SHOW_DEBUG_OVERLAY,
+        EventCtx, GpuFrameCtx, LayoutCache, LayoutCtx, Widget, WidgetExt, WidgetFilter, WidgetId, SHOW_DEBUG_OVERLAY,
     },
     env::{EnvKey, EnvValue, Environment, ValueRef},
     event::{Event, InputEvent, InternalEvent, PointerEvent, PointerEventKind},
