@@ -364,7 +364,7 @@ impl Widget for HsvColorSquare {
 // HsvColorSquare
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, WidgetWrapper)]
+#[derive(WidgetWrapper)]
 pub struct ColorSwatch {
     inner: Container<Null>,
 }

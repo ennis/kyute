@@ -41,7 +41,6 @@ impl<T: Debug> Formatter<T> for DebugFormatter {
 }
 
 /// Selects one option among choices with a drop-down menu.
-#[derive(Clone)]
 pub struct DropDown<T> {
     id: WidgetId,
     choices: Vec<DropDownChoice<T>>,

@@ -16,6 +16,15 @@ use tracing::trace;
 
 #[composable(cached)]
 fn cell(text: impl Into<String> + Data) -> impl Widget {
+    // FIXME: it's very easy to forgot the `Arc` here, and if we don't put it, we lose
+    // any caching inside WidgetPod
+    // (because we return a clone every time, and the cached data is reset)
+    //
+    // Basically, `Clone` widgets with cached data are **EVIL**
+    //
+    // Solution:
+    // - inside WidgetPod, put cached data inside Arc => hidden cost
+    // - don't make widgets `Clone`.
     Arc::new(WidgetPod::layered(Text::new(text.into()).padding(
         0.dip(),
         5.dip(),

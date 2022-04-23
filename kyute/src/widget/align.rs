@@ -5,7 +5,6 @@ use kyute_common::RoundToPixel;
 // Definition
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone)]
 pub struct Align<W> {
     alignment: Alignment,
     width_factor: Option<f64>,

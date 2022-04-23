@@ -21,7 +21,6 @@ pub struct CachedLayout {
 }*/
 
 /// A container for a widget.
-#[derive(Clone)]
 pub struct WidgetPod<T: ?Sized = dyn Widget> {
     /// Unique ID of the widget, if it has one.
     id: Option<WidgetId>,

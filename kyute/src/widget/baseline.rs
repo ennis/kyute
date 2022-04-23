@@ -6,7 +6,6 @@ use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx, RoundToPixel}
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// A widget that aligns its child according to a fixed baseline.
-#[derive(Clone)]
 pub struct Baseline<Inner> {
     inner: WidgetPod<Inner>,
     baseline: f64,

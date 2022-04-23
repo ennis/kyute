@@ -8,14 +8,14 @@ use kyute::{
         Null, Text, TitledPane,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, UnitExt, Widget, WidgetExt,
-    WidgetPod, Window,
+    Window,
 };
 use kyute_shell::winit::dpi::LogicalSize;
 use std::sync::Arc;
 use tracing::trace_span;
 
 #[composable]
-fn color_picker() -> impl Widget + Clone {
+fn color_picker() -> impl Widget {
     #[state]
     let mut color = Color::from_hex("#022f78");
     let picker = ColorPicker::new(

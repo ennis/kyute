@@ -30,7 +30,6 @@ impl LayerDelegate for BorderLayerDelegate {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Applies a border around a widget.
-#[derive(Clone)]
 pub struct Border<Inner> {
     border_layer: WidgetPod<Container<Null>>,
     inner: WidgetPod<Inner>,

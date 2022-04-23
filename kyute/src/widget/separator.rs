@@ -7,7 +7,7 @@ use kyute_common::UnitExt;
 
 /// Creates a horizontal separator.
 #[composable]
-pub fn separator(orientation: Orientation) -> impl Widget + Clone {
+pub fn separator(orientation: Orientation) -> impl Widget {
     match orientation {
         Orientation::Vertical => Container::new(Null).fixed_width(2.px()).centered().box_style({
             |env| BoxStyle::new().fill(theme::keys::SEPARATOR_COLOR.get(env).unwrap())

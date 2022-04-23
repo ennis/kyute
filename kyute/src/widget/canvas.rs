@@ -144,7 +144,6 @@ impl Widget for Canvas {
     }
 }
 
-#[derive(Clone)]
 pub struct Viewport<Contents> {
     contents: WidgetPod<Contents>,
     transform: Transform,

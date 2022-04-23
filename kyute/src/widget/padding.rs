@@ -5,7 +5,6 @@ use crate::{
 };
 
 /// A widgets that insets its content by a specified padding.
-#[derive(Clone)]
 pub struct Padding<W> {
     top: Length,
     right: Length,

@@ -6,7 +6,6 @@ use crate::{
 };
 use serde_json::Value::String;
 
-#[derive(Clone)]
 pub struct Container<Content> {
     alignment: Option<Alignment>,
     min_width: Option<Length>,
