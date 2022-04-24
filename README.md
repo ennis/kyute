@@ -6,6 +6,23 @@ This is a GUI library in Rust. Inspired by [druid](https://github.com/linebender
 Uses skia under the hood for rendering.
 Currently **windows-only** because it's using DirectWrite for text rendering & paragraph layout.
 
+Features
+--------------------------
+* Compose widgets with mostly idiomatic and straightforward Rust code
+    * Few macros, designed to work well with autocomplete
+* The UI is transparently invalidated whenever a piece of state changes. No need for manual change detection and invalidation.
+* Widgets
+    * Buttons
+    * Drop downs (using native menus)
+    * Sliders
+    * Text line editor & validated text input
+    * Images (with async loading & hot-reloading)
+    * Scrollable areas
+    * Hierarchical table view
+    * Simple color picker (WIP)
+* Layouts
+    * A versatile grid layout container based on CSS grid   
+
 Examples
 --------------------------
 
