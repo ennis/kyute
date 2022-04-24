@@ -505,7 +505,7 @@ impl Window {
     ///
     /// TODO: explain subtleties
     #[composable]
-    pub fn new(window_builder: WindowBuilder, contents: impl Widget + 'static, menu: Option<Menu>) -> Window {
+    pub fn new(window_builder: WindowBuilder, content: impl Widget + 'static, menu: Option<Menu>) -> Window {
         // create the initial window state
         // we don't want to recreate it every time, so it only depends on the call ID.
         let window_state = cache::once(move || {
@@ -553,7 +553,7 @@ impl Window {
         Window {
             id: WidgetId::here(),
             window_state,
-            content: Arc::new(WidgetPod::layered(contents)),
+            content: Arc::new(WidgetPod::with_native_layer(content)),
         }
     }
 }
@@ -632,7 +632,7 @@ impl Widget for Window {
             {
                 let _span = trace_span!("Window composition layers update").entered();
                 // --- update composition layers ---
-                let repainted = self.content.repaint_layer(window_state.skia_recording_context.clone());
+                let repainted = self.content.repaint_layer(&mut window_state.skia_recording_context);
                 if repainted {
                     window.set_root_composition_layer(self.content.layer().unwrap());
                 }

@@ -40,7 +40,7 @@ impl<Inner: Widget + 'static> Border<Inner> {
     #[composable]
     pub fn new(border: style::Border, inner: Inner) -> Border<Inner> {
         Border {
-            border_layer: WidgetPod::layered(Container::new(Null)),
+            border_layer: WidgetPod::with_surface(Container::new(Null)),
             inner: WidgetPod::new(inner),
             border,
         }

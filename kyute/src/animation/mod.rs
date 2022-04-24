@@ -12,15 +12,20 @@ pub struct DebugLayerNode {
     damage: PaintDamage,
 }
 
+// TODO:
+// - remove layer_surface: it should only live in PaintCtx::layer; possibly turn `acquire_surface` into a callback-taking function
+// - PaintCtx should operate on SkSurfaces
+// - make surfaces the primary caching mechanism instead of native layers
+
 /// Painting context passed to `LayerDelegate::draw`.
 pub struct PaintCtx<'a> {
+    /// Parent native composition layer.
     parent_layer: &'a Layer,
+    /// Transform to parent_layer.
     layer_transform: Transform,
-    //pub overlay_layer: Option<Layer>,
-    layer_surface: Surface,
-    pub skia_direct_context: sk::gpu::DirectContext,
+    pub skia_direct_context: &'a mut sk::gpu::DirectContext,
     finished: bool,
-    pub surface: sk::Surface,
+    pub surface: &'a mut sk::Surface,
     pub scale_factor: f64,
     pub bounds: Rect,
     pub clip_bounds: Rect,
@@ -33,47 +38,16 @@ impl<'a> fmt::Debug for PaintCtx<'a> {
 }
 
 impl<'a> PaintCtx<'a> {
-    pub fn new(layer: &'a Layer, scale_factor: f64, mut skia_direct_context: sk::gpu::DirectContext) -> PaintCtx<'a> {
-        let layer_surface = layer.acquire_surface();
-        let surface_image_info = layer_surface.image_info();
-        let surface_size = layer_surface.size();
-        let skia_image_usage_flags = graal::vk::ImageUsageFlags::COLOR_ATTACHMENT
-            | graal::vk::ImageUsageFlags::TRANSFER_SRC
-            | graal::vk::ImageUsageFlags::TRANSFER_DST;
-        // create skia BackendRenderTarget and Surface
-        let skia_image_info = sk::gpu::vk::ImageInfo {
-            image: surface_image_info.handle.as_raw() as *mut _,
-            alloc: Default::default(),
-            tiling: sk::gpu::vk::ImageTiling::OPTIMAL,
-            layout: sk::gpu::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            format: sk::gpu::vk::Format::R8G8B8A8_UNORM, // TODO
-            image_usage_flags: skia_image_usage_flags.as_raw(),
-            sample_count: 1,
-            level_count: 1,
-            current_queue_family: sk::gpu::vk::QUEUE_FAMILY_IGNORED,
-            protected: sk::gpu::Protected::No,
-            ycbcr_conversion_info: Default::default(),
-            sharing_mode: sk::gpu::vk::SharingMode::EXCLUSIVE,
-        };
-        let render_target = sk::gpu::BackendRenderTarget::new_vulkan(
-            (surface_size.width as i32, surface_size.height as i32),
-            1,
-            &skia_image_info,
-        );
-        let mut surface = sk::Surface::from_backend_render_target(
-            &mut skia_direct_context,
-            &render_target,
-            sk::gpu::SurfaceOrigin::TopLeft,
-            sk::ColorType::RGBA8888, // TODO
-            sk::ColorSpace::new_srgb(),
-            Some(&sk::SurfaceProps::new(Default::default(), sk::PixelGeometry::RGBH)),
-        )
-        .unwrap();
-
+    /// Creates a PaintCtx to draw on the specified surface.
+    pub fn new(
+        surface: &'a mut sk::Surface,
+        parent_layer: &'a Layer,
+        scale_factor: f64,
+        skia_direct_context: &'a mut sk::gpu::DirectContext,
+    ) -> PaintCtx<'a> {
         PaintCtx {
-            parent_layer: layer,
+            parent_layer,
             layer_transform: Transform::identity(),
-            layer_surface,
             skia_direct_context,
             finished: false,
             surface,
@@ -129,32 +103,6 @@ impl<'a> PaintCtx<'a> {
     }*/
 
     ///
-    pub fn finish(&mut self) {
-        if self.finished {
-            return;
-        }
-
-        let _span = trace_span!("PaintCtx flush").entered();
-        let mut gr_ctx = Application::instance().lock_gpu_context();
-        let mut frame = gr_ctx.start_frame(Default::default());
-        let mut pass = frame.start_graphics_pass("UI render");
-        // FIXME we just assume how it's going to be used by skia
-        // register the access to the target image
-        pass.add_image_dependency(
-            self.layer_surface.image_info().id,
-            graal::vk::AccessFlags::MEMORY_READ | graal::vk::AccessFlags::MEMORY_WRITE,
-            graal::vk::PipelineStageFlags::ALL_COMMANDS,
-            graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        );
-        // draw callback
-        pass.set_submit_callback(move |_cctx, _, _queue| {
-            self.surface.flush_and_submit();
-            self.finished = true;
-        });
-        pass.finish();
-        frame.finish(&mut ());
-    }
 
     /// Calls the specified closure with a copy of the current painting context, with the specified
     /// transform and clip bounds applied.
@@ -189,7 +137,38 @@ impl<'a> PaintCtx<'a> {
         result
     }
 
-    /// Enters a layer.
+    /*/// Paint on a separate surface.
+    pub fn surface<R>(&mut self, surface: &sk::Surface, mut f: impl FnMut(&mut PaintCtx) -> R) -> R {
+        {
+            let _span = trace_span!("PaintCtx paint surface").entered();
+            let mut child_ctx = PaintCtx::new(
+                surface.clone(),
+                self.parent_layer,
+                self.scale_factor,
+                self.skia_direct_context,
+            );
+            f(&mut child_ctx)
+        }
+    }*/
+
+    /*///
+    pub fn draw_surface<R>(&mut self, surface: &sk::Surface) {
+
+        self.surface.canvas().draw_drawable()
+
+        {
+            let _span = trace_span!("PaintCtx paint surface").entered();
+            let mut child_ctx = PaintCtx::new(
+                surface.clone(),
+                self.parent_layer,
+                self.scale_factor,
+                self.skia_direct_context.clone(),
+            );
+            f(&mut child_ctx)
+        }
+    }*/
+
+    /*/// Paint on a native composition layer.
     pub fn layer<R>(&mut self, layer: &Layer, mut f: impl FnMut(&mut PaintCtx) -> R) -> R {
         //self.finish();
 
@@ -204,12 +183,12 @@ impl<'a> PaintCtx<'a> {
             child_ctx.finish();
             result
         }
-    }
+    }*/
 
-    /// Adds a layer as a child of the parent layer, without redrawing it.
+    /*/// Adds a layer as a child of the parent layer, without redrawing it.
     pub fn add_layer(&mut self, layer: &Layer) {
         //self.finish();
         self.parent_layer.add_child(layer);
         layer.set_transform(&self.layer_transform);
-    }
+    }*/
 }

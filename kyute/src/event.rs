@@ -144,7 +144,7 @@ pub enum LifecycleEvent {}
 pub enum InternalEvent<'a> {
     /// Update composition layers.
     UpdateLayers {
-        skia_direct_context: skia_safe::gpu::DirectContext,
+        skia_direct_context: &'a mut skia_safe::gpu::DirectContext,
     },
     RouteEvent {
         target: WidgetId,

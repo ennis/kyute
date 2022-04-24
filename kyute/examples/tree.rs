@@ -25,7 +25,7 @@ fn cell(text: impl Into<String> + Data) -> impl Widget {
     // Solution:
     // - inside WidgetPod, put cached data inside Arc => hidden cost
     // - don't make widgets `Clone`.
-    Arc::new(WidgetPod::layered(Text::new(text.into()).padding(
+    Arc::new(WidgetPod::with_surface(Text::new(text.into()).padding(
         0.dip(),
         5.dip(),
         0.dip(),
@@ -47,19 +47,19 @@ fn tree_test() -> impl Widget + Clone {
 
     let mut root = TableRow::new(Atom::from("root"), cell("root"));
     //#[composable(scope)]
-    for i in 0..3 {
+    for i in 0..5 {
         let id = Atom::from(format!("n.{}", i));
         let mut n1 = TableRow::new(id, cell(format!("Node {}", i)));
         n1.add_cell(1, cell("Level 1 container of nodes"));
 
         //#[composable(scope)]
-        for j in 0..3 {
+        for j in 0..5 {
             let id = Atom::from(format!("n.{}.{}", i, j));
             let mut n2 = TableRow::new(id, cell(format!("Node {}.{}", i, j)));
             n2.add_cell(1, cell("Level 2 container of nodes"));
 
             //#[composable(scope)]
-            for k in 0..2 {
+            for k in 0..5 {
                 let id = Atom::from(format!("n.{}.{}.{}", i, j, k));
                 let mut n3 = TableRow::new(id, cell(format!("Node {}.{}.{}", i, j, k)));
                 n3.add_cell(1, cell("Leaf node. Doesn't contain anything."));
@@ -109,11 +109,11 @@ fn main() {
     .with_target(false)
     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
     .init();*/
-    use tracing_subscriber::layer::SubscriberExt;
+    /*use tracing_subscriber::layer::SubscriberExt;
     tracing::subscriber::set_global_default(
         tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new().with_stackdepth(0)),
     )
-    .expect("set up the subscriber");
+    .expect("set up the subscriber");*/
     let mut env = Environment::new();
     env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
     application::run_with_env(ui_root, env);
