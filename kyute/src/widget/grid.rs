@@ -5,7 +5,7 @@ use crate::{
     drawing::ToSkia,
     style::{BoxStyle, Paint, PaintCtxExt},
     widget::prelude::*,
-    Color, Data, EnvKey, GpuFrameCtx, InternalEvent, Length, PointerEventKind, RoundToPixel, State, ValueRef,
+    Color, Data, EnvKey, EnvRef, GpuFrameCtx, InternalEvent, Length, PointerEventKind, RoundToPixel, State,
     WidgetFilter, WidgetId,
 };
 use std::{
@@ -396,7 +396,7 @@ impl GridBackgroundLayerDelegate {
 // FIXME: cloning anything with a widget id in it is extremely suspect: widgets are only clone for caching,
 // but using it in regular code to make multiple copies of a widget will break a lot of things, similar to forgetting #[composable]
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Grid {
     id: WidgetId,
     /// Column sizes.
@@ -1158,8 +1158,6 @@ impl Widget for Grid {
     }
 
     fn debug_node(&self) -> DebugNode {
-        DebugNode {
-            content: Some(format!("{} by {} grid", self.row_count(), self.column_count())),
-        }
+        DebugNode::new(format!("{} by {} grid", self.row_count(), self.column_count()))
     }
 }

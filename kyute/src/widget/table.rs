@@ -8,7 +8,7 @@ use crate::{
         grid::GridTrackDefinition, prelude::*, Clickable, Container, DragController, Grid, GridLength, GridSpan, Image,
         Null, Scaling, WidgetWrapper,
     },
-    Data, GpuFrameCtx, Length, UnitExt, ValueRef, WidgetExt,
+    Data, EnvRef, GpuFrameCtx, Length, UnitExt, WidgetExt,
 };
 use kyute_common::imbl;
 use std::{collections::HashSet, hash::Hash, sync::Arc};
@@ -35,6 +35,7 @@ impl<Id: Clone + Hash + Eq> TableSelection<Id> {
     }
 }
 
+#[derive(Clone)]
 pub struct TableRow<Id> {
     /// Uniquely identifies this row among others in the same table.
     id: Id,
@@ -194,7 +195,6 @@ impl<'a, Id> Default for TableViewParams<'a, Id> {
     }
 }
 
-#[derive(Clone)]
 pub struct TableView {
     grid: Grid,
 }
@@ -226,7 +226,7 @@ impl TableView {
                 for i in 1..num_columns {
                     let resize_handle = DragController::new(
                         Container::new(Null)
-                            .background(theme::palette::RED_800)
+                            .background(Paint::from(theme::palette::RED_800))
                             .fixed_width(4.dip())
                             .fixed_height(100.percent()),
                     );

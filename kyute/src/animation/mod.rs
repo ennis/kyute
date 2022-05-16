@@ -1,16 +1,13 @@
-use crate::{core::PaintDamage, drawing::ToSkia, graal, graal::vk::Handle, Rect, Transform};
-use kyute_common::SizeI;
+use crate::{
+    core::PaintDamage, drawing::ToSkia, graal, graal::vk::Handle, style::VisualState, Point, Rect, Size, SizeI,
+    Transform,
+};
 use kyute_shell::{
     animation::{Layer, Surface},
     application::Application,
 };
 use skia_safe as sk;
 use std::{fmt, fmt::Formatter};
-
-pub struct DebugLayerNode {
-    size: SizeI,
-    damage: PaintDamage,
-}
 
 // TODO:
 // - remove layer_surface: it should only live in PaintCtx::layer; possibly turn `acquire_surface` into a callback-taking function
@@ -29,6 +26,7 @@ pub struct PaintCtx<'a> {
     pub scale_factor: f64,
     pub bounds: Rect,
     pub clip_bounds: Rect,
+    pub visual_state: VisualState,
 }
 
 impl<'a> fmt::Debug for PaintCtx<'a> {
@@ -45,6 +43,9 @@ impl<'a> PaintCtx<'a> {
         scale_factor: f64,
         skia_direct_context: &'a mut sk::gpu::DirectContext,
     ) -> PaintCtx<'a> {
+        let width = parent_layer.size().width as f64 / scale_factor;
+        let height = parent_layer.size().height as f64 / scale_factor;
+        let bounds = Rect::new(Point::origin(), Size::new(width, height));
         PaintCtx {
             parent_layer,
             layer_transform: Transform::identity(),
@@ -52,8 +53,9 @@ impl<'a> PaintCtx<'a> {
             finished: false,
             surface,
             scale_factor,
-            bounds: Default::default(),
-            clip_bounds: Default::default(),
+            bounds,
+            clip_bounds: bounds,
+            visual_state: Default::default(),
         }
     }
 
@@ -70,6 +72,27 @@ impl<'a> PaintCtx<'a> {
         } else {
             self.parent_layer
         }*/
+    }
+
+    /// Overrides the current visual state flags and calls the provided closure.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kyute::PaintCtx;
+    /// use kyute::style::VisualState;
+    /// use kyute::widget::Button;
+    ///
+    /// fn paint_disabled_button(ctx: &mut PaintCtx, button: &Button) {
+    ///     ctx.with_visual_state(VisualState::DISABLED, |ctx| button.paint(ctx));
+    /// }
+    /// ```
+    pub fn with_visual_state<R>(&mut self, state: VisualState, f: impl FnOnce(&mut PaintCtx) -> R) -> R {
+        let prev = self.visual_state;
+        self.visual_state |= state;
+        let result = f(self);
+        self.visual_state = prev;
+        result
     }
 
     /*/// Returns a reference to the current skia painting canvas.

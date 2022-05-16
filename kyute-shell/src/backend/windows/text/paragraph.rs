@@ -370,10 +370,19 @@ impl GlyphRunAnalysis {
                 .expect("CreateAlphaTexture failed");
             data.set_len(buffer_size);
 
-            let format = match texture_type {
-                DWRITE_TEXTURE_ALIASED_1x1 => GlyphMaskFormat::Alpha8,
-                DWRITE_TEXTURE_CLEARTYPE_3x1 => GlyphMaskFormat::Rgb8,
-                _ => unreachable!(),
+            if options == RasterizationOptions::Grayscale {
+                // convert (in-place) to a grayscale mask by keeping only the green channel
+                // https://twitter.com/pcwalton/status/1019305534330101760
+                let trunc_len = buffer_size / 3;
+                for i in 0..trunc_len {
+                    data[i] = data[i * 3 + 1];
+                }
+                data.truncate(trunc_len);
+            }
+
+            let format = match options {
+                RasterizationOptions::Grayscale | RasterizationOptions::Bilevel => GlyphMaskFormat::Gray8,
+                RasterizationOptions::Subpixel => GlyphMaskFormat::Rgb8,
             };
 
             Some(GlyphMaskData {

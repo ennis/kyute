@@ -6,7 +6,7 @@ mod theme;
 
 use crate::{
     drawing::{svg_path_to_skia, ToSkia},
-    Color, Length, Rect, RectExt, UnitExt, ValueRef,
+    Color, EnvRef, Length, Rect, RectExt, UnitExt,
 };
 use bitflags::bitflags;
 use skia_safe as sk;
@@ -18,12 +18,26 @@ pub use paint::{GradientStop, LinearGradient, Paint, RepeatMode, UniformData};
 pub use theme::{define_theme, ThemeData, ThemeLoadError};
 
 bitflags! {
+    /// Encodes the active visual states of a widget.
     #[derive(Default)]
     pub struct VisualState: u8 {
+        /// Normal state.
         const DEFAULT  = 0;
+
+        /// The widget has focus.
+        ///
+        /// Typically a border or a color highlight is drawn on the widget to signify the focused state.
         const FOCUS    = 1 << 0;
+
+        /// The widget is "active" (e.g. pressed, for a button).
         const ACTIVE   = 1 << 1;
+
+        /// A cursor is hovering atop the widget.
         const HOVER    = 1 << 2;
+
+        /// The widget is disabled.
+        ///
+        /// Typically a widget is "greyed-out" when it is disabled.
         const DISABLED = 1 << 3;
     }
 }
@@ -105,7 +119,7 @@ impl ToSkia for BlendMode {
 //--------------------------------------------------------------------------------------------------
 
 /// ValueRef to a color.
-pub type ColorRef = ValueRef<Color>;
+pub type ColorRef = EnvRef<Color>;
 
 //--------------------------------------------------------------------------------------------------
 

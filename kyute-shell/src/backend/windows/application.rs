@@ -250,7 +250,7 @@ impl Application {
             // enable composition device debug
             let composition_device = composition_device.unwrap();
             let debug: IDCompositionDeviceDebug = composition_device.cast::<IDCompositionDeviceDebug>().unwrap();
-            debug.EnableDebugCounters();
+            //debug.EnableDebugCounters();
             ThreadBound::new(composition_device)
         };
 

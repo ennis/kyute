@@ -235,3 +235,39 @@ Currently, a layout is always followed by a repaint: this is because `LayerWidge
 schedules a repaint if it's cached layout is invalidated.
 
 Relayout is closely related to repaint: usually, calling `layout` on a widget is usually followed by a repaint. 
+
+## Next up: 3D layers
+
+For 3D content, create a layered WidgetPod.
+Add a new function to Widget, called `layer_paint`, which gets a native composition surface as input. Default impl
+creates the corresponding skia surface and calls paint. 3D views override this and can present stuff as they like, 
+with whatever API.
+
+## TODO
+- Embed images in crate
+- Pull-down buttons (https://developer.apple.com/design/human-interface-guidelines/macos/buttons/pull-down-buttons/)
+- Checkboxes
+- Radio buttons
+- Boxes (https://developer.apple.com/design/human-interface-guidelines/macos/windows-and-views/boxes/)
+- Tab views
+- Disclosure triangles (a.k.a. "Titled pane"?)
+- Popups/popovers
+- Integrated toolbars
+- Colorize images
+- Fix LinearGradient build code
+
+## Rethink grids
+They are very flexible, but the API is not very ergonomic. 
+A big issue is the lack of immediate feedback. To solve this, create an interactive grid designer. Or at least, some kind of live reload.
+
+
+## Different backgrounds
+- Window default
+  - Supposed to put form controls on it
+  - Boxes background is just an overlay 
+- Toolbar
+- Sidebar
+- Content background
+  - for tables, edit boxes, etc.
+  - also: alternative content background
+

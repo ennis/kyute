@@ -646,8 +646,6 @@ impl Widget for Window {
 
     fn debug_node(&self) -> DebugNode {
         let window_state = self.window_state.borrow();
-        DebugNode {
-            content: Some(format!("title: {:?}", window_state.window_builder.window.title)),
-        }
+        DebugNode::new(format!("title: {:?}", window_state.window_builder.window.title))
     }
 }

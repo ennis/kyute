@@ -11,6 +11,7 @@ mod bloom;
 mod call_id;
 mod core;
 mod drawing;
+mod font;
 mod layout;
 mod state;
 mod window;
@@ -34,10 +35,12 @@ pub use crate::{
     bloom::Bloom,
     cache::{changed, environment, memoize, once, run_async, state, with_environment, Signal, State},
     core::{
-        EventCtx, GpuFrameCtx, LayoutCache, LayoutCtx, Widget, WidgetExt, WidgetFilter, WidgetId, SHOW_DEBUG_OVERLAY,
+        EventCtx, GpuFrameCtx, LayerPaintCtx, LayoutCache, LayoutCtx, Widget, WidgetExt, WidgetFilter, WidgetId,
+        SHOW_DEBUG_OVERLAY,
     },
-    env::{EnvKey, EnvValue, Environment, ValueRef},
+    env::{EnvKey, EnvRef, EnvValue, Environment},
     event::{Event, InputEvent, InternalEvent, PointerEvent, PointerEventKind},
+    font::Font,
     layout::{align_boxes, Alignment, BoxConstraints, Measurements},
     widget::Orientation,
     window::Window,

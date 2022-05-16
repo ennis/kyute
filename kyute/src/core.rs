@@ -8,6 +8,7 @@ use crate::{
     composable,
     drawing::ToSkia,
     event::{InputState, PointerEvent, PointerEventKind},
+    graal::vk::Handle,
     region::Region,
     shell::{
         graal,
@@ -15,12 +16,13 @@ use crate::{
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
     style::VisualState,
-    widget::{Align, ConstrainedBox, Padding},
+    widget::{Align, ConstrainedBox, EnvOverride, Padding},
     Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Length, Measurements, Offset, Point, Rect,
     State, Transform, UnitExt,
 };
+use kyute::EnvValue;
 use kyute_common::{Data, PointI, Size};
-use kyute_shell::animation::Layer;
+use kyute_shell::{animation::Layer, application::Application};
 use skia_safe as sk;
 use std::{
     cell::{Cell, Ref, RefCell},
@@ -685,9 +687,105 @@ impl<'a, 'b> GpuFrameCtx<'a, 'b> {
     }
 }
 
+/// Used to collect and report debug information for a widget.
+///
+/// See [`Widget::debug_node`].
 #[derive(Clone, Debug)]
 pub struct DebugNode {
-    pub content: Option<String>,
+    content: Option<String>,
+}
+
+impl Default for DebugNode {
+    fn default() -> Self {
+        DebugNode { content: None }
+    }
+}
+
+impl DebugNode {
+    /// Creates a new `DebugNode` that carries a description of the content of the widget, as a string.
+    pub fn new(content_description: impl Into<String>) -> DebugNode {
+        DebugNode {
+            content: Some(content_description.into()),
+        }
+    }
+}
+
+pub struct LayerPaintCtx<'a> {
+    pub skia_gpu_context: &'a mut sk::gpu::DirectContext,
+}
+
+impl<'a> LayerPaintCtx<'a> {
+    /// Creates a painting context on the layer and paints the content it using the specified closure.
+    pub fn paint_layer(&mut self, layer: &Layer, scale_factor: f64, f: impl FnOnce(&mut PaintCtx)) {
+        // `layer.size()` is zero initially, and can stay that way if we did not call set_size.
+        // In this case, there's nothing to paint, and return early.
+        if layer.size().is_empty() {
+            return;
+        }
+
+        let layer_surface = layer.acquire_surface();
+        let surface_image_info = layer_surface.image_info();
+        let surface_size = layer_surface.size();
+
+        // create the skia counterpart of the native surface (BackendRenderTarget and Surface)
+        let skia_image_usage_flags = graal::vk::ImageUsageFlags::COLOR_ATTACHMENT
+            | graal::vk::ImageUsageFlags::TRANSFER_SRC
+            | graal::vk::ImageUsageFlags::TRANSFER_DST;
+        let skia_image_info = sk::gpu::vk::ImageInfo {
+            image: surface_image_info.handle.as_raw() as *mut _,
+            alloc: Default::default(),
+            tiling: sk::gpu::vk::ImageTiling::OPTIMAL,
+            layout: sk::gpu::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            format: sk::gpu::vk::Format::R8G8B8A8_UNORM, // TODO
+            image_usage_flags: skia_image_usage_flags.as_raw(),
+            sample_count: 1,
+            level_count: 1,
+            current_queue_family: sk::gpu::vk::QUEUE_FAMILY_IGNORED,
+            protected: sk::gpu::Protected::No,
+            ycbcr_conversion_info: Default::default(),
+            sharing_mode: sk::gpu::vk::SharingMode::EXCLUSIVE,
+        };
+        let render_target = sk::gpu::BackendRenderTarget::new_vulkan(
+            (surface_size.width as i32, surface_size.height as i32),
+            1,
+            &skia_image_info,
+        );
+        let mut surface = sk::Surface::from_backend_render_target(
+            self.skia_gpu_context,
+            &render_target,
+            sk::gpu::SurfaceOrigin::TopLeft,
+            sk::ColorType::RGBA8888, // TODO
+            sk::ColorSpace::new_srgb(),
+            Some(&sk::SurfaceProps::new(Default::default(), sk::PixelGeometry::RGBH)),
+        )
+        .unwrap();
+        surface.canvas().clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
+
+        {
+            let mut paint_ctx = PaintCtx::new(&mut surface, layer, scale_factor, self.skia_gpu_context);
+            f(&mut paint_ctx);
+        }
+
+        let _span = trace_span!("Flush skia surface").entered();
+        let mut gr_ctx = Application::instance().lock_gpu_context();
+        let mut frame = gr_ctx.start_frame(Default::default());
+        let mut pass = frame.start_graphics_pass("UI render");
+        // FIXME we just assume how it's going to be used by skia
+        // register the access to the target image
+        pass.add_image_dependency(
+            layer_surface.image_info().id,
+            graal::vk::AccessFlags::MEMORY_READ | graal::vk::AccessFlags::MEMORY_WRITE,
+            graal::vk::PipelineStageFlags::ALL_COMMANDS,
+            graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        );
+        // draw callback
+        pass.set_submit_callback(move |_cctx, _, _queue| {
+            surface.flush_and_submit();
+        });
+        pass.finish();
+        frame.finish(&mut ());
+    }
 }
 
 /// Trait that defines the behavior of a widget.
@@ -709,6 +807,7 @@ pub trait Widget {
     /// Propagates an event through the widget hierarchy.
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
 
+    /// Paints this widget on the given context.
     fn paint(&self, ctx: &mut PaintCtx);
 
     ///
@@ -719,11 +818,10 @@ pub trait Widget {
         }
     }
 
-    /// Called only for native window widgets.
-    fn window_paint(&self, _ctx: &mut WindowPaintCtx) {}
-
-    /// Called for custom GPU operations
-    fn gpu_frame<'a, 'b>(&'a self, _ctx: &mut GpuFrameCtx<'a, 'b>) {}
+    /// Paints this widget on a native composition layer.
+    fn layer_paint(&self, ctx: &mut LayerPaintCtx, layer: &Layer, scale_factor: f64) {
+        ctx.paint_layer(layer, scale_factor, |ctx| self.paint(ctx))
+    }
 
     /// Implement to give a debug name to your widget. Used only for debugging.
     fn debug_name(&self) -> &str {
@@ -758,12 +856,12 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::route_event(&**self, ctx, event, env)
     }
 
-    fn window_paint(&self, ctx: &mut WindowPaintCtx) {
-        Widget::window_paint(&**self, ctx)
+    fn layer_paint(&self, ctx: &mut LayerPaintCtx, layer: &Layer, scale_factor: f64) {
+        Widget::layer_paint(&**self, ctx, layer, scale_factor)
     }
 
-    fn gpu_frame<'a, 'b>(&'a self, ctx: &mut GpuFrameCtx<'a, 'b>) {
-        Widget::gpu_frame(&**self, ctx)
+    fn debug_name(&self) -> &str {
+        Widget::debug_name(&**self)
     }
 
     fn debug_node(&self) -> DebugNode {
@@ -862,6 +960,12 @@ pub trait WidgetExt: Widget + Sized + 'static {
         left: impl Into<Length>,
     ) -> Padding<Self> {
         Padding::new(top, right, bottom, left, self)
+    }
+
+    /// Overrides an environment value passed to the widget.
+    #[must_use]
+    fn with<T: EnvValue>(self, key: EnvKey<T>, value: T) -> EnvOverride<Self> {
+        EnvOverride::new(self).with(key, value)
     }
 }
 

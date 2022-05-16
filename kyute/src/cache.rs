@@ -6,6 +6,7 @@ use crate::{
 use parking_lot::Mutex;
 use std::{
     any::Any,
+    borrow::Borrow,
     cell::{Cell, RefCell},
     collections::hash_map::DefaultHasher,
     convert::TryInto,
@@ -1002,6 +1003,24 @@ pub fn memoize<Args: Data, T: Clone + 'static>(args: Args, f: impl FnOnce() -> T
 pub fn once<T: Clone + 'static>(f: impl FnOnce() -> T) -> T {
     state(f).get()
 }
+
+/*
+/// Trait for values that can appear in memoizable functions (`#[composable(cached)]`)
+pub trait ToMemoizeArg {
+    type Target: Data;
+    fn to_memoize_arg(&self) -> Self::Target;
+}
+
+impl<T, B> ToMemoizeArg for B
+where
+    T: Data,
+    B: Borrow<T>,
+{
+    type Target = T;
+    fn to_memoize_arg(&self) -> Self::Target {
+        self.clone()
+    }
+}*/
 
 #[cfg(test)]
 mod tests {

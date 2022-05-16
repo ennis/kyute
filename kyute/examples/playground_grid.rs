@@ -7,10 +7,10 @@ use kyute::{
         drop_down,
         grid::{AlignItems, GridTrackDefinition, JustifyItems},
         Container, DropDown, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit, TextInput,
-        Thumb, TitledPane, ValidationResult,
+        Thumb, TitledPane, ValidationResult, WidgetPod,
     },
     Alignment, AssetId, BoxConstraints, Color, Data, EnvKey, Environment, Orientation, Point, Size, UnitExt, Widget,
-    WidgetExt, WidgetPod, Window,
+    WidgetExt, Window,
 };
 use std::sync::Arc;
 use tracing::{info, trace};
@@ -21,8 +21,8 @@ fn fixed_size_widget(w: f64, h: f64, name: impl Into<String> + Data) -> impl Wid
     Label::new(name).fix_size(w.dip(), h.dip())
 }
 
-#[composable(cached)]
-fn playground_grid(test: usize) -> impl Widget + Clone {
+#[composable]
+fn playground_grid(test: usize) -> impl Widget {
     #[state]
     let mut row_count = 2usize;
     #[state]

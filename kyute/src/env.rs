@@ -3,6 +3,7 @@ use std::{
     any::Any,
     collections::HashMap,
     fmt,
+    fmt::Formatter,
     hash::{Hash, Hasher},
     marker::PhantomData,
     sync::Arc,
@@ -76,7 +77,7 @@ impl<T: Any> EnvValue for Arc<T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Environment(Arc<EnvImpl>);
 
 impl Data for Environment {
@@ -96,6 +97,13 @@ impl Hash for Environment {
 struct EnvImpl {
     parent: Option<Arc<EnvImpl>>,
     values: HashMap<&'static str, Arc<dyn Any>>,
+}
+
+impl fmt::Debug for EnvImpl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // TODO better debug impl
+        f.debug_struct("EnvImpl").finish_non_exhaustive()
+    }
 }
 
 impl EnvImpl {
@@ -191,9 +199,9 @@ impl Default for Environment {
 //--------------------------------------------------------------------------------------------------
 
 /// Either a value or a reference to a value in an environment.
-#[derive(Copy, Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 #[serde(untagged)]
-pub enum ValueRef<T> {
+pub enum EnvRef<T> {
     /// Inline value.
     Inline(T),
     /// Fetch the value from the environment.
@@ -202,25 +210,30 @@ pub enum ValueRef<T> {
     /// Evaluate the function with the environment.
     #[serde(skip)]
     Fn(fn(&Environment) -> T),
+    /// Evaluates a closure within the environment.
+    #[serde(skip)]
+    Closure(Arc<dyn Fn(&Environment) -> Option<T>>),
 }
 
 // manual impl to avoid "implementation of `Debug` is not general enough" error
-impl<T: fmt::Debug> fmt::Debug for ValueRef<T> {
+impl<T: fmt::Debug> fmt::Debug for EnvRef<T> {
     fn fmt<'a>(&'a self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ValueRef::Inline(val) => f.debug_tuple("Inline").field(val).finish(),
-            ValueRef::Env(key) => f.debug_tuple("Env").field(key).finish(),
-            ValueRef::Fn(ptr) => f.debug_tuple("Fn").field(ptr as &fn(&'a Environment) -> T).finish(),
+            EnvRef::Inline(val) => f.debug_tuple("Inline").field(val).finish(),
+            EnvRef::Env(key) => f.debug_tuple("Env").field(key).finish(),
+            EnvRef::Fn(ptr) => f.debug_tuple("Fn").field(ptr as &fn(&'a Environment) -> T).finish(),
+            EnvRef::Closure(ptr) => f.debug_struct("Closure").finish_non_exhaustive(),
         }
     }
 }
 
-impl<T: EnvValue> ValueRef<T> {
+impl<T: EnvValue> EnvRef<T> {
     pub fn resolve(&self, env: &Environment) -> Option<T> {
         match self {
-            ValueRef::Inline(v) => Some(v.clone()),
-            ValueRef::Env(k) => k.get(env),
-            ValueRef::Fn(f) => Some(f(env)),
+            EnvRef::Inline(v) => Some(v.clone()),
+            EnvRef::Env(k) => k.get(env),
+            EnvRef::Fn(f) => Some(f(env)),
+            EnvRef::Closure(f) => f(env),
         }
     }
 
@@ -228,37 +241,44 @@ impl<T: EnvValue> ValueRef<T> {
         let env = cache::environment();
         self.resolve(&env)
     }
+
+    pub fn map<U>(self, f: impl Fn(T) -> U + 'static) -> EnvRef<U> {
+        match self {
+            EnvRef::Inline(v) => EnvRef::Inline(f(v)),
+            _ => EnvRef::Closure(Arc::new(move |env| self.resolve(env).map(&f))),
+        }
+    }
 }
 
-impl<T: EnvValue + Default> ValueRef<T> {
+impl<T: EnvValue + Default> EnvRef<T> {
     pub fn resolve_or_default(&self, env: &Environment) -> T {
         self.resolve(env).unwrap_or_default()
     }
 }
 
-impl<T> From<T> for ValueRef<T> {
+impl<T> From<T> for EnvRef<T> {
     fn from(v: T) -> Self {
-        ValueRef::Inline(v)
+        EnvRef::Inline(v)
     }
 }
 
-impl<T> From<EnvKey<T>> for ValueRef<T> {
+impl<T> From<EnvKey<T>> for EnvRef<T> {
     fn from(k: EnvKey<T>) -> Self {
-        ValueRef::Env(k)
+        EnvRef::Env(k)
     }
 }
 
-impl<T> From<fn(&Environment) -> T> for ValueRef<T> {
+impl<T> From<fn(&Environment) -> T> for EnvRef<T> {
     fn from(f: fn(&Environment) -> T) -> Self {
-        ValueRef::Fn(f)
+        EnvRef::Fn(f)
     }
 }
 
-impl<T> Default for ValueRef<T>
+impl<T> Default for EnvRef<T>
 where
     T: Default,
 {
     fn default() -> Self {
-        ValueRef::Inline(T::default())
+        EnvRef::Inline(T::default())
     }
 }

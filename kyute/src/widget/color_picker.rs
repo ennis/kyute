@@ -218,7 +218,7 @@ pub struct ColorPickerParams<'a> {
     pub enable_hex_input: bool,
 }
 
-#[derive(Clone, WidgetWrapper)]
+#[derive(WidgetWrapper)]
 pub struct ColorPicker {
     grid: Grid,
     color_changed: Option<Color>,
@@ -495,7 +495,7 @@ impl Widget for ColorBar {
 // ColorSlider
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, WidgetWrapper)]
+#[derive(WidgetWrapper)]
 pub struct ColorSlider {
     slider: SliderBase,
 }

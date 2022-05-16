@@ -239,7 +239,6 @@ impl Widget for Slider {
 }
 
 //--------------------------------------------------------------------------------------------------
-#[derive(Clone)]
 pub struct SliderBase {
     id: WidgetId,
     track: Cell<SliderTrack>,

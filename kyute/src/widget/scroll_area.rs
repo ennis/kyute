@@ -9,7 +9,6 @@ use crate::{
     Color, Length, UnitExt,
 };
 
-#[derive(Clone)]
 pub struct ScrollArea {
     inner: LayoutInspector<Grid>,
     line_height: Length,

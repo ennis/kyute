@@ -160,7 +160,7 @@ impl CompositionSwapChain {
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
             BufferCount: 2,
             Scaling: DXGI_SCALING_STRETCH,
-            SwapEffect: DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
+            SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
             AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
             Flags: 0,
         };

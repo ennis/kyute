@@ -3,8 +3,8 @@ use crate::{
     cache, composable,
     core::{DebugNode, WindowPaintCtx},
     drawing::ToSkia,
-    make_uniform_data, BoxConstraints, Color, Data, Environment, Event, EventCtx, GpuFrameCtx, LayoutCache, LayoutCtx,
-    Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
+    make_uniform_data, theme, BoxConstraints, Color, Data, EnvRef, Environment, Event, EventCtx, Font, GpuFrameCtx,
+    LayoutCache, LayoutCtx, Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
 use euclid::Rect;
 use kyute_shell::{
@@ -35,7 +35,7 @@ impl GlyphMaskImage {
         let _span = trace_span!("Create glyph mask image").entered();
         let (_src_bpp, dst_bpp) = match data.format {
             GlyphMaskFormat::Rgb8 => (3usize, 4usize),
-            GlyphMaskFormat::Alpha8 => (1usize, 1usize),
+            GlyphMaskFormat::Gray8 => (1usize, 1usize),
         };
 
         let n = (bounds.width() * bounds.height()) as usize;
@@ -52,7 +52,7 @@ impl GlyphMaskImage {
                     ptr::write(rgba_buf.as_mut_ptr().add(i * 4 + 2), src[i * 3 + 2]);
                     ptr::write(rgba_buf.as_mut_ptr().add(i * 4 + 3), 255);
                 },
-                GlyphMaskFormat::Alpha8 => unsafe {
+                GlyphMaskFormat::Gray8 => unsafe {
                     // SAFETY: rgba_buf and src sized accordingly
                     ptr::write(rgba_buf.as_mut_ptr().add(i), src[i]);
                 },
@@ -60,7 +60,7 @@ impl GlyphMaskImage {
         }
 
         unsafe {
-            rgba_buf.set_len(n * 4);
+            rgba_buf.set_len(n * dst_bpp);
         }
 
         // upload RGBA data to a skia image
@@ -77,10 +77,10 @@ impl GlyphMaskImage {
                 row_bytes,
             )
             .expect("ImageInfo::new failed"),
-            GlyphMaskFormat::Alpha8 => sk::Image::from_raster_data(
+            GlyphMaskFormat::Gray8 => sk::Image::from_raster_data(
                 &sk::ImageInfo::new(
                     sk::ISize::new(bounds.width(), bounds.height()),
-                    sk::ColorType::Alpha8,
+                    sk::ColorType::Gray8,
                     sk::AlphaType::Unknown,
                     None,
                 ),
@@ -127,7 +127,7 @@ impl<'a, 'b> kyute_shell::text::Renderer for Renderer<'a, 'b> {
             let _span = trace_span!("Analyze glyph run").entered();
             glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.ctx.layer_transform())
         };
-        let raster_opts = RasterizationOptions::Subpixel;
+        let raster_opts = RasterizationOptions::Grayscale;
         let bounds = analysis.raster_bounds(raster_opts);
         let mask = {
             let _span = trace_span!("Rasterize glyph run").entered();
@@ -208,27 +208,44 @@ impl<'a, 'b> kyute_shell::text::Renderer for Renderer<'a, 'b> {
 struct TextLayoutResult {
     paragraph: Paragraph,
     measurements: Measurements,
+    font: Font,
+    color: Color,
 }
 
 /// Displays formatted text.
-#[derive(Clone)]
 pub struct Text {
     /// Input formatted text.
     formatted_text: FormattedText,
+    /// Font.
+    font: EnvRef<Font>,
+    /// Text color.
+    color: EnvRef<Color>,
     /// The formatted paragraph, calculated during layout. `None` if not yet calculated.
     cached_layout: LayoutCache<TextLayoutResult>,
 }
 
 impl Text {
     /// Creates a new text element.
-    #[composable(cached)]
+    #[composable]
     pub fn new(formatted_text: impl Into<FormattedText> + Clone + Data) -> Text {
         let formatted_text = formatted_text.into();
-        trace!("Text::new {:?}", formatted_text.plain_text);
+        //trace!("Text::new {:?}", formatted_text.plain_text);
         Text {
             formatted_text,
+            font: EnvRef::Env(theme::DEFAULT_FONT),
+            color: EnvRef::Env(theme::TEXT_COLOR),
             cached_layout: Default::default(),
         }
+    }
+
+    pub fn font(mut self, font: impl Into<EnvRef<Font>>) -> Self {
+        self.font = font.into();
+        self
+    }
+
+    pub fn color(mut self, color: impl Into<EnvRef<Color>>) -> Self {
+        self.color = color.into();
+        self
     }
 
     /// Returns a reference to the formatted text paragraph.
@@ -243,10 +260,21 @@ impl Widget for Text {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, _env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let layout = self.cached_layout.update(ctx, constraints, |ctx| {
             trace!("Text::layout {:?}", self.formatted_text.plain_text);
-            let paragraph = Paragraph::new(&self.formatted_text, constraints.max, &ParagraphStyle::default());
+
+            let font = self.font.resolve_or_default(env);
+            let color = self.color.resolve_or_default(env);
+
+            let paragraph_style = ParagraphStyle {
+                text_alignment: None,
+                font_style: Some(font.style),
+                font_weight: Some(font.weight),
+                font_size: Some(font.size.to_dips(ctx.scale_factor, constraints.max.height)),
+                font_family: Some(font.family.to_string()),
+            };
+            let paragraph = Paragraph::new(&self.formatted_text, constraints.max, &paragraph_style);
 
             // measure the paragraph
             let metrics = paragraph.metrics();
@@ -264,6 +292,8 @@ impl Widget for Text {
                     clip_bounds: Rect::new(Point::origin(), size),
                     baseline: Some(baseline),
                 },
+                color,
+                font,
             }
         });
 
@@ -276,24 +306,19 @@ impl Widget for Text {
         let _span = trace_span!("Text paint").entered();
         let mut renderer = Renderer { ctx, masks: vec![] };
         // FIXME: should be a point in absolute coords?
-        self.cached_layout
-            .get_cached()
+        let cached = self.cached_layout.get_cached();
+        cached
             .paragraph
             .draw(
                 Point::origin(),
                 &mut renderer,
-                &GlyphRunDrawingEffects {
-                    // TODO default text color
-                    color: Color::from_hex("#FFFFFF"),
-                },
+                &GlyphRunDrawingEffects { color: cached.color },
             )
             .expect("failed to draw paragraph");
     }
 
     /// Implement to give a debug name to your widget. Used only for debugging.
     fn debug_node(&self) -> DebugNode {
-        DebugNode {
-            content: Some(format!("plain text: {:?}", self.formatted_text.plain_text.as_ref())),
-        }
+        DebugNode::new(format!("plain text: {:?}", self.formatted_text.plain_text.as_ref()))
     }
 }

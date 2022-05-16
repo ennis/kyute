@@ -23,6 +23,7 @@ mod border;
 mod canvas;
 mod color_picker;
 //mod layer_widget;
+mod env_override;
 mod popup;
 mod scroll_area;
 mod selectable;
@@ -41,6 +42,7 @@ pub use color_picker::{ColorPaletteItem, ColorPicker, ColorPickerMode, ColorPick
 pub use constrained::ConstrainedBox;
 pub use container::Container;
 pub use drop_down::DropDown;
+pub use env_override::EnvOverride;
 pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
 pub use grid::{Grid, GridLength, GridRow, GridSpan};
 pub use image::{Image, Scaling};

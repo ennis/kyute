@@ -1,7 +1,7 @@
 use crate::{
     application::{AppCtx, ExtEvent},
     cache,
-    core::{DebugNode, FocusState, PaintDamage, WindowPaintCtx},
+    core::{DebugNode, FocusState, LayerPaintCtx, PaintDamage, WindowPaintCtx},
     graal,
     graal::vk::Handle,
     widget::prelude::*,
@@ -84,7 +84,7 @@ enum PaintTarget {
     ParentSurface,
 }
 
-fn paint_layer(
+/*fn paint_layer(
     layer: &Layer,
     scale_factor: f64,
     skia_direct_context: &mut sk::gpu::DirectContext,
@@ -152,7 +152,7 @@ fn paint_layer(
     });
     pass.finish();
     frame.finish(&mut ());
-}
+}*/
 
 /// A container for a widget.
 pub struct WidgetPod<T: ?Sized = dyn Widget> {
@@ -280,7 +280,7 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
         );
     }
 
-    pub(crate) fn repaint_layer(&self, skia_direct_context: &mut sk::gpu::DirectContext) -> bool {
+    pub(crate) fn repaint_layer(&self, skia_gpu_context: &mut sk::gpu::DirectContext) -> bool {
         if let PaintTarget::NativeLayer { ref layer } = self.paint_target {
             assert!(self.cached_measurements.get().is_some(), "repaint called before layout");
             match self.paint_damage.replace(PaintDamage::None) {
@@ -288,15 +288,14 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
                     // straight recursive repaint
                     let _span = trace_span!("Repaint layer", id=?self.id).entered();
                     layer.remove_all_children();
-                    paint_layer(layer, self.cached_scale_factor.get(), skia_direct_context, |ctx| {
-                        ctx.surface.canvas().clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
-                        self.content.paint(ctx);
-                    });
+                    let mut layer_paint_ctx = LayerPaintCtx { skia_gpu_context };
+                    self.content
+                        .layer_paint(&mut layer_paint_ctx, layer, self.cached_scale_factor.get());
                     true
                 }
                 PaintDamage::SubLayers => {
                     let _span = trace_span!("Update layer", id=?self.id).entered();
-                    self.update_child_layers(skia_direct_context);
+                    self.update_child_layers(skia_gpu_context);
                     true
                 }
                 PaintDamage::None => false,
@@ -393,10 +392,11 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                 match self.paint_damage.replace(PaintDamage::None) {
                     PaintDamage::Repaint => {
                         // the contents of the layer are dirty
-                        paint_layer(layer, ctx.scale_factor, &mut ctx.skia_direct_context, |ctx| {
-                            ctx.surface.canvas().clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
-                            self.content.paint(ctx);
-                        });
+                        let mut layer_paint_ctx = LayerPaintCtx {
+                            skia_gpu_context: ctx.skia_direct_context,
+                        };
+                        layer.remove_all_children();
+                        self.content.layer_paint(&mut layer_paint_ctx, layer, ctx.scale_factor);
                     }
                     PaintDamage::SubLayers => {
                         // this layer's contents are still valid, but some sublayers may need to be repainted.
@@ -413,13 +413,13 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                 match self.paint_damage.replace(PaintDamage::None) {
                     PaintDamage::Repaint => {
                         // the contents of the surface are dirty
-                        ctx.surface.canvas().clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
                         let mut child_ctx = PaintCtx::new(
                             &mut *surface,
                             ctx.parent_layer(),
                             ctx.scale_factor,
                             ctx.skia_direct_context,
                         );
+                        child_ctx.surface.canvas().clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
                         self.content.paint(&mut child_ctx);
                     }
                     PaintDamage::SubLayers => {
@@ -550,12 +550,10 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
     }
 
     fn debug_node(&self) -> DebugNode {
-        DebugNode {
-            content: match self.paint_target {
-                PaintTarget::NativeLayer { ref layer } => Some(format!("native layer {:?} px", layer.size())),
-                PaintTarget::Surface { ref surface } => Some(format!("surface {:?} px", surface.size())),
-                PaintTarget::ParentSurface => None,
-            },
+        match self.paint_target {
+            PaintTarget::NativeLayer { ref layer } => DebugNode::new(format!("native layer {:?} px", layer.size())),
+            PaintTarget::Surface { ref surface } => DebugNode::new(format!("surface {:?} px", surface.size())),
+            PaintTarget::ParentSurface => DebugNode::default(),
         }
     }
 }

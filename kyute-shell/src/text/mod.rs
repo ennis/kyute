@@ -71,6 +71,12 @@ pub(crate) fn resolve_range(range: impl RangeBounds<usize>, len: usize) -> Range
 #[repr(transparent)]
 pub struct FontWeight(pub u16);
 
+impl Default for FontWeight {
+    fn default() -> Self {
+        FontWeight::NORMAL
+    }
+}
+
 impl FontWeight {
     pub const THIN: FontWeight = FontWeight(100);
     pub const EXTRA_LIGHT: FontWeight = FontWeight(200);
@@ -110,6 +116,12 @@ pub enum FontStyle {
     Normal,
     Italic,
     Oblique,
+}
+
+impl Default for FontStyle {
+    fn default() -> Self {
+        FontStyle::Normal
+    }
 }
 
 /// Text alignment within a text paragraph.
@@ -191,7 +203,7 @@ pub enum GlyphMaskFormat {
     // 3 bytes per pixel, RGB subpixel mask
     Rgb8,
     // one byte per pixel, alpha mask
-    Alpha8,
+    Gray8,
 }
 
 /// Pixel data of a rasterized glyph run.

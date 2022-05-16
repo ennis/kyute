@@ -102,6 +102,8 @@ pub enum Paint {
     },
 }
 
+impl_env_value!(Paint);
+
 impl Default for Paint {
     fn default() -> Self {
         Paint::SolidColor {

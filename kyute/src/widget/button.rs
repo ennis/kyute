@@ -5,8 +5,9 @@ use crate::{
     style::{BoxStyle, VisualState},
     theme,
     widget::{prelude::*, Container, Grid, Label},
-    Color, GpuFrameCtx, Signal, State, UnitExt, ValueRef,
+    Color, EnvRef, GpuFrameCtx, Signal, State, UnitExt,
 };
+use std::cell::Cell;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Widget definition
@@ -16,6 +17,7 @@ pub struct Button {
     id: WidgetId,
     inner: Container<Label>,
     clicked: Signal<()>,
+    active: Cell<bool>,
 }
 
 impl Button {
@@ -32,6 +34,7 @@ impl Button {
                 .alternate_box_style(VisualState::ACTIVE | VisualState::HOVER, theme::BUTTON_ACTIVE)
                 .alternate_box_style(VisualState::HOVER, theme::BUTTON_HOVER),
             clicked: Signal::new(),
+            active: Cell::new(false),
         }
     }
 
@@ -91,10 +94,10 @@ impl Widget for Button {
                     ctx.request_focus();
                     ctx.set_handled();
                     ctx.capture_pointer();
-                    //self.active.set(true);
+                    self.active.set(true);
                 }
                 PointerEventKind::PointerUp => {
-                    //self.active.set(false);
+                    self.active.set(false);
                     self.clicked.signal(());
                 }
                 PointerEventKind::PointerOver => {
@@ -113,7 +116,13 @@ impl Widget for Button {
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
-        self.inner.paint(ctx)
+        if self.active.get() {
+            ctx.with_visual_state(VisualState::ACTIVE, |ctx| {
+                self.inner.paint(ctx);
+            })
+        } else {
+            self.inner.paint(ctx)
+        }
     }
 }
 

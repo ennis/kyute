@@ -3,9 +3,15 @@ use std::{fmt, ops::Deref};
 use string_cache::DefaultAtom;
 
 /// Interned strings. Typically used for names and string identifiers.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Default)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Atom(DefaultAtom);
+
+impl fmt::Debug for Atom {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "'{}'", self.0.as_ref())
+    }
+}
 
 impl Deref for Atom {
     type Target = DefaultAtom;

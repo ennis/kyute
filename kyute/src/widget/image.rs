@@ -7,6 +7,8 @@ use crate::{
     widget::{prelude::*, Null},
     AssetLoader, GpuFrameCtx, SizeI,
 };
+use kyute_common::Color;
+use skia_safe as sk;
 use std::task::Poll;
 use tracing::trace;
 
@@ -36,6 +38,14 @@ pub enum Scaling {
 pub struct Image<Placeholder> {
     contents: ImageContents<Placeholder>,
     scaling: Scaling,
+    colorize: Option<Color>,
+}
+
+impl<Placeholder> Image<Placeholder> {
+    pub fn colorize(mut self, color: Color) -> Self {
+        self.colorize = Some(color);
+        self
+    }
 }
 
 impl Image<Null> {
@@ -46,6 +56,7 @@ impl Image<Null> {
         Image {
             contents: ImageContents::new(uri.to_string().into(), image),
             scaling,
+            colorize: None,
         }
     }
 
@@ -89,10 +100,12 @@ impl Image<Null> {
             Poll::Ready(Some(image)) => Image {
                 contents: ImageContents::new(Some(uri.to_string()), image),
                 scaling,
+                colorize: None,
             },
             _ => Image {
                 contents: ImageContents::Placeholder(Null),
                 scaling,
+                colorize: None,
             },
         }
     }
@@ -145,7 +158,7 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
                     }
                 };
 
-                Measurements::new(scaled_size)
+                dbg!(Measurements::new(scaled_size))
             }
             ImageContents::Placeholder(ref placeholder) => placeholder.layout(ctx, constraints, env),
         }
@@ -156,26 +169,36 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
     fn paint(&self, ctx: &mut PaintCtx) {
         match self.contents {
             ImageContents::Image { ref image, .. } => {
+                let mut paint;
+                let paint = if let Some(color) = self.colorize {
+                    paint = sk::Paint::default();
+                    paint.set_color_filter(sk::color_filters::blend(
+                        color.to_skia().to_color(),
+                        sk::BlendMode::SrcIn,
+                    ));
+                    Some(&paint)
+                } else {
+                    None
+                };
+
                 ctx.surface
                     .canvas()
-                    .draw_image(image.to_skia(), Point::origin().to_skia(), None);
+                    .draw_image(image.to_skia(), Point::origin().to_skia(), paint);
             }
             ImageContents::Placeholder(ref placeholder) => placeholder.paint(ctx),
         }
     }
 
     fn debug_node(&self) -> DebugNode {
-        DebugNode {
-            content: Some(match self.contents {
-                ImageContents::Image { ref image, ref uri } => {
-                    let mut msg = format!("{}px x {}px image", image.size().width, image.size().height);
-                    if let Some(ref uri) = uri {
-                        msg += &format!("({})", uri);
-                    }
-                    msg
+        DebugNode::new(match self.contents {
+            ImageContents::Image { ref image, ref uri } => {
+                let mut msg = format!("{}px x {}px image", image.size().width, image.size().height);
+                if let Some(ref uri) = uri {
+                    msg += &format!("({})", uri);
                 }
-                ImageContents::Placeholder(ref placeholder) => "placeholder".to_string(),
-            }),
-        }
+                msg
+            }
+            ImageContents::Placeholder(ref placeholder) => "placeholder".to_string(),
+        })
     }
 }

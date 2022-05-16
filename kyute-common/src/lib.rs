@@ -144,9 +144,10 @@ pub enum Length {
     /// Device-independent pixels (DIPs), close to 1/96th of an inch.
     #[cfg_attr(feature = "serializing", serde(rename = "dip"))]
     Dip(f64),
-    /// Inches (logical inches? approximate inches?).
-    #[cfg_attr(feature = "serializing", serde(rename = "in"))]
-    In(f64),
+    // Inches (logical inches? approximate inches?).
+    // TODO remove
+    //#[cfg_attr(feature = "serializing", serde(rename = "in"))]
+    //In(f64),
     /// Length relative to the parent element.
     Proportional(f64),
 }
@@ -154,7 +155,7 @@ pub enum Length {
 impl fmt::Debug for Length {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Length::Px(v) | Length::Dip(v) | Length::In(v) | Length::Proportional(v) if v == 0.0 => {
+            Length::Px(v) | Length::Dip(v) | Length::Proportional(v) if v == 0.0 => {
                 write!(f, "0")
             }
             Length::Px(v) => {
@@ -163,9 +164,9 @@ impl fmt::Debug for Length {
             Length::Dip(v) => {
                 write!(f, "{}dip", v)
             }
-            Length::In(v) => {
+            /*Length::In(v) => {
                 write!(f, "{}in", v)
-            }
+            }*/
             Length::Proportional(v) => {
                 write!(f, "{}%", v * 100.0)
             }
@@ -180,7 +181,7 @@ impl Length {
         match v {
             Length::Px(ref mut v)
             | Length::Dip(ref mut v)
-            | Length::In(ref mut v)
+            //| Length::In(ref mut v)
             | Length::Proportional(ref mut v) => {
                 *v *= by;
             }
@@ -197,7 +198,7 @@ impl Length {
     pub fn to_dips(self, scale_factor: f64, parent_length_dips: f64) -> f64 {
         match self {
             Length::Px(x) => x / scale_factor,
-            Length::In(x) => 96.0 * x,
+            // Length::In(x) => 96.0 * x,
             Length::Dip(x) => x,
             Length::Proportional(x) => x * parent_length_dips,
         }
@@ -211,7 +212,7 @@ impl Neg for Length {
         match self {
             Length::Px(v) => Length::Px(-v),
             Length::Dip(v) => Length::Dip(-v),
-            Length::In(v) => Length::In(-v),
+            //Length::In(v) => Length::In(-v),
             Length::Proportional(v) => Length::Proportional(-v),
         }
     }
@@ -255,23 +256,34 @@ impl From<f64> for Length {
 
 /// Trait for values convertible to DIPs.
 pub trait UnitExt {
+    /// Interprets the value as a length in device-independent pixels (1/96 inch).
     fn dip(self) -> Length;
+    /// Interprets the value as a length in inches.
     fn inch(self) -> Length;
+    /// Interprets the value as a length in physical pixels.
     fn px(self) -> Length;
+    /// Interprets the value as a length in points (1/72 in, 96/72 dip (4/3))
+    fn pt(self) -> Length;
     fn percent(self) -> Length;
     fn degrees(self) -> Angle;
     fn radians(self) -> Angle;
 }
+
+pub const PT_TO_DIP: f64 = 4.0 / 3.0;
+pub const IN_TO_DIP: f64 = 96.0;
 
 impl UnitExt for f32 {
     fn dip(self) -> Length {
         Length::Dip(self as f64)
     }
     fn inch(self) -> Length {
-        Length::In(self as f64)
+        Length::Dip((self as f64) * IN_TO_DIP)
     }
     fn px(self) -> Length {
         Length::Px(self as f64)
+    }
+    fn pt(self) -> Length {
+        Length::Dip((self as f64) * PT_TO_DIP)
     }
     fn percent(self) -> Length {
         Length::Proportional(self as f64 / 100.0)
@@ -289,10 +301,13 @@ impl UnitExt for f64 {
         Length::Dip(self)
     }
     fn inch(self) -> Length {
-        Length::In(self)
+        Length::Dip(self * IN_TO_DIP)
     }
     fn px(self) -> Length {
         Length::Px(self)
+    }
+    fn pt(self) -> Length {
+        Length::Dip(self * PT_TO_DIP)
     }
     fn percent(self) -> Length {
         Length::Proportional(self / 100.0)
@@ -310,10 +325,13 @@ impl UnitExt for i32 {
         Length::Dip(self as f64)
     }
     fn inch(self) -> Length {
-        Length::In(self as f64)
+        Length::Dip((self as f64) * IN_TO_DIP)
     }
     fn px(self) -> Length {
         Length::Px(self as f64)
+    }
+    fn pt(self) -> Length {
+        Length::Dip((self as f64) * PT_TO_DIP)
     }
     fn percent(self) -> Length {
         Length::Proportional(self as f64 / 100.0)
@@ -331,10 +349,13 @@ impl UnitExt for u32 {
         Length::Dip(self as f64)
     }
     fn inch(self) -> Length {
-        Length::In(self as f64)
+        Length::Dip((self as f64) * IN_TO_DIP)
     }
     fn px(self) -> Length {
         Length::Px(self as f64)
+    }
+    fn pt(self) -> Length {
+        Length::Dip((self as f64) * PT_TO_DIP)
     }
     fn percent(self) -> Length {
         Length::Proportional(self as f64 / 100.0)

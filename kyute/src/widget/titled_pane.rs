@@ -9,7 +9,7 @@ use crate::{
 use kyute_common::UnitExt;
 
 /// A widget with a title.
-#[derive(Clone, WidgetWrapper)]
+#[derive(WidgetWrapper)]
 pub struct TitledPane {
     inner: Grid,
     collapsed_changed: Option<bool>,

@@ -105,11 +105,9 @@ impl<W: Widget> Widget for ConstrainedBox<W> {
     }
 
     fn debug_node(&self) -> DebugNode {
-        DebugNode {
-            content: Some(format!(
-                "[{:?} x {:?} => {:?} x {:?}]",
-                self.min_width, self.min_height, self.max_width, self.max_height
-            )),
-        }
+        DebugNode::new(format!(
+            "[{:?} x {:?} => {:?} x {:?}]",
+            self.min_width, self.min_height, self.max_width, self.max_height
+        ))
     }
 }

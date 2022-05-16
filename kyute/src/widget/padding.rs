@@ -74,11 +74,9 @@ impl<W: Widget> Widget for Padding<W> {
     }
 
     fn debug_node(&self) -> DebugNode {
-        DebugNode {
-            content: Some(format!(
-                "left:{:?},top:{:?},right:{:?},bottom:{:?}",
-                self.left, self.top, self.right, self.bottom
-            )),
-        }
+        DebugNode::new(format!(
+            "left:{:?},top:{:?},right:{:?},bottom:{:?}",
+            self.left, self.top, self.right, self.bottom
+        ))
     }
 }

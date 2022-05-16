@@ -2,9 +2,15 @@ use crate::{
     core::{DebugNode, WindowPaintCtx},
     style::{BoxStyle, Paint, PaintCtxExt, VisualState},
     widget::prelude::*,
-    GpuFrameCtx, Length, RoundToPixel, SideOffsets, UnitExt, ValueRef,
+    Color, EnvRef, GpuFrameCtx, Length, RoundToPixel, SideOffsets, UnitExt,
 };
-use serde_json::Value::String;
+use std::cell::RefCell;
+
+#[derive(Clone, Default)]
+struct ResolvedStyles {
+    box_style: BoxStyle,
+    alternate_box_styles: Vec<(VisualState, BoxStyle)>,
+}
 
 pub struct Container<Content> {
     alignment: Option<Alignment>,
@@ -17,8 +23,9 @@ pub struct Container<Content> {
     padding_right: Length,
     padding_bottom: Length,
     padding_left: Length,
-    box_style: BoxStyle,
-    alternate_box_styles: Vec<(VisualState, BoxStyle)>,
+    box_style: EnvRef<BoxStyle>,
+    alternate_box_styles: Vec<(VisualState, EnvRef<BoxStyle>)>,
+    resolved: RefCell<ResolvedStyles>,
     redraw_on_hover: bool,
     content: WidgetPod<Content>,
 }
@@ -37,8 +44,9 @@ impl<Content: Widget + 'static> Container<Content> {
             padding_right: Length::zero(),
             padding_bottom: Length::zero(),
             padding_left: Length::zero(),
-            box_style: BoxStyle::default().into(),
+            box_style: Default::default(),
             alternate_box_styles: vec![],
+            resolved: RefCell::new(Default::default()),
             redraw_on_hover: false,
             content: WidgetPod::new(content),
         }
@@ -190,33 +198,122 @@ impl<Content: Widget + 'static> Container<Content> {
         self.padding_left = left;
     }
 
-    /// Sets the background color. Overrides any previously set box style.
-    pub fn background(mut self, paint: impl Into<Paint>) -> Self {
-        self.set_box_style(BoxStyle::new().fill(paint));
+    /// Sets the color of the background of this container.
+    ///
+    /// This overwrites the current `BoxStyle` of this container.
+    ///
+    /// # Examples
+    ///
+    /// TODO
+    pub fn background_color(mut self, color: impl Into<EnvRef<Color>>) -> Self {
+        let color = color.into();
+        self.set_box_style(color.map(|c| BoxStyle::new().fill(c)));
         self
     }
 
-    /// Sets the style used to paint the box of the container.
-    pub fn box_style(mut self, box_style: impl Into<ValueRef<BoxStyle>>) -> Self {
+    /// Sets the [`Paint`] used to paint the background of this container.
+    ///
+    /// This overwrites the current `BoxStyle` of this container.
+    ///
+    /// # Examples
+    ///
+    /// TODO
+    pub fn background(mut self, paint: impl Into<EnvRef<Paint>>) -> Self {
+        let paint = paint.into();
+        self.set_box_style(paint.map(|p| BoxStyle::new().fill(p)));
+        self
+    }
+
+    /// Sets the [`BoxStyle`] used to paint the box of the container.
+    ///
+    /// Returns the same container with the box style set.
+    ///
+    /// This function accepts either a `BoxStyle` instance directly, or an environment reference to a `BoxStyle`
+    /// value that can be overriden by parent widgets. See [`EnvRef`] for more information.    
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kyute::style::BoxStyle;
+    /// use kyute::theme;
+    /// use kyute_common::{Color, UnitExt};
+    ///
+    /// // pass a box style value directly
+    /// // 4 dip radius rounded rectangle with uniform fill color
+    /// container = container.box_style(BoxStyle::new().radius(4.dip()).fill(Color::from_hex("#900C3F")));
+    ///
+    /// // reference the an environment value via a key (`theme::BUTTON`)
+    /// container = container.box_style(theme::BUTTON);
+    /// ```
+    pub fn box_style(mut self, box_style: impl Into<EnvRef<BoxStyle>>) -> Self {
         self.set_box_style(box_style);
         self
     }
 
-    /// Sets the style used to paint the box of the container.
-    pub fn set_box_style(&mut self, box_style: impl Into<ValueRef<BoxStyle>>) {
-        self.box_style = box_style.into().resolve_here().unwrap();
+    /// Sets the [`BoxStyle`] used to paint the box of the container.
+    ///
+    /// This function accepts either a `BoxStyle` instance directly, or an environment reference to a `BoxStyle`
+    /// value that can be overriden by parent widgets. See [`EnvRef`] for more information.    
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kyute::style::BoxStyle;
+    /// use kyute::theme;
+    /// use kyute::widget::{Container, Null};
+    /// use kyute_common::{Color, UnitExt};
+    ///
+    /// let mut container = Container::new(Null);
+    ///
+    /// // pass a box style value directly
+    /// // 4 dip radius rounded rectangle with uniform fill color
+    /// container.set_box_style(BoxStyle::new().radius(4.dip()).fill(Color::from_hex("900C3F")));
+    ///
+    /// // reference the an environment value via a key (`theme::BUTTON`)
+    /// container.set_box_style(theme::BUTTON);
+    /// ```
+    pub fn set_box_style(&mut self, box_style: impl Into<EnvRef<BoxStyle>>) {
+        self.box_style = box_style.into();
     }
 
-    /// Adds an alternate style, which replaces the main style when the widget is in the specified state.
-    pub fn alternate_box_style(mut self, state: VisualState, box_style: impl Into<ValueRef<BoxStyle>>) -> Self {
+    /// Adds an alternate box style, which replaces the main style when the widget is in the specified state.
+    ///
+    /// TODO specify behavior when multiple alternate styles overlap.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kyute::style::VisualState;
+    /// use kyute::theme;
+    ///
+    /// // use an alternate style when the widget is active.
+    /// container = container.box_style(theme::BUTTON).alternate_box_style(VisualState::ACTIVE, theme::BUTTON_ACTIVE);
+    /// ```
+    pub fn alternate_box_style(mut self, state: VisualState, box_style: impl Into<EnvRef<BoxStyle>>) -> Self {
         self.push_alternate_box_style(state, box_style);
         self
     }
 
-    /// Sets the overlay style, only active when the widget is in the specified state.
-    pub fn push_alternate_box_style(&mut self, state: VisualState, box_style: impl Into<ValueRef<BoxStyle>>) {
-        self.alternate_box_styles
-            .push((state, box_style.into().resolve_here().unwrap()));
+    /// Adds an alternate style, which replaces the main style when the widget is in the specified [visual state].
+    ///
+    /// TODO specify behavior when multiple alternate styles overlap.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kyute::style::VisualState;
+    /// use kyute::theme;
+    /// use kyute::widget::{Container, Null};
+    ///
+    /// // use an alternate style when the widget is active.
+    /// let mut container = Container::new(Null);
+    /// container.set_box_style(theme::BUTTON);
+    /// container.push_alternate_box_style(VisualState::ACTIVE, theme::BUTTON_ACTIVE);
+    /// ```
+    ///
+    /// [visual state]: kyute::style::VisualState
+    pub fn push_alternate_box_style(&mut self, state: VisualState, box_style: impl Into<EnvRef<BoxStyle>>) {
+        self.alternate_box_styles.push((state, box_style.into()));
         if state.contains(VisualState::HOVER) {
             self.redraw_on_hover = true;
         }
@@ -230,6 +327,16 @@ impl<Content: Widget> Widget for Container<Content> {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
+        // resolve all styles & metrics from the environment.
+        let resolved = ResolvedStyles {
+            box_style: self.box_style.resolve_or_default(env),
+            alternate_box_styles: self
+                .alternate_box_styles
+                .iter()
+                .map(|(state, bs)| (*state, bs.resolve_or_default(&env)))
+                .collect(),
+        };
+
         // Base size for proportional length calculations
         let base_width = constraints.finite_max_width().unwrap_or(0.0);
         let base_height = constraints.finite_max_height().unwrap_or(0.0);
@@ -243,7 +350,7 @@ impl<Content: Widget> Widget for Container<Content> {
         );
         // Around-borders should be taken into account in the layout (they affect the size of the item).
         insets = insets
-            + self
+            + resolved
                 .box_style
                 .border_side_offsets(ctx.scale_factor, Size::new(base_width, base_height));
 
@@ -338,12 +445,13 @@ impl<Content: Widget> Widget for Container<Content> {
         // finally, round to pixel boundaries
         content_offset = content_offset.round_to_pixel(ctx.scale_factor);
 
-        let clip_bounds = self
+        let clip_bounds = resolved
             .box_style
             .clip_bounds(Rect::new(Point::origin(), size), ctx.scale_factor);
 
         if !ctx.speculative {
             self.content.set_offset(content_offset);
+            self.resolved.replace(resolved);
         }
 
         Measurements {
@@ -381,7 +489,8 @@ impl<Content: Widget> Widget for Container<Content> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
-        ctx.draw_styled_box(ctx.bounds, &self.box_style);
+        let resolved = self.resolved.borrow();
+        ctx.draw_styled_box(ctx.bounds, &resolved.box_style);
         self.content.paint(ctx);
     }
 
@@ -411,6 +520,6 @@ impl<Content: Widget> Widget for Container<Content> {
         content += &format!(", padding_right:{:?}", self.padding_right);
         content += &format!(", padding_bottom:{:?}", self.padding_bottom);
 
-        DebugNode { content: Some(content) }
+        DebugNode::new(content)
     }
 }

@@ -6,20 +6,19 @@ use crate::{
     event::Event,
     theme,
     widget::{prelude::*, Text},
-    Color, Data, GpuFrameCtx, ValueRef,
+    Color, Data, EnvRef, GpuFrameCtx,
 };
 use kyute_shell::text::FormattedText;
 
 /// Simple text label.
-#[derive(Clone)]
 pub struct Label {
     text: Text,
-    color: ValueRef<Color>,
+    color: EnvRef<Color>,
 }
 
 impl Label {
     /// Creates a new text label.
-    #[composable(cached)]
+    #[composable]
     pub fn new(text: impl Into<String> + Data) -> Label {
         let text = text.into();
         Label {

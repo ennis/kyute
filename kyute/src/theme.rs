@@ -1,7 +1,7 @@
 //! Environment keys that control the visual aspect (theme) of common widgets.
 use crate::{
     style::{Border, BoxShadow, BoxStyle, LinearGradient},
-    Color, EnvKey, Environment, Length, SideOffsets, UnitExt,
+    Color, EnvKey, Environment, Font, Length, SideOffsets, UnitExt,
 };
 
 pub const FONT_SIZE: EnvKey<f64> = EnvKey::new("kyute.theme.font_size"); // [14.0];
@@ -324,7 +324,7 @@ pub mod palette {
 /// Keys for common colors.
 pub mod keys {
     use super::palette;
-    use crate::{Color, EnvKey, Environment};
+    use crate::{theme::TEXT_COLOR, Color, EnvKey, Environment};
 
     pub const UNDER_PAGE_BACKGROUND_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.under-page-background-color");
     pub const SHADOW_COLOR: EnvKey<Color> = EnvKey::new("kyute.theme-v2.shadow-color");
@@ -345,6 +345,7 @@ pub mod keys {
         env.set(CONTROL_BORDER_COLOR, Color::new(0.0, 0.0, 0.0, 0.6));
         env.set(CONTROL_BACKGROUND_COLOR, palette::GREY_500);
         env.set(LABEL_COLOR, palette::GREY_50);
+        env.set(TEXT_COLOR, palette::GREY_50);
         env.set(GROOVE_COLOR, palette::GREY_800);
         env.set(SHADOW_COLOR, palette::GREY_900.with_alpha(0.7));
         env.set(ALTERNATING_CONTENT_BACKGROUND_COLOR_A, palette::GREY_600);
@@ -352,6 +353,9 @@ pub mod keys {
         env.set(SEPARATOR_COLOR, palette::GREY_700);
     }
 }
+
+// Default font for text elements.
+pub const DEFAULT_FONT: EnvKey<Font> = EnvKey::new("kyute.theme-v2.default-font");
 
 /// Style of a drop down frame.
 pub const DROP_DOWN: EnvKey<BoxStyle> = EnvKey::new("kyute.theme-v2.drop-down");
@@ -481,6 +485,8 @@ pub fn setup_default_style(env: &mut Environment) {
     );
 
     let base_label_height = 15;
+
+    env.set(DEFAULT_FONT, Font::new("Source Sans Pro", 15.dip()));
     env.set(LABEL_FONT_SIZE, base_label_height.dip());
     env.set(BUTTON_LABEL_BASELINE, (base_label_height + 2).dip());
     env.set(BUTTON_HEIGHT, (base_label_height + 6).dip());

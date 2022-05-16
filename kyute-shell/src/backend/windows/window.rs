@@ -10,7 +10,7 @@ use std::ptr;
 use windows::Win32::{
     Foundation::{HINSTANCE, HWND, POINT},
     Graphics::{Direct2D::Common::D2D1_COLOR_F, DirectComposition::IDCompositionTarget, Gdi::ClientToScreen},
-    UI::WindowsAndMessaging::{DestroyMenu, SetMenu, TrackPopupMenu, HMENU, TPM_LEFTALIGN},
+    UI::WindowsAndMessaging::{DestroyMenu, DrawMenuBar, SetMenu, TrackPopupMenu, HMENU, TPM_LEFTALIGN},
 };
 use winit::{
     event_loop::EventLoopWindowTarget,
@@ -88,6 +88,7 @@ impl Window {
                 .unwrap()
                 .Commit()
                 .expect("Commit failed");
+            //DrawMenuBar(self.hwnd);
         }
     }
 
@@ -126,7 +127,7 @@ impl Window {
         if let Some(parent_window) = parent_window {
             builder = builder.with_parent_window(parent_window.hwnd.0 as *mut _);
         }
-        builder = builder.with_no_redirection_bitmap(true);
+        //builder = builder.with_no_redirection_bitmap(true);
         let window = builder
             .build(event_loop)
             .map_err(|e| Error::Platform(PlatformError::Winit(e)))?;
