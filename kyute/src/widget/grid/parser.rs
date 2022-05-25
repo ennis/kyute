@@ -9,18 +9,27 @@ use nom::{
     combinator::{map, map_res, opt, peek, recognize},
     error::{context, make_error, ErrorKind, VerboseError},
     multi::{many0_count, many1, separated_list1},
-    sequence::{delimited, pair, preceded, tuple},
+    sequence::{delimited, pair, preceded, separated_pair, tuple},
 };
+use std::str::FromStr;
 
-pub type IResult<I, O> = Result<(I, O), nom::Err<VerboseError<I>>>;
+type ParseError = nom::Err<VerboseError<I>>;
+pub type IResult<I, O> = Result<(I, O), ParseError>;
 
+/// Track length units.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum Unit {
+pub enum Unit {
+    /// Pixels (physical).
     Px,
+    /// Points.
     Pt,
+    /// Inches.
     In,
+    /// Device-independent pixels.
     Dip,
+    /// Percentage of the parent widget's size.
     Percent,
+    /// Fraction of remaining flex space.
     Fractional,
 }
 
@@ -128,15 +137,16 @@ fn track_item(input: &str) -> IResult<&str, TrackItem> {
     )(input)
 }
 
+/// A template for a grid's rows, columns, and gaps.
 #[derive(Debug)]
-struct GridSpec<'a> {
+pub struct GridTemplate<'a> {
     rows: Vec<TrackItem<'a>>,
     columns: Vec<TrackItem<'a>>,
     row_gap: Option<Length>,
     column_gap: Option<Length>,
 }
 
-fn grid_spec(input: &str) -> IResult<&str, GridSpec> {
+fn grid_spec(input: &str) -> IResult<&str, GridTemplate> {
     let (input, _) = space0(input)?;
     let (input, rows) = separated_list1(space1, track_item)(input)?;
     let (input, _) = delimited(space0, char('/'), space0)(input)?;
@@ -148,19 +158,19 @@ fn grid_spec(input: &str) -> IResult<&str, GridSpec> {
     ))(input)?;
 
     let spec = match gaps {
-        None => GridSpec {
+        None => GridTemplate {
             rows,
             columns,
             row_gap: None,
             column_gap: None,
         },
-        Some((gap_1, None)) => GridSpec {
+        Some((gap_1, None)) => GridTemplate {
             rows,
             columns,
             row_gap: Some(gap_1),
             column_gap: Some(gap_1),
         },
-        Some((gap_1, Some(gap_2))) => GridSpec {
+        Some((gap_1, Some(gap_2))) => GridTemplate {
             rows,
             columns,
             row_gap: Some(gap_1),
@@ -170,37 +180,45 @@ fn grid_spec(input: &str) -> IResult<&str, GridSpec> {
     Ok((input, spec))
 }
 
-#[derive(Debug)]
-enum GridTrackLine<'a> {
+/// Identifies a particular grid line.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Line<'a> {
+    /// Identifies a line by its name, as defined in the grid template.
     Named(&'a str),
+    /// Identifies a line by its index, starting from the first line.
     Index(usize),
+    /// Identifies a line by its index, starting from the *last* line.
     RevIndex(usize),
 }
 
-fn track_line(input: &str) -> IResult<&str, GridTrackLine> {
+impl FromStr for Line<'a> {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        todo!()
+    }
+}
+
+fn track_line(input: &str) -> IResult<&str, Line> {
     alt((
-        map(identifier, GridTrackLine::Named),
-        map(integer_usize, GridTrackLine::Index),
-        map(
-            preceded(char('$'), opt(preceded(char('-'), integer_usize))),
-            GridTrackLine::RevIndex,
-        ),
+        map(identifier, Line::Named),
+        map(integer_usize, Line::Index),
+        map(preceded(char('$'), opt(preceded(char('-'), integer_usize))), |x| {
+            Line::RevIndex(x.unwrap_or(0))
+        }),
     ))
 }
 
 #[derive(Debug)]
-enum GridTrackRange<'a> {
-    SingleTrack(GridTrackLine<'a>),
-    Range {
-        start_line: GridTrackLine<'a>,
-        end_line: GridTrackLine<'a>,
-    },
-    RangeTo(GridTrackLine<'a>),
-    RangeFrom(GridTrackLine<'a>),
+enum LineSpan<'a> {
+    SingleTrack(Line<'a>),
+    Range { start_line: Line<'a>, end_line: Line<'a> },
+    RangeTo(Line<'a>),
+    RangeFrom(Line<'a>),
     Full,
 }
 
-fn track_span(input: &str) -> IResult<&str, GridTrackRange> {
+fn track_span(input: &str) -> IResult<&str, LineSpan> {
     let (input, first_line) = opt(track_line)(input)?;
     let (input, _) = space0(input)?;
     let (input, dotdot) = opt(tag(".."))(input)?;
@@ -211,28 +229,55 @@ fn track_span(input: &str) -> IResult<&str, GridTrackRange> {
     };
 
     let range = match (first_line, dotdot, second_line) {
-        (Some(first_line), None, None) => GridTrackRange::SingleTrack(first_line),
-        (Some(first_line), Some(_), None) => GridTrackRange::RangeFrom(first_line),
-        (None, Some(_), Some(second_line)) => GridTrackRange::RangeTo(second_line),
-        (Some(first_line), Some(_), Some(second_line)) => GridTrackRange::Range {
+        // X
+        (Some(first_line), None, None) => LineSpan::SingleTrack(first_line),
+        // X..
+        (Some(first_line), Some(_), None) => LineSpan::RangeFrom(first_line),
+        // ..X
+        (None, Some(_), Some(second_line)) => LineSpan::RangeTo(second_line),
+        // X..X
+        (Some(first_line), Some(_), Some(second_line)) => LineSpan::Range {
             start_line: first_line,
             end_line: second_line,
         },
-        (None, Some(_), None) => GridTrackRange::Full,
-        (None, None, None) => GridTrackRange::Full,
+        // ..
+        (None, Some(_), None) => LineSpan::Full,
+        // nothing?
+        (None, None, None) => LineSpan::Full,
     };
 
     Ok((input, range))
 }
 
-#[derive(Debug)]
-struct GridArea {}
+fn grid_area(input: &str) -> IResult<&str, Area> {
+    map(
+        separated_pair(track_span, delimited(space0, char('/'), space0), track_span)(input)?,
+        |(row_span, column_span)| Area { row_span, column_span },
+    )
+}
 
-fn grid_area(input: &str) -> IResult<&str, GridArea> {}
+/// The parsed form of a grid area specifier.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Area<'a> {
+    row_span: LineSpan<'a>,
+    column_span: LineSpan<'a>,
+}
+
+impl FromStr for Area {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (rest, area) = grid_area(s.trim())?;
+        if !rest.is_empty() {
+            Err(ParseError::Error())
+        }
+        Ok(area)
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use crate::widget::grid::parser::grid_spec;
+    use crate::widget::grid::parser::{grid_area, grid_spec, track_span, Area, Line, LineSpan};
 
     #[test]
     fn grid_specs() {
@@ -250,13 +295,64 @@ mod tests {
     fn grid_spans() {
         // an area of the grid
 
-        "0 / 0"; // row 0, col 0
-        "0"; // row 0 OR col 0
-        "0 .. 2"; // rows 0..2 (0,1) OR cols 0..2 (0,1)
+        // row 0, col 0
+        assert_eq!(
+            grid_area("0 / 0").unwrap().1,
+            Area {
+                row_span: LineSpan::SingleTrack(Line::Index(0)),
+                column_span: LineSpan::SingleTrack(Line::Index(0)),
+            }
+        );
 
-        "last / .."; // all columns of the implicit row after the last, given the following spec: "{auto} [last] / [col-start] 45px 200px 1fr [col-end]"
-        "last / col-start .. col-end"; // same as above
-        "$ / .."; // same as above
-        "$-1.. / .."; // all columns of
+        // row 0 OR col 0
+        assert_eq!(track_span("0").unwrap(), LineSpan::SingleTrack(Line::Index(0)));
+        // last line
+        assert_eq!(track_span("$").unwrap(), LineSpan::SingleTrack(Line::RevIndex(0)));
+        // from line 0 to 2
+        assert_eq!(
+            track_span("0 .. 2").unwrap(),
+            LineSpan::Range {
+                start_line: Line::Index(0),
+                end_line: Line::Index(2)
+            }
+        );
+
+        // all columns of the implicit row after the last, given the following spec: "{auto} [last] / [col-start] 45px 200px 1fr [col-end]"
+        assert_eq!(
+            grid_area("last / ..").unwrap(),
+            Area {
+                row_span: LineSpan::SingleTrack(Line::Named("last")),
+                column_span: LineSpan::Full
+            }
+        );
+
+        // same as above
+        assert_eq!(
+            grid_area("last / col-start .. col-end").unwrap(),
+            Area {
+                row_span: LineSpan::SingleTrack(Line::Named("last")),
+                column_span: LineSpan::Range {
+                    start_line: Line::Named("col-start"),
+                    end_line: Line::Named("col-end")
+                }
+            }
+        );
+
+        // same as above
+        assert_eq!(
+            grid_area("$ / ..").unwrap(),
+            Area {
+                row_span: LineSpan::SingleTrack(Line::RevIndex(0)),
+                column_span: LineSpan::Full
+            }
+        );
+
+        assert_eq!(
+            grid_area("..$-1 / ..").unwrap(),
+            Area {
+                row_span: LineSpan::RangeTo(Line::RevIndex(1)),
+                column_span: LineSpan::Full
+            }
+        );
     }
 }
