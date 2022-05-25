@@ -271,3 +271,96 @@ A big issue is the lack of immediate feedback. To solve this, create an interact
   - for tables, edit boxes, etc.
   - also: alternative content background
 
+## The necessity for an interface designer
+The edit/compile/check cycle is long and tedious: adjusting the size of an element takes >30sec.
+It needs to be faster if we want the UI creation process to be pleasant.
+
+There are several solutions to that:
+- reduce compile times: not really possible 
+- hot-reload rust code: same, not really possible
+- separate structure from styling and hot-reload styling information separately (a.k.a. the CSS way)
+  - has a non-negligible impact on the API
+- use an interface designer
+
+Unfortunately, creating a visual interface designer from scratch is a huge project. However, we could start with 
+a small hot-reloadable DSL to quickly prototype interfaces.
+
+### Another possibility: ad-hoc variables
+
+For instance:
+```rust
+#[composable]
+pub fn new() -> Toolbar {
+  let mut grid = Grid::new();
+  grid.push_row_definition(
+    GridTrackDefinition::new(
+        tweak("Toolbar icon row height", GridLength::Fixed(45.dip()))
+      )
+    );
+  grid.set_row_gap(tweak("Toolbar icon-text gap", 5.dip()));
+  grid.push_row_definition(GridTrackDefinition::new(tweak("Toolbar text row height", GridLength::Fixed(20.dip()))));
+  grid.set_column_gap(tweak(10.dip()));
+  grid.set_column_template(GridLength::Fixed(80.dip()));
+  let inner = Container::new(grid)
+          .background(Paint::from(
+            LinearGradient::new()
+                    .angle(90.degrees())
+                    .stop(Color::from_hex("#D7D5D7"), 0.0)
+                    .stop(Color::from_hex("#F6F5F6"), 1.0),
+          ))
+          .content_padding(10.dip(), 10.dip(), 10.dip(), 10.dip())
+          .centered();
+  Toolbar { inner }
+}
+```
+
+## Grid ad-hoc syntax
+- rows/columns
+- track names
+- template
+- gap size
+- units
+- area
+
+### Option A
+```
+// anonymous tracks
+"R(g=5px):200,200,1*,auto;C:[40px]"
+// named tracks
+"C(g=5):name(min=200,max=300)/type=200dip/value=1fr;R:[auto]"
+// Area (row 3 col 3)
+"3/3"
+// rows 3-6 all cols
+"3-6/*" 
+```
+
+### Option B: CSS grid
+```
+// named track lines
+"[name] 200 [type] 200 [value] 1fr / [header] 6em {4em} [rows-end] / 5px 5px"
+ 
+// anonymous track lines
+"200 200 1fr / {4em} / 5dip"
+
+
+// rows 3..end, cols 3..end
+"3.. / 3.. "
+// entire grid
+"../.."
+// row 3, col 3
+"3/3"
+// past-the-end row, name column
+rows-end / name
+
+```
+
+## Paint & border  syntax
+CSS-like:
+
+```
+fill = "linear-gradient(...)"
+fill = "url(...)"
+fill = "#124522";
+
+border = "1ppx outside" 
+```

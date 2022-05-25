@@ -289,7 +289,7 @@ pub struct EventCtx<'a> {
     // Unfortunately this leads to cancerous code in the methods that access those fields (`as_deref_mut` and other atrocities).
     //
     // Alternatively, we could use another type of context for those utility events, without those fields,
-    // but this adds another method to the `Widget` trait which has a very high ergonomic cost.
+    // but this adds another method to the `Widget` trait which, from an ergonomic standpoint, isn't very good.
     pub(crate) app_ctx: Option<&'a mut AppCtx>,
     pub(crate) event_loop: Option<&'a EventLoopWindowTarget<ExtEvent>>,
     pub(crate) parent_window: Option<&'a mut kyute_shell::window::Window>,

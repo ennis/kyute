@@ -7,25 +7,26 @@ extern crate tracing;
 
 #[macro_use]
 mod env;
-mod bloom;
-mod call_id;
-mod core;
-mod drawing;
-mod font;
-mod layout;
-mod state;
-mod window;
 
 pub mod animation;
 pub mod application;
 pub mod asset;
+mod bloom;
 pub mod cache;
+mod call_id;
+mod core;
+mod drawing;
 pub mod event;
+mod font;
+mod layout;
 pub mod region;
+mod state;
 pub mod style;
 pub mod theme;
+mod tweak;
 pub mod util;
 pub mod widget;
+mod window;
 
 pub use kyute_macros::composable;
 
@@ -42,6 +43,7 @@ pub use crate::{
     event::{Event, InputEvent, InternalEvent, PointerEvent, PointerEventKind},
     font::Font,
     layout::{align_boxes, Alignment, BoxConstraints, Measurements},
+    tweak::tweak,
     widget::Orientation,
     window::Window,
 };

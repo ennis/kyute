@@ -183,14 +183,38 @@ impl<Content: Widget + 'static> Container<Content> {
         self.alignment = Some(alignment);
     }
 
-    /// Aligns the widget in the available space.
+    /// Sets the padding around the content. The values are specified in CSS order (top,right,bottom,left).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // 10dip uniform content padding
+    /// use kyute::UnitExt;
+    /// container = container.content_padding(/*top*/ 10.dip(),
+    ///                                       /*right*/ 10.dip(),
+    ///                                       /*bottom*/ 10.dip(),
+    ///                                       /*left*/ 10.dip());
+    /// ```
     #[must_use]
     pub fn content_padding(mut self, top: Length, right: Length, bottom: Length, left: Length) -> Self {
         self.set_content_padding(top, right, bottom, left);
         self
     }
 
-    /// Aligns the widget in the available space.
+    /// Sets the padding around the content. The values are specified in CSS order (top,right,bottom,left).
+    ///
+    /// Mutable version.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // 10dip uniform content padding
+    /// use kyute::UnitExt;
+    /// container.set_content_padding(/*top*/ 10.dip(),
+    ///                               /*right*/ 10.dip(),
+    ///                               /*bottom*/ 10.dip(),
+    ///                               /*left*/ 10.dip());
+    /// ```
     pub fn set_content_padding(&mut self, top: Length, right: Length, bottom: Length, left: Length) {
         self.padding_top = top;
         self.padding_right = right;

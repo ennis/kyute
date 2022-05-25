@@ -158,7 +158,7 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
                     }
                 };
 
-                dbg!(Measurements::new(scaled_size))
+                Measurements::new(scaled_size)
             }
             ImageContents::Placeholder(ref placeholder) => placeholder.layout(ctx, constraints, env),
         }

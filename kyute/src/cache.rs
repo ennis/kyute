@@ -1022,7 +1022,7 @@ where
     }
 }*/
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
     use super::*;
     use rand::Rng;
@@ -1173,4 +1173,4 @@ mod tests {
             cache = writer.finish();
         }
     }
-}
+}*/

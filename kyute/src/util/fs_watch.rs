@@ -11,16 +11,29 @@ use std::{
 #[derive(Clone)]
 pub struct WatchSubscription(Arc<()>);
 
-struct WatchHandler {
+struct WatchEntry {
+    /// Store the original path because that's how the `notify` crate identifies watched paths.
     original_path: PathBuf,
+    /// Same as `original_path` but canonicalized.
     canonical_path: PathBuf,
-    callback: Box<dyn FnMut(notify::Event) + Send>,
-    subscription: Weak<()>,
+    callbacks: Vec<Box<dyn FnMut(notify::Event) + Send>>,
+    subscription: Arc<()>,
+}
+
+impl WatchEntry {
+    fn new(original_path: PathBuf, canonical_path: PathBuf) -> WatchEntry {
+        WatchEntry {
+            original_path,
+            canonical_path,
+            callbacks: vec![],
+            subscription: Arc::new(()),
+        }
+    }
 }
 
 struct FileWatcherInner {
     watcher: Mutex<RecommendedWatcher>,
-    watch_handlers: Arc<Mutex<HashMap<PathBuf, WatchHandler>>>,
+    entries: Arc<Mutex<HashMap<PathBuf, WatchEntry>>>,
 }
 
 #[derive(Clone)]
@@ -33,20 +46,24 @@ pub(crate) const FILE_SYSTEM_WATCHER: EnvKey<FileSystemWatcher> = EnvKey::new("k
 impl FileSystemWatcher {
     /// Creates a new FileWatcher.
     pub(crate) fn new() -> FileSystemWatcher {
-        let watch_handlers: Arc<Mutex<HashMap<PathBuf, WatchHandler>>> = Arc::new(Mutex::new(HashMap::new()));
-        let watch_handlers_clone = watch_handlers.clone();
+        let watch_entries: Arc<Mutex<HashMap<PathBuf, WatchEntry>>> = Arc::new(Mutex::new(HashMap::new()));
+        let watch_entries_clone = watch_entries.clone();
 
         let watcher = Mutex::new(
             notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
                 match res {
                     Ok(event) => {
-                        let mut handlers = watch_handlers_clone.lock().unwrap();
+                        let mut entries = watch_entries_clone.lock().unwrap();
+
+                        eprintln!("file event: `{:?}`", event);
                         for path in event.paths.iter() {
                             if let Ok(canonical_path) = fs::canonicalize(path) {
                                 // see if there's a watcher for this path
-                                if let Some(entry) = handlers.get_mut(&canonical_path) {
-                                    // OK, invoke callback
-                                    (entry.callback)(event.clone())
+                                if let Some(entry) = entries.get_mut(&canonical_path) {
+                                    // OK, invoke callbacks
+                                    for cb in entry.callbacks.iter_mut() {
+                                        (cb)(event.clone())
+                                    }
                                 }
                             }
                         }
@@ -59,7 +76,7 @@ impl FileSystemWatcher {
 
         FileSystemWatcher(Arc::new(FileWatcherInner {
             watcher,
-            watch_handlers,
+            entries: watch_entries,
         }))
     }
 
@@ -94,33 +111,29 @@ impl FileSystemWatcher {
             .expect("failed to watch for file changes");
 
         // update the list of handlers...
-        let mut watch_list = self.0.watch_handlers.lock().unwrap();
+        let mut watch_list = self.0.entries.lock().unwrap();
         // ... first, remove watch list entries that have expired (subscription dropped), and unwatch them
         watch_list.retain(|p, w| {
-            if w.subscription.strong_count() > 0 {
+            if Arc::strong_count(&w.subscription) > 0 {
                 true
             } else {
-                trace!("removing watcher for path `{:?}`", p);
-                watcher.unwatch(&w.original_path);
+                eprintln!("removing watcher for path `{:?}`", p);
+                watcher.unwatch(&w.canonical_path);
                 false
             }
         });
         // ... then add the new handler to the map
-        let subscription_token = Arc::new(());
-        let handler = WatchHandler {
-            original_path,
-            canonical_path: canonical_path.clone(),
-            callback: Box::new(callback),
-            subscription: Arc::downgrade(&subscription_token),
-        };
-        trace!(
+        eprintln!(
             "watching `{}` (`{}`)",
-            handler.original_path.display(),
-            handler.canonical_path.display()
+            original_path.display(),
+            canonical_path.display()
         );
-        watch_list.insert(canonical_path, handler);
-
-        Ok(WatchSubscription(subscription_token))
+        let entry = watch_list
+            .entry(canonical_path.clone())
+            .or_insert_with(|| WatchEntry::new(original_path, canonical_path));
+        entry.callbacks.push(Box::new(callback));
+        let subscription = entry.subscription.clone();
+        Ok(WatchSubscription(subscription))
     }
 }
 

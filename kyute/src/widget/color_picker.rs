@@ -280,14 +280,16 @@ impl ColorPicker {
     pub fn new(color: Color, params: &ColorPickerParams) -> ColorPicker {
         let mut grid = Grid::new();
 
+        grid = Grid::with_spec("{auto} / 20 300 50 80 / 2 4");
+
         //grid.push_row_definition(GridTrackDefinition::new(GridLength::Fixed(150.dip())));
-        grid.set_row_template(GridLength::Auto);
+        /*grid.set_row_template(GridLength::Auto);
         grid.set_row_gap(2.dip());
         grid.set_column_gap(4.dip());
         grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(20.dip())));
         grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(300.dip())));
         grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(50.dip())));
-        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(80.dip())));
+        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(80.dip())));*/
         grid.set_align_items(AlignItems::Center);
 
         let mut new_color = color;

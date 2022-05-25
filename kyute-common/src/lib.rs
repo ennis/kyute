@@ -135,6 +135,7 @@ impl RectExt for Rect {
 
 /// Length specification.
 #[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "tweakable", derive(Tweakable))]
 #[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
 #[cfg_attr(feature = "serializing", serde(tag = "unit", content = "value"))]
 pub enum Length {
