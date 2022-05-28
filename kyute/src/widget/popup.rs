@@ -1,4 +1,4 @@
-use crate::{cache, core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx, Window};
+use crate::{cache, widget::prelude::*, Window};
 use kyute_shell::winit::window::WindowBuilder;
 
 /// Pop-up window with contents.

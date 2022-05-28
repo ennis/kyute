@@ -4,7 +4,7 @@ use kyute::{
     style::BoxStyle,
     theme,
     widget::{
-        grid::GridTrackDefinition, Button, ColumnHeaders, Container, Flex, Grid, GridLength, Image, Label, Null, Popup,
+        grid::GridTrack, Button, ColumnHeaders, Container, Flex, Grid, GridLength, Image, Label, Null, Popup,
         ScrollArea, TableRow, TableSelection, TableView, TableViewParams, Text, TextEdit, TitledPane, WidgetPod,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Length, Orientation, SideOffsets, Size, UnitExt,
@@ -73,8 +73,8 @@ fn tree_test() -> impl Widget + Clone {
     let params = TableViewParams {
         selection: Some(&mut selection),
         columns: vec![
-            GridTrackDefinition::new(GridLength::Fixed(200.dip())),
-            GridTrackDefinition::new(GridLength::Flex(1.0)),
+            GridTrack::new(GridLength::Fixed(200.dip())),
+            GridTrack::new(GridLength::Flex(1.0)),
         ],
         column_headers: Some(ColumnHeaders::new().add(cell("Name")).add(cell("Description"))),
         main_column: 0,

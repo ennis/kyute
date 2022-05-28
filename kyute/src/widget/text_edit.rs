@@ -1,14 +1,13 @@
 //! Text editor widget.
 use crate::{
     composable,
-    core::{Widget, WindowPaintCtx},
-    drawing::ToSkia,
+    core::{Widget},
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
     style::{BoxStyle, PaintCtxExt},
     theme,
     widget::{prelude::*, Container, Text},
-    Color, Data, GpuFrameCtx, UnitExt,
+    Color, Data, UnitExt,
 };
 use keyboard_types::KeyState;
 use kyute_shell::text::{Attribute, FormattedText, Selection, TextAffinity, TextPosition};

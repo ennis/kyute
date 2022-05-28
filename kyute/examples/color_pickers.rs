@@ -4,7 +4,7 @@ use kyute::{
     style::BoxStyle,
     theme,
     widget::{
-        grid::GridTrackDefinition, ColorPicker, ColorPickerParams, Container, Flex, Grid, GridLength, Image, Label,
+        grid::GridTrack, ColorPicker, ColorPickerParams, Container, Flex, Grid, GridLength, Image, Label,
         Null, Text, TitledPane,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, UnitExt, Widget, WidgetExt,

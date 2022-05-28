@@ -1,11 +1,9 @@
 use crate::{
     application::{AppCtx, ExtEvent},
     cache,
-    core::{DebugNode, FocusState, LayerPaintCtx, PaintDamage, WindowPaintCtx},
-    graal,
-    graal::vk::Handle,
+    core::{DebugNode, LayerPaintCtx, PaintDamage},
     widget::prelude::*,
-    Bloom, GpuFrameCtx, InternalEvent, PointerEventKind, WidgetFilter,
+    Bloom, InternalEvent, PointerEventKind, WidgetFilter,
 };
 use kyute_common::SizeI;
 use kyute_shell::{animation::Layer, application::Application, winit::event_loop::EventLoopWindowTarget};
@@ -180,7 +178,6 @@ pub struct WidgetPod<T: ?Sized = dyn Widget> {
 
 impl<T: Widget + 'static> WidgetPod<T> {
     /// Creates a new `WidgetPod` wrapping the specified widget.
-    #[composable]
     pub fn new(widget: T) -> WidgetPod<T> {
         Self::new_inner(widget, PaintTarget::ParentSurface)
     }
@@ -199,7 +196,6 @@ impl<T: Widget + 'static> WidgetPod<T> {
         Self::new_inner(widget, PaintTarget::Surface { surface })
     }
 
-    #[composable]
     fn new_inner(widget: T, paint_target: PaintTarget) -> WidgetPod<T> {
         let id = widget.widget_id();
         WidgetPod {

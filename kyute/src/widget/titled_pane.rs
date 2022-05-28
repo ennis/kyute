@@ -1,7 +1,7 @@
 use crate::{
     composable, theme,
     widget::{
-        grid::GridTrackDefinition, separator::separator, Clickable, Container, Grid, GridLength, Image, Scaling, Text,
+        grid::GridTrack, separator::separator, Clickable, Container, Grid, GridLength, Image, Scaling, Text,
         WidgetWrapper,
     },
     Alignment, Orientation, Widget, WidgetExt,
@@ -30,7 +30,7 @@ impl TitledPane {
 
     #[composable]
     fn new(collapsed: bool, title: String, content: impl Widget + 'static) -> TitledPane {
-        let mut inner = Grid::column(GridTrackDefinition::new(GridLength::Flex(1.0)));
+        let mut inner = Grid::column(GridTrack::new(GridLength::Flex(1.0)));
 
         //use kyute::style::*;
 
@@ -49,10 +49,10 @@ impl TitledPane {
         let title_bar = {
             let mut grid = Grid::new();
             grid.append_column_definitions([
-                GridTrackDefinition::new(GridLength::Fixed(20.dip())),
-                GridTrackDefinition::new(GridLength::Fixed(3.dip())),
-                GridTrackDefinition::new(GridLength::Flex(1.0)),
-                GridTrackDefinition::new(GridLength::Fixed(20.dip())),
+                GridTrack::new(GridLength::Fixed(20.dip())),
+                GridTrack::new(GridLength::Fixed(3.dip())),
+                GridTrack::new(GridLength::Flex(1.0)),
+                GridTrack::new(GridLength::Fixed(20.dip())),
             ]);
             grid.add_item(0, 0, 0, icon);
             grid.add_item(0, 2, 0, Text::new(title).aligned(Alignment::CENTER_LEFT));

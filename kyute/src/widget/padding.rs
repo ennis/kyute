@@ -1,7 +1,7 @@
 use crate::{
-    core::{DebugNode, WindowPaintCtx},
+    core::{DebugNode},
     widget::prelude::*,
-    GpuFrameCtx, Length, SideOffsets,
+    Length, SideOffsets,
 };
 
 /// A widgets that insets its content by a specified padding.

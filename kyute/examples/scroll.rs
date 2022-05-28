@@ -5,7 +5,7 @@ use kyute::{
     text::FormattedText,
     theme,
     widget::{
-        grid::GridTrackDefinition, Canvas, Container, Flex, Grid, GridLength, Image, Label, Null, ScrollArea, Text,
+        grid::GridTrack, Canvas, Container, Flex, Grid, GridLength, Image, Label, Null, ScrollArea, Text,
         TitledPane,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Point, Size, UnitExt, Widget,

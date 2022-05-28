@@ -1,20 +1,21 @@
 //! Parser for the grid definition/placement language.
 
-use crate::widget::GridLength;
+use crate::widget::{
+    grid::{Area, GridTemplate, Line, LineRange, TrackItem},
+    GridLength,
+};
 use kyute_common::{Length, UnitExt};
 use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, alphanumeric1, char, digit1, space0, space1},
-    combinator::{map, map_res, opt, peek, recognize},
-    error::{context, make_error, ErrorKind, VerboseError},
-    multi::{many0_count, many1, separated_list1},
-    sequence::{delimited, pair, preceded, separated_pair, tuple},
+    combinator::{eof, map, map_res, opt, peek, recognize},
+    error::{context, make_error, ErrorKind, ParseError, VerboseError},
+    multi::{count, many0_count, many1, separated_list1},
+    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
+    Finish, IResult,
 };
 use std::str::FromStr;
-
-type ParseError = nom::Err<VerboseError<I>>;
-pub type IResult<I, O> = Result<(I, O), ParseError>;
 
 /// Track length units.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -33,6 +34,20 @@ pub enum Unit {
     Fractional,
 }
 
+fn parse_standalone<'a, T>(
+    input: &'a str,
+    parser: impl Fn(&'a str) -> IResult<&'a str, T>,
+) -> Result<T, nom::error::Error<String>> {
+    terminated(parser, eof)(input)
+        .map_err(|e| e.to_owned())
+        .finish()
+        .map(|(_, value)| value)
+}
+
+fn integer_i32(input: &str) -> IResult<&str, i32> {
+    map_res(recognize(pair(opt(char('-')), digit1)), |s:&str| s.parse::<i32>())(input)
+}
+
 fn integer_u32(input: &str) -> IResult<&str, u32> {
     map_res(digit1, |s: &str| s.parse::<u32>())(input)
 }
@@ -41,28 +56,31 @@ fn integer_usize(input: &str) -> IResult<&str, usize> {
     map_res(digit1, |s: &str| s.parse::<usize>())(input)
 }
 
-fn unit(input: &str) -> IResult<&str, Unit> {
+/// All units except 'fr'
+fn non_fractional_unit(input: &str) -> IResult<&str, Unit> {
     // px, dip, etc.
-    context(
-        "unit",
-        map(
-            alt((tag("px"), tag("dip"), tag("in"), tag("pt"), tag("%"), tag("fr"))),
-            |s: &str| match s {
-                "px" => Unit::Px,
-                "dip" => Unit::Dip,
-                "%" => Unit::Percent,
-                "pt" => Unit::Pt,
-                "fr" => Unit::Fractional,
-                _ => unreachable!(),
-            },
-        ),
+    map(
+        alt((tag("px"), tag("dip"), tag("in"), tag("pt"), tag("%"))),
+        |s: &str| match s {
+            "px" => Unit::Px,
+            "dip" => Unit::Dip,
+            "%" => Unit::Percent,
+            "in" => Unit::In,
+            "pt" => Unit::Pt,
+            _ => unreachable!(),
+        },
     )(input)
 }
 
+/// All grid track length units
+fn unit(input: &str) -> IResult<&str, Unit> {
+    alt((non_fractional_unit, map(tag("fr"), |_| Unit::Fractional)))(input)
+}
+
 /// Parses a length.
-fn length(input: &str) -> IResult<&str, Length> {
+fn non_fractional_length(input: &str) -> IResult<&str, Length> {
     let (input, len) = integer_u32(input)?;
-    let (input, unit) = opt(unit)(input)?;
+    let (input, unit) = opt(non_fractional_unit)(input)?;
     match unit {
         None => Ok((input, len.dip())),
         Some(Unit::Dip) => Ok((input, len.dip())),
@@ -70,12 +88,12 @@ fn length(input: &str) -> IResult<&str, Length> {
         Some(Unit::In) => Ok((input, len.inch())),
         Some(Unit::Px) => Ok((input, len.px())),
         Some(Unit::Percent) => Ok((input, len.percent())),
-        Some(Unit::Fractional) => Err(nom::Err::Error(make_error(input, ErrorKind::IsNot))),
+        Some(Unit::Fractional) => unreachable!(),
     }
 }
 
 /// Parses a length.
-fn grid_length(input: &str) -> IResult<&str, GridLength> {
+fn length(input: &str) -> IResult<&str, GridLength> {
     let (input, len) = map_res(digit1, |s: &str| s.parse::<u32>())(input)?;
     let (input, unit) = opt(unit)(input)?;
     match unit {
@@ -90,10 +108,7 @@ fn grid_length(input: &str) -> IResult<&str, GridLength> {
 }
 
 fn length_or_auto(input: &str) -> IResult<&str, GridLength> {
-    context(
-        "length_or_auto",
-        alt((map(tag("auto"), |_| GridLength::Auto), grid_length)),
-    )(input)
+    context("length_or_auto", alt((map(tag("auto"), |_| GridLength::Auto), length)))(input)
 }
 
 fn identifier(input: &str) -> IResult<&str, &str> {
@@ -101,7 +116,7 @@ fn identifier(input: &str) -> IResult<&str, &str> {
         "identifier",
         recognize(pair(
             alt((alpha1, tag("_"))),
-            many0_count(alt((alphanumeric1, tag("_")))),
+            many0_count(alt((alphanumeric1, tag("_"), tag("-")))),
         )),
     )(input)
 }
@@ -114,17 +129,14 @@ fn line_tags(input: &str) -> IResult<&str, Vec<&str>> {
     )(input)
 }
 
-/// Track template
-fn track_template(input: &str) -> IResult<&str, GridLength> {
-    context("track_template", delimited(char('{'), grid_length, char('}')))(input)
+/// Implicit track definition
+fn implicit_track(input: &str) -> IResult<&str, GridLength> {
+    context("implicit_track", delimited(char('{'), length, char('}')))(input)
 }
 
-#[derive(Debug)]
-enum TrackItem<'a> {
-    LineTags(Vec<&'a str>),
-    Track(GridLength),
-    TrackTemplate(GridLength),
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// TrackItem
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 fn track_item(input: &str) -> IResult<&str, TrackItem> {
     context(
@@ -132,21 +144,16 @@ fn track_item(input: &str) -> IResult<&str, TrackItem> {
         alt((
             map(line_tags, TrackItem::LineTags),
             map(length_or_auto, TrackItem::Track),
-            map(track_template, TrackItem::TrackTemplate),
+            map(implicit_track, TrackItem::ImplicitTrack),
         )),
     )(input)
 }
 
-/// A template for a grid's rows, columns, and gaps.
-#[derive(Debug)]
-pub struct GridTemplate<'a> {
-    rows: Vec<TrackItem<'a>>,
-    columns: Vec<TrackItem<'a>>,
-    row_gap: Option<Length>,
-    column_gap: Option<Length>,
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// GridTemplate
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn grid_spec(input: &str) -> IResult<&str, GridTemplate> {
+fn grid_template(input: &str) -> IResult<&str, GridTemplate> {
     let (input, _) = space0(input)?;
     let (input, rows) = separated_list1(space1, track_item)(input)?;
     let (input, _) = delimited(space0, char('/'), space0)(input)?;
@@ -154,7 +161,7 @@ fn grid_spec(input: &str) -> IResult<&str, GridTemplate> {
     let (input, _) = space0(input)?;
     let (input, gaps) = opt(preceded(
         delimited(space0, char('/'), space0),
-        tuple((length, opt(length))),
+        tuple((non_fractional_length, opt(preceded(space0, non_fractional_length)))),
     ))(input)?;
 
     let spec = match gaps {
@@ -180,114 +187,182 @@ fn grid_spec(input: &str) -> IResult<&str, GridTemplate> {
     Ok((input, spec))
 }
 
-/// Identifies a particular grid line.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Line<'a> {
-    /// Identifies a line by its name, as defined in the grid template.
-    Named(&'a str),
-    /// Identifies a line by its index, starting from the first line.
-    Index(usize),
-    /// Identifies a line by its index, starting from the *last* line.
-    RevIndex(usize),
-}
-
-impl FromStr for Line<'a> {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        todo!()
+impl<'a> GridTemplate<'a> {
+    pub fn parse(input: &'a str) -> Result<Self, nom::error::Error<String>> {
+        parse_standalone(input, grid_template)
     }
 }
 
-fn track_line(input: &str) -> IResult<&str, Line> {
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Line
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+fn line(input: &str) -> IResult<&str, Line> {
     alt((
+        map(tag("auto"), |_| Line::Auto),
         map(identifier, Line::Named),
-        map(integer_usize, Line::Index),
-        map(preceded(char('$'), opt(preceded(char('-'), integer_usize))), |x| {
-            Line::RevIndex(x.unwrap_or(0))
-        }),
-    ))
+        map(integer_i32, Line::Index),
+        map(preceded(tag("span"), integer_usize), Line::Span),
+    ))(input)
 }
 
-#[derive(Debug)]
-enum LineSpan<'a> {
-    SingleTrack(Line<'a>),
-    Range { start_line: Line<'a>, end_line: Line<'a> },
-    RangeTo(Line<'a>),
-    RangeFrom(Line<'a>),
-    Full,
-}
-
-fn track_span(input: &str) -> IResult<&str, LineSpan> {
-    let (input, first_line) = opt(track_line)(input)?;
-    let (input, _) = space0(input)?;
-    let (input, dotdot) = opt(tag(".."))(input)?;
-    let (input, second_line) = if let Some(dotdot) = dotdot {
-        delimited(space0, opt(track_line), space0)(input)?
-    } else {
-        (input, None)
-    };
-
-    let range = match (first_line, dotdot, second_line) {
-        // X
-        (Some(first_line), None, None) => LineSpan::SingleTrack(first_line),
-        // X..
-        (Some(first_line), Some(_), None) => LineSpan::RangeFrom(first_line),
-        // ..X
-        (None, Some(_), Some(second_line)) => LineSpan::RangeTo(second_line),
-        // X..X
-        (Some(first_line), Some(_), Some(second_line)) => LineSpan::Range {
-            start_line: first_line,
-            end_line: second_line,
-        },
-        // ..
-        (None, Some(_), None) => LineSpan::Full,
-        // nothing?
-        (None, None, None) => LineSpan::Full,
-    };
-
-    Ok((input, range))
-}
-
-fn grid_area(input: &str) -> IResult<&str, Area> {
-    map(
-        separated_pair(track_span, delimited(space0, char('/'), space0), track_span)(input)?,
-        |(row_span, column_span)| Area { row_span, column_span },
-    )
-}
-
-/// The parsed form of a grid area specifier.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Area<'a> {
-    row_span: LineSpan<'a>,
-    column_span: LineSpan<'a>,
-}
-
-impl FromStr for Area {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (rest, area) = grid_area(s.trim())?;
-        if !rest.is_empty() {
-            Err(ParseError::Error())
-        }
-        Ok(area)
+impl<'a> Line<'a> {
+    pub fn parse(input: &'a str) -> Result<Self, nom::error::Error<String>> {
+        parse_standalone(input, line)
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// LineRange
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+fn slash_sep(input: &str) -> IResult<&str, char> {
+    delimited(space0, char('/'), space0)(input)
+}
+
+fn line_range(input: &str) -> IResult<&str, LineRange> {
+    alt((
+        map(separated_pair(line, slash_sep, line), |(start, end)| LineRange {
+            start,
+            end,
+        }),
+        map(line, |line| {
+            // 8.4. Placement Shorthands: the grid-column, grid-row, and grid-area properties
+            // When the second value is omitted, if the first value is a <custom-ident>, the grid-row-end/grid-column-end longhand is also set to that <custom-ident>; otherwise, it is set to auto.
+            if let Line::Named(ident) = line {
+                LineRange {
+                    start: Line::from(ident),
+                    end: Line::from(ident),
+                }
+            } else {
+                LineRange {
+                    start: line,
+                    end: Line::Auto,
+                }
+            }
+        }),
+    ))(input)
+}
+
+impl<'a> LineRange<'a> {
+    pub fn parse(input: &'a str) -> Result<Self, nom::error::Error<String>> {
+        parse_standalone(input, line_range)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Area
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+fn area(input: &str) -> IResult<&str, Area> {
+    map(
+        tuple((
+            line,
+            opt(preceded(slash_sep, line)),
+            opt(preceded(slash_sep, line)),
+            opt(preceded(slash_sep, line)),
+        )),
+        |lines| {
+            match lines {
+                (row_start, Some(column_start), Some(row_end), Some(column_end)) => Area {
+                    row: LineRange {
+                        start: row_start,
+                        end: row_end,
+                    },
+                    column: LineRange {
+                        start: column_start,
+                        end: column_end,
+                    },
+                },
+                (row_start, Some(column_start), Some(row_end), None) => {
+                    // 8.4. Placement Shorthands: the grid-column, grid-row, and grid-area properties
+                    // When grid-column-end is omitted, if grid-column-start is a <custom-ident>, grid-column-end is set to that <custom-ident>; otherwise, it is set to auto.
+                    Area {
+                        row: LineRange {
+                            start: row_start,
+                            end: row_end,
+                        },
+                        column: LineRange {
+                            start: column_start,
+                            end: if let Line::Named(column_start_ident) = column_start {
+                                Line::Named(column_start_ident)
+                            } else {
+                                Line::Auto
+                            },
+                        },
+                    }
+                }
+                (row_start, Some(column_start), None, None) => {
+                    // 8.4. Placement Shorthands: the grid-column, grid-row, and grid-area properties
+                    // When grid-row-end is omitted, if grid-row-start is a <custom-ident>, grid-row-end is set to that <custom-ident>; otherwise, it is set to auto.
+                    Area {
+                        row: LineRange {
+                            start: row_start,
+                            end: if let Line::Named(row_start_ident) = row_start {
+                                Line::Named(row_start_ident)
+                            } else {
+                                Line::Auto
+                            },
+                        },
+                        column: LineRange {
+                            start: column_start,
+                            end: if let Line::Named(column_start_ident) = column_start {
+                                Line::Named(column_start_ident)
+                            } else {
+                                Line::Auto
+                            },
+                        },
+                    }
+                }
+                (row_start, None, None, None) => {
+                    // 8.4. Placement Shorthands: the grid-column, grid-row, and grid-area properties
+                    // When grid-column-start is omitted, if grid-row-start is a <custom-ident>, all four longhands are set to that value. Otherwise, it is set to auto.
+                    let line = if let Line::Named(row_start_ident) = row_start {
+                        Line::Named(row_start_ident)
+                    } else {
+                        Line::Auto
+                    };
+
+                    Area {
+                        row: LineRange {
+                            start: row_start,
+                            end: line,
+                        },
+                        column: LineRange { start: line, end: line },
+                    }
+                }
+                _ => unreachable!(),
+            }
+        },
+    )(input)
+}
+
+impl<'a> Area<'a> {
+    pub fn parse(input: &'a str) -> Result<Self, nom::error::Error<String>> {
+        parse_standalone(input, area)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Tests
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[cfg(test)]
 mod tests {
-    use crate::widget::grid::parser::{grid_area, grid_spec, track_span, Area, Line, LineSpan};
+    use crate::widget::grid::{
+        Area, GridTemplate, Line,
+        LineRange,
+    };
 
     #[test]
     fn grid_specs() {
-        let (_, r) = grid_spec("[start] 45px {45px} [end] / [name] 200px [type] 200px [value] 1fr").unwrap();
+        let r = GridTemplate::parse("[start] 45px {45px} [end] / [name] 200px [type] 200px [value] 1fr").unwrap();
         eprintln!("{:?}", r);
 
-        let (_, r) = grid_spec("45px {45px} / 200px 200px 1fr / 2dip 2dip").unwrap();
+        let r = GridTemplate::parse("45px {45px} / 200px 200px 1fr / 2dip 2dip").unwrap();
         eprintln!("{:?}", r);
 
-        let (_, r) = grid_spec("40 20 / {55} / 5 10").unwrap();
+        let r = GridTemplate::parse("40 20 / {55} / 5 10").unwrap();
         eprintln!("{:?}", r);
     }
 
@@ -297,61 +372,49 @@ mod tests {
 
         // row 0, col 0
         assert_eq!(
-            grid_area("0 / 0").unwrap().1,
+            Area::parse("0 / 0").unwrap(),
             Area {
-                row_span: LineSpan::SingleTrack(Line::Index(0)),
-                column_span: LineSpan::SingleTrack(Line::Index(0)),
+                row: LineRange {
+                    start: Line::Index(0),
+                    end: Line::Auto
+                },
+                column: LineRange {
+                    start: Line::Index(0),
+                    end: Line::Auto
+                },
             }
         );
 
         // row 0 OR col 0
-        assert_eq!(track_span("0").unwrap(), LineSpan::SingleTrack(Line::Index(0)));
-        // last line
-        assert_eq!(track_span("$").unwrap(), LineSpan::SingleTrack(Line::RevIndex(0)));
+        assert_eq!(
+            LineRange::parse("0").unwrap(),
+            LineRange {
+                start: Line::Index(0),
+                end: Line::Auto
+            }
+        );
+
         // from line 0 to 2
         assert_eq!(
-            track_span("0 .. 2").unwrap(),
-            LineSpan::Range {
-                start_line: Line::Index(0),
-                end_line: Line::Index(2)
+            LineRange::parse("0 / 2").unwrap(),
+            LineRange {
+                start: Line::Index(0),
+                end: Line::Index(2)
             }
         );
 
-        // all columns of the implicit row after the last, given the following spec: "{auto} [last] / [col-start] 45px 200px 1fr [col-end]"
+        // all columns of the implicit row after the last, given the following spec: "[last] / [col-start] 45px 200px 1fr [col-end]"
         assert_eq!(
-            grid_area("last / ..").unwrap(),
+            Area::parse("last / 0 / span 1 / -1").unwrap(),
             Area {
-                row_span: LineSpan::SingleTrack(Line::Named("last")),
-                column_span: LineSpan::Full
-            }
-        );
-
-        // same as above
-        assert_eq!(
-            grid_area("last / col-start .. col-end").unwrap(),
-            Area {
-                row_span: LineSpan::SingleTrack(Line::Named("last")),
-                column_span: LineSpan::Range {
-                    start_line: Line::Named("col-start"),
-                    end_line: Line::Named("col-end")
+                row: LineRange {
+                    start: Line::Named("last"),
+                    end: Line::Span(1)
+                },
+                column: LineRange {
+                    start: Line::Index(0),
+                    end: Line::Index(-1)
                 }
-            }
-        );
-
-        // same as above
-        assert_eq!(
-            grid_area("$ / ..").unwrap(),
-            Area {
-                row_span: LineSpan::SingleTrack(Line::RevIndex(0)),
-                column_span: LineSpan::Full
-            }
-        );
-
-        assert_eq!(
-            grid_area("..$-1 / ..").unwrap(),
-            Area {
-                row_span: LineSpan::RangeTo(Line::RevIndex(1)),
-                column_span: LineSpan::Full
             }
         );
     }

@@ -617,8 +617,6 @@ impl<'a> EventCtx<'a> {
     }
 }
 
-pub struct WindowPaintCtx {}
-
 #[derive(Debug)]
 pub struct ImageAccess {
     pub id: ImageId,

@@ -1,8 +1,8 @@
 use crate::{
-    core::{DebugNode, WindowPaintCtx},
+    core::{DebugNode},
     style::{BoxStyle, Paint, PaintCtxExt, VisualState},
     widget::prelude::*,
-    Color, EnvRef, GpuFrameCtx, Length, RoundToPixel, SideOffsets, UnitExt,
+    Color, EnvRef, Length, RoundToPixel, SideOffsets, UnitExt,
 };
 use std::cell::RefCell;
 

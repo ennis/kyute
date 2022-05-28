@@ -1,7 +1,7 @@
 use crate::{
-    core::{DebugNode, WindowPaintCtx},
+    core::{DebugNode},
     widget::prelude::*,
-    GpuFrameCtx, Length,
+    Length,
 };
 
 #[derive(Clone)]

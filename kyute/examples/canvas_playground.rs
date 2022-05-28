@@ -6,7 +6,7 @@ use kyute::{
     text::{Attribute, FormattedText},
     theme,
     widget::{
-        grid::{AlignItems, GridTrackDefinition},
+        grid::{AlignItems, GridTrack},
         Action, Canvas, ConstrainedBox, Container, ContextMenu, DragController, Flex, Formatter, Grid, GridLength,
         Image, Label, Menu, MenuItem, Null, Slider, Text, TextEdit, TextInput, Thumb, TitledPane, ValidationResult,
     },
@@ -27,24 +27,41 @@ fn canvas_playground() -> impl Widget + Clone {
     #[state]
     let mut tmp_offset = Offset::zero();
 
-    let mut grid = Grid::new();
-    let col_label = GridTrackDefinition::new(GridLength::Fixed(200.dip()));
+    let mut grid = Grid::with_template("auto-flow auto / 200 5 1fr");
+    /*let col_label = GridTrackDefinition::new(GridLength::Fixed(200.dip()));
     let col_sep = GridTrackDefinition::new(GridLength::Fixed(5.dip()));
     let col_widgets = GridTrackDefinition::new(GridLength::Flex(1.0));
-
     grid.push_column_definition(col_label);
     grid.push_column_definition(col_sep);
-    grid.push_column_definition(col_widgets);
+    grid.push_column_definition(col_widgets);*/
+
     grid.set_align_items(AlignItems::Baseline);
 
-    grid.add_item(0, 0, 0, Label::new("Offset X"));
+    grid.insert(
+        (
+            ////////////////////
+            Label::new("Offset X"),
+            (),
+            TextInput::number(offset.x).on_value_changed(|x| offset.x = x),
+            ////////////////////
+            Label::new("Offset Y"),
+            (),
+            TextInput::number(offset.y).on_value_changed(|y| offset.y = y),
+            ////////////////////
+            Label::new("Scale"),
+            (),
+            TextInput::number(scale).on_value_changed(|s| scale = s)
+        ),
+    );
+
+    /*grid.add_item(0, 0, 0, Label::new("Offset X"));
     grid.add_item(0, 2, 0, TextInput::number(offset.x).on_value_changed(|x| offset.x = x));
 
     grid.add_item(1, 0, 0, Label::new("Offset Y"));
     grid.add_item(1, 2, 0, TextInput::number(offset.y).on_value_changed(|y| offset.y = y));
 
     grid.add_item(2, 0, 0, Label::new("Scale"));
-    grid.add_item(2, 2, 0, TextInput::number(scale).on_value_changed(|s| scale = s));
+    grid.add_item(2, 2, 0, TextInput::number(scale).on_value_changed(|s| scale = s));*/
 
     let mut canvas = Canvas::new();
     let canvas_transform = offset.to_transform().then_scale(scale, scale);
@@ -59,7 +76,7 @@ fn canvas_playground() -> impl Widget + Clone {
         .on_delta(|delta| offset = tmp_offset + inv_transform.transform_vector(delta));
 
     // context menu handler
-    grid.push_row_definition(GridTrackDefinition::new(GridLength::Flex(1.0)));
+    grid.push_row_definition(GridTrack::new(GridLength::Flex(1.0)));
     let add_node_action = Action::new().on_triggered(|| eprintln!("add node"));
     let add_comment_action = Action::new().on_triggered(|| eprintln!("add comment"));
 
@@ -77,7 +94,7 @@ fn canvas_playground() -> impl Widget + Clone {
     let context_menu_area = Container::new(ContextMenu::new(context_menu, drag_controller))
         .box_style(BoxStyle::new().border(Border::inside(2.px()).paint(Color::from_hex("#FFB500"))));
 
-    grid.add_item(3, .., 0, context_menu_area);
+    grid.place(GridArea::after_last_row(), context_menu_area);
 
     Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))
 }

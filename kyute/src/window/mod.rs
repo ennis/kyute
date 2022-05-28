@@ -5,7 +5,7 @@ use crate::{
     animation::PaintCtx,
     application::AppCtx,
     cache, composable,
-    core::{DebugNode, FocusState, WindowPaintCtx},
+    core::{DebugNode, FocusState},
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind, WheelDeltaMode, WheelEvent},
     graal,
     graal::{vk::Handle, MemoryLocation},
@@ -15,18 +15,16 @@ use crate::{
     RoundToPixel, Size, Widget, WidgetId,
 };
 use keyboard_types::{KeyState, Modifiers};
-use kyute_common::Transform;
 use kyute_shell::{
     application::Application,
     winit,
     winit::{
         event::{DeviceId, MouseScrollDelta, WindowEvent},
-        platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
         window::WindowBuilder,
     },
 };
 use skia_safe as sk;
-use std::{cell::RefCell, env, mem, sync::Arc, time::Instant};
+use std::{cell::RefCell, sync::Arc, time::Instant};
 use tracing::trace;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

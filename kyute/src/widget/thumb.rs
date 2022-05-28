@@ -1,8 +1,7 @@
 use crate::{
-    core::WindowPaintCtx,
     event::{PointerButton, PointerButtons, PointerEventKind},
     widget::prelude::*,
-    GpuFrameCtx, Signal,
+    Signal,
 };
 
 /// Widget that provides feedback on the pointer position and status when the pointer is over it.

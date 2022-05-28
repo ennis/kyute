@@ -1,11 +1,10 @@
 //! Tree views.
 use crate::{
     cache,
-    core::WindowPaintCtx,
     style::{BoxStyle, Paint},
     theme,
     widget::{
-        grid::GridTrackDefinition, prelude::*, Clickable, Container, DragController, Grid, GridLength, GridSpan, Image,
+        grid::GridTrack, prelude::*, Clickable, Container, DragController, Grid, GridLength, Image,
         Null, Scaling, WidgetWrapper,
     },
     Data, EnvRef, GpuFrameCtx, Length, UnitExt, WidgetExt,
@@ -117,7 +116,7 @@ pub struct TableViewParams<'a, Id> {
     pub selection: Option<&'a mut TableSelection<Id>>,
 
     /// Table columns.
-    pub columns: Vec<GridTrackDefinition>,
+    pub columns: Vec<GridTrack>,
 
     /// Column headers.
     ///
@@ -175,7 +174,7 @@ impl<'a, Id> Default for TableViewParams<'a, Id> {
     fn default() -> Self {
         TableViewParams {
             selection: None,
-            columns: vec![GridTrackDefinition::new(GridLength::Flex(1.0))],
+            columns: vec![GridTrack::new(GridLength::Flex(1.0))],
             column_headers: None,
             main_column: 0,
             row_height: GridLength::Auto,
@@ -214,7 +213,7 @@ impl TableView {
         // insert row for column headers
         if let Some(headers) = params.column_headers {
             // header row doesn't follow the specified height of the other rows.
-            grid.push_row_definition(GridTrackDefinition::new(GridLength::Auto));
+            grid.push_row_definition(GridTrack::new(GridLength::Auto));
             // insert headers
             for (i, header) in headers.widgets.into_iter().enumerate() {
                 grid.add_item_pod(0, i, header);
@@ -303,7 +302,7 @@ impl TableView {
                         })
                     });
 
-                    let mut widget_with_chevron = Grid::row(GridTrackDefinition::new(GridLength::Auto));
+                    let mut widget_with_chevron = Grid::row(GridTrack::new(GridLength::Auto));
                     widget_with_chevron.add_item(0, 0, 0, icon);
                     widget_with_chevron.add_item(0, 1, 0, row.widget);
                     grid.add_item(

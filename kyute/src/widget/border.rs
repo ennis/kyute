@@ -1,29 +1,10 @@
 //! Baseline alignment.
 use crate::{
-    core::WindowPaintCtx,
     style,
     style::BorderPosition,
     widget::{prelude::*, Container, Null},
-    GpuFrameCtx, RoundToPixel, SideOffsets,
+    RoundToPixel, SideOffsets,
 };
-use kyute_shell::animation::Layer;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Layer delegate
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*pub struct BorderLayerDelegate {
-    border: style::Border,
-}
-
-impl LayerDelegate for BorderLayerDelegate {
-    fn draw(&self, ctx: &mut PaintCtx) {
-        use skia_safe as sk;
-        // TODO support non zero radius
-        let radius = sk::Vector::new(0.0, 0.0);
-        self.border.draw(ctx, ctx.bounds, [radius, radius, radius, radius]);
-    }
-}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Widget definition

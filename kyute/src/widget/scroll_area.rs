@@ -1,9 +1,8 @@
 use crate::{
-    core::WindowPaintCtx,
     event::WheelDeltaMode,
     style::BoxStyle,
     widget::{
-        grid::GridTrackDefinition, prelude::*, Container, DragController, Grid, GridLength, LayoutInspector, Null,
+        grid::GridTrack, prelude::*, Container, DragController, Grid, GridLength, LayoutInspector, Null,
         Viewport,
     },
     Color, Length, UnitExt,
@@ -29,15 +28,7 @@ impl ScrollArea {
         let scroll = Signal::new();
 
         // container grid: one row
-        let mut grid_container = {
-            let mut grid = Grid::new();
-            grid.push_row_definition(GridTrackDefinition::new(GridLength::Flex(1.0)));
-            grid.append_column_definitions([
-                GridTrackDefinition::new(GridLength::Flex(1.0)),
-                GridTrackDefinition::new(GridLength::Fixed(5.dip())),
-            ]);
-            LayoutInspector::new(grid)
-        };
+        let mut grid_container = LayoutInspector::new(Grid::with_template("1fr / 1fr 5dip"));
 
         // HACK: even if the content already fits in the grid container, we still have to wrap
         // the content widget in a Viewport, because otherwise the size returned by the LayoutInspector
@@ -98,8 +89,8 @@ impl ScrollArea {
 
         let scroll_bar = Viewport::new(scroll_thumb).transform(Offset::new(0.0, thumb_pos).to_transform());
 
-        grid_container.contents_mut().add_item(0, .., 0, content_viewport);
-        grid_container.contents_mut().add_item(0, 1, 1, scroll_bar);
+        grid_container.contents_mut().insert(content_viewport.grid_area((0, ..)));
+        grid_container.contents_mut().insert( scroll_bar.grid_area((0,1)));
         ScrollArea {
             inner: grid_container,
             scroll,

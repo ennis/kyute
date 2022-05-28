@@ -103,7 +103,21 @@ impl RoundToPixel for Rect {
 
 /// Additional methods for rectangles.
 pub trait RectExt {
+    /// Insets the rectangle so that it is centered on the inner border stroke of the specified
+    /// width.
     ///
+    /// The returned Rect can be used to draw border lines inside the original Rect.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let rect = Rect::new(Point::origin(), Size::new(10.0, 10.0));
+    /// // Rect centered on the 1dip-wide border stroke inside `rect`.
+    /// let border_stroke_rect = rect.stroke_inset(1.0);
+    ///
+    /// // use the adjusted rect to draw a border of width 1 inside the `rect`.
+    /// canvas.draw_rect(border_stroke_rect, 1.0);
+    /// ```
     fn stroke_inset(self, width: f64) -> Self;
     /// Returns the top-left corner of the rectangle (assumes lower y is up).
     fn top_left(&self) -> Point;
@@ -135,7 +149,6 @@ impl RectExt for Rect {
 
 /// Length specification.
 #[derive(Copy, Clone, PartialEq)]
-#[cfg_attr(feature = "tweakable", derive(Tweakable))]
 #[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
 #[cfg_attr(feature = "serializing", serde(tag = "unit", content = "value"))]
 pub enum Length {
@@ -145,10 +158,6 @@ pub enum Length {
     /// Device-independent pixels (DIPs), close to 1/96th of an inch.
     #[cfg_attr(feature = "serializing", serde(rename = "dip"))]
     Dip(f64),
-    // Inches (logical inches? approximate inches?).
-    // TODO remove
-    //#[cfg_attr(feature = "serializing", serde(rename = "in"))]
-    //In(f64),
     /// Length relative to the parent element.
     Proportional(f64),
 }
@@ -165,9 +174,6 @@ impl fmt::Debug for Length {
             Length::Dip(v) => {
                 write!(f, "{}dip", v)
             }
-            /*Length::In(v) => {
-                write!(f, "{}in", v)
-            }*/
             Length::Proportional(v) => {
                 write!(f, "{}%", v * 100.0)
             }
@@ -182,7 +188,6 @@ impl Length {
         match v {
             Length::Px(ref mut v)
             | Length::Dip(ref mut v)
-            //| Length::In(ref mut v)
             | Length::Proportional(ref mut v) => {
                 *v *= by;
             }
@@ -199,7 +204,6 @@ impl Length {
     pub fn to_dips(self, scale_factor: f64, parent_length_dips: f64) -> f64 {
         match self {
             Length::Px(x) => x / scale_factor,
-            // Length::In(x) => 96.0 * x,
             Length::Dip(x) => x,
             Length::Proportional(x) => x * parent_length_dips,
         }
@@ -213,7 +217,6 @@ impl Neg for Length {
         match self {
             Length::Px(v) => Length::Px(-v),
             Length::Dip(v) => Length::Dip(-v),
-            //Length::In(v) => Length::In(-v),
             Length::Proportional(v) => Length::Proportional(-v),
         }
     }
@@ -255,7 +258,7 @@ impl From<f64> for Length {
     }
 }
 
-/// Trait for values convertible to DIPs.
+/// Trait to interpret numeric values as units of measure.
 pub trait UnitExt {
     /// Interprets the value as a length in device-independent pixels (1/96 inch).
     fn dip(self) -> Length;
@@ -265,12 +268,37 @@ pub trait UnitExt {
     fn px(self) -> Length;
     /// Interprets the value as a length in points (1/72 in, 96/72 dip (4/3))
     fn pt(self) -> Length;
+    /// Interprets the value as a length expressed as a percentage of the parent element's length.
+    ///
+    /// The precise definition of "parent element" depends on the context in which the length is used.
     fn percent(self) -> Length;
+    /// Interprets the value as an angle expressed in degrees.
     fn degrees(self) -> Angle;
+    /// Interprets the value as an angle expressed in radians.
     fn radians(self) -> Angle;
 }
 
+/// Point-to-DIP conversion factor.
+///
+/// # Examples
+///
+/// ```rust
+/// use kyute_common::PT_TO_DIP;
+/// let size_in_points = 12.0;
+/// let size_in_dips = size_in_points * PT_TO_DIP;
+/// ```
 pub const PT_TO_DIP: f64 = 4.0 / 3.0;
+
+
+/// Inches-to-DIP conversion factor.
+///
+/// # Examples
+///
+/// ```rust
+/// use kyute_common::IN_TO_DIP;
+/// let size_in_inches = 2.5;
+/// let size_in_dips = size_in_inches * IN_TO_DIP;
+/// ```
 pub const IN_TO_DIP: f64 = 96.0;
 
 impl UnitExt for f32 {

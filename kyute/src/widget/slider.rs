@@ -2,12 +2,11 @@
 //! a line.
 use crate::{
     align_boxes,
-    core::WindowPaintCtx,
     event::PointerEventKind,
     style::{BoxStyle, PaintCtxExt, Path},
     theme,
     widget::prelude::*,
-    GpuFrameCtx, SideOffsets, Signal,
+    SideOffsets, Signal,
 };
 use kyute_common::Color;
 use std::{

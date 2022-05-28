@@ -1,14 +1,13 @@
 use crate::{
     animation::PaintCtx,
-    cache, composable,
-    core::{DebugNode, WindowPaintCtx},
+    composable,
+    core::{DebugNode},
     drawing::ToSkia,
-    make_uniform_data, theme, BoxConstraints, Color, Data, EnvRef, Environment, Event, EventCtx, Font, GpuFrameCtx,
+    make_uniform_data, theme, BoxConstraints, Color, Data, EnvRef, Environment, Event, EventCtx, Font,
     LayoutCache, LayoutCtx, Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
 use euclid::Rect;
 use kyute_shell::{
-    animation::Layer,
     text::{
         FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
         RasterizationOptions,
@@ -17,7 +16,7 @@ use kyute_shell::{
 use lazy_static::lazy_static;
 use skia_safe as sk;
 use std::{
-    cell::{Ref, RefCell},
+    cell::{Ref},
     ptr,
 };
 use threadbound::ThreadBound;

@@ -1,12 +1,11 @@
 //! Text elements
 use crate::{
     composable,
-    core::WindowPaintCtx,
     env::Environment,
     event::Event,
     theme,
     widget::{prelude::*, Text},
-    Color, Data, EnvRef, GpuFrameCtx,
+    Color, Data, EnvRef,
 };
 use kyute_shell::text::FormattedText;
 

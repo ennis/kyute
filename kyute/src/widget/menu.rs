@@ -1,7 +1,6 @@
-use crate::{composable, event::PointerButton, widget::prelude::*, Data, GpuFrameCtx, PointerEventKind, WidgetId};
+use crate::{composable, event::PointerButton, widget::prelude::*, Data, PointerEventKind, WidgetId};
 use std::cell::Cell;
 
-use crate::core::WindowPaintCtx;
 pub use kyute_shell::Shortcut;
 
 #[derive(Clone, Debug, Data)]

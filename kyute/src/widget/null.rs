@@ -1,4 +1,4 @@
-use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx};
+use crate::{ widget::prelude::*};
 
 /// Null widget. Takes no space, ignores all events.
 #[derive(Clone, Debug)]

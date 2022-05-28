@@ -1,5 +1,5 @@
 //! Baseline alignment.
-use crate::{core::WindowPaintCtx, widget::prelude::*, GpuFrameCtx, RoundToPixel};
+use crate::{widget::prelude::*, RoundToPixel};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Definition

@@ -1,4 +1,4 @@
-use crate::{core::WindowPaintCtx, event::PointerEventKind, widget::prelude::*, GpuFrameCtx, Signal};
+use crate::{event::PointerEventKind, widget::prelude::*, Signal};
 
 #[derive(Clone)]
 pub struct Clickable<Content> {

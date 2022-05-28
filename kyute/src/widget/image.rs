@@ -1,11 +1,11 @@
 use crate::{
     cache,
-    core::{DebugNode, WindowPaintCtx},
+    core::{DebugNode},
     drawing,
     drawing::ToSkia,
     util::fs_watch::watch_path,
     widget::{prelude::*, Null},
-    AssetLoader, GpuFrameCtx, SizeI,
+    AssetLoader, SizeI,
 };
 use kyute_common::Color;
 use skia_safe as sk;

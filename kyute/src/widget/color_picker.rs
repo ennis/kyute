@@ -1,15 +1,14 @@
 use crate::{
-    core::WindowPaintCtx,
     drawing::ToSkia,
     make_uniform_data, style,
     style::{BoxStyle, Paint, PaintCtxExt},
     theme,
     widget::{
-        grid::{AlignItems, GridTrackDefinition},
+        grid,
+        grid::{AlignItems, GridLayoutExt, GridTrack},
         prelude::*,
         slider::{SliderBase, SliderTrack},
-        Border, Clickable, Container, Grid, GridLength, GridRow, Null, Text, TextInput, ValidationResult,
-        WidgetWrapper,
+        Border, Clickable, Container, Grid, GridLength, Null, Text, TextInput, ValidationResult, WidgetWrapper,
     },
     Color, GpuFrameCtx, PointerEventKind, UnitExt, WidgetExt,
 };
@@ -232,13 +231,15 @@ enum ColorComponent {
     A,
 }
 
-#[composable]
-fn color_component_slider(component: ColorComponent, color: &mut Color) -> GridRow {
+/*#[composable]
+fn color_component_slider(
+    component: ColorComponent,
+    color: &mut Color,
+) -> (impl grid::Insertable, impl grid::Insertable, impl grid::Insertable) {
     let label;
     let slider;
     let text_input;
 
-    let (mut r, mut g, mut b, mut a) = color.0.into_linear().into_components();
     match component {
         ColorComponent::R => {
             label = "R";
@@ -266,45 +267,55 @@ fn color_component_slider(component: ColorComponent, color: &mut Color) -> GridR
         }
     };
 
-    *color = Color(LinSrgba::new(r, g, b, a).into_encoding());
-
-    let mut row = GridRow::new();
-    row.add(0, Text::new(label).aligned(Alignment::CENTER_RIGHT));
-    row.add(1, slider);
-    row.add(2, text_input);
-    row
-}
+    let label = Text::new(label).aligned(Alignment::CENTER_RIGHT).grid_row("label");
+    (label, slider, text_input)
+}*/
 
 impl ColorPicker {
     #[composable]
     pub fn new(color: Color, params: &ColorPickerParams) -> ColorPicker {
         let mut grid = Grid::new();
 
-        grid = Grid::with_spec("{auto} / 20 300 50 80 / 2 4");
-
-        //grid.push_row_definition(GridTrackDefinition::new(GridLength::Fixed(150.dip())));
-        /*grid.set_row_template(GridLength::Auto);
-        grid.set_row_gap(2.dip());
-        grid.set_column_gap(4.dip());
-        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(20.dip())));
-        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(300.dip())));
-        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(50.dip())));
-        grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(80.dip())));*/
+        grid = Grid::with_template("auto-flow auto / [label] 20 [slider] 300 50 80 / 2 4");
         grid.set_align_items(AlignItems::Center);
 
         let mut new_color = color;
-        grid.add_row(color_component_slider(ColorComponent::R, &mut new_color));
-        grid.add_row(color_component_slider(ColorComponent::G, &mut new_color));
-        grid.add_row(color_component_slider(ColorComponent::B, &mut new_color));
+        let (mut r, mut g, mut b, mut a) = color.0.into_linear().into_components();
+
+        grid.insert((
+            ////////////////////////////////////
+            Text::new("R").aligned(Alignment::CENTER_RIGHT).grid_column(0),
+            ColorSlider::rgb(r, LinSrgba::new(0.0, g, b, 1.0), LinSrgba::new(1.0, g, b, 1.0))
+                .on_value_changed(|v| r = v),
+            TextInput::number(r as f64).on_value_changed(|v| r = v as f32),
+            ////////////////////////////////////
+            Text::new("G").aligned(Alignment::CENTER_RIGHT).grid_column(0),
+            ColorSlider::rgb(g, LinSrgba::new(r, 0.0, b, 1.0), LinSrgba::new(r, 1.0, b, 1.0))
+                .on_value_changed(|v| g = v),
+            TextInput::number(g as f64).on_value_changed(|v| g = v as f32),
+            ////////////////////////////////////
+            Text::new("B").aligned(Alignment::CENTER_RIGHT).grid_column(0),
+            ColorSlider::rgb(b, LinSrgba::new(r, g, 0.0, 1.0), LinSrgba::new(r, g, 1.0, 1.0))
+                .on_value_changed(|v| b = v),
+            TextInput::number(b as f64).on_value_changed(|v| b = v as f32),
+        ));
+
         if params.enable_alpha {
-            grid.add_row(color_component_slider(ColorComponent::A, &mut new_color));
+            grid.insert((
+                Text::new("A").aligned(Alignment::CENTER_RIGHT).grid_column(0),
+                ColorSlider::rgb(a, LinSrgba::new(r, g, b, 0.0), LinSrgba::new(r, g, b, 1.0))
+                    .on_value_changed(|v| a = v),
+                TextInput::number(a as f64).on_value_changed(|v| a = v as f32),
+            ));
         }
 
-        grid.add_item(.., 3, 0, ColorSwatch::new(100.percent(), 100.percent(), color));
+        new_color = Color(LinSrgba::new(r, g, b, a).into_encoding());
+
+        grid.insert(ColorSwatch::new(100.percent(), 100.percent(), new_color).grid_area(3));
 
         if params.enable_hex_input {
             let hex_input = TextInput::new(new_color, HexColorFormatter).on_value_changed(|c| new_color = c);
-            grid.add_item(grid.row_count(), 3, 0, hex_input);
+            grid.insert(hex_input.grid_column(4));
         }
 
         let color_changed = if new_color != color { Some(new_color) } else { None };

@@ -44,7 +44,7 @@ pub use container::Container;
 pub use drop_down::DropDown;
 pub use env_override::EnvOverride;
 pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
-pub use grid::{Grid, GridLength, GridRow, GridSpan};
+pub use grid::{Grid, GridLength};
 pub use image::{Image, Scaling};
 pub use kyute_macros::WidgetWrapper;
 pub use label::Label;

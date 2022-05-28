@@ -1,7 +1,6 @@
 //! Tweakable numeric literals.
 use crate::{cache, composable, util};
-use anyhow::anyhow;
-use std::{fs, ops::RangeFull};
+use std::{fs};
 
 /// A type usable with `tweak!`.
 pub trait Tweakable: Clone {

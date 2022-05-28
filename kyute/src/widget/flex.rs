@@ -1,9 +1,8 @@
 use crate::{
-    core::WindowPaintCtx,
     style::{BoxStyle, PaintCtxExt},
     theme,
     widget::prelude::*,
-    GpuFrameCtx, RoundToPixel,
+    RoundToPixel,
 };
 use std::sync::Arc;
 

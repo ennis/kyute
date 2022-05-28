@@ -1,11 +1,9 @@
 use crate::{
-    cache,
-    core::WindowPaintCtx,
     event::PointerEventKind,
     style::{BoxStyle, VisualState},
     theme,
-    widget::{prelude::*, Container, Grid, Label},
-    Color, EnvRef, GpuFrameCtx, Signal, State, UnitExt,
+    widget::{prelude::*, Container, Label},
+    Color, Signal, UnitExt,
 };
 use std::cell::Cell;
 

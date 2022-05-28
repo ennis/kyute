@@ -7,7 +7,7 @@ use kyute::{
     theme,
     theme::palette,
     widget::{
-        grid::GridTrackDefinition, Align, Container, Grid, GridLength, Null, Padding, Selectable, Text, WidgetWrapper,
+        grid::GridTrack, Align, Container, Grid, GridLength, Null, Padding, Selectable, Text, WidgetWrapper,
     },
     Alignment, Color, Data, Environment, Length, UnitExt, Widget, WidgetExt, Window,
 };
@@ -25,22 +25,11 @@ pub struct Scaffold {
 impl Scaffold {
     #[composable]
     pub fn new() -> Scaffold {
-        let mut grid = Grid::with_rows_columns(
-            [
-                GridTrackDefinition::new(GridLength::Fixed(150.dip())),
-                GridTrackDefinition::new(GridLength::Fixed(2.dip())),
-                GridTrackDefinition::new(GridLength::Flex(1.0)),
-            ],
-            [
-                GridTrackDefinition::new(GridLength::Fixed(300.dip())),
-                GridTrackDefinition::new(GridLength::Fixed(2.dip())),
-                GridTrackDefinition::new(GridLength::Flex(1.0)),
-            ],
-        );
 
+        let mut grid = Grid::with_template("150 2 1fr / 300 2 1fr");
         // separators
-        grid.add_item(1, .., Container::new(Null).background(theme::palette::GREY_800));
-        grid.add_item(.., 1, Container::new(Null).background(theme::palette::GREY_800));
+        grid.place("1 / ..", Container::new(Null).background(theme::palette::GREY_800));
+        grid.place(".. / 1", Container::new(Null).background(theme::palette::GREY_800));
 
         Scaffold { grid }
     }
@@ -111,51 +100,23 @@ fn root_view() -> impl Widget + Clone {
     let mut scaffold = Scaffold::new();
 
     // widget list
-    let mut widget_list = {
-        let mut grid = Grid::column(GridLength::Flex(1.0));
-        grid.set_row_template(GridLength::Fixed(35.dip()));
-        grid.set_row_gap(8.dip());
-        grid
-    };
+    let mut widget_list = Grid::with_template("auto-flow 35dip / 1fr / 8 0");
 
     // widgets
 
-    // issue: since most env keys are resolved outside of widget composition, there's no way to change it without recomp.
-    // also, changing it during recomp means that we have to do `cache::with_environment(|| ...)`, which is annoying
-
-    widget_list.add_row(gallery_sidebar_item("Home", GalleryWidget::Home, &mut selected));
-    widget_list.add_row(gallery_sidebar_item(
-        "Formatted Text",
-        GalleryWidget::FormattedText,
-        &mut selected,
-    ));
-    widget_list.add_row(gallery_sidebar_item(
-        "Drop down",
-        GalleryWidget::DropDown,
-        &mut selected,
-    ));
-    widget_list.add_row(gallery_sidebar_item("Buttons", GalleryWidget::Buttons, &mut selected));
-    widget_list.add_row(gallery_sidebar_item("Grids", GalleryWidget::Grids, &mut selected));
-    widget_list.add_row(gallery_sidebar_item(
-        "Context menu",
-        GalleryWidget::ContextMenu,
-        &mut selected,
-    ));
-    widget_list.add_row(gallery_sidebar_item(
-        "Titled panes",
-        GalleryWidget::TitledPanes,
-        &mut selected,
-    ));
-    widget_list.add_row(gallery_sidebar_item(
-        "Text input",
-        GalleryWidget::TextInput,
-        &mut selected,
-    ));
-    widget_list.add_row(gallery_sidebar_item(
-        "Tree view",
-        GalleryWidget::TreeView,
-        &mut selected,
-    ));
+    widget_list.insert(
+        (
+            gallery_sidebar_item("Home", GalleryWidget::Home, &mut selected),
+            gallery_sidebar_item("Buttons", GalleryWidget::Buttons, &mut selected),
+            gallery_sidebar_item("Formatted Text", GalleryWidget::FormattedText, &mut selected),
+            gallery_sidebar_item("Drop down", GalleryWidget::DropDown, &mut selected),
+            gallery_sidebar_item("Grids", GalleryWidget::Grids, &mut selected),
+            gallery_sidebar_item("Context menu", GalleryWidget::ContextMenu, &mut selected),
+            gallery_sidebar_item("Titled panes", GalleryWidget::TitledPanes, &mut selected),
+            gallery_sidebar_item("Text input", GalleryWidget::TextInput, &mut selected),
+            gallery_sidebar_item("Tree view", GalleryWidget::TreeView, &mut selected),
+        ),
+    );
 
     // content pane
     let right_panel = match selected {

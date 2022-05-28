@@ -4,7 +4,7 @@ use kyute::{
         application::Application,
         winit::{dpi::LogicalSize, window::WindowBuilder},
     },
-    widget::{grid::GridTrackDefinition, Button, Grid, GridLength, Text},
+    widget::{grid::GridTrack, Button, Grid, GridLength, Text},
     Alignment, Widget, WidgetExt, Window,
 };
 
@@ -41,23 +41,22 @@ fn counter_demo() -> impl Widget {
     //
     // Grids are the primary layout mechanism in kyute.
     // They are modeled after the CSS Grid specification.
-    let mut grid = Grid::new();
 
-    // Define grid rows and columns
-    // 2 flex columns, available space will be divided evenly among them
-    grid.push_column_definition(GridTrackDefinition::new(GridLength::Flex(1.0)));
-    grid.push_column_definition(GridTrackDefinition::new(GridLength::Flex(1.0)));
     // 2 rows, sized according to the widgets placed in the row's cells.
-    grid.push_row_definition(GridTrackDefinition::new(GridLength::Auto));
-    grid.push_row_definition(GridTrackDefinition::new(GridLength::Auto));
+    // 2 flex columns, available space will be divided evenly among them
+    let mut grid = Grid::with_template("auto auto / 1fr 1fr");
 
     // Insert the widgets in the grid
-    // Row 0, span all columns, Z-order 0, center the text in the cell.
-    grid.add_item(0, .., 0, text.centered());
-    // Row 1, Column 0, Z-order 0, align the button to the top right corner of the cell.
-    grid.add_item(1, 0, 0, button_decrement.aligned(Alignment::TOP_RIGHT));
-    // Row 1, Column 0, Z-order 0, align the button to the top right corner of the cell.
-    grid.add_item(1, 1, 0, button_increment.aligned(Alignment::TOP_LEFT));
+
+    grid.insert((
+        // Row 0, span all columns, Z-order 0, center the text in the cell.
+        text.centered().grid_area((0, ..)),
+        // Row 1, Column 0, Z-order 0, align the button to the top right corner of the cell.
+        button_decrement.aligned(Alignment::TOP_RIGHT).grid_area((1, 0)),
+        // Row 1, Column 0, Z-order 0, align the button to the top right corner of the cell.
+        button_increment.aligned(Alignment::TOP_LEFT).grid_area((1, 1)),
+        )
+    );
 
     grid
 }

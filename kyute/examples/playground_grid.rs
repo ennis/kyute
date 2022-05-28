@@ -5,7 +5,7 @@ use kyute::{
     theme,
     widget::{
         drop_down,
-        grid::{AlignItems, GridTrackDefinition, JustifyItems},
+        grid::{AlignItems, GridTrack, JustifyItems},
         Container, DropDown, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit, TextInput,
         Thumb, TitledPane, ValidationResult, WidgetPod,
     },
@@ -33,9 +33,9 @@ fn playground_grid(test: usize) -> impl Widget {
     let mut justify_items = JustifyItems::Start;
 
     let mut grid = Grid::new();
-    grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(200.dip())));
-    grid.push_column_definition(GridTrackDefinition::new(GridLength::Fixed(5.dip())));
-    grid.push_column_definition(GridTrackDefinition::new(GridLength::Flex(1.0)));
+    grid.push_column_definition(GridTrack::new(GridLength::Fixed(200.dip())));
+    grid.push_column_definition(GridTrack::new(GridLength::Fixed(5.dip())));
+    grid.push_column_definition(GridTrack::new(GridLength::Flex(1.0)));
     grid.set_align_items(AlignItems::Baseline);
 
     // row count
@@ -109,8 +109,8 @@ fn playground_grid(test: usize) -> impl Widget {
 
     eprintln!("rows,columns = ({},{})", row_count, column_count);
 
-    let row_defs = vec![GridTrackDefinition::new(GridLength::Flex(1.0)); row_count];
-    let column_defs = vec![GridTrackDefinition::new(GridLength::Flex(1.0)); column_count];
+    let row_defs = vec![GridTrack::new(GridLength::Flex(1.0)); row_count];
+    let column_defs = vec![GridTrack::new(GridLength::Flex(1.0)); column_count];
 
     let mut play_grid = Grid::new();
     play_grid.set_align_items(align_items);
