@@ -311,7 +311,7 @@ impl ColorPicker {
 
         new_color = Color(LinSrgba::new(r, g, b, a).into_encoding());
 
-        grid.insert(ColorSwatch::new(100.percent(), 100.percent(), new_color).grid_area(3));
+        grid.insert(ColorSwatch::new(100.percent(), 100.percent(), new_color).grid_area((0..4, 3..4)));
 
         if params.enable_hex_input {
             let hex_input = TextInput::new(new_color, HexColorFormatter).on_value_changed(|c| new_color = c);

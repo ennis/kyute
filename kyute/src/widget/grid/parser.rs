@@ -200,9 +200,9 @@ impl<'a> GridTemplate<'a> {
 fn line(input: &str) -> IResult<&str, Line> {
     alt((
         map(tag("auto"), |_| Line::Auto),
+        map(preceded(tag("span"), preceded(space0, integer_usize)), Line::Span),
         map(identifier, Line::Named),
         map(integer_i32, Line::Index),
-        map(preceded(tag("span"), integer_usize), Line::Span),
     ))(input)
 }
 

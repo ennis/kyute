@@ -30,7 +30,7 @@ impl TitledPane {
 
     #[composable]
     fn new(collapsed: bool, title: String, content: impl Widget + 'static) -> TitledPane {
-        let mut inner = Grid::column(GridTrack::new(GridLength::Flex(1.0)));
+        let mut inner = Grid::column(GridLength::Flex(1.0));
 
         //use kyute::style::*;
 
@@ -47,15 +47,8 @@ impl TitledPane {
         // Title bar
 
         let title_bar = {
-            let mut grid = Grid::new();
-            grid.append_column_definitions([
-                GridTrack::new(GridLength::Fixed(20.dip())),
-                GridTrack::new(GridLength::Fixed(3.dip())),
-                GridTrack::new(GridLength::Flex(1.0)),
-                GridTrack::new(GridLength::Fixed(20.dip())),
-            ]);
-            grid.add_item(0, 0, 0, icon);
-            grid.add_item(0, 2, 0, Text::new(title).aligned(Alignment::CENTER_LEFT));
+            let mut grid = Grid::with_template("auto / 20 3 1fr 20");
+            grid.insert((icon, (), Text::new(title).aligned(Alignment::CENTER_LEFT)));
             Clickable::new(
                 Container::new(grid)
                     .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip())
@@ -65,12 +58,12 @@ impl TitledPane {
 
         let collapsed_changed = if title_bar.clicked() { Some(!collapsed) } else { None };
 
-        inner.add_item(inner.row_count(), 0, 0, title_bar);
-        inner.add_item(inner.row_count(), 0, 0, separator(Orientation::Horizontal));
+        inner.insert(title_bar);
+        inner.insert(separator(Orientation::Horizontal));
 
         // Add contents if not collapsed
         if !collapsed {
-            inner.add_item(inner.row_count(), 0, 0, content);
+            inner.insert(content);
         }
 
         TitledPane {

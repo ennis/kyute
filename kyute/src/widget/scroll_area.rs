@@ -7,6 +7,7 @@ use crate::{
     },
     Color, Length, UnitExt,
 };
+use crate::widget::grid::GridLayoutExt;
 
 pub struct ScrollArea {
     inner: LayoutInspector<Grid>,
@@ -50,7 +51,7 @@ impl ScrollArea {
 
         if content_height <= viewport_height {
             content_viewport.set_transform(Offset::new(0.0, 0.0).to_transform());
-            grid_container.contents_mut().add_item(0, .., 0, content_viewport);
+            grid_container.contents_mut().insert(content_viewport.grid_area((0, ..)));
             return ScrollArea {
                 inner: grid_container,
                 line_height: DEFAULT_LINE_HEIGHT,

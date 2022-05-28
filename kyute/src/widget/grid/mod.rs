@@ -228,11 +228,30 @@ impl<'a> From<i32> for LineRange<'a> {
     }
 }
 
+impl<'a> From<usize> for LineRange<'a> {
+    fn from(p: usize) -> Self {
+        LineRange {
+            start: Line::Index(p as i32),
+            end: Line::Span(1),
+        }
+    }
+}
+
+
 impl<'a> From<Range<i32>> for LineRange<'a> {
     fn from(v: Range<i32>) -> Self {
         LineRange {
             start: Line::Index(v.start),
             end: Line::Index(v.end),
+        }
+    }
+}
+
+impl<'a> From<Range<usize>> for LineRange<'a> {
+    fn from(v: Range<usize>) -> Self {
+        LineRange {
+            start: Line::Index(v.start as i32),
+            end: Line::Index(v.end as i32),
         }
     }
 }
@@ -264,8 +283,26 @@ impl<'a> From<RangeInclusive<i32>> for LineRange<'a> {
     }
 }
 
+impl<'a> From<RangeInclusive<usize>> for LineRange<'a> {
+    fn from(v: RangeInclusive<usize>) -> Self {
+        LineRange {
+            start: Line::Index(*v.start() as i32),
+            end: Line::Index((*v.end() + 1) as i32),
+        }
+    }
+}
+
 impl<'a> From<RangeToInclusive<i32>> for LineRange<'a> {
     fn from(v: RangeToInclusive<i32>) -> Self {
+        LineRange {
+            start: Line::Index(0),
+            end: Line::Index(v.end + 1),
+        }
+    }
+}
+
+impl<'a> From<RangeToInclusive<usize>> for LineRange<'a> {
+    fn from(v: RangeToInclusive<usize>) -> Self {
         LineRange {
             start: Line::Index(0),
             end: Line::Index((v.end + 1) as i32),
@@ -386,6 +423,19 @@ impl<'a> TryFrom<&'a str> for Area<'a> {
 
     fn try_from(input: &'a str) -> Result<Self, Self::Error> {
         Area::parse(input)
+    }
+}
+
+impl<'a, Rows, Columns> From<(Rows, Columns)> for Area<'a>
+where
+    Rows: Into<LineRange<'a>>,
+    Columns: Into<LineRange<'a>>,
+{
+    fn from((rows, columns): (Rows, Columns)) -> Self {
+        Area {
+            row: rows.into(),
+            column: columns.into(),
+        }
     }
 }
 
@@ -525,6 +575,12 @@ where
 {
     fn insert(self, cursor: &mut FlowCursor) {
         cursor.place(Area::default(), 0, Alignment::TOP_LEFT, Arc::new(WidgetPod::new(self)))
+    }
+}
+
+impl Insertable for () {
+    fn insert(self, cursor: &mut FlowCursor) {
+        cursor.next(1, 1);
     }
 }
 
@@ -830,19 +886,19 @@ impl Grid {
         grid
     }
 
-    /*/// Creates a single-column grid.
-    pub fn column(column: GridTrackDefinition) -> Grid {
+    /// Creates a single-column grid.
+    pub fn column(width: impl Into<GridLength>) -> Grid {
         let mut grid = Self::new();
-        grid.push_column_definition(column);
+        grid.column_definitions.push(GridTrack::new(width));
         grid
     }
 
     /// Creates a single-row grid.
-    pub fn row(row: GridTrackDefinition) -> Grid {
+    pub fn row(height: impl Into<GridLength>) -> Grid {
         let mut grid = Self::new();
-        grid.push_row_definition(row);
+        grid.row_definitions.push(GridTrack::new(height));
         grid
-    }*/
+    }
 
     /*/// Returns the grid layout computed during layout.
     ///
@@ -969,14 +1025,14 @@ impl Grid {
         let flow = self.auto_flow_dir;
 
         let mut flow_cursor = FlowCursor {
-            grid: &mut self,
+            grid: self,
             row,
             column,
             row_len,
             flow,
         };
 
-        if self.auto_flow_dir == FlowDirection::Column {
+        if flow_cursor.flow == FlowDirection::Column {
             mem::swap(&mut flow_cursor.row, &mut flow_cursor.column);
         }
 
@@ -986,8 +1042,11 @@ impl Grid {
             mem::swap(&mut flow_cursor.row, &mut flow_cursor.column);
         }
 
-        self.auto_flow_row = flow_cursor.row;
-        self.auto_flow_col = flow_cursor.column;
+        let row = flow_cursor.row;
+        let column = flow_cursor.column;
+
+        self.auto_flow_row = row;
+        self.auto_flow_col = column;
     }
 
     /// Invalidates the cached child widget filter.

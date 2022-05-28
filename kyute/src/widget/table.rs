@@ -4,8 +4,9 @@ use crate::{
     style::{BoxStyle, Paint},
     theme,
     widget::{
-        grid::GridTrack, prelude::*, Clickable, Container, DragController, Grid, GridLength, Image,
-        Null, Scaling, WidgetWrapper,
+        grid::{GridLayoutExt, GridTemplate, GridTrack},
+        prelude::*,
+        Clickable, Container, DragController, Grid, GridLength, Image, Null, Scaling, WidgetWrapper,
     },
     Data, EnvRef, GpuFrameCtx, Length, UnitExt, WidgetExt,
 };
@@ -115,8 +116,8 @@ pub struct TableViewParams<'a, Id> {
     /// If None, selection is disabled.
     pub selection: Option<&'a mut TableSelection<Id>>,
 
-    /// Table columns.
-    pub columns: Vec<GridTrack>,
+    /// Table grid template.
+    pub template: GridTemplate<'a>,
 
     /// Column headers.
     ///
@@ -125,9 +126,6 @@ pub struct TableViewParams<'a, Id> {
 
     /// Index of the main column.
     pub main_column: usize,
-
-    /// Table row height.
-    pub row_height: GridLength,
 
     /// Root-level rows.
     pub rows: Vec<TableRow<Id>>,
@@ -174,10 +172,8 @@ impl<'a, Id> Default for TableViewParams<'a, Id> {
     fn default() -> Self {
         TableViewParams {
             selection: None,
-            columns: vec![GridTrack::new(GridLength::Flex(1.0))],
             column_headers: None,
             main_column: 0,
-            row_height: GridLength::Auto,
             rows: vec![],
             row_indent: Default::default(),
             resizeable_columns: false,
@@ -190,6 +186,7 @@ impl<'a, Id> Default for TableViewParams<'a, Id> {
             row_separator_background: Default::default(),
             column_separator_background: Default::default(),
             selected_style: Default::default(),
+            template: Default::default()
         }
     }
 }
@@ -203,20 +200,17 @@ impl TableView {
     #[composable]
     pub fn new<Id: Hash + Eq + Clone>(mut params: TableViewParams<Id>) -> TableView {
         // create the main grid
-        let mut grid = Grid::new();
-        let num_columns = params.columns.len();
-        grid.append_column_definitions(params.columns);
+        let mut grid = Grid::with_template(params.template);
+        let num_columns = grid.column_count();
 
         // row counter
         let mut i = 0;
 
-        // insert row for column headers
+        // insert column headers
         if let Some(headers) = params.column_headers {
-            // header row doesn't follow the specified height of the other rows.
-            grid.push_row_definition(GridTrack::new(GridLength::Auto));
             // insert headers
-            for (i, header) in headers.widgets.into_iter().enumerate() {
-                grid.add_item_pod(0, i, header);
+            for header in headers.widgets.into_iter() {
+                grid.insert(header);
             }
 
             if params.resizeable_columns {
@@ -232,15 +226,12 @@ impl TableView {
                     // positioning
                     //let resize_handle = LayoutWrapper::with_offset((-2.0, 0.0), resize_handle);
                     // FIXME arbitrary Z-order here should be documented
-                    grid.add_item_with_line_alignment(.., i..i, 100, Alignment::CENTER, resize_handle);
+                    grid.insert(resize_handle.grid_area((.., i..i)));
                 }
             }
 
             i += 1;
         }
-
-        // set template for the content rows
-        grid.set_row_template(params.row_height);
 
         // set backgrounds
         grid.set_row_background(params.background);
@@ -271,19 +262,19 @@ impl TableView {
                 if let Some(selection) = params.selection.as_mut() {
                     if selection.contains(&row.id) {
                         // draw a filled rect with the selection style that spans the whole row
-                        grid.add_item(
-                            i,
-                            ..,
-                            -1,
-                            Container::new(Null).fill().box_style(params.selected_style.clone()),
+                        grid.insert(
+                            Container::new(Null)
+                                .fill()
+                                .box_style(params.selected_style.clone())
+                                .grid_area((i, ..)),
                         );
                     }
                     // also add a clickable rect, and clicking it adds the row to the selection
-                    grid.add_item(
-                        i,
-                        ..,
-                        -1,
-                        Clickable::new(Null).on_click(|| selection.flip(row.id.clone())).fill(),
+                    grid.insert(
+                        Clickable::new(Null)
+                            .on_click(|| selection.flip(row.id.clone()))
+                            .fill()
+                            .grid_area((i, ..)),
                     );
                 }
 
@@ -302,31 +293,28 @@ impl TableView {
                         })
                     });
 
-                    let mut widget_with_chevron = Grid::row(GridTrack::new(GridLength::Auto));
-                    widget_with_chevron.add_item(0, 0, 0, icon);
-                    widget_with_chevron.add_item(0, 1, 0, row.widget);
-                    grid.add_item(
-                        i,
-                        params.main_column,
-                        0,
-                        widget_with_chevron.padding_left((level as f64) * params.row_indent),
+                    let mut widget_with_chevron = Grid::row(GridLength::Auto);
+                    widget_with_chevron.insert(icon);
+                    widget_with_chevron.insert(row.widget);
+                    grid.insert(
+                        widget_with_chevron
+                            .padding_left((level as f64) * params.row_indent)
+                            .grid_area((i, params.main_column)),
                     );
                 } else {
                     // no chevron
-                    grid.add_item(
-                        i,
-                        params.main_column,
-                        0,
+                    grid.insert(
                         // first padding is the space for the chevron, second is the indent
                         row.widget
                             .padding_left(icon_size)
-                            .padding_left((level as f64) * params.row_indent),
+                            .padding_left((level as f64) * params.row_indent)
+                            .grid_area((i, params.main_column)),
                     );
                 }
 
                 // add row cells to the grid
                 for (column, cell) in row.cells {
-                    grid.add_item_pod(i, column, cell);
+                    grid.insert(cell.grid_area((i, column)));
                 }
 
                 // visit child rows if the row is expanded
