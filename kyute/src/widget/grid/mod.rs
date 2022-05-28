@@ -237,7 +237,6 @@ impl<'a> From<usize> for LineRange<'a> {
     }
 }
 
-
 impl<'a> From<Range<i32>> for LineRange<'a> {
     fn from(v: Range<i32>) -> Self {
         LineRange {
@@ -404,6 +403,7 @@ impl<'a> LineRange<'a> {
             (None, None, Some(end)) => (Some(end - 1), 1),
             // span X
             (None, Some(span), None) => (None, span),
+            (None, None, None) => (None, 1),
             _ => unreachable!(),
         }
     }
@@ -835,7 +835,10 @@ impl Grid {
 
     /// Creates a new grid from a template.
     pub fn with_template<'a>(template: impl TryInto<GridTemplate<'a>>) -> Grid {
-        let template = template.try_into().unwrap_or_default();
+        let template = template.try_into().unwrap_or_else(|err| {
+            warn!("invalid grid template");
+            Default::default()
+        });
         let mut grid = Self::new();
         let mut seen_implicit_row = false;
         let mut seen_implicit_column = false;
@@ -911,6 +914,7 @@ impl Grid {
     }
 
     /// Returns the current number of columns
+    /// FIXME this should return the number of columns in the template
     pub fn column_count(&self) -> usize {
         self.column_definitions.len()
     }
@@ -1016,8 +1020,8 @@ impl Grid {
     #[composable]
     pub fn insert<T: Insertable>(&mut self, items: T) {
         let row_len = match self.auto_flow_dir {
-            FlowDirection::Row => self.row_count(),
-            FlowDirection::Column => self.column_count(),
+            FlowDirection::Row => self.column_count(),
+            FlowDirection::Column => self.row_count(),
         };
 
         let mut row = self.auto_flow_row;

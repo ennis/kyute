@@ -486,7 +486,7 @@ pub fn setup_default_style(env: &mut Environment) {
 
     let base_label_height = 15;
 
-    env.set(DEFAULT_FONT, Font::new("Source Sans Pro", 15.dip()));
+    env.set(DEFAULT_FONT, Font::new("Source Sans Pro", 13.dip()));
     env.set(LABEL_FONT_SIZE, base_label_height.dip());
     env.set(BUTTON_LABEL_BASELINE, (base_label_height + 2).dip());
     env.set(BUTTON_HEIGHT, (base_label_height + 6).dip());

@@ -276,7 +276,7 @@ impl ColorPicker {
     pub fn new(color: Color, params: &ColorPickerParams) -> ColorPicker {
         let mut grid = Grid::new();
 
-        grid = Grid::with_template("auto-flow auto / [label] 20 [slider] 300 50 80 / 2 4");
+        grid = Grid::with_template("auto / [label] 20 [slider] 300 50 80 / 2 4");
         grid.set_align_items(AlignItems::Center);
 
         let mut new_color = color;
@@ -315,7 +315,7 @@ impl ColorPicker {
 
         if params.enable_hex_input {
             let hex_input = TextInput::new(new_color, HexColorFormatter).on_value_changed(|c| new_color = c);
-            grid.insert(hex_input.grid_column(4));
+            grid.insert(hex_input.grid_area((4..5, 3..4)));
         }
 
         let color_changed = if new_color != color { Some(new_color) } else { None };
