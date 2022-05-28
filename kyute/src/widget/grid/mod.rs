@@ -473,6 +473,7 @@ pub enum FlowDirection {
     Column,
 }
 
+#[derive(Debug)]
 pub struct FlowCursor<'a> {
     grid: &'a mut Grid,
     row: usize,
@@ -494,7 +495,7 @@ impl<'a> FlowCursor<'a> {
     pub fn next(&mut self, row_span: usize, column_span: usize) -> (usize, usize) {
         let (row, column) = (self.row, self.column);
         self.column += column_span;
-        if self.column > self.row_len {
+        if self.column >= self.row_len {
             self.row += row_span;
             self.column = 0;
         }
@@ -900,6 +901,7 @@ impl Grid {
     pub fn row(height: impl Into<GridLength>) -> Grid {
         let mut grid = Self::new();
         grid.row_definitions.push(GridTrack::new(height));
+        grid.auto_flow_dir = FlowDirection::Column;
         grid
     }
 

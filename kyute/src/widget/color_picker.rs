@@ -1,17 +1,10 @@
-use crate::{
-    drawing::ToSkia,
-    make_uniform_data, style,
-    style::{BoxStyle, Paint, PaintCtxExt},
-    theme,
-    widget::{
-        grid,
-        grid::{AlignItems, GridLayoutExt, GridTrack},
-        prelude::*,
-        slider::{SliderBase, SliderTrack},
-        Border, Clickable, Container, Grid, GridLength, Null, Text, TextInput, ValidationResult, WidgetWrapper,
-    },
-    Color, GpuFrameCtx, PointerEventKind, UnitExt, WidgetExt,
-};
+use crate::{drawing::ToSkia, make_uniform_data, style, style::{BoxStyle, Paint, PaintCtxExt}, theme, widget::{
+    grid,
+    grid::{AlignItems, GridLayoutExt, GridTrack},
+    prelude::*,
+    slider::{SliderBase, SliderTrack},
+    Border, Clickable, Container, Grid, GridLength, Null, Text, TextInput, ValidationResult, WidgetWrapper,
+}, Color, GpuFrameCtx, PointerEventKind, UnitExt, WidgetExt, tweak};
 use anyhow::Error;
 use euclid::SideOffsets2D;
 use kyute_common::{Length, SideOffsets};
@@ -276,7 +269,7 @@ impl ColorPicker {
     pub fn new(color: Color, params: &ColorPickerParams) -> ColorPicker {
         let mut grid = Grid::new();
 
-        grid = Grid::with_template("auto / [label] 20 [slider] 300 50 80 / 2 4");
+        grid = Grid::with_template(tweak!("auto / [label] 20 [slider] 300 50 80 / 1 4"));
         grid.set_align_items(AlignItems::Center);
 
         let mut new_color = color;

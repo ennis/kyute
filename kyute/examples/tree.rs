@@ -13,6 +13,7 @@ use kyute::{
 use kyute_common::{Atom, Data};
 use std::sync::Arc;
 use tracing::trace;
+use kyute::widget::grid::GridTemplate;
 
 #[composable(cached)]
 fn cell(text: impl Into<String> + Data) -> impl Widget {
@@ -41,7 +42,7 @@ fn edit() -> impl Widget {
 }
 
 #[composable]
-fn tree_test() -> impl Widget + Clone {
+fn tree_test() -> impl Widget {
     #[state]
     let mut selection = TableSelection::default();
 
@@ -72,13 +73,9 @@ fn tree_test() -> impl Widget + Clone {
 
     let params = TableViewParams {
         selection: Some(&mut selection),
-        columns: vec![
-            GridTrack::new(GridLength::Fixed(200.dip())),
-            GridTrack::new(GridLength::Flex(1.0)),
-        ],
+        template: GridTemplate::parse("20 / 200 1fr").unwrap_or_default(),
         column_headers: Some(ColumnHeaders::new().add(cell("Name")).add(cell("Description"))),
         main_column: 0,
-        row_height: GridLength::Fixed(20.dip()),
         rows: vec![root],
         row_indent: 20.dip(),
         resizeable_columns: true,
