@@ -2,12 +2,12 @@ use crate::{
     event::WheelDeltaMode,
     style::BoxStyle,
     widget::{
-        grid::GridTrack, prelude::*, Container, DragController, Grid, GridLength, LayoutInspector, Null,
-        Viewport,
+        grid::{GridLayoutExt, TrackSizePolicy},
+        prelude::*,
+        Container, DragController, Grid, GridLength, LayoutInspector, Null, Viewport,
     },
     Color, Length, UnitExt,
 };
-use crate::widget::grid::GridLayoutExt;
 
 pub struct ScrollArea {
     inner: LayoutInspector<Grid>,
@@ -51,7 +51,9 @@ impl ScrollArea {
 
         if content_height <= viewport_height {
             content_viewport.set_transform(Offset::new(0.0, 0.0).to_transform());
-            grid_container.contents_mut().insert(content_viewport.grid_area((0, ..)));
+            grid_container
+                .contents_mut()
+                .insert(content_viewport.grid_area((0, ..)));
             return ScrollArea {
                 inner: grid_container,
                 line_height: DEFAULT_LINE_HEIGHT,
@@ -90,8 +92,10 @@ impl ScrollArea {
 
         let scroll_bar = Viewport::new(scroll_thumb).transform(Offset::new(0.0, thumb_pos).to_transform());
 
-        grid_container.contents_mut().insert(content_viewport.grid_area((0, ..)));
-        grid_container.contents_mut().insert( scroll_bar.grid_area((0,1)));
+        grid_container
+            .contents_mut()
+            .insert(content_viewport.grid_area((0, ..)));
+        grid_container.contents_mut().insert(scroll_bar.grid_area((0, 1)));
         ScrollArea {
             inner: grid_container,
             scroll,

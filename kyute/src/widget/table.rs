@@ -4,7 +4,7 @@ use crate::{
     style::{BoxStyle, Paint},
     theme,
     widget::{
-        grid::{GridLayoutExt, GridTemplate, GridTrack},
+        grid::{GridLayoutExt, GridTemplate, TrackSizePolicy},
         prelude::*,
         Clickable, Container, DragController, Grid, GridLength, Image, Null, Scaling, WidgetWrapper,
     },
@@ -117,7 +117,7 @@ pub struct TableViewParams<'a, Id> {
     pub selection: Option<&'a mut TableSelection<Id>>,
 
     /// Table grid template.
-    pub template: GridTemplate<'a>,
+    pub template: GridTemplate,
 
     /// Column headers.
     ///
@@ -186,7 +186,7 @@ impl<'a, Id> Default for TableViewParams<'a, Id> {
             row_separator_background: Default::default(),
             column_separator_background: Default::default(),
             selected_style: Default::default(),
-            template: Default::default()
+            template: Default::default(),
         }
     }
 }

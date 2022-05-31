@@ -7,7 +7,7 @@ use kyute::{
     theme,
     theme::palette,
     widget::{
-        grid::GridTrack, Align, Container, Grid, GridLength, Null, Padding, Selectable, Text, WidgetWrapper,
+        grid::TrackSizePolicy, Align, Container, Grid, GridLength, Null, Padding, Selectable, Text, WidgetWrapper,
     },
     Alignment, Color, Data, Environment, Length, UnitExt, Widget, WidgetExt, Window,
 };
@@ -25,7 +25,6 @@ pub struct Scaffold {
 impl Scaffold {
     #[composable]
     pub fn new() -> Scaffold {
-
         let mut grid = Grid::with_template("150 2 1fr / 300 2 1fr");
         // separators
         grid.place("1 / ..", Container::new(Null).background(theme::palette::GREY_800));
@@ -104,19 +103,17 @@ fn root_view() -> impl Widget + Clone {
 
     // widgets
 
-    widget_list.insert(
-        (
-            gallery_sidebar_item("Home", GalleryWidget::Home, &mut selected),
-            gallery_sidebar_item("Buttons", GalleryWidget::Buttons, &mut selected),
-            gallery_sidebar_item("Formatted Text", GalleryWidget::FormattedText, &mut selected),
-            gallery_sidebar_item("Drop down", GalleryWidget::DropDown, &mut selected),
-            gallery_sidebar_item("Grids", GalleryWidget::Grids, &mut selected),
-            gallery_sidebar_item("Context menu", GalleryWidget::ContextMenu, &mut selected),
-            gallery_sidebar_item("Titled panes", GalleryWidget::TitledPanes, &mut selected),
-            gallery_sidebar_item("Text input", GalleryWidget::TextInput, &mut selected),
-            gallery_sidebar_item("Tree view", GalleryWidget::TreeView, &mut selected),
-        ),
-    );
+    widget_list.insert((
+        gallery_sidebar_item("Home", GalleryWidget::Home, &mut selected),
+        gallery_sidebar_item("Buttons", GalleryWidget::Buttons, &mut selected),
+        gallery_sidebar_item("Formatted Text", GalleryWidget::FormattedText, &mut selected),
+        gallery_sidebar_item("Drop down", GalleryWidget::DropDown, &mut selected),
+        gallery_sidebar_item("Grids", GalleryWidget::Grids, &mut selected),
+        gallery_sidebar_item("Context menu", GalleryWidget::ContextMenu, &mut selected),
+        gallery_sidebar_item("Titled panes", GalleryWidget::TitledPanes, &mut selected),
+        gallery_sidebar_item("Text input", GalleryWidget::TextInput, &mut selected),
+        gallery_sidebar_item("Tree view", GalleryWidget::TreeView, &mut selected),
+    ));
 
     // content pane
     let right_panel = match selected {

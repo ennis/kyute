@@ -140,9 +140,6 @@ impl BoxStyle {
     }
 
     pub fn clip_bounds(&self, bounds: Rect, scale_factor: f64) -> Rect {
-        // FIXME: this is not very efficient since we end up resolving stuff twice: in layout, and again in paint
-        // BoxStyle should already be resolved. Add "procedural entries" to env.
-
         // FIXME: borders also extend outside of the element
         match self.box_shadow {
             Some(BoxShadow::Drop(p)) => {

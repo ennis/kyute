@@ -5,7 +5,9 @@ use kyute::{
     theme,
     widget::{
         drop_down,
-        grid::{AlignItems, GridTrack, JustifyItems},
+        drop_down::DebugFormatter,
+        grid,
+        grid::{AlignItems, JustifyItems, TrackSizePolicy},
         Container, DropDown, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit, TextInput,
         Thumb, TitledPane, ValidationResult, WidgetPod,
     },
@@ -14,6 +16,62 @@ use kyute::{
 };
 use std::sync::Arc;
 use tracing::{info, trace};
+
+// prerequisites:
+// - steppers
+
+/// A colored rectangle placed within a region of the grid.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct GridItem {
+    color: Color,
+    area: grid::Area<'static>,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum LineMode {
+    Auto,
+    Named,
+    Index,
+    Span,
+}
+
+#[composable]
+fn line_mode_drop_down(selected: LineMode) -> DropDown<LineMode> {
+    DropDown::with_selected(
+        selected,
+        vec![LineMode::Auto, LineMode::Named, LineMode::Index, LineMode::Span],
+        DebugFormatter,
+    )
+}
+
+/// UI for grid line ranges.
+#[composable]
+fn grid_line_range(track_span: &mut grid::LineRange<'static>) {
+    #[state]
+    let mut mode = LineMode::Auto;
+    #[state]
+    let mut name = String::new();
+    #[state]
+    let mut index = 0i32;
+
+    let mode_drop_down = line_mode_drop_down(mode).on_selected_item_changed(|m| mode = m);
+
+    match mode {
+        LineMode::Auto => {}
+        LineMode::Named => {
+            TextEdit::new(name).on_editing_finished(|t| name = t.to_string());
+        }
+        LineMode::Index => TextInput::new(),
+        LineMode::Span => {}
+    }
+}
+
+/// UI for grid items.
+#[composable]
+fn grid_item_ui(item: &mut GridItem) {
+
+    //
+}
 
 #[composable]
 fn fixed_size_widget(w: f64, h: f64, name: impl Into<String> + Data) -> impl Widget {
@@ -33,9 +91,9 @@ fn playground_grid(test: usize) -> impl Widget {
     let mut justify_items = JustifyItems::Start;
 
     let mut grid = Grid::new();
-    grid.push_column_definition(GridTrack::new(GridLength::Fixed(200.dip())));
-    grid.push_column_definition(GridTrack::new(GridLength::Fixed(5.dip())));
-    grid.push_column_definition(GridTrack::new(GridLength::Flex(1.0)));
+    grid.push_column_definition(TrackSizePolicy::new(GridLength::Fixed(200.dip())));
+    grid.push_column_definition(TrackSizePolicy::new(GridLength::Fixed(5.dip())));
+    grid.push_column_definition(TrackSizePolicy::new(GridLength::Flex(1.0)));
     grid.set_align_items(AlignItems::Baseline);
 
     // row count
@@ -109,8 +167,8 @@ fn playground_grid(test: usize) -> impl Widget {
 
     eprintln!("rows,columns = ({},{})", row_count, column_count);
 
-    let row_defs = vec![GridTrack::new(GridLength::Flex(1.0)); row_count];
-    let column_defs = vec![GridTrack::new(GridLength::Flex(1.0)); column_count];
+    let row_defs = vec![TrackSizePolicy::new(GridLength::Flex(1.0)); row_count];
+    let column_defs = vec![TrackSizePolicy::new(GridLength::Flex(1.0)); column_count];
 
     let mut play_grid = Grid::new();
     play_grid.set_align_items(align_items);

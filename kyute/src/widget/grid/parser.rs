@@ -1,7 +1,6 @@
 //! Parser for the grid definition/placement language.
-
 use crate::widget::{
-    grid::{Area, GridTemplate, Line, LineRange, TrackItem},
+    grid::{Area, GridTemplate, Line, LineRange, TrackSizePolicy},
     GridLength,
 };
 use kyute_common::{Length, UnitExt};
@@ -45,7 +44,7 @@ fn parse_standalone<'a, T>(
 }
 
 fn integer_i32(input: &str) -> IResult<&str, i32> {
-    map_res(recognize(pair(opt(char('-')), digit1)), |s:&str| s.parse::<i32>())(input)
+    map_res(recognize(pair(opt(char('-')), digit1)), |s: &str| s.parse::<i32>())(input)
 }
 
 fn integer_u32(input: &str) -> IResult<&str, u32> {
@@ -138,13 +137,22 @@ fn implicit_track(input: &str) -> IResult<&str, GridLength> {
 // TrackItem
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Debug)]
+enum TrackItem<'a> {
+    LineTags(Vec<&'a str>),
+    TrackSize(TrackSizePolicy),
+    ImplicitTrackSize(TrackSizePolicy),
+}
+
 fn track_item(input: &str) -> IResult<&str, TrackItem> {
     context(
         "track_item",
         alt((
             map(line_tags, TrackItem::LineTags),
-            map(length_or_auto, TrackItem::Track),
-            map(implicit_track, TrackItem::ImplicitTrack),
+            map(length_or_auto, |size| TrackItem::TrackSize(TrackSizePolicy::new(size))),
+            map(implicit_track, |size| {
+                TrackItem::ImplicitTrackSize(TrackSizePolicy::new(size))
+            }),
         )),
     )(input)
 }
@@ -155,40 +163,75 @@ fn track_item(input: &str) -> IResult<&str, TrackItem> {
 
 fn grid_template(input: &str) -> IResult<&str, GridTemplate> {
     let (input, _) = space0(input)?;
-    let (input, rows) = separated_list1(space1, track_item)(input)?;
+    let (input, row_items) = separated_list1(space1, track_item)(input)?;
     let (input, _) = delimited(space0, char('/'), space0)(input)?;
-    let (input, columns) = separated_list1(space1, track_item)(input)?;
+    let (input, column_items) = separated_list1(space1, track_item)(input)?;
     let (input, _) = space0(input)?;
     let (input, gaps) = opt(preceded(
         delimited(space0, char('/'), space0),
         tuple((non_fractional_length, opt(preceded(space0, non_fractional_length)))),
     ))(input)?;
 
-    let spec = match gaps {
-        None => GridTemplate {
-            rows,
-            columns,
-            row_gap: None,
-            column_gap: None,
-        },
-        Some((gap_1, None)) => GridTemplate {
-            rows,
-            columns,
-            row_gap: Some(gap_1),
-            column_gap: Some(gap_1),
-        },
-        Some((gap_1, Some(gap_2))) => GridTemplate {
-            rows,
-            columns,
-            row_gap: Some(gap_1),
-            column_gap: Some(gap_2),
-        },
+    let (row_gap, column_gap) = match gaps {
+        None => (None, None),
+        Some((gap_1, None)) => (Some(gap_1), Some(gap_1)),
+        Some((gap_1, Some(gap_2))) => (Some(gap_1), Some(gap_2)),
     };
-    Ok((input, spec))
+
+    let mut rows = Vec::new();
+    let mut columns = Vec::new();
+    let mut row_tags = Vec::new();
+    let mut column_tags = Vec::new();
+    let mut implicit_row_size = TrackSizePolicy::new(GridLength::Auto);
+    let mut implicit_column_size = TrackSizePolicy::new(GridLength::Auto);
+
+    for item in row_items {
+        match item {
+            TrackItem::LineTags(tags) => {
+                for tag in tags {
+                    row_tags.push((rows.len(), tag.to_string()))
+                }
+            }
+            TrackItem::TrackSize(size) => {
+                rows.push(size);
+            }
+            TrackItem::ImplicitTrackSize(size) => {
+                implicit_row_size = size;
+            }
+        }
+    }
+    for item in column_items {
+        match item {
+            TrackItem::LineTags(tags) => {
+                for tag in tags {
+                    column_tags.push((columns.len(), tag.to_string()))
+                }
+            }
+            TrackItem::TrackSize(size) => {
+                columns.push(size);
+            }
+            TrackItem::ImplicitTrackSize(size) => {
+                implicit_column_size = size;
+            }
+        }
+    }
+
+    let template = GridTemplate {
+        rows,
+        columns,
+        row_tags,
+        column_tags,
+        implicit_row_size,
+        implicit_column_size,
+        row_gap,
+        column_gap,
+    };
+
+    Ok((input, template))
 }
 
-impl<'a> GridTemplate<'a> {
-    pub fn parse(input: &'a str) -> Result<Self, nom::error::Error<String>> {
+impl GridTemplate {
+    pub fn parse(input: &str) -> Result<Self, nom::error::Error<String>> {
         parse_standalone(input, grid_template)
     }
 }
@@ -349,10 +392,7 @@ impl<'a> Area<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::widget::grid::{
-        Area, GridTemplate, Line,
-        LineRange,
-    };
+    use crate::widget::grid::{Area, GridTemplate, Line, LineRange};
 
     #[test]
     fn grid_specs() {

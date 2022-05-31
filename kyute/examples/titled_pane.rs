@@ -4,8 +4,8 @@ use kyute::{
     style::BoxStyle,
     theme,
     widget::{
-        grid::GridTrack, ColorPicker, ColorPickerParams, Container, Flex, Grid, GridLength, Image, Label,
-        Null, Text, TitledPane,
+        grid::TrackSizePolicy, ColorPicker, ColorPickerParams, Container, Flex, Grid, GridLength, Image, Label, Null,
+        Text, TitledPane,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, UnitExt, Widget, WidgetExt,
     WidgetPod, Window,
@@ -17,7 +17,7 @@ fn titled_pane_test() -> impl Widget + Clone {
     let pane_1 = TitledPane::collapsible("Initially collapsed", true, Text::new("Hi!"));
     let pane_2 = TitledPane::collapsible("Initially expanded", false, Text::new("Hello!"));
 
-    let mut v = Grid::column(GridTrack::new(GridLength::Flex(1.0)));
+    let mut v = Grid::column(TrackSizePolicy::new(GridLength::Flex(1.0)));
     v.add_row(pane_1);
     v.add_row(pane_2);
 

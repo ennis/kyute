@@ -1,11 +1,11 @@
 use kyute::{
     application, composable,
     shell::{application::Application, winit::window::WindowBuilder},
-    style::BoxStyle,
+    style::{BoxStyle, Paint},
     theme,
     widget::{
-        grid::GridTrack, ColorPicker, ColorPickerParams, Container, Flex, Grid, GridLength, Image, Label,
-        Null, Text, TitledPane,
+        grid::TrackSizePolicy, ColorPicker, ColorPickerParams, Container, Flex, Grid, GridLength, Image, Label, Null,
+        Text, TitledPane,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Size, UnitExt, Widget, WidgetExt,
     Window,
@@ -13,7 +13,6 @@ use kyute::{
 use kyute_shell::winit::dpi::LogicalSize;
 use std::sync::Arc;
 use tracing::trace_span;
-use kyute::style::Paint;
 
 #[composable]
 fn color_picker() -> impl Widget {
@@ -44,14 +43,14 @@ fn ui_root() -> impl Widget {
 
 fn main() {
     /*use tracing_subscriber::layer::SubscriberExt;
-    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()))
-        .expect("set up the subscriber");
-*/
+        tracing::subscriber::set_global_default(tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()))
+            .expect("set up the subscriber");
+    */
     tracing_subscriber::fmt()
-    .compact()
-    .with_target(false)
-    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-    .init();
+        .compact()
+        .with_target(false)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     application::run(ui_root);
 }

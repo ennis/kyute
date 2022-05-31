@@ -4,7 +4,7 @@ use kyute::{
         application::Application,
         winit::{dpi::LogicalSize, window::WindowBuilder},
     },
-    widget::{grid::GridTrack, Button, Grid, GridLength, Text},
+    widget::{grid::TrackSizePolicy, Button, Grid, GridLength, Text},
     Alignment, Widget, WidgetExt, Window,
 };
 
@@ -55,8 +55,7 @@ fn counter_demo() -> impl Widget {
         button_decrement.aligned(Alignment::TOP_RIGHT).grid_area((1, 0)),
         // Row 1, Column 0, Z-order 0, align the button to the top right corner of the cell.
         button_increment.aligned(Alignment::TOP_LEFT).grid_area((1, 1)),
-        )
-    );
+    ));
 
     grid
 }

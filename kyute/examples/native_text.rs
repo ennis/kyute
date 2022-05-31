@@ -4,7 +4,7 @@ use kyute::{
     style::BoxStyle,
     text::FormattedText,
     theme,
-    widget::{grid::GridTrack, Container, Flex, Grid, GridLength, Image, Label, Null, Text, TitledPane},
+    widget::{grid::TrackSizePolicy, Container, Flex, Grid, GridLength, Image, Label, Null, Text, TitledPane},
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Orientation, Point, Size, UnitExt, Widget,
     WidgetExt, WidgetPod, Window,
 };
@@ -48,7 +48,7 @@ fn native_text_test() -> impl Widget + Clone {
     let pane_1 = TitledPane::collapsible("Initially collapsed", true, Label::new("Hi!".to_string()));
     let pane_2 = TitledPane::collapsible("Initially expanded", false, text_widget);
 
-    let mut v = Grid::column(GridTrack::new(400.dip()));
+    let mut v = Grid::column(TrackSizePolicy::new(400.dip()));
     v.add_row(pane_1);
     v.add_row(pane_2);
 

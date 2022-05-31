@@ -6,7 +6,7 @@ use kyute::{
     text::{Attribute, FormattedText},
     theme,
     widget::{
-        grid::{AlignItems, GridTrack},
+        grid::{AlignItems, TrackSizePolicy},
         Action, Canvas, ConstrainedBox, Container, ContextMenu, DragController, Flex, Formatter, Grid, GridLength,
         Image, Label, Menu, MenuItem, Null, Slider, Text, TextEdit, TextInput, Thumb, TitledPane, ValidationResult,
     },
@@ -37,22 +37,20 @@ fn canvas_playground() -> impl Widget + Clone {
 
     grid.set_align_items(AlignItems::Baseline);
 
-    grid.insert(
-        (
-            ////////////////////
-            Label::new("Offset X"),
-            (),
-            TextInput::number(offset.x).on_value_changed(|x| offset.x = x),
-            ////////////////////
-            Label::new("Offset Y"),
-            (),
-            TextInput::number(offset.y).on_value_changed(|y| offset.y = y),
-            ////////////////////
-            Label::new("Scale"),
-            (),
-            TextInput::number(scale).on_value_changed(|s| scale = s)
-        ),
-    );
+    grid.insert((
+        ////////////////////
+        Label::new("Offset X"),
+        (),
+        TextInput::number(offset.x).on_value_changed(|x| offset.x = x),
+        ////////////////////
+        Label::new("Offset Y"),
+        (),
+        TextInput::number(offset.y).on_value_changed(|y| offset.y = y),
+        ////////////////////
+        Label::new("Scale"),
+        (),
+        TextInput::number(scale).on_value_changed(|s| scale = s),
+    ));
 
     /*grid.add_item(0, 0, 0, Label::new("Offset X"));
     grid.add_item(0, 2, 0, TextInput::number(offset.x).on_value_changed(|x| offset.x = x));
@@ -76,7 +74,7 @@ fn canvas_playground() -> impl Widget + Clone {
         .on_delta(|delta| offset = tmp_offset + inv_transform.transform_vector(delta));
 
     // context menu handler
-    grid.push_row_definition(GridTrack::new(GridLength::Flex(1.0)));
+    grid.push_row_definition(TrackSizePolicy::new(GridLength::Flex(1.0)));
     let add_node_action = Action::new().on_triggered(|| eprintln!("add node"));
     let add_comment_action = Action::new().on_triggered(|| eprintln!("add comment"));
 

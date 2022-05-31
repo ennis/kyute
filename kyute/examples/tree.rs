@@ -4,8 +4,9 @@ use kyute::{
     style::BoxStyle,
     theme,
     widget::{
-        grid::GridTrack, Button, ColumnHeaders, Container, Flex, Grid, GridLength, Image, Label, Null, Popup,
-        ScrollArea, TableRow, TableSelection, TableView, TableViewParams, Text, TextEdit, TitledPane, WidgetPod,
+        grid::{GridTemplate, TrackSizePolicy},
+        Button, ColumnHeaders, Container, Flex, Grid, GridLength, Image, Label, Null, Popup, ScrollArea, TableRow,
+        TableSelection, TableView, TableViewParams, Text, TextEdit, TitledPane, WidgetPod,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Length, Orientation, SideOffsets, Size, UnitExt,
     Widget, WidgetExt, Window,
@@ -13,7 +14,6 @@ use kyute::{
 use kyute_common::{Atom, Data};
 use std::sync::Arc;
 use tracing::trace;
-use kyute::widget::grid::GridTemplate;
 
 #[composable(cached)]
 fn cell(text: impl Into<String> + Data) -> impl Widget {

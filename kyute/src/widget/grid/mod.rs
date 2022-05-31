@@ -12,6 +12,7 @@ use crate::{
 };
 use std::{
     cell::{Cell, RefCell},
+    cmp::{max, min},
     collections::HashMap,
     convert::{TryFrom, TryInto},
     mem,
@@ -30,6 +31,12 @@ pub enum GridLength {
     Fixed(Length),
     /// Proportion of remaining space.
     Flex(f64),
+}
+
+impl Default for GridLength {
+    fn default() -> Self {
+        GridLength::Auto
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Data)]
@@ -51,33 +58,35 @@ pub enum AlignItems {
     Baseline,
 }
 
-/// Description of a grid track (row or column).
-#[derive(Clone, Debug)]
-pub struct GridTrack {
-    /// Track length.
+/// Sizing behavior of a grid track.
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+pub struct TrackSizePolicy {
     min_size: GridLength,
     max_size: GridLength,
-    /// Optional track name.
-    name: Option<String>,
 }
 
-impl GridTrack {
-    pub fn new(length: impl Into<GridLength>) -> GridTrack {
-        let length = length.into();
-        GridTrack {
-            min_size: length,
-            max_size: length,
-            name: None,
+impl TrackSizePolicy {
+    /// Defines a track that is sized according to the provided GridLength value.
+    pub fn new(size: impl Into<GridLength>) -> TrackSizePolicy {
+        let size = size.into();
+        TrackSizePolicy {
+            min_size: size,
+            max_size: size,
         }
     }
 
-    pub fn named(name: impl Into<String>, length: impl Into<GridLength>) -> GridTrack {
-        let length = length.into();
-        GridTrack {
-            min_size: length,
-            max_size: length,
-            name: Some(name.into()),
+    /// Defines minimum and maximum sizes for the
+    pub fn min_max(min_size: impl Into<GridLength>, max_size: impl Into<GridLength>) -> TrackSizePolicy {
+        TrackSizePolicy {
+            min_size: min_size.into(),
+            max_size: max_size.into(),
         }
+    }
+}
+
+impl From<GridLength> for TrackSizePolicy {
+    fn from(size: GridLength) -> Self {
+        TrackSizePolicy::new(size)
     }
 }
 
@@ -145,27 +154,46 @@ struct ComputeTrackSizeResult {
 // GridTemplate
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug)]
-enum TrackItem<'a> {
-    LineTags(Vec<&'a str>),
-    Track(GridLength),
-    ImplicitTrack(GridLength),
-}
-
 /// A template for a grid's rows, columns, and gaps.
 #[derive(Default, Debug)]
-pub struct GridTemplate<'a> {
-    rows: Vec<TrackItem<'a>>,
-    columns: Vec<TrackItem<'a>>,
-    row_gap: Option<Length>,
-    column_gap: Option<Length>,
+pub struct GridTemplate {
+    pub rows: Vec<TrackSizePolicy>,
+    pub columns: Vec<TrackSizePolicy>,
+    pub row_tags: Vec<(usize, String)>,
+    pub column_tags: Vec<(usize, String)>,
+    pub implicit_row_size: TrackSizePolicy,
+    pub implicit_column_size: TrackSizePolicy,
+    pub row_gap: Option<Length>,
+    pub column_gap: Option<Length>,
 }
 
-impl<'a> TryFrom<&'a str> for GridTemplate<'a> {
+impl TryFrom<&str> for GridTemplate {
     type Error = nom::error::Error<String>;
 
-    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         GridTemplate::parse(value)
+    }
+}
+
+impl GridTemplate {
+    pub fn new() -> GridTemplate {
+        GridTemplate::default()
+    }
+
+    pub fn push_row(&mut self, size: impl Into<TrackSizePolicy>) {
+        self.rows.push(size.into());
+    }
+
+    pub fn push_row_tag(&mut self, tag: impl Into<String>) {
+        self.row_tags.push((self.rows.len(), tag.into()));
+    }
+
+    pub fn push_column(&mut self, size: impl Into<TrackSizePolicy>) {
+        self.columns.push(size.into());
+    }
+
+    pub fn push_column_tag(&mut self, tag: impl Into<String>) {
+        self.column_tags.push((self.columns.len(), tag.into()));
     }
 }
 
@@ -758,13 +786,16 @@ impl Data for GridLayout {
 // - flow options:
 //      - align with column / row (line in flow direction)
 
+/// Grid layout container.
+///
+/// TODO it's a bit heavyweight for just layouting two buttons in a column...
 #[derive(Debug)]
 pub struct Grid {
     id: WidgetId,
     /// Column sizes.
-    column_definitions: Vec<GridTrack>,
+    column_definitions: Vec<TrackSizePolicy>,
     /// Row sizes.
-    row_definitions: Vec<GridTrack>,
+    row_definitions: Vec<TrackSizePolicy>,
 
     /// List of grid items: widgets positioned inside the grid.
     items: Vec<GridItem>,
@@ -773,8 +804,8 @@ pub struct Grid {
     named_column_lines: HashMap<String, usize>,
 
     /// Row template.
-    implicit_row_length: GridLength,
-    implicit_column_length: GridLength,
+    implicit_row_size: GridLength,
+    implicit_column_size: GridLength,
     row_gap: Length,
     column_gap: Length,
 
@@ -816,8 +847,8 @@ impl Grid {
             items: vec![],
             named_row_lines: HashMap::default(),
             named_column_lines: HashMap::default(),
-            implicit_row_length: GridLength::Auto,
-            implicit_column_length: GridLength::Auto,
+            implicit_row_size: GridLength::Auto,
+            implicit_column_size: GridLength::Auto,
             row_gap: Length::Dip(0.0),
             column_gap: Length::Dip(0.0),
             align_items: AlignItems::Start,
@@ -835,7 +866,7 @@ impl Grid {
     }
 
     /// Creates a new grid from a template.
-    pub fn with_template<'a>(template: impl TryInto<GridTemplate<'a>>) -> Grid {
+    pub fn with_template(template: impl TryInto<GridTemplate>) -> Grid {
         let template = template.try_into().unwrap_or_else(|err| {
             warn!("invalid grid template");
             Default::default()
@@ -844,45 +875,19 @@ impl Grid {
         let mut seen_implicit_row = false;
         let mut seen_implicit_column = false;
 
-        for (row, item) in template.rows.iter().enumerate() {
-            match *item {
-                TrackItem::Track(length) => {
-                    grid.row_definitions.push(GridTrack::new(length));
-                }
-                TrackItem::ImplicitTrack(length) => {
-                    if seen_implicit_row {
-                        warn!("multiple implicit row lengths specified; ignoring");
-                    } else {
-                        seen_implicit_row = true;
-                        grid.implicit_row_length = length;
-                    }
-                }
-                TrackItem::LineTags(ref tags) => {
-                    for tag in tags {
-                        grid.named_row_lines.insert(tag.to_string(), row);
-                    }
-                }
-            }
+        grid.row_definitions = template.rows;
+        grid.column_definitions = template.columns;
+
+        // TODO
+        grid.implicit_row_size = template.implicit_row_size.min_size;
+        // TODO
+        grid.implicit_column_size = template.implicit_column_size.min_size;
+
+        for (row, tag) in template.row_tags {
+            grid.named_row_lines.insert(tag, row);
         }
-        for (column, item) in template.columns.iter().enumerate() {
-            match *item {
-                TrackItem::Track(length) => {
-                    grid.column_definitions.push(GridTrack::new(length));
-                }
-                TrackItem::ImplicitTrack(length) => {
-                    if seen_implicit_column {
-                        warn!("multiple implicit column lengths specified; ignoring");
-                    } else {
-                        seen_implicit_column = true;
-                        grid.implicit_column_length = length;
-                    }
-                }
-                TrackItem::LineTags(ref tags) => {
-                    for tag in tags {
-                        grid.named_column_lines.insert(tag.to_string(), column);
-                    }
-                }
-            }
+        for (column, tag) in template.column_tags {
+            grid.named_column_lines.insert(tag, column);
         }
 
         grid.row_gap = template.row_gap.unwrap_or_default();
@@ -893,14 +898,14 @@ impl Grid {
     /// Creates a single-column grid.
     pub fn column(width: impl Into<GridLength>) -> Grid {
         let mut grid = Self::new();
-        grid.column_definitions.push(GridTrack::new(width));
+        grid.column_definitions.push(TrackSizePolicy::new(width));
         grid
     }
 
     /// Creates a single-row grid.
     pub fn row(height: impl Into<GridLength>) -> Grid {
         let mut grid = Self::new();
-        grid.row_definitions.push(GridTrack::new(height));
+        grid.row_definitions.push(TrackSizePolicy::new(height));
         grid.auto_flow_dir = FlowDirection::Column;
         grid
     }
@@ -988,18 +993,16 @@ impl Grid {
         let extra_columns = column_range.end.saturating_sub(num_columns);
 
         for _ in 0..extra_rows {
-            self.row_definitions.push(GridTrack {
-                min_size: self.implicit_row_length,
-                max_size: self.implicit_row_length,
-                name: None,
+            self.row_definitions.push(TrackSizePolicy {
+                min_size: self.implicit_row_size,
+                max_size: self.implicit_row_size,
             });
         }
 
         for _ in 0..extra_columns {
-            self.column_definitions.push(GridTrack {
-                min_size: self.implicit_column_length,
-                max_size: self.implicit_column_length,
-                name: None,
+            self.column_definitions.push(TrackSizePolicy {
+                min_size: self.implicit_column_size,
+                max_size: self.implicit_column_size,
             });
         }
 

@@ -1,7 +1,7 @@
 use crate::{
     composable, theme,
     widget::{
-        grid::GridTrack, separator::separator, Clickable, Container, Grid, GridLength, Image, Scaling, Text,
+        grid::TrackSizePolicy, separator::separator, Clickable, Container, Grid, GridLength, Image, Scaling, Text,
         WidgetWrapper,
     },
     Alignment, Orientation, Widget, WidgetExt,

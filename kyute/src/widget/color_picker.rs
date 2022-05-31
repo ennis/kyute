@@ -1,10 +1,18 @@
-use crate::{drawing::ToSkia, make_uniform_data, style, style::{BoxStyle, Paint, PaintCtxExt}, theme, widget::{
-    grid,
-    grid::{AlignItems, GridLayoutExt, GridTrack},
-    prelude::*,
-    slider::{SliderBase, SliderTrack},
-    Border, Clickable, Container, Grid, GridLength, Null, Text, TextInput, ValidationResult, WidgetWrapper,
-}, Color, GpuFrameCtx, PointerEventKind, UnitExt, WidgetExt, tweak};
+use crate::{
+    drawing::ToSkia,
+    make_uniform_data, style,
+    style::{BoxStyle, Paint, PaintCtxExt},
+    theme, tweak,
+    widget::{
+        grid,
+        grid::{AlignItems, GridLayoutExt, TrackSizePolicy},
+        prelude::*,
+        slider::{SliderBase, SliderTrack},
+        Border, Clickable, Container, Grid, GridLength, Null, Stepper, Text, TextInput, ValidationResult,
+        WidgetWrapper,
+    },
+    Color, GpuFrameCtx, PointerEventKind, UnitExt, WidgetExt,
+};
 use anyhow::Error;
 use euclid::SideOffsets2D;
 use kyute_common::{Length, SideOffsets};
@@ -301,6 +309,12 @@ impl ColorPicker {
                 TextInput::number(a as f64).on_value_changed(|v| a = v as f32),
             ));
         }
+
+        grid.insert(
+            Stepper::new(((a - 0.5) * 20.0) as i32, -10i32, 10i32, 1)
+                .on_value_changed(|v| a = (v as f32 + 10.0) / 20.0)
+                .grid_area((4..5, 0..3)),
+        );
 
         new_color = Color(LinSrgba::new(r, g, b, a).into_encoding());
 

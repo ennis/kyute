@@ -6,7 +6,7 @@ use kyute::{
     text::{Attribute, FormattedText},
     theme,
     widget::{
-        grid::{AlignItems, GridTrack},
+        grid::{AlignItems, TrackSizePolicy},
         Container, Flex, Formatter, Grid, GridLength, Image, Label, Null, Slider, Text, TextEdit, TextInput,
         TitledPane, ValidationResult,
     },
@@ -44,9 +44,9 @@ fn text_playground() -> impl Widget + Clone {
     let base_font_size = 14.0;
 
     let mut grid = Grid::new();
-    grid.push_column_definition(GridTrack::new(GridLength::Fixed(200.dip())));
-    grid.push_column_definition(GridTrack::new(GridLength::Fixed(5.dip())));
-    grid.push_column_definition(GridTrack::new(GridLength::Flex(1.0)));
+    grid.push_column_definition(TrackSizePolicy::new(GridLength::Fixed(200.dip())));
+    grid.push_column_definition(TrackSizePolicy::new(GridLength::Fixed(5.dip())));
+    grid.push_column_definition(TrackSizePolicy::new(GridLength::Flex(1.0)));
     grid.set_align_items(AlignItems::Baseline);
 
     for i in 0..6 {
