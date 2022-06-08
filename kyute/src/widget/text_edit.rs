@@ -1,7 +1,7 @@
 //! Text editor widget.
 use crate::{
-    composable,
-    core::{Widget},
+    cache, composable,
+    core::Widget,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
     style::{BoxStyle, PaintCtxExt},
@@ -9,10 +9,11 @@ use crate::{
     widget::{prelude::*, Container, Text},
     Color, Data, UnitExt,
 };
+use anyhow::Error;
 use keyboard_types::KeyState;
 use kyute_shell::text::{Attribute, FormattedText, Selection, TextAffinity, TextPosition};
 use skia_safe as sk;
-use std::{marker::PhantomData, sync::Arc};
+use std::{fmt::Display, marker::PhantomData, str::FromStr, sync::Arc};
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
 
@@ -74,7 +75,7 @@ impl TextEdit {
         selection.end = selection.end.min(formatted_text.plain_text.len());
 
         let inner = Container::new(Text::new(formatted_text.clone()))
-            .box_style(theme::TEXT_EDIT)
+            .box_style(theme::TEXT_EDIT.get(&cache::environment()).unwrap())
             .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip());
 
         TextEdit {
@@ -372,156 +373,5 @@ impl Widget for TextEdit {
             Event::Composition(_) => {}
             _ => {}
         }
-    }
-}
-
-/// Validation result.
-pub enum ValidationResult {
-    /// The input is valid.
-    Valid,
-    /// The input is invalid.
-    Invalid,
-    /// The input is invalid as-is, but possibly because the user hasn't finished inputting the value.
-    Incomplete,
-}
-
-/// Format, validates, and parses text input.
-pub trait Formatter<T> {
-    /// Formats the given value.
-    fn format(&self, value: &T) -> FormattedText;
-
-    /// Formats the given partial input.
-    fn format_partial_input(&self, text: &str) -> FormattedText;
-
-    /// Validates the given input.
-    fn validate_partial_input(&self, text: &str) -> ValidationResult;
-
-    /// Parses the given input.
-    fn parse(&self, text: &str) -> Result<T, anyhow::Error>;
-}
-
-/// Formatter for a floating point number value.
-pub struct NumberFormatter;
-
-impl Formatter<f64> for NumberFormatter {
-    fn format(&self, value: &f64) -> FormattedText {
-        format!("{:.3}", value).into()
-    }
-
-    fn format_partial_input(&self, text: &str) -> FormattedText {
-        match text.parse::<f64>() {
-            Ok(_) => text.into(),
-            Err(_) => {
-                // highlight in red if not a valid number
-                FormattedText::from(text).attribute(.., Attribute::Color(Color::from_hex("#DC143C")))
-            }
-        }
-    }
-
-    fn validate_partial_input(&self, text: &str) -> ValidationResult {
-        match text.parse::<f64>() {
-            Ok(_) => ValidationResult::Valid,
-            Err(_) => ValidationResult::Invalid,
-        }
-    }
-
-    fn parse(&self, text: &str) -> Result<f64, anyhow::Error> {
-        Ok(text.parse::<f64>()?)
-    }
-}
-
-/// A text edit widget with validated input.
-pub struct TextInput<T> {
-    text_edit: TextEdit,
-    new_value: Option<T>,
-    _phantom: PhantomData<T>,
-}
-
-impl TextInput<f64> {
-    #[composable]
-    pub fn number(value: f64) -> TextInput<f64> {
-        Self::new(value, NumberFormatter)
-    }
-}
-
-impl<T> TextInput<T>
-where
-    T: Data,
-{
-    // not sure that a "formatter" is necessary: it can be a simple function
-    #[composable]
-    pub fn new(value: T, formatter: impl Formatter<T>) -> TextInput<T> {
-        // current text during editing
-        #[state]
-        let mut editing_text = None;
-
-        // if currently editing (editing_text != None), use that, otherwise get the text by formatting the given value
-        let text = if let Some(text) = editing_text.clone() {
-            text
-        } else {
-            formatter.format(&value)
-        };
-
-        let text_edit = TextEdit::new(text);
-
-        if let Some(text) = text_edit.text_changed() {
-            // update editing text
-            editing_text = Some(formatter.format_partial_input(&text));
-        }
-
-        let mut new_value = None;
-        if let Some(text) = text_edit.editing_finished() {
-            // Editing finished (Enter pressed or tabbed out). Validate and notify that a value may be available.
-            match formatter.validate_partial_input(&text) {
-                ValidationResult::Valid => {
-                    // editing finished and valid input: clear the editing text, set the new value
-                    editing_text = None;
-                    new_value = Some(formatter.parse(&text).unwrap());
-                }
-                ValidationResult::Invalid => {
-                    // invalid: keep current (invalid) text, let the formatter highlight the error if it wants
-                }
-                ValidationResult::Incomplete => {
-                    // same as invalid
-                }
-            }
-        }
-
-        TextInput {
-            text_edit,
-            new_value,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Returns whether the current value has changed.
-    pub fn value_changed(&self) -> Option<T> {
-        self.new_value.clone()
-    }
-
-    /// Runs the function when the value has changed.
-    pub fn on_value_changed(self, f: impl FnOnce(T)) -> Self {
-        if let Some(v) = self.new_value.clone() {
-            f(v);
-        }
-        self
-    }
-}
-
-impl<T> Widget for TextInput<T> {
-    fn widget_id(&self) -> Option<WidgetId> {
-        self.text_edit.widget_id()
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.text_edit.layout(ctx, constraints, env)
-    }
-
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.text_edit.route_event(ctx, event, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx) {
-        self.text_edit.paint(ctx)
     }
 }

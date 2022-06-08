@@ -347,10 +347,13 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
 
         if !ctx.speculative {
             if self.cached_measurements.get() != Some(measurements) {
+                // resize the underlying native layer or surface
+                // TODO take bounds into account
                 let size = SizeI::new(
-                    (measurements.clip_bounds.size.width * ctx.scale_factor) as i32,
-                    (measurements.clip_bounds.size.height * ctx.scale_factor) as i32,
+                    (measurements.size.width * ctx.scale_factor) as i32,
+                    (measurements.size.height * ctx.scale_factor) as i32,
                 );
+
                 if !size.is_empty() {
                     match self.paint_target {
                         PaintTarget::NativeLayer { ref layer } => {

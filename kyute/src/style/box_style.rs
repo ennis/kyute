@@ -1,7 +1,7 @@
 use crate::{
     animation::PaintCtx,
     drawing::ToSkia,
-    style::{border::Border, Length, Paint},
+    style::{border::Border, BorderPosition, Length, Paint},
     Offset, Rect,
 };
 use kyute_common::{Color, SideOffsets, Size};
@@ -127,6 +127,8 @@ impl BoxStyle {
 
     /// Returns the side offsets added by visual features like borders that affect the size of the
     /// styled widget.
+    ///
+    /// TODO are boxstyles supposed to affect the layout?
     pub fn border_side_offsets(&self, scale_factor: f64, available_space: Size) -> SideOffsets {
         let mut side_offsets = SideOffsets::zero();
         for b in self.borders.iter() {
@@ -140,17 +142,23 @@ impl BoxStyle {
     }
 
     pub fn clip_bounds(&self, bounds: Rect, scale_factor: f64) -> Rect {
-        // FIXME: borders also extend outside of the element
+        let mut inflate = 0.0f64;
         match self.box_shadow {
             Some(BoxShadow::Drop(p)) => {
                 let ox = p.offset_x.to_dips(scale_factor, bounds.width());
                 let oy = p.offset_y.to_dips(scale_factor, bounds.height());
                 let radius = p.blur_radius.to_dips(scale_factor, bounds.width());
-                let inflate = radius + ox.max(oy);
-                bounds.inflate(inflate, inflate)
+                inflate = inflate.max(radius + ox.max(oy));
             }
-            _ => bounds,
-        }
+            _ => {}
+        };
+        /*for border in self.borders.iter() {
+            let ox = border.offset_x.to_dips(scale_factor, bounds.width());
+            let oy = border.offset_y.to_dips(scale_factor, bounds.height());
+            inflate = inflate.max(ox.max(oy));
+        }*/
+
+        bounds.inflate(inflate, inflate)
     }
 
     /// Specifies the radius of the 4 corners of the box.

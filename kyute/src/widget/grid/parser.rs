@@ -130,7 +130,7 @@ fn line_tags(input: &str) -> IResult<&str, Vec<&str>> {
 
 /// Implicit track definition
 fn implicit_track(input: &str) -> IResult<&str, GridLength> {
-    context("implicit_track", delimited(char('{'), length, char('}')))(input)
+    context("implicit_track", delimited(char('{'), length_or_auto, char('}')))(input)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

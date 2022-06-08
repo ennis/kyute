@@ -1,4 +1,5 @@
 use crate::{
+    cache,
     event::{PointerButton, PointerEventKind},
     theme,
     widget::{prelude::*, Container, Label},
@@ -67,7 +68,7 @@ impl<T: Clone + 'static> DropDown<T> {
             .min_height(26.dip())
             .baseline(21.dip())
             .content_padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
-            .box_style(theme::DROP_DOWN);
+            .box_style(theme::DROP_DOWN.get(&cache::environment()).unwrap());
 
         // create menu IDs for each choice
         let mut choices_with_ids = Vec::new();

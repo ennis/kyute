@@ -6,17 +6,9 @@ use crate::{
 };
 use skia_safe as sk;
 use skia_safe::gradient_shader::GradientShaderColors;
-use std::{ffi::c_void, fmt, mem};
+use std::{convert::TryFrom, ffi::c_void, fmt, mem};
 
-/// Represents a gradient stop.
-#[derive(Clone, Debug, Data, PartialEq, serde::Deserialize)]
-pub struct GradientStop {
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pos: Option<f64>,
-    color: Color,
-}
-
+/// Image repeat mode.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Data, serde::Deserialize)]
 pub enum RepeatMode {
     Repeat,
@@ -144,44 +136,22 @@ impl Paint {
 
                 let a = c + Offset::new(-x, y);
                 let b = c + Offset::new(x, -y);
-                let a = sk::Point::new(a.x as sk::scalar, a.y as sk::scalar);
-                let b = sk::Point::new(b.x as sk::scalar, b.y as sk::scalar);
+                let a = a.to_skia();
+                let b = b.to_skia();
 
-                let mut positions = vec![0.0f32; linear_gradient.stops.len()];
+                let mut resolved_gradient = linear_gradient.clone();
+                resolved_gradient.resolve_stop_positions();
 
-                // resolve positions
-                {
-                    let mut i = 0;
-                    let n = positions.len();
-                    while i < n {
-                        if let Some(pos) = linear_gradient.stops[i].pos {
-                            positions[i] = pos as f32;
-                            i += 1;
-                        } else {
-                            let prev = if i > 0 { positions[i - 1] as f64 } else { 0.0 };
-                            // find the next non-empty stop position, return the number of stops between the current stop (i) and the next stop with non-empty position.
-                            let (skip, next) = {
-                                let mut skip = 1;
-                                let mut pos = 1.0;
-                                while i + skip <= n {
-                                    if let Some(p) = linear_gradient.stops[i + skip].pos {
-                                        pos = p;
-                                        break;
-                                    }
-                                    skip += 1;
-                                }
-                                (skip, pos)
-                            };
-
-                            for j in 0..skip {
-                                positions[i + j] = (prev + (next - prev) * j as f64 / skip as f64) as f32;
-                            }
-                            i += skip;
-                        }
-                    }
-                }
-
-                let colors: Vec<_> = linear_gradient.stops.iter().map(|stop| stop.color.to_skia()).collect();
+                let positions: Vec<_> = resolved_gradient
+                    .stops
+                    .iter()
+                    .map(|stop| stop.position.unwrap() as f32)
+                    .collect();
+                let colors: Vec<_> = resolved_gradient
+                    .stops
+                    .iter()
+                    .map(|stop| stop.color.to_skia())
+                    .collect();
 
                 let shader = sk::Shader::linear_gradient(
                     (a, b),
@@ -276,12 +246,25 @@ where
     d.deserialize_f32(Visitor)
 }
 
+/// Represents a gradient stop.
+#[derive(Clone, Debug, Data, PartialEq, serde::Deserialize)]
+pub struct ColorStop {
+    /// Position of the stop along the gradient segment, normalized between zero and one.
+    ///
+    /// If `None`, the position is inferred from the position of the surrounding stops.
+    pub position: Option<f64>,
+    /// Stop color.
+    pub color: Color,
+}
+
 /// Describes a linear color gradient.
 #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
 pub struct LinearGradient {
+    /// Direction of the gradient line.
     #[serde(deserialize_with = "deserialize_angle")]
-    angle: Angle,
-    stops: Vec<GradientStop>,
+    pub angle: Angle,
+    /// List of color stops.
+    pub stops: Vec<ColorStop>,
 }
 
 impl Data for LinearGradient {
@@ -306,9 +289,68 @@ impl LinearGradient {
     }
 
     /// Appends a color stop to this gradient.
-    pub fn stop(mut self, color: Color, pos: impl Into<Option<f64>>) -> Self {
-        self.stops.push(GradientStop { color, pos: pos.into() });
+    pub fn stop(mut self, color: Color, position: impl Into<Option<f64>>) -> Self {
+        self.stops.push(ColorStop {
+            color,
+            position: position.into(),
+        });
         self
+    }
+
+    /// Resolves color stop positions.
+    ///
+    /// See https://www.w3.org/TR/css-images-3/#color-stop-fixup
+    pub(crate) fn resolve_stop_positions(&mut self) {
+        if self.stops.len() < 2 {
+            warn!("invalid gradient (must have at least two stops)");
+            return;
+        }
+
+        // CSS Images Module Level 3 - 3.4.3. Color Stop “Fixup”
+        //
+        //      If the first color stop does not have a position, set its position to 0%.
+        //      If the last color stop does not have a position, set its position to 100%.
+        //
+        self.stops.first_mut().unwrap().position.get_or_insert(0.0);
+        self.stops.last_mut().unwrap().position.get_or_insert(1.0);
+
+        //
+        //      If a color stop or transition hint has a position that is less than the specified position
+        //      of any color stop or transition hint before it in the list, set its position to be equal
+        //      to the largest specified position of any color stop or transition hint before it.
+        //
+        let mut cur_pos = self.stops.first().unwrap().position.unwrap();
+        for stop in self.stops.iter_mut() {
+            if let Some(mut pos) = stop.position {
+                if pos < cur_pos {
+                    pos = cur_pos;
+                }
+                cur_pos = pos;
+            }
+        }
+
+        //
+        //      If any color stop still does not have a position, then, for each run of adjacent color stops without positions,
+        //      set their positions so that they are evenly spaced between the preceding and following color stops with positions.
+        //
+        let mut i = 0;
+        while i < self.stops.len() {
+            if self.stops[i].position.is_none() {
+                let mut j = i + 1;
+                while self.stops[j].position.is_none() {
+                    j += 1;
+                }
+                let len = j - i + 1;
+                let a = self.stops[i - 1].position.unwrap();
+                let b = self.stops[j].position.unwrap();
+                for k in i..j {
+                    self.stops[i].position = Some(a + (b - a) * (k - i + 1) as f64 / len as f64);
+                }
+                i = j;
+            } else {
+                i += 1;
+            }
+        }
     }
 }
 
@@ -321,5 +363,13 @@ impl Default for LinearGradient {
 impl From<LinearGradient> for Paint {
     fn from(g: LinearGradient) -> Self {
         Paint::LinearGradient(g)
+    }
+}
+
+/// From CSS value.
+impl TryFrom<&str> for Paint {
+    type Error = ();
+    fn try_from(css: &str) -> Result<Self, ()> {
+        Paint::parse(css)
     }
 }

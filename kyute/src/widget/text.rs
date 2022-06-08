@@ -1,24 +1,16 @@
 use crate::{
-    animation::PaintCtx,
-    composable,
-    core::{DebugNode},
-    drawing::ToSkia,
-    make_uniform_data, theme, BoxConstraints, Color, Data, EnvRef, Environment, Event, EventCtx, Font,
-    LayoutCache, LayoutCtx, Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
+    animation::PaintCtx, composable, core::DebugNode, drawing::ToSkia, make_uniform_data, theme, BoxConstraints, Color,
+    Data, EnvRef, Environment, Event, EventCtx, Font, LayoutCache, LayoutCtx, Measurements, Point, RectI, RoundToPixel,
+    Transform, Widget, WidgetId,
 };
 use euclid::Rect;
-use kyute_shell::{
-    text::{
-        FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
-        RasterizationOptions,
-    },
+use kyute_shell::text::{
+    FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
+    RasterizationOptions,
 };
 use lazy_static::lazy_static;
 use skia_safe as sk;
-use std::{
-    cell::{Ref},
-    ptr,
-};
+use std::{cell::Ref, ptr};
 use threadbound::ThreadBound;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -202,7 +194,6 @@ impl<'a, 'b> kyute_shell::text::Renderer for Renderer<'a, 'b> {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Text widget
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
 #[derive(Clone)]
 struct TextLayoutResult {
     paragraph: Paragraph,
@@ -288,7 +279,8 @@ impl Widget for Text {
                 paragraph,
                 measurements: Measurements {
                     size,
-                    clip_bounds: Rect::new(Point::origin(), size),
+                    // TODO clip bounds
+                    clip_bounds: None,
                     baseline: Some(baseline),
                 },
                 color,

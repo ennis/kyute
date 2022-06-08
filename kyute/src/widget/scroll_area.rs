@@ -41,7 +41,11 @@ impl ScrollArea {
             content_pos += scroll;
         }
 
-        // TODO check that content size is finite
+        assert!(
+            content_viewport.contents().size().is_finite(),
+            "the content widget of a ScrollArea should have finite dimensions"
+        );
+
         // v_height = viewport height
         // c_height = content height
         // t = thumb height

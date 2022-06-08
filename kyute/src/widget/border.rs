@@ -58,7 +58,8 @@ impl<Inner: Widget> Widget for Border<Inner> {
         let mut m = self.inner.layout(ctx, constraints, env);
         m.size.width += border_offsets.horizontal();
         m.size.height += border_offsets.vertical();
-        m.clip_bounds = m.clip_bounds.union(&m.local_bounds().outer_rect(border_offsets));
+        // TODO clip bounds
+        //m.clip_bounds = m.clip_bounds.union(&m.local_bounds().outer_rect(border_offsets));
         m.baseline.map(|b| b + border_offsets.top);
 
         // update layers

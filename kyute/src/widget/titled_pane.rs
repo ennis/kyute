@@ -1,5 +1,5 @@
 use crate::{
-    composable, theme,
+    cache, composable, theme,
     widget::{
         grid::TrackSizePolicy, separator::separator, Clickable, Container, Grid, GridLength, Image, Scaling, Text,
         WidgetWrapper,
@@ -52,7 +52,7 @@ impl TitledPane {
             Clickable::new(
                 Container::new(grid)
                     .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip())
-                    .box_style(theme::TITLED_PANE_HEADER),
+                    .box_style(theme::TITLED_PANE_HEADER.get(&cache::environment()).unwrap()),
             )
         };
 

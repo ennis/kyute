@@ -234,12 +234,11 @@ pub struct Measurements {
     ///
     /// The widget bounds are defined in the widget's local space as `Rect::new(Point::origin(), self.size)`.
     pub size: Size,
-    /// Calculated clip bounds in the widget
+    /// Clip bounds of the widget.
     ///
-    /// Usually the same as the widget bounds, but can be different if the
-    /// widget draws elements outside its bounds used for layout calculation
-    /// (e.g. drop shadows and other effects that shouldn't affect layout).
-    pub clip_bounds: Rect,
+    /// By default, this is set to `None`, which means that the widget shouldn't perform
+    /// any additional clipping.
+    pub clip_bounds: Option<Rect>,
     /// Baseline offset relative to *this* node.
     /// The baseline relative to the parent node is `offset.y + baseline`.
     pub baseline: Option<f64>,
@@ -251,10 +250,11 @@ impl PartialEq for Measurements {
     fn eq(&self, other: &Self) -> bool {
         self.size.width.to_bits() == other.size.width.to_bits()
             && self.size.height.to_bits() == other.size.height.to_bits()
-            && self.clip_bounds.origin.x.to_bits() == other.clip_bounds.origin.x.to_bits()
-            && self.clip_bounds.origin.y.to_bits() == other.clip_bounds.origin.y.to_bits()
-            && self.clip_bounds.size.width.to_bits() == other.clip_bounds.size.width.to_bits()
-            && self.clip_bounds.size.height.to_bits() == other.clip_bounds.size.height.to_bits()
+            && matches!((self.clip_bounds, other.clip_bounds), (Some(a),Some(b)) if
+                a.origin.x.to_bits() == b.origin.x.to_bits()
+                && a.origin.y.to_bits() == b.origin.y.to_bits()
+                && a.size.width.to_bits() == b.size.width.to_bits()
+                && a.size.height.to_bits() == b.size.height.to_bits())
             && matches!((self.baseline, other.baseline), (Some(a), Some(b)) if a.to_bits() == b.to_bits())
     }
 }
@@ -269,10 +269,16 @@ impl Hash for Measurements {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.size.width.to_bits().hash(state);
         self.size.height.to_bits().hash(state);
-        self.clip_bounds.origin.x.to_bits().hash(state);
-        self.clip_bounds.origin.y.to_bits().hash(state);
-        self.clip_bounds.size.width.to_bits().hash(state);
-        self.clip_bounds.size.height.to_bits().hash(state);
+        self.clip_bounds
+            .map(|cb| {
+                (
+                    cb.origin.x.to_bits(),
+                    cb.origin.y.to_bits(),
+                    cb.size.width.to_bits(),
+                    cb.size.height.to_bits(),
+                )
+            })
+            .hash(state);
         self.baseline.map(|x| x.to_bits()).hash(state);
     }
 }
@@ -282,7 +288,7 @@ impl Default for Measurements {
     fn default() -> Self {
         Measurements {
             size: Size::zero(),
-            clip_bounds: Rect::zero(),
+            clip_bounds: None,
             baseline: None,
         }
     }
@@ -293,20 +299,16 @@ impl Measurements {
     ///
     /// The clip bounds are are equal to the widget bounds.
     pub fn new(size: Size) -> Measurements {
-        Measurements {
-            size,
-            clip_bounds: Rect::new(Point::origin(), size),
-            baseline: None,
-        }
+        let mut m = Measurements::default();
+        m.size = size;
+        m
     }
 
     /// Creates new `Measurements` representing a widget with the given size, and the specified baseline.
-    ///
-    /// The clip bounds are are equal to the widget bounds.
     pub fn with_baseline(size: Size, baseline: f64) -> Measurements {
         Measurements {
             size,
-            clip_bounds: Rect::new(Point::origin(), size),
+            clip_bounds: None,
             baseline: Some(baseline),
         }
     }

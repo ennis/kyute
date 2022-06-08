@@ -150,6 +150,9 @@ impl CompositionSwapChain {
         let width = size.width as u32;
         let height = size.height as u32;
 
+        assert_ne!(width, 0, "composition surface cannot be zero-sized");
+        assert_ne!(height, 0, "composition surface cannot be zero-sized");
+
         // --- create swap chain ---
         let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
             Width: width,
@@ -168,7 +171,7 @@ impl CompositionSwapChain {
             app.backend
                 .dxgi_factory
                 .0
-                .CreateSwapChainForComposition(&app.backend.d3d12_command_queue.0, &swap_chain_desc, None)
+                .CreateSwapChainForComposition(&app.backend.d3d12_command_queue.0, dbg!(&swap_chain_desc), None)
                 .expect("CreateSwapChainForComposition failed")
                 .cast::<IDXGISwapChain3>()
                 .unwrap()

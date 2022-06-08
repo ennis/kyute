@@ -1,5 +1,5 @@
-use crate::Data;
-use palette::Shade;
+use crate::{Angle, Data};
+use palette::{convert::FromColorUnclamped, RgbHue, Shade};
 use std::{error::Error, fmt, marker::PhantomData};
 
 /// Color spec, non-linear srgb.
@@ -79,6 +79,16 @@ impl Color {
     /// Returns the alpha value.
     pub const fn alpha(&self) -> f32 {
         self.0.alpha
+    }
+
+    /// From HSL color space.
+    pub fn hsla(hue_degrees: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
+        Color(palette::Srgba::from_color_unclamped(palette::Hsla::new(
+            palette::RgbHue::from_degrees(hue_degrees),
+            saturation,
+            lightness,
+            alpha,
+        )))
     }
 
     /// Replaces alpha value.

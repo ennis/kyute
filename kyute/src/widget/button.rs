@@ -1,4 +1,5 @@
 use crate::{
+    cache,
     event::PointerEventKind,
     style::{BoxStyle, VisualState},
     theme,
@@ -26,11 +27,18 @@ impl Button {
             id: WidgetId::here(),
             inner: Container::new(Label::new(label))
                 .min_height(21.dip())
+                // TODO: if the padding cannot be honored because of size constraints, shoud this be adjusted automatically?
                 .content_padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
                 .baseline(17.dip())
-                .box_style(theme::BUTTON)
-                .alternate_box_style(VisualState::ACTIVE | VisualState::HOVER, theme::BUTTON_ACTIVE)
-                .alternate_box_style(VisualState::HOVER, theme::BUTTON_HOVER),
+                .box_style(theme::BUTTON.get(&cache::environment()).unwrap())
+                .alternate_box_style(
+                    VisualState::ACTIVE | VisualState::HOVER,
+                    theme::BUTTON_ACTIVE.get(&cache::environment()).unwrap(),
+                )
+                .alternate_box_style(
+                    VisualState::HOVER,
+                    theme::BUTTON_HOVER.get(&cache::environment()).unwrap(),
+                ),
             clicked: Signal::new(),
             active: Cell::new(false),
         }

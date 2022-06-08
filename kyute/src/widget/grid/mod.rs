@@ -872,9 +872,6 @@ impl Grid {
             Default::default()
         });
         let mut grid = Self::new();
-        let mut seen_implicit_row = false;
-        let mut seen_implicit_column = false;
-
         grid.row_definitions = template.rows;
         grid.column_definitions = template.columns;
 
@@ -908,6 +905,11 @@ impl Grid {
         grid.row_definitions.push(TrackSizePolicy::new(height));
         grid.auto_flow_dir = FlowDirection::Column;
         grid
+    }
+
+    /// Sets the auto flow direction
+    pub fn set_auto_flow(&mut self, flow_direction: FlowDirection) {
+        self.auto_flow_dir = flow_direction;
     }
 
     /*/// Returns the grid layout computed during layout.
@@ -1388,28 +1390,6 @@ impl Widget for Grid {
         for item in self.items.iter().rev() {
             item.widget.route_event(ctx, event, env);
         }
-        /*match event {
-        Event::Internal(InternalEvent::UpdateChildFilter { filter }) => {
-            // intercept the UpdateChildFilter event to return the cached filter instead
-            // of recalculating it
-            // FIXME: this is pretty ugly
-            //if let Some(ref cached_filter) = self.cached_child_filter.get() {
-            //    filter.extend(cached_filter);
-            //} else {
-            //    let mut child_filter = WidgetFilter::new();
-             //   for item in self.items.iter() {
-             //       let mut e = Event::Internal(InternalEvent::UpdateChildFilter {
-             //           filter: &mut child_filter,
-              //      });
-                    item.widget.route_event(ctx, &mut e, env);
-                }
-                self.cached_child_filter.set(Some(child_filter));
-                filter.extend(&child_filter);
-            }
-        }
-        event => {*/
-
-        //    }
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {

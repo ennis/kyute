@@ -354,7 +354,7 @@ rows-end / name
 
 ```
 
-## Paint & border  syntax
+## Paint & border syntax
 CSS-like:
 
 ```
@@ -364,3 +364,31 @@ fill = "#124522";
 
 border = "1ppx outside" 
 ```
+
+BoxStyle::parse:
+
+```
+sfdsd {
+  background: linear-gradient($grey-800, 
+  border: 
+}
+```
+
+## Removing EnvRef
+I don't like it. It forces us to defer resolving things like styles to layout.
+
+The main use case for dynamic environment values are things like disabled widget trees. 
+=> replacement: widget state flag
+
+Also: changing the font of a subtree.
+Alternative? style inheritance
+
+# Core data framework
+- Undo/redo
+- Fast collection diffs
+- Persistence abstracted away
+
+## TODO
+- `#[composable(tweak_literals)]`
+- more robust tweak macro (span fixup)
+- 

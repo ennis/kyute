@@ -1,6 +1,6 @@
 //! Environment keys that control the visual aspect (theme) of common widgets.
 use crate::{
-    style::{Border, BoxShadow, BoxStyle, LinearGradient},
+    style::{Border, BorderPosition, BoxShadow, BoxStyle, LinearGradient},
     Color, EnvKey, Environment, Font, Length, SideOffsets, UnitExt,
 };
 
@@ -400,6 +400,22 @@ pub fn setup_default_style(env: &mut Environment) {
 
     let control_border = Border::inside(1.px()).paint(env.get(keys::CONTROL_BORDER_COLOR).unwrap());
 
+    /*let blue_button_like_frame = BoxStyle::from_css(
+        r#"
+            background: linear-gradient(to bottom, #000007, #000008);
+            box-shadow: 0 1px 1px 0 rgb(158 158 158 / 70%);
+            border: 1px rgb(0 0 0 / 30%);
+        "#,
+    );
+
+    let blue_button_frame = BoxStyle::from_css(
+        r#"
+            border-radius: 4px;
+            background: linear-gradient(to bottom, #000007, #000008);
+            border-top: 2px rgb(40 40 40 / 30%);
+        "#,
+    );*/
+
     let blue_button_like_frame = BoxStyle::new()
         .radius(3.dip())
         .fill(
@@ -419,14 +435,18 @@ pub fn setup_default_style(env: &mut Environment) {
 
     {
         let button_frame = BoxStyle::new()
-            .radius(3.dip())
+            .radius(4.dip())
             .fill(
                 LinearGradient::new()
                     .angle(90.degrees())
                     .stop(palette::GREY_800.darken(0.02), Some(0.0))
                     .stop(palette::GREY_800.lighten(0.02), Some(1.0)),
             )
-            .border(Border::inside(1.px()).paint(palette::GREY_700).offset_y(1.px()))
+            .border(
+                Border::new(BorderPosition::Inside, 0.px(), 1.px(), 0.px(), 0.px())
+                    .offset_y(1.px())
+                    .paint(palette::GREY_700),
+            )
             .border(Border::inside(1.px()).paint(palette::GREY_900));
         env.set(BUTTON, button_frame);
         env.set(DROP_DOWN, blue_button_like_frame);
@@ -434,7 +454,7 @@ pub fn setup_default_style(env: &mut Environment) {
 
     {
         let button_active_frame = BoxStyle::new()
-            .radius(3.dip())
+            .radius(4.dip())
             .fill(
                 LinearGradient::new()
                     .angle(90.degrees())
@@ -447,14 +467,14 @@ pub fn setup_default_style(env: &mut Environment) {
 
     {
         let button_hover_frame = BoxStyle::new()
-            .radius(3.dip())
+            .radius(4.dip())
             .fill(
                 LinearGradient::new()
                     .angle((-90).degrees())
                     .stop(palette::GREY_800.lighten(0.1), Some(0.0))
                     .stop(palette::GREY_800.darken(0.1), Some(1.0)),
             )
-            .border(Border::inside(1.px()).paint(palette::GREY_700).offset_y(1.px()))
+            .border(Border::inside(1.px()).paint(palette::GREY_700))
             .border(Border::inside(1.px()).paint(palette::GREY_900));
         env.set(BUTTON_HOVER, button_hover_frame);
     }
@@ -472,7 +492,13 @@ pub fn setup_default_style(env: &mut Environment) {
     env.set(
         TEXT_EDIT,
         BoxStyle::new()
+            .radius(4.dip())
             .fill(env.get(keys::GROOVE_COLOR).unwrap())
+            .border(
+                Border::new(BorderPosition::Inside, 0.px(), 1.px(), 0.px(), 0.px())
+                    .offset_y(1.px())
+                    .paint(palette::GREY_700),
+            )
             .border(control_border),
     );
 

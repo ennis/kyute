@@ -507,7 +507,7 @@ impl Window {
         // create the initial window state
         // we don't want to recreate it every time, so it only depends on the call ID.
         let window_state = cache::once(move || {
-            let application = kyute_shell::application::Application::instance();
+            let application = Application::instance();
             let device = application.gpu_device().clone();
             let skia_backend_context = unsafe { create_skia_vulkan_backend_context(&device) };
             let recording_context_options = skia_safe::gpu::ContextOptions::new();
@@ -583,7 +583,7 @@ impl Widget for Window {
                         window_state.recomposed = false;
                     }
                 } else {
-                    tracing::trace!("creating window");
+                    trace!("creating window");
 
                     // --- actually create the window ---
                     let window = kyute_shell::window::Window::from_builder(

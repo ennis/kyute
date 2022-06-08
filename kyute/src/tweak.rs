@@ -1,6 +1,6 @@
 //! Tweakable numeric literals.
 use crate::{cache, composable, util};
-use std::{fs};
+use std::fs;
 
 /// A type usable with `tweak!`.
 pub trait Tweakable: Clone {
@@ -123,7 +123,7 @@ pub fn tweak<T: Tweakable + 'static>(source_file_path: &str, line_number: u32, o
             eprintln!("tweak value changed : {} L{}", source_file_path, line_number);
             value.set(v.clone());
         } else {
-            error!("failed to parse value");
+            error!("failed to parse value: {}", contents);
             return value.get();
         }
     }

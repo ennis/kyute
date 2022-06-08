@@ -1,8 +1,4 @@
-use crate::{
-    core::{DebugNode},
-    widget::prelude::*,
-    Length, SideOffsets,
-};
+use crate::{core::DebugNode, widget::prelude::*, Length, SideOffsets};
 
 /// A widgets that insets its content by a specified padding.
 pub struct Padding<W> {
@@ -58,7 +54,8 @@ impl<W: Widget> Widget for Padding<W> {
 
         let mut m = self.inner.layout(ctx, constraints.deflate(padding), env);
         m.size = m.local_bounds().outer_rect(padding).size;
-        m.clip_bounds.size = m.clip_bounds.outer_rect(padding).size;
+        // TODO clip bounds
+        //m.clip_bounds.size = m.clip_bounds.outer_rect(padding).size;
         if !ctx.speculative {
             self.inner.set_offset(Offset::new(padding.left, padding.top));
         }

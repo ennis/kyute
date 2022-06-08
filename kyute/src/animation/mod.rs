@@ -67,11 +67,6 @@ impl<'a> PaintCtx<'a> {
     /// Returns the parent layer.
     pub fn parent_layer(&self) -> &'a Layer {
         self.parent_layer
-        /*if let Some(ref layer) = self.overlay_layer {
-            layer
-        } else {
-            self.parent_layer
-        }*/
     }
 
     /// Overrides the current visual state flags and calls the provided closure.
@@ -95,38 +90,6 @@ impl<'a> PaintCtx<'a> {
         result
     }
 
-    /*/// Returns a reference to the current skia painting canvas.
-    pub fn canvas(&mut self) -> &mut skia_safe::Canvas {
-        if let Some(ref mut paint_target) = self.paint_target {
-            paint_target.canvas()
-        } else {
-            // create the paint target
-            let surface = if self.needs_overlay {
-                panic!("implicit layer creation is disabled for now");
-                // `needs_overlay` flag is true, which means that all subsequent drawing operations must
-                // happen on a separate layer above the "main" one (`self.parent_layer`).
-                let overlay_layer = Layer::new();
-                overlay_layer.set_size(SizeI::new(
-                    self.clip_bounds.size.width as i32,
-                    self.clip_bounds.size.height as i32,
-                ));
-                overlay_layer.set_transform(&self.layer_transform);
-                let surface = overlay_layer.acquire_surface();
-                //self.overlay_layer = Some(overlay_layer);
-                surface
-            } else {
-            };
-
-            let mut paint_target = PaintTarget::new(surface, self.direct_context.clone());
-            let canvas = paint_target.canvas();
-            canvas.scale((self.scale_factor as sk::scalar, self.scale_factor as sk::scalar));
-            canvas.concat(&self.layer_transform.to_skia());
-            self.paint_target.insert(paint_target).canvas()
-        }
-    }*/
-
-    ///
-
     /// Calls the specified closure with a copy of the current painting context, with the specified
     /// transform and clip bounds applied.
     ///
@@ -139,7 +102,7 @@ impl<'a> PaintCtx<'a> {
         &mut self,
         transform: &Transform,
         bounds: Rect,
-        clip: Rect,
+        clip: Option<Rect>,
         f: impl FnOnce(&mut PaintCtx) -> R,
     ) -> R {
         let prev_layer_transform = self.layer_transform;
@@ -152,66 +115,13 @@ impl<'a> PaintCtx<'a> {
         canvas.reset_matrix();
         canvas.scale((scale_factor, scale_factor));
         canvas.concat(&self.layer_transform.to_skia());
-        canvas.clip_rect(clip.to_skia(), None, None);
+        if let Some(clip) = clip {
+            canvas.clip_rect(clip.to_skia(), None, None);
+        }
         let result = f(self);
         self.surface.canvas().restore();
         self.bounds = prev_bounds;
         self.layer_transform = prev_layer_transform;
         result
     }
-
-    /*/// Paint on a separate surface.
-    pub fn surface<R>(&mut self, surface: &sk::Surface, mut f: impl FnMut(&mut PaintCtx) -> R) -> R {
-        {
-            let _span = trace_span!("PaintCtx paint surface").entered();
-            let mut child_ctx = PaintCtx::new(
-                surface.clone(),
-                self.parent_layer,
-                self.scale_factor,
-                self.skia_direct_context,
-            );
-            f(&mut child_ctx)
-        }
-    }*/
-
-    /*///
-    pub fn draw_surface<R>(&mut self, surface: &sk::Surface) {
-
-        self.surface.canvas().draw_drawable()
-
-        {
-            let _span = trace_span!("PaintCtx paint surface").entered();
-            let mut child_ctx = PaintCtx::new(
-                surface.clone(),
-                self.parent_layer,
-                self.scale_factor,
-                self.skia_direct_context.clone(),
-            );
-            f(&mut child_ctx)
-        }
-    }*/
-
-    /*/// Paint on a native composition layer.
-    pub fn layer<R>(&mut self, layer: &Layer, mut f: impl FnMut(&mut PaintCtx) -> R) -> R {
-        //self.finish();
-
-        layer.remove_all_children();
-        self.parent_layer.add_child(layer);
-        layer.set_transform(&self.layer_transform);
-
-        {
-            let _span = trace_span!("PaintCtx paint layer").entered();
-            let mut child_ctx = PaintCtx::new(layer, self.scale_factor, self.skia_direct_context.clone());
-            let result = f(&mut child_ctx);
-            child_ctx.finish();
-            result
-        }
-    }*/
-
-    /*/// Adds a layer as a child of the parent layer, without redrawing it.
-    pub fn add_layer(&mut self, layer: &Layer) {
-        //self.finish();
-        self.parent_layer.add_child(layer);
-        layer.set_transform(&self.layer_transform);
-    }*/
 }

@@ -2,6 +2,7 @@
 mod border;
 mod box_style;
 mod paint;
+mod parser;
 mod theme;
 
 use crate::{
@@ -14,7 +15,7 @@ use skia_safe as sk;
 use crate::animation::PaintCtx;
 pub use border::{Border, BorderPosition, BorderStyle};
 pub use box_style::{BoxShadow, BoxShadowParams, BoxStyle};
-pub use paint::{GradientStop, LinearGradient, Paint, RepeatMode, UniformData};
+pub use paint::{ColorStop, LinearGradient, Paint, RepeatMode, UniformData};
 pub use theme::{define_theme, ThemeData, ThemeLoadError};
 
 bitflags! {

@@ -1,4 +1,4 @@
-use crate::{widget::prelude::*};
+use crate::widget::prelude::*;
 use kyute_common::RoundToPixel;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -83,7 +83,7 @@ impl<W: Widget> Widget for Align<W> {
 
         Measurements {
             size,
-            clip_bounds: Rect::new(Point::origin(), size),
+            clip_bounds: None,
             baseline,
         }
     }

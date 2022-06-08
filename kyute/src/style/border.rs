@@ -13,6 +13,7 @@ use skia_safe as sk;
 #[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
 #[serde(tag = "type", content = "value")]
 pub enum BorderPosition {
+    /// The border is positioned inside the widget bounds.
     #[serde(rename = "inside")]
     Inside,
     #[serde(rename = "center")]
@@ -50,9 +51,9 @@ pub struct Border {
 
 impl Border {
     /// Creates a new border description with the specified side widths.
-    fn new(width: Length, position: BorderPosition) -> Border {
+    pub fn new(position: BorderPosition, left: Length, top: Length, right: Length, bottom: Length) -> Border {
         Border {
-            widths: [width; 4],
+            widths: [left, top, right, bottom],
             position,
             paint: Paint::SolidColor {
                 color: Color::new(0.0, 0.0, 0.0, 1.0),
@@ -68,22 +69,22 @@ impl Border {
 
     pub fn inside(width: impl Into<Length>) -> Border {
         let width = width.into();
-        Border::new(width, BorderPosition::Inside)
+        Border::new(BorderPosition::Inside, width, width, width, width)
     }
 
     pub fn outside(width: impl Into<Length>) -> Border {
         let width = width.into();
-        Border::new(width, BorderPosition::Outside)
+        Border::new(BorderPosition::Outside, width, width, width, width)
     }
 
     pub fn center(width: impl Into<Length>) -> Border {
         let width = width.into();
-        Border::new(width, BorderPosition::Center)
+        Border::new(BorderPosition::Center, width, width, width, width)
     }
 
     pub fn around(width: impl Into<Length>) -> Border {
         let width = width.into();
-        Border::new(width, BorderPosition::Around)
+        Border::new(BorderPosition::Around, width, width, width, width)
     }
 
     pub fn offset_x(mut self, offset_x: impl Into<Length>) -> Self {
@@ -145,94 +146,68 @@ impl Border {
         }
     }
 
-    pub fn get_clip_bounds_offsets(&self) -> SideOffsets {
+    pub fn get_clip_bounds_offsets(&self, scale_factor: f64, available_space: Size) -> SideOffsets {
         todo!()
     }
 
     /// Draws the described border in the given paint context, around the specified bounds.
     pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect, radii: [sk::Vector; 4]) {
+        let rounded = !(radii[0].is_zero() && radii[1].is_zero() && radii[2].is_zero() && radii[3].is_zero());
+
         let offset = Offset::new(
             self.offset_x.to_dips(ctx.scale_factor, bounds.size.width),
             self.offset_y.to_dips(ctx.scale_factor, bounds.size.height),
         );
-        let bounds = bounds.translate(offset);
-        let mut paint = self.paint.to_sk_paint(bounds);
-        paint.set_style(sk::PaintStyle::Stroke);
-        paint.set_blend_mode(self.blend_mode.to_skia());
-        //paint.set_alpha_f(self.opacity as sk::scalar);
 
         // LTRB
-        let widths = [
+        let (l, t, r, b) = (
             self.widths[0].to_dips(ctx.scale_factor, bounds.size.width),
             self.widths[1].to_dips(ctx.scale_factor, bounds.size.height),
             self.widths[2].to_dips(ctx.scale_factor, bounds.size.width),
             self.widths[3].to_dips(ctx.scale_factor, bounds.size.height),
-        ];
-        let uniform_border = widths.iter().all(|&w| ulps_eq!(w, widths[0]));
+        );
+        //let uniform_border = widths.iter().all(|&w| ulps_eq!(w, widths[0]));
 
-        let rect = match self.position {
-            BorderPosition::Inside | BorderPosition::Around => {
-                let mut rect = bounds;
-                rect.origin.x += 0.5 * widths[0];
-                rect.origin.y += 0.5 * widths[1];
-                rect.size.width -= 0.5 * (widths[0] + widths[2]);
-                rect.size.height -= 0.5 * (widths[1] + widths[3]);
-                rect
-            }
-            BorderPosition::Outside => {
-                let mut rect = bounds;
-                rect.origin.x -= 0.5 * widths[0];
-                rect.origin.y -= 0.5 * widths[1];
-                rect.size.width += 0.5 * (widths[0] + widths[2]);
-                rect.size.height += 0.5 * (widths[1] + widths[3]);
-                rect
-            }
-            BorderPosition::Center => bounds,
+        let mut rrect = if rounded {
+            sk::RRect::new_rect_radii(bounds.to_skia(), &radii).with_offset(offset.to_skia())
+        } else {
+            sk::RRect::new_rect(bounds.to_skia()).with_offset(offset.to_skia())
         };
 
-        if !uniform_border {
-            // draw lines, ignore radii
-            // TODO multiple border colors
+        let canvas = ctx.surface.canvas();
+        let mut paint = self.paint.to_sk_paint(bounds.translate(offset));
+        paint.set_style(sk::PaintStyle::Fill);
+        paint.set_blend_mode(self.blend_mode.to_skia());
 
-            // left
-            if !ulps_eq!(widths[0], 0.0) {
-                paint.set_stroke_width(widths[0] as sk::scalar);
-                ctx.surface
-                    .canvas()
-                    .draw_line(rect.top_left().to_skia(), rect.bottom_left().to_skia(), &paint);
-            }
+        match self.position {
+            BorderPosition::Inside | BorderPosition::Around => {
+                let inset_x = 0.5 * (l + r);
+                let offset_x = 0.5 * (l - r);
+                let inset_y = 0.5 * (t + b);
+                let offset_y = 0.5 * (t - b);
+                let inset_rrect = rrect
+                    .with_offset(Offset::new(offset_x, offset_y).to_skia())
+                    .with_inset(Offset::new(inset_x, inset_y).to_skia());
 
-            // top
-            if !ulps_eq!(widths[1], 0.0) {
-                paint.set_stroke_width(widths[1] as sk::scalar);
-                ctx.surface
-                    .canvas()
-                    .draw_line(rect.top_left().to_skia(), rect.top_right().to_skia(), &paint);
+                // Inside borders are clipped
+                let bounds_rrect = sk::RRect::new_rect_radii(bounds.to_skia(), &radii);
+                canvas.save();
+                canvas.clip_rrect(bounds_rrect, sk::ClipOp::Intersect, None);
+                canvas.draw_drrect(rrect, inset_rrect, &paint);
+                canvas.restore();
             }
-
-            // right
-            if !ulps_eq!(widths[2], 0.0) {
-                paint.set_stroke_width(widths[2] as sk::scalar);
-                ctx.surface
-                    .canvas()
-                    .draw_line(rect.top_right().to_skia(), rect.bottom_right().to_skia(), &paint);
+            BorderPosition::Outside => {
+                let outset_x = 0.5 * (l + r);
+                let offset_x = -0.5 * (l - r);
+                let outset_y = 0.5 * (t + b);
+                let offset_y = -0.5 * (t - b);
+                let outset_rrect = rrect
+                    .with_offset(Offset::new(offset_x, offset_y).to_skia())
+                    .with_outset(Offset::new(outset_x, outset_y).to_skia());
+                canvas.draw_drrect(outset_rrect, rrect, &paint);
             }
-
-            // bottom
-            if !ulps_eq!(widths[3], 0.0) {
-                paint.set_stroke_width(widths[3] as sk::scalar);
-                ctx.surface
-                    .canvas()
-                    .draw_line(rect.bottom_left().to_skia(), rect.bottom_right().to_skia(), &paint);
-            }
-        } else {
-            paint.set_stroke_width(widths[0] as sk::scalar);
-            if radii[0].is_zero() && radii[1].is_zero() && radii[2].is_zero() && radii[3].is_zero() {
-                ctx.surface.canvas().draw_rect(rect.to_skia(), &paint);
-            } else {
-                let rrect = sk::RRect::new_rect_radii(rect.to_skia(), &radii);
-                ctx.surface.canvas().draw_rrect(rrect, &paint);
-            }
-        }
+            // TODO
+            BorderPosition::Center => {}
+        };
     }
 }

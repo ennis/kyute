@@ -8,8 +8,8 @@ use crate::{
         grid::{AlignItems, GridLayoutExt, TrackSizePolicy},
         prelude::*,
         slider::{SliderBase, SliderTrack},
-        Border, Clickable, Container, Grid, GridLength, Null, Stepper, Text, TextInput, ValidationResult,
-        WidgetWrapper,
+        Border, Clickable, Container, DisplayFormatter, FloatingPointNumberFormatter, Grid, GridLength, Null, Stepper,
+        StepperTextInput, Text, TextInput, ValidationResult, WidgetWrapper,
     },
     Color, GpuFrameCtx, PointerEventKind, UnitExt, WidgetExt,
 };
@@ -124,7 +124,7 @@ lazy_static! {
 /// Formats & parses a color in hex notation in a text edit (e.g. #RRGGBB)
 struct HexColorFormatter;
 
-impl crate::widget::text_edit::Formatter<Color> for HexColorFormatter {
+impl crate::widget::formatter::Formatter<Color> for HexColorFormatter {
     fn format(&self, value: &Color) -> FormattedText {
         value.to_hex().into()
     }
@@ -285,34 +285,34 @@ impl ColorPicker {
 
         grid.insert((
             ////////////////////////////////////
-            Text::new("R").aligned(Alignment::CENTER_RIGHT).grid_column(0),
+            Text::new("R").aligned(Alignment::CENTER_LEFT).grid_column(0),
             ColorSlider::rgb(r, LinSrgba::new(0.0, g, b, 1.0), LinSrgba::new(1.0, g, b, 1.0))
                 .on_value_changed(|v| r = v),
-            TextInput::number(r as f64).on_value_changed(|v| r = v as f32),
+            TextInput::new(r as f64, FloatingPointNumberFormatter::new(3)).on_value_changed(|v| r = v as f32),
             ////////////////////////////////////
-            Text::new("G").aligned(Alignment::CENTER_RIGHT).grid_column(0),
+            Text::new("G").aligned(Alignment::CENTER_LEFT).grid_column(0),
             ColorSlider::rgb(g, LinSrgba::new(r, 0.0, b, 1.0), LinSrgba::new(r, 1.0, b, 1.0))
                 .on_value_changed(|v| g = v),
-            TextInput::number(g as f64).on_value_changed(|v| g = v as f32),
+            TextInput::new(g as f64, FloatingPointNumberFormatter::new(3)).on_value_changed(|v| g = v as f32),
             ////////////////////////////////////
-            Text::new("B").aligned(Alignment::CENTER_RIGHT).grid_column(0),
+            Text::new("B").aligned(Alignment::CENTER_LEFT).grid_column(0),
             ColorSlider::rgb(b, LinSrgba::new(r, g, 0.0, 1.0), LinSrgba::new(r, g, 1.0, 1.0))
                 .on_value_changed(|v| b = v),
-            TextInput::number(b as f64).on_value_changed(|v| b = v as f32),
+            TextInput::new(b as f64, FloatingPointNumberFormatter::new(3)).on_value_changed(|v| b = v as f32),
         ));
 
         if params.enable_alpha {
             grid.insert((
-                Text::new("A").aligned(Alignment::CENTER_RIGHT).grid_column(0),
+                Text::new("A").aligned(Alignment::CENTER_LEFT).grid_column(0),
                 ColorSlider::rgb(a, LinSrgba::new(r, g, b, 0.0), LinSrgba::new(r, g, b, 1.0))
                     .on_value_changed(|v| a = v),
-                TextInput::number(a as f64).on_value_changed(|v| a = v as f32),
+                TextInput::new(a as f64, FloatingPointNumberFormatter::new(3)).on_value_changed(|v| a = v as f32),
             ));
         }
 
         grid.insert(
-            Stepper::new(((a - 0.5) * 20.0) as i32, -10i32, 10i32, 1)
-                .on_value_changed(|v| a = (v as f32 + 10.0) / 20.0)
+            StepperTextInput::new(a, 0.0, 1.0, 0.05, DisplayFormatter)
+                .on_value_changed(|v| a = v)
                 .grid_area((4..5, 0..3)),
         );
 
@@ -431,7 +431,8 @@ impl ColorBarBounds {
     }
 }
 
-// TODO eventually replace by a more generic "ColorGradientBar"
+// TODO eventually replace by a more generic "ColorGradientBar",
+// which would display linear gradients with an arbitrary number of stops
 pub struct ColorBar {
     color_bounds: ColorBarBounds,
 }
