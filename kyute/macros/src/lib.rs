@@ -1,4 +1,5 @@
 #![feature(proc_macro_diagnostic)]
+#![feature(proc_macro_span)]
 extern crate proc_macro;
 use proc_macro2::Span;
 use quote::{ToTokens, TokenStreamExt};

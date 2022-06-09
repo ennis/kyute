@@ -1,17 +1,40 @@
 use crate::CRATE;
-use proc_macro::{Diagnostic, Level};
+use proc_macro::{Diagnostic, Level, LineColumn};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
     parse::ParseStream,
     punctuated::Punctuated,
     spanned::Spanned,
-    visit_mut::{visit_stmt_mut, VisitMut},
-    Attribute, FnArg, Local, Pat, Stmt,
+    visit_mut::{visit_expr_mut, visit_stmt_mut, VisitMut},
+    Abi, AngleBracketedGenericArguments, Arm, AttrStyle, Attribute, BareFnArg, BinOp, Binding, Block, BoundLifetimes,
+    ConstParam, Constraint, Data, DataEnum, DataStruct, DataUnion, DeriveInput, Expr, ExprArray, ExprAssign,
+    ExprAssignOp, ExprAsync, ExprAwait, ExprBinary, ExprBlock, ExprBox, ExprBreak, ExprCall, ExprCast, ExprClosure,
+    ExprContinue, ExprField, ExprForLoop, ExprGroup, ExprIf, ExprIndex, ExprLet, ExprLit, ExprLoop, ExprMacro,
+    ExprMatch, ExprMethodCall, ExprParen, ExprPath, ExprRange, ExprReference, ExprRepeat, ExprReturn, ExprStruct,
+    ExprTry, ExprTryBlock, ExprTuple, ExprType, ExprUnary, ExprUnsafe, ExprWhile, ExprYield, Field, FieldPat,
+    FieldValue, Fields, FieldsNamed, FieldsUnnamed, File, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro,
+    ForeignItemStatic, ForeignItemType, GenericArgument, GenericMethodArgument, GenericParam, Generics, ImplItem,
+    ImplItemConst, ImplItemMacro, ImplItemMethod, ImplItemType, Index, Item, ItemConst, ItemEnum, ItemExternCrate,
+    ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMacro2, ItemMod, ItemStatic, ItemStruct, ItemTrait,
+    ItemTraitAlias, ItemType, ItemUnion, ItemUse, Label, Lifetime, LifetimeDef, Lit, LitBool, LitByte, LitByteStr,
+    LitChar, LitFloat, LitInt, LitStr, Local, Macro, MacroDelimiter, Member, Meta, MetaList, MetaNameValue,
+    MethodTurbofish, NestedMeta, ParenthesizedGenericArguments, Pat, PatBox, PatIdent, PatLit, PatMacro, PatOr,
+    PatPath, PatRange, PatReference, PatRest, PatSlice, PatStruct, PatTuple, PatTupleStruct, PatType, PatWild, Path,
+    PathArguments, PathSegment, PredicateEq, PredicateLifetime, PredicateType, QSelf, RangeLimits, Receiver,
+    ReturnType, Signature, Stmt, TraitBound, TraitBoundModifier, TraitItem, TraitItemConst, TraitItemMacro,
+    TraitItemMethod, TraitItemType, Type, TypeArray, TypeBareFn, TypeGroup, TypeImplTrait, TypeInfer, TypeMacro,
+    TypeNever, TypeParam, TypeParamBound, TypeParen, TypePath, TypePtr, TypeReference, TypeSlice, TypeTraitObject,
+    TypeTuple, UnOp, UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree, Variadic, Variant, VisCrate, VisPublic,
+    VisRestricted, Visibility, WhereClause, WherePredicate,
 };
 
+/// Arguments of the `#[composable]` proc-macro.
 struct ComposableArgs {
+    /// `#[composable(cached)]`
     cached: bool,
+    /// `#[composable(tweak_literals)]`
+    tweak_literals: bool,
 }
 
 impl syn::parse::Parse for ComposableArgs {
@@ -19,14 +42,17 @@ impl syn::parse::Parse for ComposableArgs {
         let idents = Punctuated::<Ident, syn::Token![,]>::parse_terminated(input)?;
 
         let mut cached = false;
+        let mut tweak_literals = false;
         for ident in idents {
             if ident == "cached" {
                 cached = true;
+            } else if ident == "tweak_literals" {
+                tweak_literals = true;
             } else {
                 // TODO warn unrecognized attrib
             }
         }
-        Ok(ComposableArgs { cached })
+        Ok(ComposableArgs { cached, tweak_literals })
     }
 }
 
@@ -49,6 +75,10 @@ fn extract_state_attr(attrs: &mut Vec<Attribute>) -> bool {
     }
 }
 
+/// AST visitor that collects `let` bindings annotated with `#[state]`.
+///
+/// Currently, those bindings must be the first statements of the function body, but this restriction
+/// may be removed in the future.
 struct LocalStateCollector {
     visited_first_non_state_stmt: bool,
     locals: Vec<Local>,
@@ -91,21 +121,77 @@ impl VisitMut for LocalStateCollector {
     }
 }
 
+/// AST rewriter that wraps string and number literals in a call to the `tweak` function.
+///
+/// This rewrites all `ExprLit` nodes in the body of the function, except those in nested items,
+/// like nested functions, const item initializers, etc.
+///
+/// Used by `#[composable(tweak_literals)]`.
+struct TweakLiteralsRewriter;
+
+impl VisitMut for TweakLiteralsRewriter {
+    fn visit_item_mut(&mut self, _item: &mut Item) {
+        // skip nested items
+    }
+
+    fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        match expr {
+            Expr::Lit(literal) => {
+                // wrap the literal in `tweak()`.
+                let literal = literal.clone();
+                let span = literal.span().unwrap().source();
+                let source_file = span.source_file().path().display().to_string();
+                let LineColumn {
+                    line: start_line,
+                    column: start_column,
+                } = span.start();
+                let LineColumn {
+                    line: end_line,
+                    column: end_column,
+                } = span.end();
+
+                let start_line = start_line as u32;
+                let start_column = start_column as u32;
+                let end_line = end_line as u32;
+                let end_column = end_column as u32;
+
+                let expr_call: ExprCall = syn::parse_quote! {
+                    #CRATE::tweak(#source_file, #start_line, #start_column, #end_line, #end_column, #literal)
+                };
+                *expr = Expr::Call(expr_call);
+            }
+            _ => {
+                // traverse the rest
+                visit_expr_mut(self, expr);
+            }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// main body
+////////////////////////////////////////////////////////////////////////////////////////////////////
 pub fn generate_composable(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // works only on trait declarations
-    let mut fn_item: syn::ItemFn = syn::parse_macro_input!(item as syn::ItemFn);
+    let mut fn_item: ItemFn = syn::parse_macro_input!(item as ItemFn);
     let attr_args: ComposableArgs = syn::parse_macro_input!(attr as ComposableArgs);
 
     let vis = &fn_item.vis;
     let attrs = &fn_item.attrs;
     let fn_block = &mut fn_item.block;
 
-    // collect `#[state] let mut state = <initializer>;` statements
+    // collect `#[state] let mut state = <initializer>;` statements, and
+    // remove them from the block
     let mut state_collector = LocalStateCollector::new();
     state_collector.visit_block_mut(fn_block);
-    // remove state statements from the main block
     let num_state_locals = state_collector.locals.len();
+    // the `#[state]` statements are the first in the main block, the collector checks that.
     fn_block.stmts.drain(0..num_state_locals);
+
+    // if tweakable literals are requested, rewrite the function body
+    if attr_args.tweak_literals {
+        TweakLiteralsRewriter.visit_block_mut(fn_block);
+    }
 
     // create prologue statements: load state vars from cache
     let mut prologue = TokenStream::new();
@@ -113,7 +199,7 @@ pub fn generate_composable(attr: proc_macro::TokenStream, item: proc_macro::Toke
 
     for (i, local) in state_collector.locals.iter().enumerate() {
         // name of the `cache::Key` variable
-        let state_ident = syn::Ident::new(&format!("__state_{}", i), Span::call_site());
+        let state_ident = Ident::new(&format!("__state_{}", i), Span::call_site());
 
         let pat = &local.pat;
 

@@ -171,7 +171,7 @@ impl CompositionSwapChain {
             app.backend
                 .dxgi_factory
                 .0
-                .CreateSwapChainForComposition(&app.backend.d3d12_command_queue.0, dbg!(&swap_chain_desc), None)
+                .CreateSwapChainForComposition(&app.backend.d3d12_command_queue.0, &swap_chain_desc, None)
                 .expect("CreateSwapChainForComposition failed")
                 .cast::<IDXGISwapChain3>()
                 .unwrap()
