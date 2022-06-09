@@ -1,4 +1,4 @@
-//! Tweakable numeric literals.
+//! Live-editable numeric/string literals.
 use crate::{cache, composable, util};
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
@@ -12,15 +12,15 @@ use std::{
     sync::Arc,
 };
 
-/// A type that can be parsed from a rust literal expression.
-pub trait Tweakable: Clone {
+/// A type that can be parsed from a rust literal expression and supports live-editing.
+pub trait LiveLiteral: Clone {
     fn parse(lit: &str) -> Option<Self>;
 }
 
-macro_rules! impl_numeric_tweakable {
+macro_rules! impl_numeric_live_literal {
     ($($t:ty)+) => {
         $(
-            impl Tweakable for $t {
+            impl LiveLiteral for $t {
                 fn parse(x: &str) -> Option<$t> {
                     x.parse().ok()
                 }
@@ -30,11 +30,12 @@ macro_rules! impl_numeric_tweakable {
 }
 
 // implementation for numeric literals
-impl_numeric_tweakable!(u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 usize isize bool f32 f64);
+impl_numeric_live_literal!(u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 usize isize bool f32 f64);
 
-/// Tweakable strings.
-impl Tweakable for &'static str {
+/// Live-editable strings.
+impl LiveLiteral for &'static str {
     fn parse(lit: &str) -> Option<Self> {
+        // TODO maybe remove the dependency on syn at some point?
         let lit: syn::LitStr = syn::parse_str(lit).ok()?;
         // since literal tweaking is a development feature, it's acceptable to leak there
         Some(Box::leak(lit.value().into_boxed_str()))
@@ -170,16 +171,16 @@ lazy_static! {
 ///
 /// This composable function creates a state variable, initialized to `original_value`.
 /// Whenever the specified rust source file changes, the function updates the state variable
-/// by trying to parse a `Tweakable` expression in the source, at the specified span (start/end line/column),
+/// by trying to parse a literal expression in the source (using `LiveLiteral::parse`), at the specified span (start/end line/column),
 /// adjusted for file modifications.
 ///
 /// If any of this fails (e.g. if the source file isn't accessible, or if the expression under the span is malformed)
 /// the function leaves the state variable unchanged and returns its current value.
 ///
-/// This function is intended for use by the `#[composable(tweakable_literals)]` proc-macro, and shouldn't be called directly.
+/// This function is intended for use by the `#[composable(live_literals)]` proc-macro, and shouldn't be called directly.
 #[doc(hidden)]
 #[composable]
-pub fn tweak<T: Tweakable + 'static>(
+pub fn live_literal<T: LiveLiteral + 'static>(
     source_file: &'static str,
     start_line: u32,
     start_column: u32,
@@ -243,11 +244,4 @@ pub fn tweak<T: Tweakable + 'static>(
     }
 
     value.get()
-}
-
-#[macro_export]
-macro_rules! tweak {
-    ($e:expr) => {
-        $e //$crate::tweak(file!(), line!(), $e)
-    };
 }

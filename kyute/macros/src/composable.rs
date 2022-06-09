@@ -33,8 +33,8 @@ use syn::{
 struct ComposableArgs {
     /// `#[composable(cached)]`
     cached: bool,
-    /// `#[composable(tweak_literals)]`
-    tweak_literals: bool,
+    /// `#[composable(live_literals)]`
+    live_literals: bool,
 }
 
 impl syn::parse::Parse for ComposableArgs {
@@ -42,17 +42,17 @@ impl syn::parse::Parse for ComposableArgs {
         let idents = Punctuated::<Ident, syn::Token![,]>::parse_terminated(input)?;
 
         let mut cached = false;
-        let mut tweak_literals = false;
+        let mut live_literals = false;
         for ident in idents {
             if ident == "cached" {
                 cached = true;
-            } else if ident == "tweak_literals" {
-                tweak_literals = true;
+            } else if ident == "live_literals" {
+                live_literals = true;
             } else {
                 // TODO warn unrecognized attrib
             }
         }
-        Ok(ComposableArgs { cached, tweak_literals })
+        Ok(ComposableArgs { cached, live_literals })
     }
 }
 
@@ -121,15 +121,15 @@ impl VisitMut for LocalStateCollector {
     }
 }
 
-/// AST rewriter that wraps string and number literals in a call to the `tweak` function.
+/// AST rewriter that wraps string and number literals in a call to the `live_literal` function.
 ///
 /// This rewrites all `ExprLit` nodes in the body of the function, except those in nested items,
 /// like nested functions, const item initializers, etc.
 ///
-/// Used by `#[composable(tweak_literals)]`.
-struct TweakLiteralsRewriter;
+/// Used by `#[composable(live_literals)]`.
+struct LiveLiteralsRewriter;
 
-impl VisitMut for TweakLiteralsRewriter {
+impl VisitMut for LiveLiteralsRewriter {
     fn visit_item_mut(&mut self, _item: &mut Item) {
         // skip nested items
     }
@@ -156,7 +156,7 @@ impl VisitMut for TweakLiteralsRewriter {
                 let end_column = end_column as u32;
 
                 let expr_call: ExprCall = syn::parse_quote! {
-                    #CRATE::tweak(#source_file, #start_line, #start_column, #end_line, #end_column, #literal)
+                    #CRATE::live_literal(#source_file, #start_line, #start_column, #end_line, #end_column, #literal)
                 };
                 *expr = Expr::Call(expr_call);
             }
@@ -189,8 +189,8 @@ pub fn generate_composable(attr: proc_macro::TokenStream, item: proc_macro::Toke
     fn_block.stmts.drain(0..num_state_locals);
 
     // if tweakable literals are requested, rewrite the function body
-    if attr_args.tweak_literals {
-        TweakLiteralsRewriter.visit_block_mut(fn_block);
+    if attr_args.live_literals {
+        LiveLiteralsRewriter.visit_block_mut(fn_block);
     }
 
     // create prologue statements: load state vars from cache

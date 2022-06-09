@@ -477,8 +477,8 @@ struct DefiniteArea {
 
 impl<'a> Area<'a> {
     fn resolve(&self, grid: &Grid) -> DefiniteArea {
-        let (row, row_span) = self.row.resolve(&grid.named_row_lines, grid.row_count());
-        let (column, column_span) = self.column.resolve(&grid.named_column_lines, grid.column_count());
+        let (row, row_span) = self.row.resolve(&grid.named_row_lines, grid.row_count() + 1);
+        let (column, column_span) = self.column.resolve(&grid.named_column_lines, grid.column_count() + 1);
 
         DefiniteArea {
             row,

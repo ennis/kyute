@@ -19,11 +19,11 @@ mod drawing;
 pub mod event;
 mod font;
 mod layout;
+mod live_literal;
 pub mod region;
 mod state;
 pub mod style;
 pub mod theme;
-mod tweak;
 pub mod util;
 pub mod widget;
 mod window;
@@ -43,13 +43,13 @@ pub use crate::{
     event::{Event, InputEvent, InternalEvent, PointerEvent, PointerEventKind},
     font::Font,
     layout::{align_boxes, Alignment, BoxConstraints, Measurements},
-    tweak::tweak,
+    live_literal::live_literal,
     widget::Orientation,
     window::Window,
 };
 
 pub use kyute_shell as shell;
-pub use kyute_shell::graal;
+pub use kyute_shell::{graal, text};
 
 // re-export basic types from kyute-common
 pub use kyute_common::{

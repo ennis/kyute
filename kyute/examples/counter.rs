@@ -4,8 +4,12 @@ use kyute::{
         application::Application,
         winit::{dpi::LogicalSize, window::WindowBuilder},
     },
-    widget::{grid::TrackSizePolicy, Button, Grid, GridLength, Text},
-    Alignment, Widget, WidgetExt, Window,
+    text::{FontWeight, FormattedText},
+    widget::{
+        grid::{GridLayoutExt, TrackSizePolicy},
+        Button, Container, Grid, GridLength, Text,
+    },
+    Alignment, UnitExt, Widget, WidgetExt, Window,
 };
 
 // All functions creating widgets or using features like `#[state]` must be marked as `#[composable]`.
@@ -16,8 +20,13 @@ fn counter_demo() -> impl Widget {
     #[state]
     let mut counter = 0;
 
-    // text element
-    let text = Text::new(format!("Counter value: {}", counter));
+    // Text element with attributes
+    let text = Text::new(
+        FormattedText::from(format!("Counter value: {}", counter))
+            .font_size(16.0)
+            .attribute(14.., FontWeight::BOLD),
+    )
+    .padding(10.dip(), 10.dip(), 10.dip(), 10.dip()); // and some padding around it
 
     // Buttons to increment and decrement the counter.
     // The framework will detect if the value of `counter` changed, and will re-run the function if this is the case.
@@ -49,21 +58,25 @@ fn counter_demo() -> impl Widget {
     // Insert the widgets in the grid
 
     grid.insert((
-        // Row 0, span all columns, Z-order 0, center the text in the cell.
+        // Row 0, span all columns, center the text in the cell.
         text.centered().grid_area((0, ..)),
-        // Row 1, Column 0, Z-order 0, align the button to the top right corner of the cell.
+        // Row 1, Column 0, align the button to the top right corner of the cell.
         button_decrement.aligned(Alignment::TOP_RIGHT).grid_area((1, 0)),
-        // Row 1, Column 0, Z-order 0, align the button to the top right corner of the cell.
+        // Row 1, Column 0, align the button to the top right corner of the cell.
         button_increment.aligned(Alignment::TOP_LEFT).grid_area((1, 1)),
     ));
 
-    grid
+    // wrap grid in a container to fill the window and apply some styling to the background
+    Container::new(grid)
+        // a subset of CSS is supported here
+        .background("linear-gradient(90deg, #111111, #333333)")
+        .fill()
 }
 
 #[composable]
 fn main_window() -> impl Widget {
     // Create the main window widget.
-    // For now we use a for of winit under the hood, hence the `WindowBuilder`.
+    // For now we use a fork of winit under the hood, hence the `WindowBuilder`.
     Window::new(
         WindowBuilder::new()
             .with_title("Counter demo")

@@ -1,7 +1,7 @@
 use crate::{
     event::PointerEventKind,
     style::{BoxStyle, VisualState},
-    theme, tweak,
+    theme,
     widget::{grid::GridLayoutExt, prelude::*, Button, Container, Grid, Label, WidgetWrapper},
     Color, Signal, UnitExt, WidgetExt,
 };
@@ -41,7 +41,7 @@ where
             }
         }
 
-        let mut grid = Grid::with_template(tweak!("12 12 / 12 / 1 0"));
+        let mut grid = Grid::with_template("12 12 / 12 / 1 0");
         grid.insert((up.grid_row(0), down.grid_row(1)));
         Stepper { grid, new_value }
     }

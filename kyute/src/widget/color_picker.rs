@@ -2,7 +2,7 @@ use crate::{
     drawing::ToSkia,
     make_uniform_data, style,
     style::{BoxStyle, Paint, PaintCtxExt},
-    theme, tweak,
+    theme,
     widget::{
         grid,
         grid::{AlignItems, GridLayoutExt, TrackSizePolicy},
@@ -277,7 +277,7 @@ impl ColorPicker {
     pub fn new(color: Color, params: &ColorPickerParams) -> ColorPicker {
         let mut grid = Grid::new();
 
-        grid = Grid::with_template(tweak!("auto / [label] 20 [slider] 300 50 80 / 1 4"));
+        grid = Grid::with_template("auto / [label] 20 [slider] 300 50 80 / 1 4");
         grid.set_align_items(AlignItems::Center);
 
         let mut new_color = color;
