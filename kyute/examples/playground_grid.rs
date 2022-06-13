@@ -1,7 +1,7 @@
 use kyute::{
     application, cache, composable,
     shell::{application::Application, winit::window::WindowBuilder},
-    style::BoxStyle,
+    style::Style,
     theme,
     widget::{
         drop_down,
@@ -186,7 +186,7 @@ fn playground_grid(test: usize) -> impl Widget {
 
     grid.add_item(row, 2, 0, Container::new(play_grid).fixed_height(700.dip()));
 
-    Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))
+    Container::new(grid).box_style(Style::new().background(theme::palette::BLUE_GREY_800))
 }
 
 #[composable]

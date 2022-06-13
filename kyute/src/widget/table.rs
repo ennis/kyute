@@ -1,7 +1,7 @@
 //! Tree views.
 use crate::{
     cache,
-    style::{BoxStyle, Paint},
+    style::{Paint, Style},
     theme,
     widget::{
         grid::{GridLayoutExt, GridTemplate, TrackSizePolicy},
@@ -165,7 +165,7 @@ pub struct TableViewParams<'a, Id> {
     pub column_separator_background: Paint,
 
     /// Style of selected items.
-    pub selected_style: BoxStyle,
+    pub selected_style: Style,
 }
 
 impl<'a, Id> Default for TableViewParams<'a, Id> {

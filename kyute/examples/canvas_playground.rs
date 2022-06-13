@@ -2,7 +2,7 @@ use anyhow::Error;
 use kyute::{
     application, cache, composable,
     shell::{application::Application, winit::window::WindowBuilder},
-    style::{Border, BoxStyle},
+    style::{Border, Style},
     text::{Attribute, FormattedText},
     theme,
     widget::{
@@ -90,11 +90,11 @@ fn canvas_playground() -> impl Widget + Clone {
     ]);
 
     let context_menu_area = Container::new(ContextMenu::new(context_menu, drag_controller))
-        .box_style(BoxStyle::new().border(Border::inside(2.px()).paint(Color::from_hex("#FFB500"))));
+        .box_style(Style::new().border(Border::inside(2.px()).paint(Color::from_hex("#FFB500"))));
 
     grid.place(GridArea::after_last_row(), context_menu_area);
 
-    Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))
+    Container::new(grid).box_style(Style::new().background(theme::palette::BLUE_GREY_800))
 }
 
 #[composable]

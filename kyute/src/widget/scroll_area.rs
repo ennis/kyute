@@ -1,6 +1,6 @@
 use crate::{
     event::WheelDeltaMode,
-    style::BoxStyle,
+    style::Style,
     widget::{
         grid::{GridLayoutExt, TrackSizePolicy},
         prelude::*,
@@ -84,7 +84,7 @@ impl ScrollArea {
         let scroll_thumb = DragController::new(
             Container::new(Null)
                 .fix_size(Size::new(5.0, thumb_size))
-                .box_style(BoxStyle::new().radius(2.dip()).fill(Color::from_hex("#FF7F31"))),
+                .box_style(Style::new().radius(2.dip()).background(Color::from_hex("#FF7F31"))),
         )
         .on_started(|| tmp_pos = content_pos)
         .on_delta(|offset| {

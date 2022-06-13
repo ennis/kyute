@@ -1,10 +1,10 @@
 use crate::{
     cache,
     event::PointerEventKind,
-    style::{BoxStyle, VisualState},
+    style::{Style, VisualState},
     theme,
-    widget::{prelude::*, Container, Label},
-    Color, Signal, UnitExt,
+    widget::{prelude::*, Align, Container, Label},
+    Color, Signal, UnitExt, WidgetExt,
 };
 use std::cell::Cell;
 
@@ -27,8 +27,10 @@ impl Button {
             id: WidgetId::here(),
             inner: Container::new(Label::new(label))
                 .min_height(21.dip())
-                // TODO: if the padding cannot be honored because of size constraints, shoud this be adjusted automatically?
+                .min_width(80.dip())
+                // TODO: if the padding cannot be honored because of size constraints, should this be adjusted automatically?
                 .content_padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
+                //.alignment(Alignment::CENTER)     // FIXME: this makes the widget stretch to available size, why?
                 .baseline(17.dip())
                 .box_style(theme::BUTTON.get(&cache::environment()).unwrap())
                 .alternate_box_style(
@@ -45,13 +47,13 @@ impl Button {
     }
 
     /// Sets the style of this button.
-    pub fn box_style(mut self, style: impl Into<BoxStyle>) -> Button {
+    pub fn box_style(mut self, style: impl Into<Style>) -> Button {
         self.set_box_style(style);
         self
     }
 
     /// Sets the style of this button.
-    pub fn set_box_style(&mut self, style: impl Into<BoxStyle>) {
+    pub fn set_box_style(&mut self, style: impl Into<Style>) {
         self.inner.set_box_style(style.into());
     }
 

@@ -5,7 +5,7 @@ use crate::{
     cache,
     core::DebugNode,
     drawing::ToSkia,
-    style::{BoxStyle, Paint, PaintCtxExt},
+    style::{Paint, PaintCtxExt, Style},
     widget::prelude::*,
     Color, Data, EnvKey, EnvRef, GpuFrameCtx, InternalEvent, Length, PointerEventKind, RoundToPixel, State,
     WidgetFilter, WidgetId,
@@ -1412,7 +1412,7 @@ impl Widget for Grid {
                 };
                 ctx.draw_styled_box(
                     Rect::new(Point::new(0.0, row.pos), Size::new(width, row.size)),
-                    &BoxStyle::new().fill(bg),
+                    &Style::new().background(bg),
                 );
             }
         }
@@ -1426,7 +1426,7 @@ impl Widget for Grid {
                         Point::new(0.0, row.pos - layout.row_gap),
                         Size::new(width, layout.row_gap),
                     ),
-                    &BoxStyle::new().fill(self.row_gap_background.clone()),
+                    &Style::new().background(self.row_gap_background.clone()),
                 );
             }
         }
@@ -1437,7 +1437,7 @@ impl Widget for Grid {
                         Point::new(column.pos - layout.column_gap, 0.0),
                         Size::new(layout.column_gap, height),
                     ),
-                    &BoxStyle::new().fill(self.column_gap_background.clone()),
+                    &Style::new().background(self.column_gap_background.clone()),
                 );
             }
         }

@@ -50,7 +50,7 @@ fn align_in_constrained_box() -> impl Widget + Clone {
         Container::new(Label::new("Container"))
             //.aligned(Alignment::CENTER_RIGHT)
             .fixed_width(500.dip())
-            .box_style(BoxStyle::new().fill(Color::from_hex("#b9edc788"))),
+            .box_style(Style::new().background(Color::from_hex("#b9edc788"))),
     );
 
     grid

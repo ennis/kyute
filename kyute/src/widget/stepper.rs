@@ -1,6 +1,6 @@
 use crate::{
     event::PointerEventKind,
-    style::{BoxStyle, VisualState},
+    style::{Style, VisualState},
     theme,
     widget::{grid::GridLayoutExt, prelude::*, Button, Container, Grid, Label, WidgetWrapper},
     Color, Signal, UnitExt, WidgetExt,

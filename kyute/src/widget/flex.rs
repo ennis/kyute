@@ -1,5 +1,5 @@
 use crate::{
-    style::{BoxStyle, PaintCtxExt},
+    style::{PaintCtxExt, Style},
     theme,
     widget::prelude::*,
     RoundToPixel,
@@ -133,6 +133,6 @@ impl Widget for Flex {
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
-        ctx.draw_styled_box(ctx.bounds, &BoxStyle::new().fill(theme::palette::GREY_500));
+        ctx.draw_styled_box(ctx.bounds, &Style::new().background(theme::palette::GREY_500));
     }
 }

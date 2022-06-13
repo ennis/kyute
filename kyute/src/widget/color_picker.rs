@@ -1,7 +1,7 @@
 use crate::{
     drawing::ToSkia,
     make_uniform_data, style,
-    style::{BoxStyle, Paint, PaintCtxExt},
+    style::{Paint, PaintCtxExt, Style},
     theme,
     widget::{
         grid,
@@ -375,7 +375,7 @@ impl Widget for HsvColorSquare {
             effect: effect.clone(),
             uniforms,
         };
-        let style = BoxStyle::new().fill(paint);
+        let style = Style::new().background(paint);
         ctx.draw_styled_box(bounds, &style);
     }
 }
@@ -393,10 +393,9 @@ impl ColorSwatch {
     #[composable]
     pub fn new(width: Length, height: Length, color: Color) -> ColorSwatch {
         let inner = Container::new(Null).fixed_width(width).fixed_height(height).box_style(
-            BoxStyle::new()
-                .fill(make_color_swatch_paint(color, 8, theme::palette::GREY_400))
-                .border(style::Border::around(2.px()).paint(Color::from_hex("#000000")))
-                .border(style::Border::around(1.px()).paint(Color::from_hex("#DDDDDD"))),
+            Style::new()
+                .background(make_color_swatch_paint(color, 8, theme::palette::GREY_400))
+                .border(style::Border::new(2.px(), 2.px(), 2.px(), 2.px()).paint(Color::from_hex("#000000"))), //.border(style::Border::around(1.px()).paint(Color::from_hex("#DDDDDD"))),
         );
         ColorSwatch { inner }
     }
@@ -501,10 +500,10 @@ impl Widget for ColorBar {
             }
         };
 
-        let style = BoxStyle::new()
+        let style = Style::new()
             .radius(0.5 * COLOR_BAR_SLIDER_SIZE_DIP.dip())
-            .fill(paint)
-            .border(style::Border::outside(1.px()).paint(theme::palette::GREY_500));
+            .background(paint)
+            .border(style::Border::new(1.px(), 1.px(), 1.px(), 1.px()).paint(theme::palette::GREY_500));
         ctx.draw_styled_box(
             bounds.inner_rect(SideOffsets2D::new_all_same(1.0 / ctx.scale_factor)),
             &style,
@@ -532,10 +531,10 @@ impl ColorSlider {
                 .fixed_width(COLOR_BAR_KNOB_SIZE.dip())
                 .fixed_height(COLOR_BAR_KNOB_SIZE.dip())
                 .box_style(
-                    BoxStyle::new()
+                    Style::new()
                         .radius(12.dip())
-                        .fill(color)
-                        .border(style::Border::inside(1.px()).paint(theme::palette::GREY_50)),
+                        .background(color)
+                        .border(style::Border::new(1.px(), 1.px(), 1.px(), 1.px()).paint(theme::palette::GREY_50)),
                 ),
         );
         ColorSlider { slider }

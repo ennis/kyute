@@ -50,23 +50,22 @@ impl<Inner: Widget> Widget for Border<Inner> {
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
         let nat_width = constraints.finite_max_width().unwrap_or(0.0);
         let nat_height = constraints.finite_max_height().unwrap_or(0.0);
-        let border_offsets = self
+        let [border_top, border_right, border_bottom, border_left] = self
             .border
-            .side_offsets(ctx.scale_factor, Size::new(nat_width, nat_height));
-        let constraints = constraints.deflate(border_offsets);
+            .calculate_widths(ctx.scale_factor, Size::new(nat_width, nat_height));
+        let constraints = constraints.deflate(SideOffsets::new(border_top, border_right, border_bottom, border_left));
 
         let mut m = self.inner.layout(ctx, constraints, env);
-        m.size.width += border_offsets.horizontal();
-        m.size.height += border_offsets.vertical();
+        m.size.width += border_right + border_left;
+        m.size.height += border_top + border_bottom;
         // TODO clip bounds
         //m.clip_bounds = m.clip_bounds.union(&m.local_bounds().outer_rect(border_offsets));
-        m.baseline.map(|b| b + border_offsets.top);
+        m.baseline.map(|b| b + border_top);
 
         // update layers
         if !ctx.speculative {
             self.border_layer.layout(ctx, BoxConstraints::tight(m.size), env);
-            self.inner
-                .set_offset(Offset::new(border_offsets.left, border_offsets.top));
+            self.inner.set_offset(Offset::new(border_left, border_top));
         }
         m
     }

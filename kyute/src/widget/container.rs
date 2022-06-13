@@ -1,6 +1,6 @@
 use crate::{
     core::DebugNode,
-    style::{BoxStyle, Paint, PaintCtxExt, VisualState},
+    style::{Paint, PaintCtxExt, Style, VisualState},
     widget::prelude::*,
     Color, EnvRef, Length, RoundToPixel, SideOffsets, UnitExt,
 };
@@ -17,8 +17,8 @@ pub struct Container<Content> {
     padding_right: Length,
     padding_bottom: Length,
     padding_left: Length,
-    box_style: BoxStyle,
-    alternate_box_styles: Vec<(VisualState, BoxStyle)>,
+    box_style: Style,
+    alternate_box_styles: Vec<(VisualState, Style)>,
     redraw_on_hover: bool,
     content: WidgetPod<Content>,
 }
@@ -239,7 +239,7 @@ impl<Content: Widget + 'static> Container<Content> {
             warn!("invalid `background` value");
             Paint::default()
         });
-        self.box_style = self.box_style.fill(paint);
+        self.box_style = self.box_style.background(paint);
         self
     }
 
@@ -253,18 +253,18 @@ impl<Content: Widget + 'static> Container<Content> {
     /// # Examples
     ///
     /// ```
-    /// use kyute::style::BoxStyle;
+    /// use kyute::style::Style;
     /// use kyute::theme;
     /// use kyute_common::{Color, UnitExt};
     ///
     /// // pass a box style value directly
     /// // 4 dip radius rounded rectangle with uniform fill color
-    /// container = container.box_style(BoxStyle::new().radius(4.dip()).fill(Color::from_hex("#900C3F")));
+    /// container = container.box_style(Style::new().radius(4.dip()).background(Color::from_hex("#900C3F")));
     ///
     /// // reference the an environment value via a key (`theme::BUTTON`)
     /// container = container.box_style(theme::BUTTON);
     /// ```
-    pub fn box_style(mut self, box_style: impl Into<BoxStyle>) -> Self {
+    pub fn box_style(mut self, box_style: impl Into<Style>) -> Self {
         self.set_box_style(box_style);
         self
     }
@@ -277,7 +277,7 @@ impl<Content: Widget + 'static> Container<Content> {
     /// # Examples
     ///
     /// ```
-    /// use kyute::style::BoxStyle;
+    /// use kyute::style::Style;
     /// use kyute::theme;
     /// use kyute::widget::{Container, Null};
     /// use kyute_common::{Color, UnitExt};
@@ -286,12 +286,12 @@ impl<Content: Widget + 'static> Container<Content> {
     ///
     /// // pass a box style value directly
     /// // 4 dip radius rounded rectangle with uniform fill color
-    /// container.set_box_style(BoxStyle::new().radius(4.dip()).fill(Color::from_hex("900C3F")));
+    /// container.set_box_style(Style::new().radius(4.dip()).background(Color::from_hex("900C3F")));
     ///
     /// // reference the an environment value via a key (`theme::BUTTON`)
     /// container.set_box_style(theme::BUTTON);
     /// ```
-    pub fn set_box_style(&mut self, box_style: impl Into<BoxStyle>) {
+    pub fn set_box_style(&mut self, box_style: impl Into<Style>) {
         self.box_style = box_style.into();
     }
 
@@ -308,7 +308,7 @@ impl<Content: Widget + 'static> Container<Content> {
     /// // use an alternate style when the widget is active.
     /// container = container.box_style(theme::BUTTON).alternate_box_style(VisualState::ACTIVE, theme::BUTTON_ACTIVE);
     /// ```
-    pub fn alternate_box_style(mut self, state: VisualState, box_style: impl Into<BoxStyle>) -> Self {
+    pub fn alternate_box_style(mut self, state: VisualState, box_style: impl Into<Style>) -> Self {
         self.push_alternate_box_style(state, box_style);
         self
     }
@@ -331,7 +331,7 @@ impl<Content: Widget + 'static> Container<Content> {
     /// ```
     ///
     /// [visual state]: kyute::style::VisualState
-    pub fn push_alternate_box_style(&mut self, state: VisualState, box_style: impl Into<BoxStyle>) {
+    pub fn push_alternate_box_style(&mut self, state: VisualState, box_style: impl Into<Style>) {
         self.alternate_box_styles.push((state, box_style.into()));
         if state.contains(VisualState::HOVER) {
             self.redraw_on_hover = true;
@@ -350,18 +350,20 @@ impl<Content: Widget> Widget for Container<Content> {
         let base_width = constraints.finite_max_width().unwrap_or(0.0);
         let base_height = constraints.finite_max_height().unwrap_or(0.0);
 
-        // First, measure the child, taking into account the mandatory padding
-        let mut insets = SideOffsets::new(
-            self.padding_top.to_dips(ctx.scale_factor, base_height),
-            self.padding_right.to_dips(ctx.scale_factor, base_width),
-            self.padding_bottom.to_dips(ctx.scale_factor, base_height),
-            self.padding_left.to_dips(ctx.scale_factor, base_width),
+        // First, measure the child, taking into account the mandatory padding.
+        // Also, borders should be taken into account in the layout (they affect the size of the item).
+        let [border_top, border_right, border_bottom, border_left] = self
+            .box_style
+            .border
+            .as_ref()
+            .map(|border| border.calculate_widths(ctx.scale_factor, Size::new(base_width, base_height)))
+            .unwrap_or([0.0, 0.0, 0.0, 0.0]);
+        let insets = SideOffsets::new(
+            self.padding_top.to_dips(ctx.scale_factor, base_height) + border_top,
+            self.padding_right.to_dips(ctx.scale_factor, base_width) + border_right,
+            self.padding_bottom.to_dips(ctx.scale_factor, base_height) + border_bottom,
+            self.padding_left.to_dips(ctx.scale_factor, base_width) + border_left,
         );
-        // Around-borders should be taken into account in the layout (they affect the size of the item).
-        insets = insets
-            + self
-                .box_style
-                .border_side_offsets(ctx.scale_factor, Size::new(base_width, base_height));
 
         let content_constraints = constraints.deflate(insets);
         let mut content_layout = self.content.layout(ctx, content_constraints, env);

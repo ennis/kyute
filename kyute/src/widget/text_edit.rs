@@ -4,7 +4,7 @@ use crate::{
     core::Widget,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
-    style::{BoxStyle, PaintCtxExt},
+    style::{PaintCtxExt, Style},
     theme,
     widget::{prelude::*, Container, Text},
     Color, Data, UnitExt,
@@ -231,7 +231,7 @@ impl Widget for TextEdit {
             paragraph.hit_test_text_range(self.selection.min()..self.selection.max(), Point::origin());
         for mut tb in selection_boxes {
             tb.bounds.origin += offset;
-            ctx.draw_styled_box(tb.bounds, &BoxStyle::new().fill(Color::new(0.0, 0.1, 0.8, 0.5)));
+            ctx.draw_styled_box(tb.bounds, &Style::new().background(Color::new(0.0, 0.1, 0.8, 0.5)));
         }
 
         // paint the caret

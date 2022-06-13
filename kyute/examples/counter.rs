@@ -53,7 +53,7 @@ fn counter_demo() -> impl Widget {
 
     // 2 rows, sized according to the widgets placed in the row's cells.
     // 2 flex columns, available space will be divided evenly among them
-    let mut grid = Grid::with_template("auto auto / 1fr 1fr");
+    let mut grid = Grid::with_template("auto auto / 1fr 1fr / 10 10");
 
     // Insert the widgets in the grid
 
@@ -69,7 +69,7 @@ fn counter_demo() -> impl Widget {
     // wrap grid in a container to fill the window and apply some styling to the background
     Container::new(grid)
         // a subset of CSS is supported here
-        .background("linear-gradient(90deg, #111111, #333333)")
+        .background("rgb(236 236 236)")
         .fill()
 }
 

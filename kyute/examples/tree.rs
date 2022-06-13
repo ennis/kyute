@@ -1,7 +1,7 @@
 use kyute::{
     application, composable,
     shell::{application::Application, winit::window::WindowBuilder},
-    style::BoxStyle,
+    style::Style,
     theme,
     widget::{
         grid::{GridTemplate, TrackSizePolicy},
@@ -87,7 +87,7 @@ fn tree_test() -> impl Widget {
         column_separator_width: 1.px(),
         row_separator_background: theme::palette::GREY_900.into(),
         column_separator_background: theme::palette::GREY_900.into(),
-        selected_style: BoxStyle::new().radius(8.dip()).fill(theme::palette::BLUE_800),
+        selected_style: Style::new().radius(8.dip()).background(theme::palette::BLUE_800),
         ..Default::default()
     };
 

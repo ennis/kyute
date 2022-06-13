@@ -3,7 +3,7 @@
 use crate::{
     align_boxes,
     event::PointerEventKind,
-    style::{BoxStyle, PaintCtxExt, Path},
+    style::{PaintCtxExt, Path, Style},
     theme,
     widget::prelude::*,
     SideOffsets, Signal,
@@ -71,7 +71,7 @@ struct SliderLayout {
     knob_y: f64,
     value_norm: f64,
     track: SliderTrack,
-    track_style: BoxStyle,
+    track_style: Style,
 }
 
 pub struct Slider {

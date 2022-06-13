@@ -1,5 +1,5 @@
 use crate::{
-    style::BoxStyle,
+    style::Style,
     theme,
     widget::{prelude::*, Container, Null},
 };
@@ -12,10 +12,10 @@ pub fn separator(orientation: Orientation) -> impl Widget {
         Orientation::Vertical => Container::new(Null)
             .fixed_width(2.px())
             .centered()
-            .box_style(BoxStyle::new().fill(theme::palette::GREY_700)),
+            .box_style(Style::new().background(theme::palette::GREY_700)),
         Orientation::Horizontal => Container::new(Null)
             .fixed_height(2.px())
             .centered()
-            .box_style(BoxStyle::new().fill(theme::palette::GREY_700)),
+            .box_style(Style::new().background(theme::palette::GREY_700)),
     }
 }

@@ -74,9 +74,7 @@ fn compare_runtime_effects(left: &sk::RuntimeEffect, right: &sk::RuntimeEffect) 
 //#[serde(tag = "type")]
 pub enum Paint {
     //#[serde(rename = "color")]
-    SolidColor {
-        color: Color,
-    },
+    SolidColor(Color),
     //#[serde(rename = "linear-gradient")]
     LinearGradient(LinearGradient),
     //#[serde(rename = "image")]
@@ -98,15 +96,13 @@ impl_env_value!(Paint);
 
 impl Default for Paint {
     fn default() -> Self {
-        Paint::SolidColor {
-            color: Color::new(0.0, 0.0, 0.0, 0.0),
-        }
+        Paint::SolidColor(Color::new(0.0, 0.0, 0.0, 0.0))
     }
 }
 
 impl Paint {
     pub fn is_transparent(&self) -> bool {
-        if let Paint::SolidColor { color } = self {
+        if let Paint::SolidColor(color) = self {
             color.alpha() == 0.0
         } else {
             false
@@ -116,7 +112,7 @@ impl Paint {
     /// Converts this object to a skia `SkPaint`.
     pub fn to_sk_paint(&self, bounds: Rect) -> sk::Paint {
         match self {
-            Paint::SolidColor { color } => {
+            Paint::SolidColor(color) => {
                 let mut paint = sk::Paint::new(color.to_skia(), None);
                 paint.set_anti_alias(true);
                 paint
@@ -211,16 +207,14 @@ impl Paint {
                 repeat_y,
             }
         } else {
-            Paint::SolidColor {
-                color: Default::default(),
-            }
+            Paint::SolidColor(Default::default())
         }
     }
 }
 
 impl From<Color> for Paint {
     fn from(color: Color) -> Self {
-        Paint::SolidColor { color }
+        Paint::SolidColor(color)
     }
 }
 
@@ -370,6 +364,6 @@ impl From<LinearGradient> for Paint {
 impl TryFrom<&str> for Paint {
     type Error = ();
     fn try_from(css: &str) -> Result<Self, ()> {
-        Paint::parse(css)
+        Paint::parse(css).map_err(|_| ())
     }
 }

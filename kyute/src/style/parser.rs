@@ -1,197 +1,68 @@
 //! Parser for box styles.
-use cssparser::{CowRcStr, ParseError, Parser, ParserInput, SourceLocation, Token};
-use kyute_common::{Angle, Color, Length, UnitExt};
-use std::f32::consts::PI;
-/*use nom::{
-    branch::alt,
-    bytes::complete::{tag, take, take_while, take_while_m_n},
-    character::{
-        complete::{alpha1, alphanumeric1, char, digit1, space0, space1},
-        is_hex_digit,
-    },
-    combinator::{eof, map, map_res, opt, peek, recognize},
-    error::{context, make_error, ErrorKind, ParseError, VerboseError},
-    multi::{count, many0_count, many1, many_m_n, separated_list1},
-    number::complete::double,
-    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
-    Finish, IResult,
-};*/
 use crate::{
-    style::{ColorStop, LinearGradient, Paint},
+    style::{BlendMode, Border, BorderStyle, BoxShadow, ColorStop, LinearGradient, Paint, Style},
     widget::grid::Line,
 };
+use cssparser::{BasicParseErrorKind, CowRcStr, Delimiters, ParseError, Parser, ParserInput, SourceLocation, Token};
+use kyute_common::{Angle, Color, Length, UnitExt};
 use palette::{Hsla, RgbHue};
-use std::str::FromStr;
-
-/// Length units.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Unit {
-    /// Pixels (physical).
-    Px,
-    /// Points.
-    Pt,
-    /// Inches.
-    In,
-    /// Device-independent pixels.
-    Dip,
-    /// Percentage of the parent widget's size.
-    Percent,
-}
-
-/// Angle units
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum AngleUnit {
-    Turn,
-    Radians,
-    Degrees,
-}
+use std::{f32::consts::PI, str::FromStr};
+use syn::__private::quote::__private::Delimiter;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Utilities
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/*fn integer_i32(input: &str) -> IResult<&str, i32> {
-    map_res(recognize(pair(opt(char('-')), digit1)), |s: &str| s.parse::<i32>())(input)
+fn parse_from_str<'i, T, F, E>(css: &'i str, f: F) -> Result<T, ParseError<'i, E>>
+where
+    F: for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
+{
+    let mut input = ParserInput::new(css);
+    let mut input = Parser::new(&mut input);
+    input.parse_entirely(f)
 }
 
-fn integer_u32(input: &str) -> IResult<&str, u32> {
-    map_res(digit1, |s: &str| s.parse::<u32>())(input)
+fn parse_property_remainder<'i, T, F, E>(input: &mut Parser<'i, '_>, f: F) -> Result<T, ParseError<'i, E>>
+where
+    F: for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
+{
+    input.parse_until_after(cssparser::Delimiter::Semicolon, f)
 }
-
-fn integer_usize(input: &str) -> IResult<&str, usize> {
-    map_res(digit1, |s: &str| s.parse::<usize>())(input)
-}
-
-/// All length units
-fn length_unit(input: &str) -> IResult<&str, Unit> {
-    // px, dip, etc.
-    map(
-        alt((tag("px"), tag("dip"), tag("in"), tag("pt"), tag("%"))),
-        |s: &str| match s {
-            "px" => Unit::Px,
-            "dip" => Unit::Dip,
-            "%" => Unit::Percent,
-            "in" => Unit::In,
-            "pt" => Unit::Pt,
-            _ => unreachable!(),
-        },
-    )(input)
-}
-
-/// All angle units
-fn angle_unit(input: &str) -> IResult<&str, AngleUnit> {
-    // px, dip, etc.
-    map(alt((tag("turn"), tag("rad"), tag("deg"))), |s: &str| match s {
-        "turn" => AngleUnit::Turn,
-        "rad" => AngleUnit::Radians,
-        "deg" => AngleUnit::Degrees,
-        _ => unreachable!(),
-    })(input)
-}
-
-/// Percentage value
-fn percentage(input: &str) -> IResult<&str, f64> {
-    terminated(double, '%')(input)
-}
-
-/// Percentage value
-fn normalized_percentage(input: &str) -> IResult<&str, f64> {
-    map(percentage, |x| x / 100.0)(input)
-}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// colors
+// lengths
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/*fn hex_color(input: &str) -> IResult<&str, Color> {
-    map(
-        recognize(preceded(tag('#'), take_while(is_hex_digit))),
-        |color_str| match Color::try_from_hex(color_str) {
-            Ok(color) => color,
-            Err(_) => {
-                warn!("invalid hex color: {}", color_str);
-                Color::default()
+fn length<'i>(input: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>> {
+    match input.next()? {
+        token @ Token::Dimension { value, unit, .. } => {
+            // be consistent with CSS and interpret px as DIPs; use "ppx" for physical pixels
+            match &**unit {
+                "px" => Ok((*value).dip()),
+                "in" => Ok((*value).inch()),
+                "pt" => Ok((*value).pt()),
+                "ppx" => Ok((*value).px()),
+                _ => {
+                    let token = token.clone();
+                    return Err(input.new_unexpected_token_error(token));
+                }
             }
-        },
-    )(input)
+        }
+        Token::Number { int_value: Some(0), .. } => Ok(Length::Dip(0.0)),
+        token => {
+            let token = token.clone();
+            return Err(input.new_unexpected_token_error(token));
+        }
+    }
 }
 
-// "/ <alpha-value>"
-fn alpha_suffix(input: &str) -> IResult<&str, f64> {
-    preceded(
-        delimited(space0, char('/'), space0),
-        alt((normalized_percentage, double)),
-    )(input)
-}
-
-// rgb(R G B [/ A]?)
-fn rgb_color(input: &str) -> IResult<&str, Color> {
-    let (input, _) = tag("rgb(")(input)?;
-    let (input, (r, g, b)) = alt((
-        tuple((
-            preceded(space0, normalized_percentage),
-            preceded(space0, normalized_percentage),
-            preceded(space0, normalized_percentage),
-        )),
-        tuple((
-            map(preceded(space0, double), |x| x / 255.0),
-            map(preceded(space0, double), |x| x / 255.0),
-            map(preceded(space0, double), |x| x / 255.0),
-        )),
-    ))(input)?;
-
-    let (input, alpha) = opt(alpha_suffix)(input)?;
-    let (input, _) = preceded(space0, char(')'))(input)?;
-
-    let color = if let Some(alpha) = alpha {
-        Color::new(r as f32, g as f32, b as f32, alpha as f32)
+fn length_percentage<'i>(input: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>> {
+    if let Ok(length) = input.try_parse(length) {
+        Ok(length)
     } else {
-        Color::new(r as f32, g as f32, b as f32, 1.0)
-    };
-
-    Ok((input, color))
-}
-
-// hsl(...)
-fn hsl_color(input: &str) -> IResult<&str, Color> {
-    let (input, _) = tag("hsl(")(input)?;
-
-    let (input, (hue, hue_unit)) = preceded(space0, tuple((double, opt(angle_unit))))(input)?;
-    let (input, saturation) = preceded(space0, normalized_percentage)(input)?;
-    let (input, lightness) = preceded(space0, normalized_percentage)(input)?;
-    let (input, alpha) = opt(alpha_suffix)(input)?;
-    let (input, _) = preceded(space0, char(')'))(input)?;
-
-    let hue = match hue_unit {
-        Some(AngleUnit::Degrees) | None => hue,
-        Some(AngleUnit::Radians) => hue / std::f64::consts::PI * 180.0,
-        Some(AngleUnit::Turn) => hue * 360.0,
-    };
-
-    let color = Color::hsla(hue, saturation as f32, lightness as f32, alpha.unwrap_or(1.0) as f32);
-    Ok((input, color))
-}
-
-fn color(input: &str) -> IResult<&str, Color> {
-    alt((hex_color, rgb_color, hsl_color))(input)
-}*/
-
-/*
-fn component_number<'i>(input: &mut Parser<'i, '_>) -> Result<f64, ParseError<'i, ()>> {
-    let location = input.current_source_location();
-    match input.next()? {
-        Token::Number { value, .. } => Ok(*value as f64 / 255.0),
-        t => Err(location.new_unexpected_token_error(t.clone())),
+        Ok(Length::Proportional(input.expect_percentage()? as f64))
     }
 }
-
-fn component_percentage<'i>(input: &mut Parser<'i, '_>) -> Result<f64, ParseError<'i, ()>> {
-    let location = input.current_source_location();
-    match input.next()? {
-        Token::Number { value, .. } => Ok(*value as f64 / 255.0),
-        t => Err(location.new_unexpected_token_error(t.clone())),
-    }
-}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // colors
@@ -223,8 +94,8 @@ fn rgb_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>
     let g;
     let b;
     if is_number {
-        g = input.expect_number()?;
-        b = input.expect_number()?;
+        g = input.expect_number()? / 255.0;
+        b = input.expect_number()? / 255.0;
     } else {
         g = input.expect_percentage()?;
         b = input.expect_percentage()?;
@@ -266,7 +137,7 @@ fn color_function<'i>(name: &str, input: &mut Parser<'i, '_>) -> Result<Color, P
     }
 }
 
-fn color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>> {
+fn css_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>> {
     let location = input.current_source_location();
     match input.next()? {
         Token::Function(ref name) => {
@@ -288,10 +159,7 @@ fn color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>> {
 // linear_gradient
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/*fn angle(value: f32, angle_unit: &str) -> Option<f32> {
-
-}*/
-
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum BoxSide {
     Bottom,
     Top,
@@ -351,40 +219,41 @@ fn line_direction<'i>(input: &mut Parser<'i, '_>) -> Result<LineDirection, Parse
     Ok(LineDirection { angle })
 }
 
-fn linear_color_stop<'i>(input: &mut Parser<'i, '_>) -> Result<ColorStop, ParseError<'i, ()>> {
-    let color = color(input)?;
-    let position = input.try_parse(Parser::expect_percentage).ok();
-    Ok(ColorStop {
-        color,
-        position: position.map(|x| x as f64),
-    })
+impl ColorStop {
+    fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<ColorStop, ParseError<'i, ()>> {
+        let color = css_color(input)?;
+        let position = input.try_parse(Parser::expect_percentage).ok();
+        Ok(ColorStop {
+            color,
+            position: position.map(|x| x as f64),
+        })
+    }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-struct CssLinearGradient {
-    direction: LineDirection,
-    stops: Vec<ColorStop>,
-}
+impl LinearGradient {
+    fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<LinearGradient, ParseError<'i, ()>> {
+        input.expect_function_matching("linear-gradient")?;
+        input.parse_nested_block(|input| {
+            let direction = if let Some(line_direction) = input.try_parse(line_direction).ok() {
+                input.expect_comma()?;
+                line_direction
+            } else {
+                LineDirection { angle: 180.0 }
+            };
 
-fn linear_gradient<'i>(input: &mut Parser<'i, '_>) -> Result<CssLinearGradient, ParseError<'i, ()>> {
-    input.expect_function_matching("linear-gradient")?;
-    input.parse_nested_block(|input| {
-        let direction = if let Some(line_direction) = input.try_parse(line_direction).ok() {
-            input.expect_comma()?;
-            line_direction
-        } else {
-            LineDirection { angle: 180.0 }
-        };
+            let mut stops = Vec::new();
+            stops.push(ColorStop::parse_impl(input)?);
+            while !input.is_exhausted() {
+                input.expect_comma()?;
+                stops.push(ColorStop::parse_impl(input)?);
+            }
 
-        let mut stops = Vec::new();
-        stops.push(linear_color_stop(input)?);
-        while !input.is_exhausted() {
-            input.expect_comma()?;
-            stops.push(linear_color_stop(input)?);
-        }
-
-        Ok(CssLinearGradient { direction, stops })
-    })
+            Ok(LinearGradient {
+                angle: direction.angle.degrees(),
+                stops,
+            })
+        })
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -392,21 +261,229 @@ fn linear_gradient<'i>(input: &mut Parser<'i, '_>) -> Result<CssLinearGradient, 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 impl Paint {
-    pub fn parse(css: &str) -> Result<Paint, ()> {
-        let mut input = ParserInput::new(css);
-        let mut input = Parser::new(&mut input);
-
-        if let Ok(color) = input.try_parse(color) {
-            Ok(Paint::SolidColor { color })
-        } else if let Ok(linear_gradient) = input.try_parse(linear_gradient) {
-            Ok(Paint::LinearGradient(LinearGradient {
-                angle: Angle::degrees(linear_gradient.direction.angle as f64),
-                stops: linear_gradient.stops,
-            }))
+    fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<Paint, ParseError<'i, ()>> {
+        if let Ok(color) = input.try_parse(css_color) {
+            Ok(Paint::SolidColor(color))
+        } else if let Ok(linear_gradient) = input.try_parse(LinearGradient::parse_impl) {
+            Ok(Paint::LinearGradient(linear_gradient))
         } else {
-            warn!("invalid paint value: `{}`", css);
-            Err(())
+            Err(input.new_custom_error(()))
         }
+    }
+
+    pub fn parse(css: &str) -> Result<Self, ParseError<()>> {
+        parse_from_str(css, Self::parse_impl)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// box-shadow
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+impl BoxShadow {
+    fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<BoxShadow, ParseError<'i, ()>> {
+        let mut inset = false;
+        let mut lengths = None;
+        let mut color = None;
+
+        loop {
+            if !inset {
+                if input.try_parse(|i| i.expect_ident_matching("inset")).is_ok() {
+                    inset = true;
+                    continue;
+                }
+            }
+
+            if lengths.is_none() {
+                let values = input.try_parse::<_, _, ParseError<'i, ()>>(|input| {
+                    let x_offset = length(input)?;
+                    let y_offset = length(input)?;
+                    let blur = input.try_parse(length).unwrap_or(Length::zero());
+                    let spread = input.try_parse(length).unwrap_or(Length::zero());
+                    Ok((x_offset, y_offset, blur, spread))
+                });
+
+                if let Ok(values) = values {
+                    lengths = Some(values);
+                    continue;
+                }
+            }
+
+            if color.is_none() {
+                if let Ok(c) = input.try_parse(css_color) {
+                    color = Some(c);
+                    continue;
+                }
+            }
+
+            break;
+        }
+
+        let lengths = lengths.ok_or(input.new_custom_error(()))?;
+        Ok(BoxShadow {
+            color: color.unwrap_or(Color::new(0.0, 0.0, 0.0, 1.0)),
+            x_offset: lengths.0,
+            y_offset: lengths.1,
+            blur: lengths.2,
+            spread: lengths.3,
+            inset,
+        })
+    }
+
+    pub fn parse(css: &str) -> Result<Self, ParseError<()>> {
+        parse_from_str(css, Self::parse_impl)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// border
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+impl Border {
+    fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<Border, ParseError<'i, ()>> {
+        let mut line_width = None;
+        let mut line_style = None;
+        let mut color = None;
+
+        loop {
+            if line_width.is_none() {
+                let width = input.try_parse(|input| {
+                    if input.try_parse(|i| i.expect_ident_matching("thin")).is_ok() {
+                        Ok(1.dip())
+                    } else if input.try_parse(|i| i.expect_ident_matching("medium")).is_ok() {
+                        Ok(2.dip())
+                    } else if input.try_parse(|i| i.expect_ident_matching("thick")).is_ok() {
+                        Ok(3.dip())
+                    } else {
+                        input.try_parse(length)
+                    }
+                });
+
+                if let Ok(width) = width {
+                    line_width = Some(width);
+                    continue;
+                }
+            }
+
+            if line_style.is_none() {
+                let style = input.try_parse::<_, _, ParseError<'i, ()>>(|input| match input.next()? {
+                    Token::Ident(ident) if &**ident == "solid" => Ok(BorderStyle::Solid),
+                    Token::Ident(ident) if &**ident == "dotted" => Ok(BorderStyle::Dotted),
+                    token => {
+                        let token = token.clone();
+                        Err(input.new_unexpected_token_error(token))
+                    }
+                });
+
+                if let Ok(style) = style {
+                    line_style = Some(style);
+                    continue;
+                }
+            }
+
+            if color.is_none() {
+                if let Ok(c) = input.try_parse(css_color) {
+                    color = Some(c);
+                    continue;
+                }
+            }
+
+            break;
+        }
+
+        if line_width.is_none() && line_style.is_none() && color.is_none() {
+            return Err(input.new_custom_error(()));
+        }
+
+        let line_width = line_width.unwrap_or(Length::zero());
+
+        Ok(Border {
+            widths: [line_width; 4],
+            paint: color.map(Paint::SolidColor).unwrap_or_default(),
+            line_style: line_style.unwrap_or_default(),
+            blend_mode: BlendMode::SrcOver,
+        })
+    }
+
+    pub fn parse(css: &str) -> Result<Self, ParseError<()>> {
+        parse_from_str(css, Self::parse_impl)
+    }
+}
+
+/// border-radius
+fn border_radius<'i>(input: &mut Parser<'i, '_>) -> Result<[Length; 4], ParseError<'i, ()>> {
+    // <length-percentage>{1,4} [ / <length-percentage>{1,4} ]?
+    // (but we don't support the '/' part, yet.)
+
+    let length1 = length_percentage(input)?;
+    let length2 = input.try_parse(length_percentage).ok();
+    let length3 = input.try_parse(length_percentage).ok();
+    let length4 = input.try_parse(length_percentage).ok();
+
+    let radii = match (length1, length2, length3, length4) {
+        (radius, None, None, None) => [radius; 4],
+        (top_left_and_bottom_right, Some(top_right_and_bottom_left), None, None) => [
+            top_left_and_bottom_right,
+            top_right_and_bottom_left,
+            top_left_and_bottom_right,
+            top_right_and_bottom_left,
+        ],
+        (top_left, Some(top_right_and_bottom_left), Some(bottom_right), None) => [
+            top_left,
+            top_right_and_bottom_left,
+            bottom_right,
+            top_right_and_bottom_left,
+        ],
+        (top_left, Some(top_right), Some(bottom_right), Some(bottom_left)) => {
+            [top_left, top_right, bottom_right, bottom_left]
+        }
+        _ => unreachable!(),
+    };
+    Ok(radii)
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Style
+////////////////////////////////////////////////////////////////////////////////////////////////////
+impl Style {
+    fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<Style, ParseError<'i, ()>> {
+        let mut style = Style {
+            border_radii: [Length::zero(); 4],
+            border: None,
+            background: None,
+            box_shadows: vec![],
+        };
+
+        // CSS inline style parser
+        while !input.is_exhausted() {
+            let prop_name = input.expect_ident()?.clone();
+            input.expect_colon()?;
+            match &*prop_name {
+                "background" => {
+                    style.background = Some(parse_property_remainder(input, Paint::parse_impl)?);
+                }
+                "border" => {
+                    style.border = Some(parse_property_remainder(input, Border::parse_impl)?);
+                }
+                "border-radius" => {
+                    style.border_radii = parse_property_remainder(input, border_radius)?;
+                }
+                "box-shadow" => {
+                    style.box_shadows =
+                        parse_property_remainder(input, |input| input.parse_comma_separated(BoxShadow::parse_impl))?;
+                }
+                _ => {
+                    // unrecognized property
+                    return Err(input.new_custom_error(()));
+                }
+            }
+        }
+
+        Ok(style)
+    }
+
+    pub fn parse(css: &str) -> Result<Self, ParseError<()>> {
+        parse_from_str(css, Self::parse_impl)
     }
 }
 
@@ -417,11 +494,11 @@ impl Paint {
 #[cfg(test)]
 mod tests {
     use crate::style::{
-        parser::{linear_gradient, CssLinearGradient, LineDirection},
-        ColorStop,
+        parser::{linear_gradient, LineDirection},
+        ColorStop, LinearGradient,
     };
     use cssparser::{Parser, ParserInput};
-    use kyute_common::Color;
+    use kyute_common::{Color, UnitExt};
 
     fn parse_string<'i, T: 'i, E: 'i>(
         input: &'i str,
@@ -436,8 +513,8 @@ mod tests {
     fn test_linear_gradient() {
         assert_eq!(
             parse_string("linear-gradient(#D7D5D7, #F6F5F6)", linear_gradient),
-            Ok(CssLinearGradient {
-                direction: LineDirection { angle: 180.0 },
+            Ok(LinearGradient {
+                angle: 180.degrees(),
                 stops: vec![
                     ColorStop {
                         position: None,

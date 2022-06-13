@@ -3,7 +3,7 @@ use crate::GalleryWidget::ContextMenu;
 use kyute::{
     application, composable,
     shell::application::Application,
-    style::{BoxStyle, LinearGradient, VisualState},
+    style::{LinearGradient, Style, VisualState},
     theme,
     theme::palette,
     widget::{
@@ -83,10 +83,16 @@ fn gallery_sidebar_item(name: &str, kind: GalleryWidget, selected: &mut GalleryW
         .fill();
     container.push_alternate_box_style(
         VisualState::HOVER,
-        BoxStyle::new().radius(8.dip()).fill(palette::GREY_100.with_alpha(0.2)),
+        Style::new()
+            .radius(8.dip())
+            .background(palette::GREY_100.with_alpha(0.2)),
     );
     if kind == *selected {
-        container.set_box_style(BoxStyle::new().radius(8.dip()).fill(palette::BLUE_700.with_alpha(0.8)));
+        container.set_box_style(
+            Style::new()
+                .radius(8.dip())
+                .background(palette::BLUE_700.with_alpha(0.8)),
+        );
     }
     Selectable::new(selected, kind, container)
 }

@@ -2,7 +2,7 @@ use anyhow::Error;
 use kyute::{
     application, cache, composable,
     shell::{application::Application, winit::window::WindowBuilder},
-    style::BoxStyle,
+    style::Style,
     text::{Attribute, FormattedText},
     theme,
     widget::{
@@ -76,7 +76,7 @@ fn text_playground() -> impl Widget + Clone {
         grid.add_item(row, 2, 0, text_input);
     }
 
-    Container::new(grid).box_style(BoxStyle::new().fill(theme::palette::BLUE_GREY_800))
+    Container::new(grid).box_style(Style::new().background(theme::palette::BLUE_GREY_800))
 }
 
 #[composable]

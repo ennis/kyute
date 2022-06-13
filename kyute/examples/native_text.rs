@@ -1,7 +1,7 @@
 use kyute::{
     application, composable,
     shell::{application::Application, winit::window::WindowBuilder},
-    style::BoxStyle,
+    style::Style,
     text::FormattedText,
     theme,
     widget::{grid::TrackSizePolicy, Container, Flex, Grid, GridLength, Image, Label, Null, Text, TitledPane},
