@@ -46,6 +46,37 @@ fn counter_demo() -> impl Widget {
     //    }
     //
 
+    // now every item has style information, and all layout is done within the container...
+    // -> Container IS special: it's basically a div
+    // -> this DOESN'T MEAN that all widgets should be implemented like that.
+    //
+    // Also, not all widgets need to store style info: `.style` would just wrap the
+
+
+    /*Container::new((
+       Text::new(
+           FormattedText::from(format!("Counter value: {}", counter)).attribute(14.., FontWeight::BOLD),
+       ),
+        Button::new("+").id("increment").on_clicked(|| counter += 1),
+        Button::new("-").id("decrement").on_clicked(|| counter -= 1)
+        )).style(r#"
+        display: grid;
+        grid-template: auto auto / 1fr 1fr;
+        background: rgb(236 236 236);
+        & #decrement {
+            top: 5px;
+            right: 5px;
+            grid-area: 1 / 0;
+        }
+        & #increment {
+            top: 5px;
+            left: 5px;
+            padding: 5px;
+            grid-area: 1 / 1;
+        }
+        & text { grid-area: 0 / span 2; }
+        "#);*/
+
     // Layout the widgets in a grid.
     //
     // Grids are the primary layout mechanism in kyute.

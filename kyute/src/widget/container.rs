@@ -346,6 +346,20 @@ impl<Content: Widget> Widget for Container<Content> {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
+
+        // container layout algorithm:
+        // 1. compute child sizing constraints:
+        //      take the parent constraints, and then:
+        //      - apply min-width, min-height, max-width, max-height
+        //      - deflate them with borders and padding
+        // 2. compute child size
+        // 3. compute container size
+        //      which is simply the child size, constrained to min-width, min-height, max-width, max-height
+        // 4. place child inside container according to alignment
+        //
+        // NOTE: Contrary to flutter, alignment doesn't impact the size of the container
+
+
         // Base size for proportional length calculations
         let base_width = constraints.finite_max_width().unwrap_or(0.0);
         let base_height = constraints.finite_max_height().unwrap_or(0.0);
@@ -426,6 +440,9 @@ impl<Content: Widget> Widget for Container<Content> {
         // basically: do we stretch or do we size to contents?
         // -> if we have alignment and we are bounded: stretch
         // -> otherwise (if we don't have alignment, or we are unbounded): size to contents
+
+        //
+        // min-size: 100%, max-size: auto (size to contents)
         let size = if self.alignment.is_some() {
             let w = if constraints.max_width().is_finite() {
                 // alignment specified, finite width bounds: expand to fill

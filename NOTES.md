@@ -391,4 +391,55 @@ Alternative? style inheritance
 ## TODO
 - `#[composable(tweak_literals)]`
 - more robust tweak macro (span fixup)
-- 
+
+## General CSS support?
+Style => a container for style properties. Like environments, can inherit from a parent style.
+Style value resolution: cached?
+Fast lookup of properties.
+
+```rust
+
+struct StyleImpl {
+    // hashmap of properties (imbl::HashMap)
+}
+
+pub struct Style(imbl::HashMap<Property, PropertyValue>);
+
+// style cascade done in layout
+
+
+```
+
+Issue with alignment:
+- CSS alignment on an element specifies the alignment of the element _in its parent_.
+- the alignment property on our containers specifies the alignment of _the contents inside the container_
+
+In CSS, positioning properties are specified on the positioned element.
+
+Due to our layout algorithm, we can't really do the same thing as CSS: we would need to propagate the alignment upwards during layout.
+It is possible, though:
+- replace `Measurements` with a proper `Layout` struct, containing:
+  - the size
+  - clip bounds
+  - alignment within the parent container (grid area, container)
+    - problem: all elements (text, etc) would need to carry an alignment property
+    - more generally, it could return positioning information instead
+      - e.g. relative(top,left)
+      
+```rust
+struct Layout {
+    size: Size,
+    // positioning properties
+    // if none of those are specified, positioned by the parent element
+    left: Option<Length>,
+    right: Option<Length>,
+    top: Option<Length>,
+    bottom: Option<Length>,
+    // alignment properties
+    
+    // might as well return the computed style of the element...
+    
+    // alignment 
+    //align: 
+}
+```

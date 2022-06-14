@@ -4,6 +4,7 @@ mod box_style;
 mod paint;
 mod parser;
 mod theme;
+mod style2;
 
 use crate::{
     animation::PaintCtx,
