@@ -186,9 +186,7 @@ impl Length {
     pub fn scale(self, by: f64) -> Self {
         let mut v = self;
         match v {
-            Length::Px(ref mut v)
-            | Length::Dip(ref mut v)
-            | Length::Proportional(ref mut v) => {
+            Length::Px(ref mut v) | Length::Dip(ref mut v) | Length::Proportional(ref mut v) => {
                 *v *= by;
             }
         }
@@ -288,7 +286,6 @@ pub trait UnitExt {
 /// let size_in_dips = size_in_points * PT_TO_DIP;
 /// ```
 pub const PT_TO_DIP: f64 = 4.0 / 3.0;
-
 
 /// Inches-to-DIP conversion factor.
 ///

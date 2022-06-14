@@ -1,4 +1,9 @@
-use crate::{cache, Color, Data, Length, SideOffsets};
+use crate::{
+    cache,
+    style::{BorderStyle, BoxShadow, Paint},
+    Color, Data, Length, SideOffsets,
+};
+use kyute_common::{imbl::Vector, Angle};
 use std::{
     any::Any,
     collections::HashMap,
@@ -8,11 +13,8 @@ use std::{
     marker::PhantomData,
     sync::Arc,
 };
-use kyute_common::Angle;
-use kyute_common::imbl::Vector;
-use crate::style::{BorderStyle, BoxShadow, Paint};
 
-#[derive(Clone,Debug,Data)]
+#[derive(Clone, Debug)]
 pub enum PropertyValue {
     String(Arc<str>),
     Number(f64),
@@ -41,6 +43,7 @@ impl<T> Clone for Property<T> {
     fn clone(&self) -> Self {
         Property {
             key: self.key,
+            inherited: self.inherited,
             _type: PhantomData,
         }
     }
@@ -49,9 +52,10 @@ impl<T> Clone for Property<T> {
 impl<T> Copy for Property<T> {}
 
 impl<T> Property<T> {
-    pub const fn new(key: &'static str) -> Property<T> {
+    pub const fn new(key: &'static str, inherited: bool) -> Property<T> {
         Property {
             key,
+            inherited,
             _type: PhantomData,
         }
     }
@@ -67,7 +71,7 @@ macro_rules! define_properties {
     };
 }
 
-define_properties!{
+define_properties! {
     BORDER_BOTTOM_WIDTH["border-bottom-width"]: Length;
     BORDER_TOP_WIDTH["border-top-width"]: Length;
     BORDER_LEFT_WIDTH["border-left-width"]: Length;
@@ -83,7 +87,7 @@ define_properties!{
     BORDER_STYLE["border-style"]: BorderStyle;
     BACKGROUND_IMAGE["background-image"]: Paint;
     BACKGROUND_COLOR["background-color"]: Color;
-    BOX_SHADOW["box-shadow"]: BoxShadows;
+    //BOX_SHADOW["box-shadow"]: BoxShadows;
     MIN_WIDTH["min-width"]: Length;
     MIN_HEIGHT["min-height"]: Length;
     MAX_WIDTH["max-width"]: Length;
@@ -97,4 +101,3 @@ define_properties!{
 
     #[inherited] FONT_SIZE["FONT_SIZE"]: Length;
 }
-

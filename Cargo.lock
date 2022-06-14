@@ -652,7 +652,6 @@ dependencies = [
 name = "graal-spirv"
 version = "0.1.0"
 dependencies = [
- "bumpalo",
  "byteorder",
  "num-traits",
  "ordered-float",
