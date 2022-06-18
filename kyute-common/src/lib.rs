@@ -147,7 +147,17 @@ impl RectExt for Rect {
     }
 }
 
-/// Length specification.
+/// Values used to calculate the absolute value in DIPs of relative lengths.
+pub struct RelativeLengthContext {
+    /// Scale factor (pixel density ratio) of the target surface.   
+    pub scale_factor: f64,
+    /// Current font size in DIPs (for font-relative lengths)
+    pub font_size: f64,
+}
+
+/// Represents a length, either in device-independent, absolute units (dips), device-dependent pixels,
+/// or font-relative values (em).
+/// TODO move into kyute? not sure it's used anywhere else
 #[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
 #[cfg_attr(feature = "serializing", serde(tag = "unit", content = "value"))]
@@ -158,14 +168,14 @@ pub enum Length {
     /// Device-independent pixels (DIPs), close to 1/96th of an inch.
     #[cfg_attr(feature = "serializing", serde(rename = "dip"))]
     Dip(f64),
-    /// Length relative to the parent element.
-    Proportional(f64),
+    /// Length relative to the current font size.
+    Em(f64),
 }
 
 impl fmt::Debug for Length {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Length::Px(v) | Length::Dip(v) | Length::Proportional(v) if v == 0.0 => {
+            Length::Px(v) | Length::Dip(v) if v == 0.0 => {
                 write!(f, "0")
             }
             Length::Px(v) => {
@@ -174,8 +184,8 @@ impl fmt::Debug for Length {
             Length::Dip(v) => {
                 write!(f, "{}dip", v)
             }
-            Length::Proportional(v) => {
-                write!(f, "{}%", v * 100.0)
+            Length::Em(v) => {
+                write!(f, "{}em", v)
             }
         }
     }
@@ -186,7 +196,7 @@ impl Length {
     pub fn scale(self, by: f64) -> Self {
         let mut v = self;
         match v {
-            Length::Px(ref mut v) | Length::Dip(ref mut v) | Length::Proportional(ref mut v) => {
+            Length::Px(ref mut v) | Length::Dip(ref mut v) | Length::Em(ref mut v) => {
                 *v *= by;
             }
         }
@@ -199,11 +209,11 @@ impl Length {
     }
 
     /// Convert to dips, given a scale factor and a parent length for proportional length specifications.
-    pub fn to_dips(self, scale_factor: f64, parent_length_dips: f64) -> f64 {
+    pub fn to_dips(self, ctx: &RelativeLengthContext) -> f64 {
         match self {
-            Length::Px(x) => x / scale_factor,
+            Length::Px(x) => x / ctx.scale_factor,
             Length::Dip(x) => x,
-            Length::Proportional(x) => x * parent_length_dips,
+            Length::Em(x) => x * ctx.font_size,
         }
     }
 }
@@ -215,7 +225,7 @@ impl Neg for Length {
         match self {
             Length::Px(v) => Length::Px(-v),
             Length::Dip(v) => Length::Dip(-v),
-            Length::Proportional(v) => Length::Proportional(-v),
+            Length::Em(v) => Length::Em(-v),
         }
     }
 }
@@ -256,6 +266,41 @@ impl From<f64> for Length {
     }
 }
 
+#[derive(Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
+/// A length or a percentage.
+pub enum LengthOrPercentage {
+    /// Length.
+    Length(Length),
+    /// Percentage (normalized to the unit interval).
+    Percentage(f64),
+}
+
+impl LengthOrPercentage {
+    /// Convert to dips, given a scale factor and a parent length for proportional length specifications.
+    pub fn to_dips(self, ctx: &RelativeLengthContext, parent_length: f64) -> f64 {
+        match self {
+            LengthOrPercentage::Length(x) => x.to_dips(ctx),
+            LengthOrPercentage::Percentage(x) => x * parent_length,
+        }
+    }
+}
+
+impl fmt::Debug for LengthOrPercentage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            LengthOrPercentage::Length(length) => fmt::Debug::fmt(length, f),
+            LengthOrPercentage::Percentage(percentage) => write!(f, "{}%", percentage * 100.0),
+        }
+    }
+}
+
+impl From<Length> for LengthOrPercentage {
+    fn from(length: Length) -> Self {
+        LengthOrPercentage::Length(length)
+    }
+}
+
 /// Trait to interpret numeric values as units of measure.
 pub trait UnitExt {
     /// Interprets the value as a length in device-independent pixels (1/96 inch).
@@ -266,10 +311,12 @@ pub trait UnitExt {
     fn px(self) -> Length;
     /// Interprets the value as a length in points (1/72 in, 96/72 dip (4/3))
     fn pt(self) -> Length;
+    /// Interprets the value as a length proportional to the font size of the parent element (1em = current font size).
+    fn em(self) -> Length;
     /// Interprets the value as a length expressed as a percentage of the parent element's length.
     ///
     /// The precise definition of "parent element" depends on the context in which the length is used.
-    fn percent(self) -> Length;
+    fn percent(self) -> LengthOrPercentage;
     /// Interprets the value as an angle expressed in degrees.
     fn degrees(self) -> Angle;
     /// Interprets the value as an angle expressed in radians.
@@ -311,8 +358,11 @@ impl UnitExt for f32 {
     fn pt(self) -> Length {
         Length::Dip((self as f64) * PT_TO_DIP)
     }
-    fn percent(self) -> Length {
-        Length::Proportional(self as f64 / 100.0)
+    fn em(self) -> Length {
+        Length::Em(self as f64)
+    }
+    fn percent(self) -> LengthOrPercentage {
+        LengthOrPercentage::Percentage(self as f64 / 100.0)
     }
     fn degrees(self) -> Angle {
         Angle::degrees(self as f64)
@@ -335,8 +385,11 @@ impl UnitExt for f64 {
     fn pt(self) -> Length {
         Length::Dip(self * PT_TO_DIP)
     }
-    fn percent(self) -> Length {
-        Length::Proportional(self / 100.0)
+    fn em(self) -> Length {
+        Length::Em(self)
+    }
+    fn percent(self) -> LengthOrPercentage {
+        LengthOrPercentage::Percentage(self / 100.0)
     }
     fn degrees(self) -> Angle {
         Angle::degrees(self)
@@ -359,8 +412,11 @@ impl UnitExt for i32 {
     fn pt(self) -> Length {
         Length::Dip((self as f64) * PT_TO_DIP)
     }
-    fn percent(self) -> Length {
-        Length::Proportional(self as f64 / 100.0)
+    fn em(self) -> Length {
+        Length::Em(self as f64)
+    }
+    fn percent(self) -> LengthOrPercentage {
+        LengthOrPercentage::Percentage(self as f64 / 100.0)
     }
     fn degrees(self) -> Angle {
         Angle::degrees(self as f64)
@@ -383,8 +439,11 @@ impl UnitExt for u32 {
     fn pt(self) -> Length {
         Length::Dip((self as f64) * PT_TO_DIP)
     }
-    fn percent(self) -> Length {
-        Length::Proportional(self as f64 / 100.0)
+    fn em(self) -> Length {
+        Length::Em(self as f64)
+    }
+    fn percent(self) -> LengthOrPercentage {
+        LengthOrPercentage::Percentage(self as f64 / 100.0)
     }
     fn degrees(self) -> Angle {
         Angle::degrees(self as f64)
@@ -393,6 +452,10 @@ impl UnitExt for u32 {
         Angle::radians(self as f64)
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// imbl reexports and data impl
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[cfg(feature = "imbl")]
 pub use imbl;

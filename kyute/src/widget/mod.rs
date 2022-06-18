@@ -91,6 +91,67 @@ impl Orientation {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Insertable
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Trait implemented by widget containers.
+pub trait WidgetContainer {
+    /// Insert one widget into the container.
+    fn insert_one<W: Widget>(&mut self, widget: W);
+
+    fn insert<T: Insertable>(&mut self, widgets: T) {
+        widgets.insert(self);
+    }
+}
+
+/// A trait for elements that can be inserted into a container.
+///
+/// It is implemented by widgets and tuples of widgets, notably.
+pub trait Insertable {
+    fn insert<C: WidgetContainer>(self, container: &mut C);
+}
+
+impl<W> Insertable for W
+where
+    W: Widget + Sized + 'static,
+{
+    fn insert<C: WidgetContainer>(self, container: &mut C) {
+        container.insert_one(self);
+    }
+}
+
+macro_rules! tuple_insertable {
+    () => {};
+    ( $w:ident : $t:ident, $($ws:ident : $ts:ident, )* ) => {
+        impl<$t, $($ts,)*> Insertable for ($t, $($ts,)* ) where
+            $t: Insertable + 'static,
+            $( $ts: Insertable + 'static ),*
+        {
+            fn insert<C: WidgetContainer>(self, container: &mut C)
+            {
+                let ($w, $($ws,)*) = self;
+                container.insert($w);
+                $(container.insert($ws);)*
+            }
+        }
+
+        tuple_insertable!{$($ws : $ts,)*}
+    };
+}
+
+tuple_insertable! {
+    w1: T1,
+    w2: T2,
+    w3: T3,
+    w4: T4,
+    w5: T5,
+    w6: T6,
+    w7: T7,
+    w8: T8,
+    w9: T9,
+}
+
 /// Widgets that have only one child and wish to defer to this child's `Widget` implementation.
 pub trait WidgetWrapper {
     type Inner: Widget + ?Sized;
@@ -146,7 +207,7 @@ pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
         animation::PaintCtx, cache::Signal, composable, widget::WidgetPod, Alignment, BoxConstraints, Environment,
-        Event, EventCtx, LayoutCache, LayoutCtx, Measurements, Offset, Orientation, Point, Rect, Size, Transform,
-        Widget, WidgetId,
+        Event, EventCtx, Layout, LayoutCache, LayoutCtx, Measurements, Offset, Orientation, Point, Rect, Size,
+        Transform, Widget, WidgetId,
     };
 }

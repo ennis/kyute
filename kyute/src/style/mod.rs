@@ -1,126 +1,563 @@
 //! Drawing code for GUI elements.
-mod border;
-mod box_style;
-mod paint;
-mod parser;
-mod theme;
-mod style2;
+mod utils;
+pub mod values;
+
+use crate::{Color, EnvRef, Length, Offset, Rect, RectExt, UnitExt};
+use cssparser::{ParseError, Parser};
+use kyute_common::{LengthOrPercentage, Size};
+use std::{
+    cell::RefCell,
+    collections::{hash_map::DefaultHasher, HashMap},
+    convert::{TryFrom, TryInto},
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    sync::Arc,
+};
 
 use crate::{
-    animation::PaintCtx,
-    drawing::{svg_path_to_skia, ToSkia},
-    Color, EnvRef, Length, Offset, Rect, RectExt, UnitExt,
+    style::{
+        utils::{parse_from_str, parse_property_remainder},
+        values::box_shadow::BoxShadow,
+    },
+    LengthOrPercentage,
 };
-use bitflags::bitflags;
-use skia_safe as sk;
-use std::convert::{TryFrom, TryInto};
 
-pub use border::{Border, BorderPosition, BorderStyle};
-pub use paint::{ColorStop, LinearGradient, Paint, RepeatMode, UniformData};
-pub use theme::{define_theme, ThemeData, ThemeLoadError};
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Style properties & rules
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bitflags! {
-    /// Encodes the active visual states of a widget.
-    #[derive(Default)]
-    pub struct VisualState: u8 {
-        /// Normal state.
-        const DEFAULT  = 0;
+/// Error emitted when a style property value has an unexpected type.
+#[derive(Copy, Clone, Debug, thiserror::Error)]
+pub struct PropertyValueTypeMismatch;
 
-        /// The widget has focus.
-        ///
-        /// Typically a border or a color highlight is drawn on the widget to signify the focused state.
-        const FOCUS    = 1 << 0;
+pub struct StyleCache {
+    defaults: Arc<ComputedValues>,
+    cache: RefCell<HashMap<u64, Arc<ComputedValues>>>,
+}
 
-        /// The widget is "active" (e.g. pressed, for a button).
-        const ACTIVE   = 1 << 1;
-
-        /// A cursor is hovering atop the widget.
-        const HOVER    = 1 << 2;
-
-        /// The widget is disabled.
-        ///
-        /// Typically a widget is "greyed-out" when it is disabled.
-        const DISABLED = 1 << 3;
+impl StyleCache {
+    pub fn new() -> StyleCache {
+        StyleCache {
+            defaults: Arc::new(ComputedValues::default()),
+            cache: RefCell::new(HashMap::new()),
+        }
     }
 }
 
-/// Describes a blending mode.
-// TODO move to crate::drawing?
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum BlendMode {
-    Clear,
-    Src,
-    Dst,
-    SrcOver,
-    DstOver,
-    SrcIn,
-    DstIn,
-    SrcOut,
-    DstOut,
-    SrcATop,
-    DstATop,
-    Xor,
-    Plus,
-    Modulate,
-    Screen,
-    Overlay,
-    Darken,
-    Lighten,
-    ColorDodge,
-    ColorBurn,
-    HardLight,
-    SoftLight,
-    Difference,
-    Exclusion,
-    Multiply,
-    Hue,
-    Saturation,
-    Color,
-    Luminosity,
+/// Context used to calculate the final value ("used value") of a property.
+#[derive(Clone, Debug)]
+pub struct StyleCtx {
+    /// Scale factor (pixel density ratio) of the target surface.
+    pub scale_factor: f64,
+    pub base_width: f64,
+    pub base_height: f64,
+    pub font_size: f64,
 }
 
-impl ToSkia for BlendMode {
-    type Target = sk::BlendMode;
+pub trait ToComputedValue {
+    type ComputedValue;
+    fn to_computed_value(&self, context: &StyleCtx) -> Self::ComputedValue;
+}
 
-    fn to_skia(&self) -> Self::Target {
+impl ToComputedValue for Length {
+    type ComputedValue = f64;
+
+    fn to_computed_value(&self, context: &StyleCtx) -> f64 {
         match *self {
-            BlendMode::Clear => sk::BlendMode::Clear,
-            BlendMode::Src => sk::BlendMode::Src,
-            BlendMode::Dst => sk::BlendMode::Dst,
-            BlendMode::SrcOver => sk::BlendMode::SrcOver,
-            BlendMode::DstOver => sk::BlendMode::DstOver,
-            BlendMode::SrcIn => sk::BlendMode::SrcIn,
-            BlendMode::DstIn => sk::BlendMode::DstIn,
-            BlendMode::SrcOut => sk::BlendMode::SrcOut,
-            BlendMode::DstOut => sk::BlendMode::DstOut,
-            BlendMode::SrcATop => sk::BlendMode::SrcATop,
-            BlendMode::DstATop => sk::BlendMode::DstATop,
-            BlendMode::Xor => sk::BlendMode::Xor,
-            BlendMode::Plus => sk::BlendMode::Plus,
-            BlendMode::Modulate => sk::BlendMode::Modulate,
-            BlendMode::Screen => sk::BlendMode::Screen,
-            BlendMode::Overlay => sk::BlendMode::Overlay,
-            BlendMode::Darken => sk::BlendMode::Darken,
-            BlendMode::Lighten => sk::BlendMode::Lighten,
-            BlendMode::ColorDodge => sk::BlendMode::ColorDodge,
-            BlendMode::ColorBurn => sk::BlendMode::ColorBurn,
-            BlendMode::HardLight => sk::BlendMode::HardLight,
-            BlendMode::SoftLight => sk::BlendMode::SoftLight,
-            BlendMode::Difference => sk::BlendMode::Difference,
-            BlendMode::Exclusion => sk::BlendMode::Exclusion,
-            BlendMode::Multiply => sk::BlendMode::Multiply,
-            BlendMode::Hue => sk::BlendMode::Hue,
-            BlendMode::Saturation => sk::BlendMode::Saturation,
-            BlendMode::Color => sk::BlendMode::Color,
-            BlendMode::Luminosity => sk::BlendMode::Luminosity,
+            Length::Px(x) => x / context.scale_factor,
+            Length::Dip(x) => x,
+            Length::Em(x) => x * context.font_size,
         }
+    }
+}
+
+impl ToComputedValue for LengthOrPercentage {
+    type ComputedValue = f64;
+
+    fn to_computed_value(&self, context: &StyleCtx) -> f64 {
+        match *self {
+            LengthOrPercentage::Length(x) => x.to_computed_value(ctx, x),
+            LengthOrPercentage::Percentage(x) => x * context.parent_length,
+        }
+    }
+}
+
+/// Calculated background properties.
+#[derive(Clone, Debug)]
+pub struct BackgroundProperties {
+    pub background_image: values::image::Image,
+    pub background_color: Color,
+}
+
+/// Calculated box-shadow properties.
+#[derive(Clone, Debug)]
+pub struct BoxShadowProperties {
+    pub box_shadows: Vec<values::box_shadow::ComputedBoxShadow>,
+}
+
+impl Default for BoxShadowProperties {
+    fn default() -> Self {
+        BoxShadowProperties { box_shadows: vec![] }
+    }
+}
+
+/// Calculated box-shadow properties.
+#[derive(Clone, Debug)]
+pub struct BorderProperties {
+    pub border_bottom_width: f64,
+    pub border_top_width: f64,
+    pub border_left_width: f64,
+    pub border_right_width: f64,
+    pub border_top_left_radius: f64,
+    pub border_top_right_radius: f64,
+    pub border_bottom_right_radius: f64,
+    pub border_bottom_left_radius: f64,
+    pub border_bottom_color: Color,
+    pub border_top_color: Color,
+    pub border_left_color: Color,
+    pub border_right_color: Color,
+    pub border_image: values::image::Image,
+    pub border_style: values::border::BorderStyle,
+}
+
+impl Default for BorderProperties {
+    fn default() -> Self {
+        BorderProperties {
+            border_bottom_width: 0.0,
+            border_top_width: 0.0,
+            border_left_width: 0.0,
+            border_right_width: 0.0,
+            border_top_left_radius: 0.0,
+            border_top_right_radius: 0.0,
+            border_bottom_right_radius: 0.0,
+            border_bottom_left_radius: 0.0,
+            border_bottom_color: Default::default(),
+            border_top_color: Default::default(),
+            border_left_color: Default::default(),
+            border_right_color: Default::default(),
+            border_image: values::image::Image::Color(Color::default()),
+            border_style: Default::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PositionProperties {
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub left: f64,
+    pub z_index: f64,
+    pub flex_direction: f64,
+    pub flex_wrap: f64,
+    pub justify_content: f64,
+    pub align_content: f64,
+    pub align_items: f64,
+    pub flex_grow: f64,
+    pub flex_shrink: f64,
+    pub align_self: f64,
+    pub order: f64,
+    pub flex_basis: f64,
+    pub width: f64,
+    pub min_width: f64,
+    pub max_width: f64,
+    pub height: f64,
+    pub min_height: f64,
+    pub max_height: f64,
+    pub row_gap: f64,
+    pub column_gap: f64,
+    pub aspect_ratio: f64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct GridProperties {
+    pub template_rows: values::grid::ComputedTrackList,
+    pub template_columns: values::grid::ComputedTrackList,
+    pub row_gap: f64,
+    pub column_gap: f64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct GridPositionProperties {
+    pub row_start: values::grid::Line,
+    pub row_end: values::grid::Line,
+    pub column_start: values::grid::Line,
+    pub column_end: values::grid::Line,
+}
+
+/// A set of calculated style properties.
+#[derive(Clone, Debug)]
+pub struct ComputedValues {
+    hash: Option<u64>,
+    pub box_shadow: Arc<BoxShadowProperties>,
+    pub background: Arc<BackgroundProperties>,
+    pub border: Arc<BorderProperties>,
+    pub grid: Arc<GridProperties>,
+    pub grid_position: Arc<GridPositionProperties>,
+    pub position: Arc<PositionProperties>,
+}
+
+impl Default for ComputedValues {
+    fn default() -> Self {
+        ComputedValues {
+            hash: Some(0),
+            box_shadow: Arc::new(BoxShadowProperties::default()),
+            background: Arc::new(BackgroundProperties::default()),
+            border: Arc::new(BorderProperties::default()),
+            grid: Arc::new(GridProperties::default()),
+            grid_position: Arc::new(GridPositionProperties::default()),
+        }
+    }
+}
+
+/// Style property declaration.
+#[derive(Clone, Debug)]
+pub enum PropertyDeclaration {
+    BorderBottomWidth(Length),
+    BorderTopWidth(Length),
+    BorderLeftWidth(Length),
+    BorderRightWidth(Length),
+    BorderTopLeftRadius(Length),
+    BorderTopRightRadius(Length),
+    BorderBottomRightRadius(Length),
+    BorderBottomLeftRadius(Length),
+    BorderBottomColor(Color),
+    BorderTopColor(Color),
+    BorderLeftColor(Color),
+    BorderRightColor(Color),
+    BorderImage(values::image::Image),
+    BorderStyle(values::border::BorderStyle),
+    BackgroundImage(values::image::Image),
+    BackgroundColor(Color),
+    BoxShadow(values::box_shadow::BoxShadows),
+    MinWidth(Length),
+    MinHeight(Length),
+    MaxWidth(Length),
+    MaxHeight(Length),
+    Width(Length),
+    Height(Length),
+    PaddingLeft(Length),
+    PaddingRight(Length),
+    PaddingTop(Length),
+    PaddingBottom(Length),
+    FontSize(Length),
+    GridRowStart(values::grid::Line),
+    GridRowEnd(values::grid::Line),
+    GridColumnStart(values::grid::Line),
+    GridColumnEnd(values::grid::Line),
+    GridTemplateRows(values::grid::TrackList),
+    GridTemplateColumns(values::grid::TrackList),
+    RowGap(Length),
+    ColumnGap(Length),
+}
+
+impl PropertyDeclaration {
+    pub fn compute(&self, context: &StyleCtx, computed_values: &mut ComputedValues) {
+        match self {
+            PropertyDeclaration::BorderBottomWidth(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_bottom_width = specified.to_computed_value(context);
+            }
+            PropertyDeclaration::BorderTopWidth(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_top_width = specified.to_computed_value(context);
+            }
+            PropertyDeclaration::BorderLeftWidth(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_left_width = specified.to_computed_value(context);
+            }
+            PropertyDeclaration::BorderRightWidth(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_right_width = specified.to_computed_value(context);
+            }
+            PropertyDeclaration::BorderTopLeftRadius(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_top_left_radius =
+                    specified.to_computed_value(context);
+            }
+            PropertyDeclaration::BorderTopRightRadius(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_top_right_radius =
+                    specified.to_computed_value(context);
+            }
+            PropertyDeclaration::BorderBottomRightRadius(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_bottom_right_radius =
+                    specified.to_computed_value(context);
+            }
+            PropertyDeclaration::BorderBottomLeftRadius(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_bottom_left_radius =
+                    specified.to_computed_value(context);
+            }
+            PropertyDeclaration::BorderBottomColor(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::BorderTopColor(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::BorderLeftColor(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::BorderRightColor(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::BorderImage(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_image = specified.clone();
+            }
+            PropertyDeclaration::BorderStyle(specified) => {}
+            PropertyDeclaration::BackgroundImage(specified) => {
+                Arc::make_mut(&mut computed_values.background).background_image = specified.clone();
+            }
+            PropertyDeclaration::BackgroundColor(specified) => {
+                Arc::make_mut(&mut computed_values.background).background_color = specified.clone();
+            }
+            PropertyDeclaration::BoxShadow(specified) => {
+                Arc::make_mut(&mut computed_values.box_shadow).box_shadows = specified.to_computed_value(context);
+            }
+            PropertyDeclaration::MinWidth(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::MinHeight(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::MaxWidth(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::MaxHeight(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::Width(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::Height(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::PaddingLeft(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::PaddingRight(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::PaddingTop(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::PaddingBottom(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::FontSize(specified) => {
+                todo!()
+            }
+            PropertyDeclaration::GridRowStart(specified) => {
+                Arc::make_mut(&mut computed_values.grid_position).row_start = specified.clone();
+            }
+            PropertyDeclaration::GridRowEnd(specified) => {
+                Arc::make_mut(&mut computed_values.grid_position).row_end = specified.clone();
+            }
+            PropertyDeclaration::GridColumnStart(specified) => {
+                Arc::make_mut(&mut computed_values.grid_position).column_start = specified.clone();
+            }
+            PropertyDeclaration::GridColumnEnd(specified) => {
+                Arc::make_mut(&mut computed_values.grid_position).column_end = specified.clone();
+            }
+            PropertyDeclaration::GridTemplateRows(specified) => {
+                Arc::make_mut(&mut computed_values.grid).template_rows = specified.to_computed_value(context);
+            }
+            PropertyDeclaration::GridTemplateColumns(specified) => {
+                Arc::make_mut(&mut computed_values.grid).template_columns = specified.to_computed_value(context);
+            }
+            PropertyDeclaration::RowGap(specified) => {
+                Arc::make_mut(&mut computed_values.grid).row_gap = specified.to_computed_value(context);
+            }
+            PropertyDeclaration::ColumnGap(specified) => {
+                Arc::make_mut(&mut computed_values.grid).column_gap = specified.to_computed_value(context);
+            }
+        }
+    }
+}
+
+fn chain_computed_values_hash(parent_hash: u64, rule_id: u64) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    hasher.write_u64(parent_hash);
+    hasher.write_u64(rule_id);
+    hasher.finish()
+}
+
+impl ComputedValues {
+    fn inherited(&self, cache: &StyleCache) -> ComputedValues {
+        ComputedValues {
+            hash: self.hash,
+            box_shadow: cache.defaults.box_shadow.clone(),
+            background: cache.defaults.background.clone(),
+            border: cache.defaults.border.clone(),
+            grid: cache.defaults.grid.clone(),
+            grid_position: cache.defaults.grid_position.clone(),
+        }
+    }
+
+    pub fn compute(
+        cache: &StyleCache,
+        parent_style: &ComputedValues,
+        rules: &[&StyleRule],
+        context: &StyleCtx,
+    ) -> Arc<ComputedValues> {
+        // compute the hash
+        let mut hash = parent_style.hash;
+        if hash.is_some() {
+            for rule in rules.iter() {
+                if let Some(rule_hash) = rule.contents.hash {
+                    hash = Some(chain_computed_values_hash(hash.unwrap(), rule_hash));
+                } else {
+                    hash = None;
+                    break;
+                }
+            }
+        }
+
+        if let Some(hash) = hash {
+            // try to find cached values
+            if let Some(values) = cache.cache.borrow().get(&hash) {
+                return values.clone();
+            }
+        }
+
+        // compute
+        let mut computed = parent_style.inherited(cache);
+        for rule in rules.iter() {
+            for decl in rule.contents.declarations.iter() {
+                decl.compute(context, &mut computed);
+            }
+        }
+
+        let computed = Arc::new(computed);
+
+        // store in cache
+        if let Some(hash) = hash {
+            cache.cache.borrow_mut().insert(hash, computed.clone());
+        }
+
+        computed
+    }
+}
+
+/// CSS selector.
+pub struct Selector {}
+
+/// CSS rule.
+pub struct StyleRule {
+    pub selector: Selector,
+    pub contents: StyleBlockContents,
+}
+
+impl StyleRule {
+    pub fn inline(contents: StyleBlockContents) -> StyleRule {
+        StyleRule {
+            selector: Selector {},
+            contents,
+        }
+    }
+}
+
+/// CSS declaration block, possibly with nested rules.
+pub struct StyleBlockContents {
+    /// Hash of the CSS source.
+    hash: Option<u64>,
+    pub declarations: Vec<PropertyDeclaration>,
+    pub nested_rules: Vec<StyleRule>,
+}
+
+impl Default for StyleBlockContents {
+    fn default() -> Self {
+        StyleBlockContents {
+            hash: None,
+            declarations: vec![],
+            nested_rules: vec![],
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Parsers
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+impl StyleBlockContents {
+    fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<StyleBlockContents, ParseError<'i, ()>> {
+        let mut properties = Vec::new();
+
+        while !input.is_exhausted() {
+            let prop_name = input.expect_ident()?.clone();
+            input.expect_colon()?;
+            match &*prop_name {
+                "background" => {
+                    let background = parse_property_remainder(input, values::image::Image::parse_impl)?;
+                    properties.push(PropertyDeclaration::BackgroundImage(background));
+                }
+                "border" => {
+                    let border = parse_property_remainder(input, values::border::Border::parse_impl)?;
+                    properties.push(PropertyDeclaration::BorderLeftWidth(border.width));
+                    properties.push(PropertyDeclaration::BorderTopWidth(border.width));
+                    properties.push(PropertyDeclaration::BorderRightWidth(border.width));
+                    properties.push(PropertyDeclaration::BorderLeftWidth(border.width));
+                    properties.push(PropertyDeclaration::BorderLeftColor(border.color));
+                    properties.push(PropertyDeclaration::BorderTopColor(border.color));
+                    properties.push(PropertyDeclaration::BorderRightColor(border.color));
+                    properties.push(PropertyDeclaration::BorderBottomColor(border.color));
+                }
+                "border-radius" => {
+                    let radii = parse_property_remainder(input, values::border::border_radius)?;
+                    properties.push(PropertyDeclaration::BorderTopLeftRadius(radii[0]));
+                    properties.push(PropertyDeclaration::BorderTopRightRadius(radii[1]));
+                    properties.push(PropertyDeclaration::BorderBottomRightRadius(radii[2]));
+                    properties.push(PropertyDeclaration::BorderBottomLeftRadius(radii[3]));
+                }
+                "box-shadow" => {
+                    let box_shadows =
+                        parse_property_remainder(input, |input| input.parse_comma_separated(BoxShadow::parse_impl))?;
+                    properties.push(PropertyDeclaration::BoxShadow(box_shadows));
+                }
+                "grid-template" => {
+                    let template = parse_property_remainder(input, values::grid::Template::parse_impl)?;
+                    properties.push(PropertyDeclaration::GridTemplateRows(template.rows));
+                    properties.push(PropertyDeclaration::GridTemplateColumns(template.columns));
+                }
+                "grid-area" => {
+                    let area = parse_property_remainder(input, values::grid::Area::parse_impl)?;
+                    properties.push(PropertyDeclaration::GridRowStart(area.row.start));
+                    properties.push(PropertyDeclaration::GridRowEnd(area.row.end));
+                    properties.push(PropertyDeclaration::GridColumnStart(area.column.start));
+                    properties.push(PropertyDeclaration::GridColumnEnd(area.column.end));
+                }
+                "row-gap" => {
+                    let row_gap = parse_property_remainder(input, values::length::length)?;
+                    properties.push(PropertyDeclaration::RowGap(row_gap));
+                }
+                "column-gap" => {
+                    let column_gap = parse_property_remainder(input, values::length::length)?;
+                    properties.push(PropertyDeclaration::ColumnGap(column_gap));
+                }
+                _ => {
+                    // unrecognized property
+                    return Err(input.new_custom_error(()));
+                }
+            }
+        }
+
+        Ok(StyleBlockContents {
+            hash: None,
+            declarations: properties,
+            nested_rules: vec![],
+        })
+    }
+
+    pub fn parse(css: &str) -> Result<Self, ParseError<()>> {
+        // for the ID, use the hash of the css source
+        let source_hash = {
+            let mut s = DefaultHasher::new();
+            css.hash(&mut s);
+            s.finish()
+        };
+
+        let mut block_contents = parse_from_str(css, Self::parse_impl)?;
+        block_contents.hash = Some(source_hash);
+        Ok(block_contents)
     }
 }
 
 //--------------------------------------------------------------------------------------------------
 
-/// Path visual.
+/*/// Path visual.
 pub struct Path {
     path: sk::Path,
     stroke: Option<Paint>,
@@ -172,46 +609,11 @@ impl Path {
             canvas.restore();
         }
     }
-}
+}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Box shadow parameters.
-#[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
-pub struct BoxShadow {
-    pub color: Color,
-    pub x_offset: Length,
-    pub y_offset: Length,
-    pub blur: Length,
-    pub spread: Length,
-    pub inset: bool,
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Style
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Adapted from https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/core/paint/box_painter_base.cc;drc=3d2b7a03c8d788be1803d1fa5a79999508ad26dc;l=268
-/// Adjusts the size of the outer rrect for drawing an inset shadow
-/// (so that, once blurred, we get the correct result).
-fn area_casting_shadow_in_hole(hole: Rect, offset: Offset, blur_radius: f64, spread: f64) -> Rect {
-    let mut bounds = hole;
-    bounds = bounds.inflate(blur_radius, blur_radius);
-    if spread < 0.0 {
-        bounds = bounds.inflate(-spread, -spread);
-    }
-    let offset_bounds = bounds.translate(-offset);
-    bounds.union(&offset_bounds)
-}
-
-// Per spec, sigma is exactly half the blur radius:
-// https://www.w3.org/TR/css-backgrounds-3/#shadow-blur
-// https://html.spec.whatwg.org/C/#when-shadows-are-drawn
-
-fn blur_radius_to_std_dev(radius: f64) -> sk::scalar {
-    (radius * 0.5) as sk::scalar
-}
-
+/*
 /// Style of a container.
 #[derive(Clone, Debug)]
 pub struct Style {
@@ -393,4 +795,4 @@ impl<'a> PaintCtxExt for PaintCtx<'a> {
     fn draw_styled_box(&mut self, bounds: Rect, box_style: &Style) {
         box_style.draw(self, bounds)
     }
-}
+}*/

@@ -15,10 +15,11 @@ use crate::{
         graal::{ash::vk, BufferId, ImageId},
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
+    style,
     style::VisualState,
     widget::{Align, ConstrainedBox, EnvOverride, Padding},
-    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Length, Measurements, Offset, Point, Rect,
-    State, Transform, UnitExt,
+    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Layout, Length, Measurements, Offset, Point,
+    Rect, State, Transform, UnitExt,
 };
 use kyute::EnvValue;
 use kyute_common::{Data, PointI, Size};
@@ -63,7 +64,8 @@ impl DebugWidgetTreeNode {
 /// Context passed to widgets during the layout pass.
 ///
 /// See [`Widget::layout`].
-pub struct LayoutCtx {
+pub struct LayoutCtx<'a> {
+    pub style_cache: &'a style::StyleCache,
     pub scale_factor: f64,
     pub speculative: bool,
     pub paint_damage: Option<PaintDamage>,
@@ -88,21 +90,6 @@ impl LayoutCtx {
 impl LayoutCtx {
     pub fn round_to_pixel(&self, dip_length: f64) -> f64 {
         (dip_length * self.scale_factor).round()
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct GpuResourceReferences {
-    pub images: Vec<ImageAccess>,
-    pub buffers: Vec<BufferAccess>,
-}
-
-impl GpuResourceReferences {
-    pub fn new() -> GpuResourceReferences {
-        GpuResourceReferences {
-            images: vec![],
-            buffers: vec![],
-        }
     }
 }
 
@@ -617,74 +604,6 @@ impl<'a> EventCtx<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct ImageAccess {
-    pub id: ImageId,
-    pub initial_layout: vk::ImageLayout,
-    pub final_layout: vk::ImageLayout,
-    pub access_mask: vk::AccessFlags,
-    pub stage_mask: vk::PipelineStageFlags,
-}
-
-#[derive(Debug)]
-pub struct BufferAccess {
-    pub id: BufferId,
-    pub access_mask: vk::AccessFlags,
-    pub stage_mask: vk::PipelineStageFlags,
-}
-
-pub struct GpuFrameCtx<'a, 'b> {
-    /// graal context in frame recording state.
-    pub(crate) frame: &'b mut graal::Frame<'a, ()>,
-    pub(crate) resource_references: GpuResourceReferences,
-    pub(crate) measurements: Measurements,
-    pub(crate) scale_factor: f64,
-}
-
-impl<'a, 'b> GpuFrameCtx<'a, 'b> {
-    /// Returns a ref to the frame.
-    pub fn frame(&mut self) -> &mut graal::Frame<'a, ()> {
-        self.frame
-    }
-
-    #[must_use]
-    pub fn measurements(&self) -> Measurements {
-        self.measurements
-    }
-
-    /// Registers an image that will be accessed during paint.
-    pub fn reference_paint_image(
-        &mut self,
-        id: ImageId,
-        access_mask: vk::AccessFlags,
-        stage_mask: vk::PipelineStageFlags,
-        initial_layout: vk::ImageLayout,
-        final_layout: vk::ImageLayout,
-    ) {
-        self.resource_references.images.push(ImageAccess {
-            id,
-            initial_layout,
-            final_layout,
-            access_mask,
-            stage_mask,
-        })
-    }
-
-    /// Registers a buffer that will be accessed during paint.
-    pub fn reference_paint_buffer(
-        &mut self,
-        id: BufferId,
-        access_mask: vk::AccessFlags,
-        stage_mask: vk::PipelineStageFlags,
-    ) {
-        self.resource_references.buffers.push(BufferAccess {
-            id,
-            access_mask,
-            stage_mask,
-        })
-    }
-}
-
 /// Used to collect and report debug information for a widget.
 ///
 /// See [`Widget::debug_node`].
@@ -800,7 +719,13 @@ pub trait Widget {
     }
 
     /// Measures this widget and layouts the children of this widget.
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements;
+    fn layout(
+        &self,
+        ctx: &mut LayoutCtx,
+        parent_style: &style::ComputedValues,
+        constraints: BoxConstraints,
+        env: &Environment,
+    ) -> Layout;
 
     /// Propagates an event through the widget hierarchy.
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);

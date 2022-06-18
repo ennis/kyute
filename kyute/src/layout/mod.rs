@@ -1,5 +1,7 @@
 //! Types and functions used for layouting widgets.
-use crate::{Data, Offset, Point, Rect, SideOffsets, Size};
+pub mod grid;
+
+use crate::{style, Data, Offset, Point, Rect, SideOffsets, Size};
 use std::{
     fmt,
     fmt::Formatter,
@@ -346,4 +348,32 @@ impl From<Size> for Measurements {
     fn from(s: Size) -> Self {
         Measurements::new(s.into())
     }
+}
+
+pub enum Alignment2 {
+    Value(f64),
+    FirstBaseline,
+    LastBaseline,
+    // TODO: last baseline
+}
+
+/// Layout (size & positioning) information returned by a child widget.
+///
+/// See [`Widget::layout`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct Layout {
+    /// Size of the widget.
+    pub size: Size,
+    /// Clip bounds.
+    pub clip: Rect,
+    pub baseline: f64,
+
+    /// Position of the widget in the parent grid, if the parent is a grid.
+    pub grid_area: style::values::grid::Area,
+
+    /// Alignment of the widget in the parent space along the inline axis (the text direction).
+    pub justify: Alignment2,
+
+    /// Alignment of the widget in the parent space along the block axis (perpendicular to the text direction).
+    pub align: Alignment2,
 }

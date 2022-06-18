@@ -52,14 +52,13 @@ fn counter_demo() -> impl Widget {
     //
     // Also, not all widgets need to store style info: `.style` would just wrap the
 
-
-    /*Container::new((
-       Text::new(
-           FormattedText::from(format!("Counter value: {}", counter)).attribute(14.., FontWeight::BOLD),
-       ),
+    Container::new((
+        Text::new(FormattedText::from(format!("Counter value: {}", counter)).attribute(14.., FontWeight::BOLD)),
         Button::new("+").id("increment").on_clicked(|| counter += 1),
-        Button::new("-").id("decrement").on_clicked(|| counter -= 1)
-        )).style(r#"
+        Button::new("-").id("decrement").on_clicked(|| counter -= 1),
+    ))
+    .style(
+        r#"
         display: grid;
         grid-template: auto auto / 1fr 1fr;
         background: rgb(236 236 236);
@@ -75,7 +74,8 @@ fn counter_demo() -> impl Widget {
             grid-area: 1 / 1;
         }
         & text { grid-area: 0 / span 2; }
-        "#);*/
+        "#,
+    );
 
     // Layout the widgets in a grid.
     //

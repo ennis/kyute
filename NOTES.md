@@ -415,6 +415,9 @@ Issue with alignment:
 - the alignment property on our containers specifies the alignment of _the contents inside the container_
 
 In CSS, positioning properties are specified on the positioned element.
+In Kyute, when we want to position something within some parent space, we wrap the element in an `Align` or `Container` widget 
+that takes up the whole parent space and places the child inside.
+
 
 Due to our layout algorithm, we can't really do the same thing as CSS: we would need to propagate the alignment upwards during layout.
 It is possible, though:
@@ -426,6 +429,7 @@ It is possible, though:
     - more generally, it could return positioning information instead
       - e.g. relative(top,left)
       
+
 ```rust
 struct Layout {
     size: Size,
@@ -443,3 +447,4 @@ struct Layout {
     //align: 
 }
 ```
+

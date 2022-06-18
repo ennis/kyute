@@ -1,58 +1,49 @@
 use crate::{
     core::DebugNode,
+    style,
     style::{Paint, PaintCtxExt, Style, VisualState},
     widget::prelude::*,
     Color, EnvRef, Length, RoundToPixel, SideOffsets, UnitExt,
 };
-use std::{cell::RefCell, convert::TryInto};
+use std::{cell::RefCell, convert::TryInto, sync::Arc};
 
-pub struct Container<Content> {
-    alignment: Option<Alignment>,
-    min_width: Option<Length>,
-    min_height: Option<Length>,
-    max_width: Option<Length>,
-    max_height: Option<Length>,
-    baseline: Option<Length>,
-    padding_top: Length,
-    padding_right: Length,
-    padding_bottom: Length,
-    padding_left: Length,
-    box_style: Style,
-    alternate_box_styles: Vec<(VisualState, Style)>,
-    redraw_on_hover: bool,
-    content: WidgetPod<Content>,
+/// Basically a div.
+pub struct Container {
+    //alignment: Option<Alignment>,
+    //min_width: Option<Length>,
+    //min_height: Option<Length>,
+    //max_width: Option<Length>,
+    //max_height: Option<Length>,
+    //baseline: Option<Length>,
+    //padding_top: Length,
+    //padding_right: Length,
+    //padding_bottom: Length,
+    //padding_left: Length,
+    //box_style: Style,
+    //alternate_box_styles: Vec<(VisualState, Style)>,
+    //redraw_on_hover: bool,
+    style: style::StyleRule,
+    children: Vec<Arc<WidgetPod>>,
 }
 
-impl<Content: Widget + 'static> Container<Content> {
+impl Container {
     #[composable]
-    pub fn new(content: Content) -> Container<Content> {
+    pub fn new() -> Container {
         Container {
-            alignment: None,
-            min_width: None,
-            min_height: None,
-            max_width: None,
-            max_height: None,
-            baseline: None,
-            padding_top: Length::zero(),
-            padding_right: Length::zero(),
-            padding_bottom: Length::zero(),
-            padding_left: Length::zero(),
-            box_style: Default::default(),
-            alternate_box_styles: vec![],
-            redraw_on_hover: false,
-            content: WidgetPod::new(content),
+            style: Default::default(),
+            children: vec![],
         }
     }
 
-    /// Returns the offset of the contents after layout.
+    /*/// Returns the offset of the contents after layout.
     ///
     /// The returned value is unspecified if this function is called before layout.
     pub fn content_offset(&self) -> Offset {
         let transform = self.content.transform();
         Offset::new(transform.m31, transform.m32)
-    }
+    }*/
 
-    /// Returns a reference to the contents.
+    /*/// Returns a reference to the contents.
     pub fn inner(&self) -> &Content {
         self.content.inner()
     }
@@ -60,85 +51,82 @@ impl<Content: Widget + 'static> Container<Content> {
     /// Returns a mutable reference to the contents.
     pub fn inner_mut(&mut self) -> &mut Content {
         self.content.inner_mut()
-    }
+    }*/
 }
 
-impl<Content: Widget + 'static> Container<Content> {
-    /// Sets the baseline of the content.
-    #[must_use]
-    pub fn baseline(mut self, baseline: impl Into<Length>) -> Self {
-        self.set_baseline(baseline);
+impl Container {
+    /// Sets the style of this container.
+    pub fn set_style(&mut self, style: impl TryInto<style::StyleBlockContents>) {
+        self.style = style.try_into().unwrap_or_default();
+    }
+
+    pub fn style(mut self, style: impl TryInto<style::StyleBlockContents>) -> Self {
+        self.set_style(style);
         self
     }
 
     /// Sets the baseline of the content.
+    #[must_use]
+    pub fn baseline(mut self, baseline: impl Into<Length>) -> Self {
+        todo!()
+    }
+
+    /// Sets the baseline of the content.
     pub fn set_baseline(&mut self, baseline: impl Into<Length>) {
-        self.baseline = Some(baseline.into());
+        todo!()
     }
 
     /// Constrain the minimum width of the container.
     #[must_use]
     pub fn min_width(mut self, width: impl Into<Length>) -> Self {
-        self.set_min_width(width);
-        self
+        todo!()
     }
 
     /// Constrain the minimum width of the container.
     pub fn set_min_width(&mut self, width: impl Into<Length>) {
-        self.min_width = Some(width.into());
+        todo!()
     }
 
     /// Constrain the minimum height of the container.
     #[must_use]
     pub fn min_height(mut self, height: impl Into<Length>) -> Self {
-        self.set_min_height(height);
-        self
+        todo!()
     }
 
     /// Constrain the minimum height of the container.
     pub fn set_min_height(&mut self, height: impl Into<Length>) {
-        self.min_height = Some(height.into());
+        todo!()
     }
 
     /// Constrain the width of the container.
     #[must_use]
     pub fn fixed_width(mut self, width: impl Into<Length>) -> Self {
-        self.set_fixed_width(width);
-        self
+        todo!()
     }
 
     /// Constrain the width of the container.
     pub fn set_fixed_width(&mut self, width: impl Into<Length>) {
-        let w = width.into();
-        self.min_width = Some(w);
-        self.max_width = Some(w);
+        todo!()
     }
 
     /// Constrain the width of the container.
     #[must_use]
     pub fn fixed_height(mut self, height: impl Into<Length>) -> Self {
-        self.set_fixed_height(height);
-        self
+        todo!()
     }
 
     /// Constrain the width of the container.
     pub fn set_fixed_height(&mut self, height: impl Into<Length>) {
-        let h = height.into();
-        self.min_height = Some(h);
-        self.max_height = Some(h);
+        todo!()
     }
 
     #[must_use]
     pub fn fix_size(mut self, size: Size) -> Self {
-        self.set_fixed_size(size);
-        self
+        todo!()
     }
 
     pub fn set_fixed_size(&mut self, size: Size) {
-        self.min_width = Some(size.width.dip());
-        self.max_width = Some(size.width.dip());
-        self.min_height = Some(size.height.dip());
-        self.max_height = Some(size.height.dip());
+        todo!()
     }
 
     /// Fills the available space.
@@ -146,33 +134,18 @@ impl<Content: Widget + 'static> Container<Content> {
     /// Equivalent to `self.fixed_width(100.percent()).fixed_height(100.percent())`
     #[must_use]
     pub fn fill(mut self) -> Self {
-        self.set_fixed_width(100.percent());
-        self.set_fixed_height(100.percent());
-        self
-    }
-
-    /// Centers the content in the available space.
-    #[must_use]
-    pub fn centered(mut self) -> Self {
-        self.set_centered();
-        self
-    }
-
-    /// Centers the content in the available space.
-    pub fn set_centered(&mut self) {
-        self.alignment = Some(Alignment::CENTER);
+        todo!()
     }
 
     /// Aligns the widget in the available space.
     #[must_use]
     pub fn alignment(mut self, alignment: Alignment) -> Self {
-        self.set_alignment(alignment);
-        self
+        todo!()
     }
 
     /// Aligns the widget in the available space.
     pub fn set_alignment(&mut self, alignment: Alignment) {
-        self.alignment = Some(alignment);
+        todo!()
     }
 
     /// Sets the padding around the content. The values are specified in CSS order (top,right,bottom,left).
@@ -189,8 +162,7 @@ impl<Content: Widget + 'static> Container<Content> {
     /// ```
     #[must_use]
     pub fn content_padding(mut self, top: Length, right: Length, bottom: Length, left: Length) -> Self {
-        self.set_content_padding(top, right, bottom, left);
-        self
+        todo!()
     }
 
     /// Sets the padding around the content. The values are specified in CSS order (top,right,bottom,left).
@@ -208,144 +180,37 @@ impl<Content: Widget + 'static> Container<Content> {
     ///                               /*left*/ 10.dip());
     /// ```
     pub fn set_content_padding(&mut self, top: Length, right: Length, bottom: Length, left: Length) {
-        self.padding_top = top;
-        self.padding_right = right;
-        self.padding_bottom = bottom;
-        self.padding_left = left;
-    }
-
-    /*/// Sets the color of the background of this container.
-    ///
-    /// This overwrites the current `BoxStyle` of this container.
-    ///
-    /// # Examples
-    ///
-    /// TODO
-    pub fn background_color(mut self, color: impl Into<Color>) -> Self {
-        let color = color.into();
-        self.set_box_style(color.map(|c| BoxStyle::new().fill(c)));
-        self
-    }*/
-
-    /// Sets the [`Paint`] used to paint the background of this container.
-    ///
-    /// This overwrites the current `BoxStyle` of this container.
-    ///
-    /// # Examples
-    ///
-    /// TODO
-    pub fn background(mut self, paint: impl TryInto<Paint>) -> Self {
-        let paint = paint.try_into().unwrap_or_else(|err| {
-            warn!("invalid `background` value");
-            Paint::default()
-        });
-        self.box_style = self.box_style.background(paint);
-        self
-    }
-
-    /// Sets the [`BoxStyle`] used to paint the box of the container.
-    ///
-    /// Returns the same container with the box style set.
-    ///
-    /// This function accepts either a `BoxStyle` instance directly, or an environment reference to a `BoxStyle`
-    /// value that can be overriden by parent widgets. See [`EnvRef`] for more information.    
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use kyute::style::Style;
-    /// use kyute::theme;
-    /// use kyute_common::{Color, UnitExt};
-    ///
-    /// // pass a box style value directly
-    /// // 4 dip radius rounded rectangle with uniform fill color
-    /// container = container.box_style(Style::new().radius(4.dip()).background(Color::from_hex("#900C3F")));
-    ///
-    /// // reference the an environment value via a key (`theme::BUTTON`)
-    /// container = container.box_style(theme::BUTTON);
-    /// ```
-    pub fn box_style(mut self, box_style: impl Into<Style>) -> Self {
-        self.set_box_style(box_style);
-        self
-    }
-
-    /// Sets the [`BoxStyle`] used to paint the box of the container.
-    ///
-    /// This function accepts either a `BoxStyle` instance directly, or an environment reference to a `BoxStyle`
-    /// value that can be overriden by parent widgets. See [`EnvRef`] for more information.    
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use kyute::style::Style;
-    /// use kyute::theme;
-    /// use kyute::widget::{Container, Null};
-    /// use kyute_common::{Color, UnitExt};
-    ///
-    /// let mut container = Container::new(Null);
-    ///
-    /// // pass a box style value directly
-    /// // 4 dip radius rounded rectangle with uniform fill color
-    /// container.set_box_style(Style::new().radius(4.dip()).background(Color::from_hex("900C3F")));
-    ///
-    /// // reference the an environment value via a key (`theme::BUTTON`)
-    /// container.set_box_style(theme::BUTTON);
-    /// ```
-    pub fn set_box_style(&mut self, box_style: impl Into<Style>) {
-        self.box_style = box_style.into();
-    }
-
-    /// Adds an alternate box style, which replaces the main style when the widget is in the specified state.
-    ///
-    /// TODO specify behavior when multiple alternate styles overlap.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use kyute::style::VisualState;
-    /// use kyute::theme;
-    ///
-    /// // use an alternate style when the widget is active.
-    /// container = container.box_style(theme::BUTTON).alternate_box_style(VisualState::ACTIVE, theme::BUTTON_ACTIVE);
-    /// ```
-    pub fn alternate_box_style(mut self, state: VisualState, box_style: impl Into<Style>) -> Self {
-        self.push_alternate_box_style(state, box_style);
-        self
-    }
-
-    /// Adds an alternate style, which replaces the main style when the widget is in the specified [visual state].
-    ///
-    /// TODO specify behavior when multiple alternate styles overlap.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use kyute::style::VisualState;
-    /// use kyute::theme;
-    /// use kyute::widget::{Container, Null};
-    ///
-    /// // use an alternate style when the widget is active.
-    /// let mut container = Container::new(Null);
-    /// container.set_box_style(theme::BUTTON);
-    /// container.push_alternate_box_style(VisualState::ACTIVE, theme::BUTTON_ACTIVE);
-    /// ```
-    ///
-    /// [visual state]: kyute::style::VisualState
-    pub fn push_alternate_box_style(&mut self, state: VisualState, box_style: impl Into<Style>) {
-        self.alternate_box_styles.push((state, box_style.into()));
-        if state.contains(VisualState::HOVER) {
-            self.redraw_on_hover = true;
-        }
+        todo!()
     }
 }
 
-impl<Content: Widget> Widget for Container<Content> {
+impl Widget for Container {
     fn widget_id(&self) -> Option<WidgetId> {
         // inherit the identity of the contents
         self.content.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(
+        &self,
+        ctx: &mut LayoutCtx,
+        parent_style: &style::ComputedValues,
+        mut constraints: BoxConstraints,
+        env: &Environment,
+    ) -> Measurements {
+
+        // Base size for proportional length calculations
+        let base_width = constraints.finite_max_width().unwrap_or(0.0);
+        let base_height = constraints.finite_max_height().unwrap_or(0.0);
+
+        // resolve this container's style
+        let style_ctx = style::StyleCtx {
+            scale_factor: ctx.scale_factor,
+            base_width,
+            base_height,
+            font_size: 10.0,    // TODO
+        };
+
+        let style = style::ComputedValues::compute(ctx.style_cache, parent_style, &[&self.style], &style_ctx);
 
         // container layout algorithm:
         // 1. compute child sizing constraints:
@@ -358,11 +223,24 @@ impl<Content: Widget> Widget for Container<Content> {
         // 4. place child inside container according to alignment
         //
         // NOTE: Contrary to flutter, alignment doesn't impact the size of the container
+        let mut content_constraints = constraints;
+
+        fn clamp(x: f64, min: f64, max: f64) -> f64 {
+            x.max(min).min(max)
+        }
+
+        content_constraints.min.width = clamp(style., constraints.min.width, constraints.max.width);
 
 
-        // Base size for proportional length calculations
-        let base_width = constraints.finite_max_width().unwrap_or(0.0);
-        let base_height = constraints.finite_max_height().unwrap_or(0.0);
+
+
+        // New layout process:
+        // - 1. calculate styles
+        // - 2. inherit from parent
+        // - 2. stash them for painting
+        // - 3. return them
+        // Calculated styles
+
 
         // First, measure the child, taking into account the mandatory padding.
         // Also, borders should be taken into account in the layout (they affect the size of the item).
@@ -406,9 +284,6 @@ impl<Content: Widget> Widget for Container<Content> {
         additional_constraints.max.height =
             additional_constraints.max.height.max(content_size.height());*/
 
-        fn clamp(x: f64, min: f64, max: f64) -> f64 {
-            x.max(min).min(max)
-        }
 
         constraints.min.width = clamp(content_layout.size.width, constraints.min.width, constraints.max.width);
         constraints.min.height = clamp(
