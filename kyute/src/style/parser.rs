@@ -2,18 +2,17 @@
 use crate::{
     style::{BlendMode, Border, BorderStyle, BoxShadow, ColorStop, LinearGradient, Paint, Style},
     widget::grid::Line,
+    Angle, Color, Length, UnitExt,
 };
 use cssparser::{BasicParseErrorKind, CowRcStr, Delimiters, ParseError, Parser, ParserInput, SourceLocation, Token};
-use kyute_common::{Angle, Color, Length, UnitExt};
 use palette::{Hsla, RgbHue};
 use std::{f32::consts::PI, str::FromStr};
-use syn::__private::quote::__private::Delimiter;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Utilities
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn parse_from_str<'i, T, F, E>(css: &'i str, f: F) -> Result<T, ParseError<'i, E>>
+pub(crate) fn parse_from_str<'i, T, F, E>(css: &'i str, f: F) -> Result<T, ParseError<'i, E>>
 where
     F: for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
 {
@@ -22,7 +21,7 @@ where
     input.parse_entirely(f)
 }
 
-fn parse_property_remainder<'i, T, F, E>(input: &mut Parser<'i, '_>, f: F) -> Result<T, ParseError<'i, E>>
+pub(crate) fn parse_property_remainder<'i, T, F, E>(input: &mut Parser<'i, '_>, f: F) -> Result<T, ParseError<'i, E>>
 where
     F: for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
 {
@@ -33,7 +32,7 @@ where
 // lengths
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn length<'i>(input: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>> {
+pub(crate) fn length<'i>(input: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>> {
     match input.next()? {
         token @ Token::Dimension { value, unit, .. } => {
             // be consistent with CSS and interpret px as DIPs; use "ppx" for physical pixels
@@ -56,7 +55,7 @@ fn length<'i>(input: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>> 
     }
 }
 
-fn length_percentage<'i>(input: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>> {
+pub(crate) fn length_percentage<'i>(input: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>> {
     if let Ok(length) = input.try_parse(length) {
         Ok(length)
     } else {
@@ -137,7 +136,7 @@ fn color_function<'i>(name: &str, input: &mut Parser<'i, '_>) -> Result<Color, P
     }
 }
 
-fn css_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>> {
+pub(crate) fn css_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>> {
     let location = input.current_source_location();
     match input.next()? {
         Token::Function(ref name) => {

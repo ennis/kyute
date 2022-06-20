@@ -1,12 +1,8 @@
 use crate::{
     cache, composable, theme,
-    widget::{
-        grid::TrackSizePolicy, separator::separator, Clickable, Container, Grid, GridLength, Image, Scaling, Text,
-        WidgetWrapper,
-    },
-    Alignment, Orientation, Widget, WidgetExt,
+    widget::{grid, separator::separator, Clickable, Container, Grid, Image, Scaling, Text, WidgetWrapper},
+    Alignment, Orientation, UnitExt, Widget,
 };
-use kyute_common::UnitExt;
 
 /// A widget with a title.
 #[derive(WidgetWrapper)]
@@ -30,7 +26,7 @@ impl TitledPane {
 
     #[composable]
     fn new(collapsed: bool, title: String, content: impl Widget + 'static) -> TitledPane {
-        let mut inner = Grid::column(GridLength::Flex(1.0));
+        let mut inner = Grid::column(grid::TrackBreadth::Flex(1.0));
 
         //use kyute::style::*;
 

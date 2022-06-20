@@ -4,22 +4,27 @@ use crate::{
     widget::prelude::*,
     Color, EnvRef, Length, RoundToPixel, SideOffsets, UnitExt,
 };
-use std::{cell::RefCell, convert::TryInto};
+use std::{cell::RefCell, convert::TryInto, sync::Arc};
 
-pub struct Container<Content> {
+/// Style of a container
+#[derive(Clone, Debug)]
+pub struct ContainerStyle {
+    style: Arc<Style>,
+    alternate_styles: Vec<(VisualState, Arc<Style>)>,
     alignment: Option<Alignment>,
     min_width: Option<Length>,
     min_height: Option<Length>,
     max_width: Option<Length>,
     max_height: Option<Length>,
-    baseline: Option<Length>,
     padding_top: Length,
     padding_right: Length,
     padding_bottom: Length,
     padding_left: Length,
-    box_style: Style,
-    alternate_box_styles: Vec<(VisualState, Style)>,
-    redraw_on_hover: bool,
+    baseline: Option<Length>,
+}
+
+pub struct Container<Content> {
+    style: Arc<ContainerStyle>,
     content: WidgetPod<Content>,
 }
 
@@ -346,7 +351,6 @@ impl<Content: Widget> Widget for Container<Content> {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, mut constraints: BoxConstraints, env: &Environment) -> Measurements {
-
         // container layout algorithm:
         // 1. compute child sizing constraints:
         //      take the parent constraints, and then:
@@ -358,7 +362,6 @@ impl<Content: Widget> Widget for Container<Content> {
         // 4. place child inside container according to alignment
         //
         // NOTE: Contrary to flutter, alignment doesn't impact the size of the container
-
 
         // Base size for proportional length calculations
         let base_width = constraints.finite_max_width().unwrap_or(0.0);

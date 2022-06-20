@@ -1,7 +1,6 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
 use crate::{
-    align_boxes,
     event::PointerEventKind,
     style::{PaintCtxExt, Path, Style},
     theme,
@@ -280,7 +279,7 @@ impl Widget for SliderBase {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         let knob_measurements = self.knob.layout(ctx, constraints, env);
         let background_measurements = self.background.layout(ctx, constraints, env);
 
@@ -308,7 +307,7 @@ impl Widget for SliderBase {
         }
 
         let size = Size::new(width, height);
-        Measurements::from(size)
+        Layout::new(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {

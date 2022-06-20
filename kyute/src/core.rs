@@ -16,9 +16,8 @@ use crate::{
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
     style::VisualState,
-    widget::{Align, ConstrainedBox, EnvOverride, Padding},
-    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Length, Measurements, Offset, Point, Rect,
-    State, Transform, UnitExt,
+    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Layout, LayoutConstraints, Length,
+    Measurements, Offset, Point, Rect, State, Transform, UnitExt,
 };
 use kyute::EnvValue;
 use kyute_common::{Data, PointI, Size};
@@ -791,16 +790,16 @@ pub trait Widget {
     /// Returns the widget identity.
     fn widget_id(&self) -> Option<WidgetId>;
 
-    fn speculative_layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn speculative_layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         let was_speculative = ctx.speculative;
         ctx.speculative = true;
-        let measurements = self.layout(ctx, constraints, env);
+        let layout = self.layout(ctx, constraints, env);
         ctx.speculative = was_speculative;
-        measurements
+        layout
     }
 
     /// Measures this widget and layouts the children of this widget.
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements;
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout;
 
     /// Propagates an event through the widget hierarchy.
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
@@ -838,7 +837,7 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::widget_id(&**self)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         Widget::layout(&**self, ctx, constraints, env)
     }
 
@@ -867,108 +866,6 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
     }
 }
 
-/// Extension methods on widgets.
-pub trait WidgetExt: Widget + Sized + 'static {
-    /*/// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
-    #[composable]
-    fn constrain_width(self, width: impl RangeBounds<f64>) -> ConstrainedBox<Self> {
-        ConstrainedBox::new(BoxConstraints::new(width, ..), self)
-    }
-
-    /// Wraps the widget in a `ConstrainedBox` that constrains the height of the widget.
-    #[composable]
-    fn constrain_height(self, height: impl RangeBounds<f64>) -> ConstrainedBox<Self> {
-        ConstrainedBox::new(BoxConstraints::new(.., height), self)
-    }*/
-
-    /// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
-    #[must_use]
-    fn fix_width(self, width: impl Into<Length>) -> ConstrainedBox<Self> {
-        let width = width.into();
-        ConstrainedBox::new(self).min_width(width).max_width(width)
-    }
-
-    /// Wraps the widget in a `ConstrainedBox` that constrains the height of the widget.
-    #[must_use]
-    fn fix_height(self, height: impl Into<Length>) -> ConstrainedBox<Self> {
-        let height = height.into();
-        ConstrainedBox::new(self).min_height(height).max_height(height)
-    }
-    /// Wraps the widget in a `ConstrainedBox` that constrains the size of the widget.
-    #[must_use]
-    fn fix_size(self, width: impl Into<Length>, height: impl Into<Length>) -> ConstrainedBox<Self> {
-        let width = width.into();
-        let height = height.into();
-        ConstrainedBox::new(self)
-            .min_width(width)
-            .max_width(width)
-            .min_height(height)
-            .max_height(height)
-    }
-
-    /// Wraps the widget in a `ConstrainedBox` that fills the available space in the parent widget.
-    #[must_use]
-    fn fill(self) -> ConstrainedBox<Self> {
-        self.fix_size(100.percent(), 100.percent())
-    }
-
-    /// Centers the widget in the available space.
-    #[must_use]
-    fn centered(self) -> Align<Self> {
-        Align::new(Alignment::CENTER, self)
-    }
-
-    /// Aligns the widget in the available space.
-    #[must_use]
-    fn aligned(self, alignment: Alignment) -> Align<Self> {
-        Align::new(alignment, self)
-    }
-
-    /// Adds padding around the widget.
-    #[must_use]
-    fn padding_left(self, left: impl Into<Length>) -> Padding<Self> {
-        Padding::new(0.dip(), 0.dip(), 0.dip(), left, self)
-    }
-
-    /// Adds padding around the widget.
-    #[must_use]
-    fn padding_right(self, right: impl Into<Length>) -> Padding<Self> {
-        Padding::new(0.dip(), right, 0.dip(), 0.dip(), self)
-    }
-
-    /// Adds padding around the widget.
-    #[must_use]
-    fn padding_top(self, top: impl Into<Length>) -> Padding<Self> {
-        Padding::new(top, 0.dip(), 0.dip(), 0.dip(), self)
-    }
-
-    /// Adds padding around the widget.
-    #[must_use]
-    fn padding_bottom(self, bottom: impl Into<Length>) -> Padding<Self> {
-        Padding::new(0.dip(), 0.dip(), bottom, 0.dip(), self)
-    }
-
-    /// Adds padding around the widget.
-    #[must_use]
-    fn padding(
-        self,
-        top: impl Into<Length>,
-        right: impl Into<Length>,
-        bottom: impl Into<Length>,
-        left: impl Into<Length>,
-    ) -> Padding<Self> {
-        Padding::new(top, right, bottom, left, self)
-    }
-
-    /// Overrides an environment value passed to the widget.
-    #[must_use]
-    fn with<T: EnvValue>(self, key: EnvKey<T>, value: T) -> EnvOverride<Self> {
-        EnvOverride::new(self).with(key, value)
-    }
-}
-
-impl<W: Widget + 'static> WidgetExt for W {}
-
 /// ID of a node in the tree.
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(transparent)]
@@ -995,8 +892,7 @@ pub type WidgetFilter = Bloom<WidgetId>;
 
 #[derive(Clone)]
 pub struct LayoutCacheInner<T: Clone> {
-    constraints: BoxConstraints,
-    scale_factor: f64,
+    constraints: LayoutConstraints,
     layout: Option<T>,
 }
 
@@ -1013,7 +909,6 @@ impl<T: Clone> LayoutCache<T> {
     pub fn new() -> LayoutCache<T> {
         LayoutCache(RefCell::new(LayoutCacheInner {
             constraints: Default::default(),
-            scale_factor: 0.0,
             layout: None,
         }))
     }
@@ -1022,42 +917,40 @@ impl<T: Clone> LayoutCache<T> {
         self.0.borrow().layout.is_some()
     }
 
-    pub fn get(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints) -> Option<T> {
+    pub fn get(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints) -> Option<T> {
         let mut inner = self.0.borrow();
         if let Some(ref layout) = inner.layout {
-            if inner.constraints == constraints && inner.scale_factor == ctx.scale_factor {
+            if inner.constraints == *constraints {
                 return Some(layout.clone());
             }
         }
         None
     }
 
-    pub fn set(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, value: T) {
+    pub fn set(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, value: T) {
         let mut inner = self.0.borrow_mut();
-        inner.constraints = constraints;
+        inner.constraints = *constraints;
         inner.scale_factor = ctx.scale_factor;
     }
 
-    pub fn update(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, f: impl FnOnce(&mut LayoutCtx) -> T) -> T {
+    pub fn update(
+        &self,
+        ctx: &mut LayoutCtx,
+        constraints: &LayoutConstraints,
+        f: impl FnOnce(&mut LayoutCtx) -> T,
+    ) -> T {
         let mut inner = self.0.borrow_mut();
-        if inner.layout.is_none() || inner.constraints != constraints || inner.scale_factor != ctx.scale_factor {
+        if inner.layout.is_none() || inner.constraints != *constraints {
             let layout = f(ctx);
             // don't cache speculative layouts
             if !ctx.speculative {
                 if inner.layout.is_none() {
                     trace!("initial layout");
                 } else {
-                    trace!(
-                        "layout update: constraints:{:?}->{:?}, scale_factor:{:?}->{:?}",
-                        inner.constraints,
-                        constraints,
-                        inner.scale_factor,
-                        ctx.scale_factor
-                    );
+                    trace!("layout update: constraints:{:?}->{:?}", inner.constraints, constraints);
                 }
                 inner.layout = Some(layout.clone());
-                inner.constraints = constraints;
-                inner.scale_factor = ctx.scale_factor;
+                inner.constraints = *constraints;
             }
             layout
         } else {
@@ -1071,12 +964,8 @@ impl<T: Clone> LayoutCache<T> {
         })
     }
 
-    pub fn get_cached_constraints(&self) -> BoxConstraints {
-        self.0.borrow().constraints
-    }
-
-    pub fn get_cached_scale_factor(&self) -> f64 {
-        self.0.borrow().scale_factor
+    pub fn get_cached_constraints(&self) -> LayoutConstraints {
+        *self.0.borrow().constraints
     }
 
     pub fn invalidate(&self) {

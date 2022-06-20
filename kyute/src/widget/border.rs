@@ -47,27 +47,47 @@ impl<Inner: Widget> Widget for Border<Inner> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let nat_width = constraints.finite_max_width().unwrap_or(0.0);
-        let nat_height = constraints.finite_max_height().unwrap_or(0.0);
-        let [border_top, border_right, border_bottom, border_left] = self
-            .border
-            .calculate_widths(ctx.scale_factor, Size::new(nat_width, nat_height));
-        let constraints = constraints.deflate(SideOffsets::new(border_top, border_right, border_bottom, border_left));
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+        let border_top = constraints.resolve_height(self.border.widths[0]);
+        let border_right = constraints.resolve_width(self.border.widths[1]);
+        let border_bottom = constraints.resolve_height(self.border.widths[2]);
+        let border_left = constraints.resolve_width(self.border.widths[3]);
 
-        let mut m = self.inner.layout(ctx, constraints, env);
-        m.size.width += border_right + border_left;
-        m.size.height += border_top + border_bottom;
-        // TODO clip bounds
-        //m.clip_bounds = m.clip_bounds.union(&m.local_bounds().outer_rect(border_offsets));
-        m.baseline.map(|b| b + border_top);
+        let subconstraints =
+            constraints.deflate(SideOffsets::new(border_top, border_right, border_bottom, border_left));
+        let sublayout = self.inner.layout(ctx, &subconstraints, env);
 
-        // update layers
         if !ctx.speculative {
-            self.border_layer.layout(ctx, BoxConstraints::tight(m.size), env);
-            self.inner.set_offset(Offset::new(border_left, border_top));
+            // TODO
+            let border_constraints = LayoutConstraints {
+                min: sublayout.measurements.size,
+                max: sublayout.measurements.size,
+                ..*constraints
+            };
+            self.border_layer.layout(ctx, &border_constraints, env);
+            self.inner.set_offset(Offset::new(
+                border_left + sublayout.padding_left,
+                border_top + sublayout.padding_top,
+            ));
         }
-        m
+
+        let mut size = sublayout.padding_box_size();
+        size.width += border_right + border_left;
+        size.height += border_top + border_bottom;
+        let baseline = sublayout.padding_box_baseline().map(|x| x + border_top);
+
+        Layout {
+            padding_left: 0.0,
+            padding_top: 0.0,
+            padding_right: 0.0,
+            padding_bottom: 0.0,
+            measurements: Measurements {
+                size,
+                clip_bounds: None,
+                baseline,
+            },
+            ..sublayout
+        }
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -76,6 +96,6 @@ impl<Inner: Widget> Widget for Border<Inner> {
 
     fn paint(&self, ctx: &mut PaintCtx) {
         self.inner.paint(ctx);
-        self.border_layer.paint(ctx);
+        //self.border_layer.paint(ctx);
     }
 }

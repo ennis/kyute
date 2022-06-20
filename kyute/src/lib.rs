@@ -36,13 +36,13 @@ pub use crate::{
     bloom::Bloom,
     cache::{changed, environment, memoize, once, run_async, state, with_environment, Signal, State},
     core::{
-        EventCtx, GpuFrameCtx, LayerPaintCtx, LayoutCache, LayoutCtx, Widget, WidgetExt, WidgetFilter, WidgetId,
+        EventCtx, GpuFrameCtx, LayerPaintCtx, LayoutCache, LayoutCtx, Widget, WidgetFilter, WidgetId,
         SHOW_DEBUG_OVERLAY,
     },
     env::{EnvKey, EnvRef, EnvValue, Environment},
     event::{Event, InputEvent, InternalEvent, PointerEvent, PointerEventKind},
     font::Font,
-    layout::{align_boxes, Alignment, BoxConstraints, Measurements},
+    layout::{Alignment, BoxConstraints, Layout, LayoutConstraints, Length, Measurements, UnitExt},
     live_literal::live_literal,
     widget::Orientation,
     window::Window,
@@ -53,6 +53,6 @@ pub use kyute_shell::{graal, text};
 
 // re-export basic types from kyute-common
 pub use kyute_common::{
-    Angle, Color, Data, Dip, Length, Offset, PhysicalPoint, PhysicalSize, Point, PointI, Px, Rect, RectExt, RectI,
-    RoundToPixel, SideOffsets, Size, SizeI, Transform, UnitExt, DIP, PX,
+    Angle, Color, Data, Dip, Offset, PhysicalPoint, PhysicalSize, Point, PointI, Px, Rect, RectExt, RectI,
+    RoundToPixel, SideOffsets, Size, SizeI, Transform, DIP, PX,
 };

@@ -80,14 +80,14 @@ impl Widget for Flex {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let item_measures: Vec<Measurements> = self
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+        let item_layouts: Vec<Layout> = self
             .items
             .iter()
-            .map(|item| item.layout(ctx, constraints, env))
+            .map(|item| item.layout(ctx, &constraints, env))
             .collect();
 
-        let max_cross_axis_len = item_measures
+        let max_cross_axis_len = item_layouts
             .iter()
             .map(|m| cross_axis_length(self.axis_orientation, m.size))
             .fold(0.0, f64::max);
@@ -105,7 +105,7 @@ impl Widget for Flex {
 
         for i in 0..self.items.len() {
             //eprintln!("flex {:?} item pos {}", self.axis, d);
-            let len = main_axis_length(self.axis_orientation, item_measures[i].size).round_to_pixel(ctx.scale_factor);
+            let len = main_axis_length(self.axis_orientation, item_layouts[i].size).round_to_pixel(ctx.scale_factor);
             let offset = match self.axis_orientation {
                 Orientation::Vertical => Offset::new(0.0, d),
                 Orientation::Horizontal => Offset::new(d, 0.0),
@@ -123,7 +123,7 @@ impl Widget for Flex {
         };
 
         let size = size.round_to_pixel(ctx.scale_factor);
-        Measurements::new(size)
+        Layout::new(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

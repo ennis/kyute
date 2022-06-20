@@ -4,11 +4,12 @@ use crate::{
     style::{Paint, Style},
     theme,
     widget::{
-        grid::{GridLayoutExt, GridTemplate, TrackSizePolicy},
+        grid,
+        grid::{GridLayoutExt, GridTemplate},
         prelude::*,
-        Clickable, Container, DragController, Grid, GridLength, Image, Null, Scaling, WidgetWrapper,
+        Clickable, Container, DragController, Grid, Image, Null, Scaling, WidgetWrapper,
     },
-    Data, EnvRef, GpuFrameCtx, Length, UnitExt, WidgetExt,
+    Data, EnvRef, GpuFrameCtx, Length, UnitExt,
 };
 use kyute_common::imbl;
 use std::{collections::HashSet, hash::Hash, sync::Arc};
@@ -293,7 +294,7 @@ impl TableView {
                         })
                     });
 
-                    let mut widget_with_chevron = Grid::row(GridLength::Auto);
+                    let mut widget_with_chevron = Grid::row(grid::TrackBreadth::Auto);
                     widget_with_chevron.insert(icon);
                     widget_with_chevron.insert(row.widget);
                     grid.insert(

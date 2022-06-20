@@ -28,12 +28,6 @@ fn canvas_playground() -> impl Widget + Clone {
     let mut tmp_offset = Offset::zero();
 
     let mut grid = Grid::with_template("auto-flow auto / 200 5 1fr");
-    /*let col_label = GridTrackDefinition::new(GridLength::Fixed(200.dip()));
-    let col_sep = GridTrackDefinition::new(GridLength::Fixed(5.dip()));
-    let col_widgets = GridTrackDefinition::new(GridLength::Flex(1.0));
-    grid.push_column_definition(col_label);
-    grid.push_column_definition(col_sep);
-    grid.push_column_definition(col_widgets);*/
 
     grid.set_align_items(AlignItems::Baseline);
 

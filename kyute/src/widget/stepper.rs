@@ -3,7 +3,7 @@ use crate::{
     style::{Style, VisualState},
     theme,
     widget::{grid::GridLayoutExt, prelude::*, Button, Container, Grid, Label, WidgetWrapper},
-    Color, Signal, UnitExt, WidgetExt,
+    Color, Signal, UnitExt,
 };
 use std::{
     cell::Cell,

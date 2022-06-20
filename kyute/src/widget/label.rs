@@ -43,8 +43,8 @@ impl Widget for Label {
         self.text.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        self.text.layout(ctx, constraints, env)
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+        self.text.layout(ctx, &constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

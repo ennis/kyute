@@ -1,10 +1,11 @@
 use crate::{
     cache,
     event::PointerEventKind,
+    layout::Alignment,
     style::{Style, VisualState},
     theme,
-    widget::{prelude::*, Align, Container, Label},
-    Color, Signal, UnitExt, WidgetExt,
+    widget::{prelude::*, Container, Label, WidgetExt},
+    Color, Signal, UnitExt,
 };
 use std::cell::Cell;
 
@@ -25,13 +26,13 @@ impl Button {
     pub fn new(label: String) -> Button {
         Button {
             id: WidgetId::here(),
-            inner: Container::new(Label::new(label))
+            inner: Label::new(label)
+                // TODO: if the padding cannot be honored because of size constraints, should this be adjusted automatically?
+                .padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
                 .min_height(21.dip())
                 .min_width(80.dip())
-                // TODO: if the padding cannot be honored because of size constraints, should this be adjusted automatically?
-                .content_padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
-                //.alignment(Alignment::CENTER)     // FIXME: this makes the widget stretch to available size, why?
-                .baseline(17.dip())
+                .horizontal_alignment(Alignment::CENTER)
+                //.baseline(17.dip())
                 .box_style(theme::BUTTON.get(&cache::environment()).unwrap())
                 .alternate_box_style(
                     VisualState::ACTIVE | VisualState::HOVER,

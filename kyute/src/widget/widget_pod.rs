@@ -3,7 +3,7 @@ use crate::{
     cache,
     core::{DebugNode, LayerPaintCtx, PaintDamage},
     widget::prelude::*,
-    Bloom, InternalEvent, PointerEventKind, WidgetFilter,
+    Bloom, InternalEvent, LayoutConstraints, PointerEventKind, WidgetFilter,
 };
 use kyute_common::SizeI;
 use kyute_shell::{animation::Layer, application::Application, winit::event_loop::EventLoopWindowTarget};
@@ -163,8 +163,7 @@ pub struct WidgetPod<T: ?Sized = dyn Widget> {
     child_filter: Cell<Option<WidgetFilter>>,
     /// Paint damage done to the content of the widget pod.
     paint_damage: Cell<PaintDamage>,
-    cached_constraints: Cell<BoxConstraints>,
-    cached_scale_factor: Cell<f64>,
+    cached_constraints: Cell<LayoutConstraints>,
     /// Cached layout result.
     cached_measurements: Cell<Option<Measurements>>,
 
@@ -312,14 +311,14 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         self.id
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         // we need to differentiate between two cases:
         // 1. we recalculated because the cached value has been invalidated because a child requested a relayout during eval
         // 2. we recalculated because constraints have changed
         //
         // If 2., then we can skip repaint if the resulting measurements are the same.
 
-        if self.cached_constraints.get() == constraints && self.cached_scale_factor.get() == ctx.scale_factor {
+        if self.cached_constraints.get() == *constraints {
             if let Some(measurements) = self.cached_measurements.get() {
                 // same constraints & cached measurements still valid (no child widget requested a relayout) => skip layout & repaint
                 return measurements;
@@ -371,8 +370,7 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
             }
 
             // update cached layout
-            self.cached_constraints.set(constraints);
-            self.cached_scale_factor.set(ctx.scale_factor);
+            self.cached_constraints.set(*constraints);
             self.cached_measurements.set(Some(measurements));
         }
 

@@ -5,17 +5,15 @@ use crate::{
     theme,
     widget::{
         grid,
-        grid::{AlignItems, GridLayoutExt, TrackSizePolicy},
+        grid::{AlignItems, GridLayoutExt},
         prelude::*,
         slider::{SliderBase, SliderTrack},
-        Border, Clickable, Container, DisplayFormatter, FloatingPointNumberFormatter, Grid, GridLength, Null, Stepper,
+        Border, Clickable, Container, DisplayFormatter, FloatingPointNumberFormatter, Grid, Null, Stepper,
         StepperTextInput, Text, TextInput, ValidationResult, WidgetWrapper,
     },
-    Color, GpuFrameCtx, PointerEventKind, UnitExt, WidgetExt,
+    Color, GpuFrameCtx, PointerEventKind, SideOffsets, UnitExt,
 };
 use anyhow::Error;
-use euclid::SideOffsets2D;
-use kyute_common::{Length, SideOffsets};
 use kyute_shell::text::FormattedText;
 use lazy_static::lazy_static;
 use palette::{FromColor, Hsv, Hsva, LinSrgba, Mix, RgbHue, Srgb, Srgba};
@@ -505,7 +503,7 @@ impl Widget for ColorBar {
             .background(paint)
             .border(style::Border::new(1.px(), 1.px(), 1.px(), 1.px()).paint(theme::palette::GREY_500));
         ctx.draw_styled_box(
-            bounds.inner_rect(SideOffsets2D::new_all_same(1.0 / ctx.scale_factor)),
+            bounds.inner_rect(SideOffsets::new_all_same(1.0 / ctx.scale_factor)),
             &style,
         );
     }

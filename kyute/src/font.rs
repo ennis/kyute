@@ -1,4 +1,4 @@
-use kyute_common::{Length, UnitExt, PT_TO_DIP};
+use crate::Length;
 use kyute_shell::text::{FontStyle, FontWeight};
 
 #[derive(Clone, Debug)]

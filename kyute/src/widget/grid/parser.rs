@@ -1,19 +1,7 @@
 //! Parser for the grid definition/placement language.
-use crate::widget::{
-    grid::{Area, GridTemplate, Line, LineRange, TrackSizePolicy},
-    GridLength,
-};
+use crate::widget::grid::{Area, GridTemplate, Line, LineRange, TrackBreadth};
+use cssparser::Parser;
 use kyute_common::{Length, UnitExt};
-use nom::{
-    branch::alt,
-    bytes::complete::tag,
-    character::complete::{alpha1, alphanumeric1, char, digit1, space0, space1},
-    combinator::{eof, map, map_res, opt, peek, recognize},
-    error::{context, make_error, ErrorKind, ParseError, VerboseError},
-    multi::{count, many0_count, many1, separated_list1},
-    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
-    Finish, IResult,
-};
 use std::str::FromStr;
 
 /// Track length units.
@@ -31,106 +19,6 @@ pub enum Unit {
     Percent,
     /// Fraction of remaining flex space.
     Fractional,
-}
-
-fn parse_standalone<'a, T>(
-    input: &'a str,
-    parser: impl Fn(&'a str) -> IResult<&'a str, T>,
-) -> Result<T, nom::error::Error<String>> {
-    terminated(parser, eof)(input)
-        .map_err(|e| e.to_owned())
-        .finish()
-        .map(|(_, value)| value)
-}
-
-fn integer_i32(input: &str) -> IResult<&str, i32> {
-    map_res(recognize(pair(opt(char('-')), digit1)), |s: &str| s.parse::<i32>())(input)
-}
-
-fn integer_u32(input: &str) -> IResult<&str, u32> {
-    map_res(digit1, |s: &str| s.parse::<u32>())(input)
-}
-
-fn integer_usize(input: &str) -> IResult<&str, usize> {
-    map_res(digit1, |s: &str| s.parse::<usize>())(input)
-}
-
-/// All units except 'fr'
-fn non_fractional_unit(input: &str) -> IResult<&str, Unit> {
-    // px, dip, etc.
-    map(
-        alt((tag("px"), tag("dip"), tag("in"), tag("pt"), tag("%"))),
-        |s: &str| match s {
-            "px" => Unit::Px,
-            "dip" => Unit::Dip,
-            "%" => Unit::Percent,
-            "in" => Unit::In,
-            "pt" => Unit::Pt,
-            _ => unreachable!(),
-        },
-    )(input)
-}
-
-/// All grid track length units
-fn unit(input: &str) -> IResult<&str, Unit> {
-    alt((non_fractional_unit, map(tag("fr"), |_| Unit::Fractional)))(input)
-}
-
-/// Parses a length.
-fn non_fractional_length(input: &str) -> IResult<&str, Length> {
-    let (input, len) = integer_u32(input)?;
-    let (input, unit) = opt(non_fractional_unit)(input)?;
-    match unit {
-        None => Ok((input, len.dip())),
-        Some(Unit::Dip) => Ok((input, len.dip())),
-        Some(Unit::Pt) => Ok((input, len.pt())),
-        Some(Unit::In) => Ok((input, len.inch())),
-        Some(Unit::Px) => Ok((input, len.px())),
-        Some(Unit::Percent) => Ok((input, len.percent())),
-        Some(Unit::Fractional) => unreachable!(),
-    }
-}
-
-/// Parses a length.
-fn length(input: &str) -> IResult<&str, GridLength> {
-    let (input, len) = map_res(digit1, |s: &str| s.parse::<u32>())(input)?;
-    let (input, unit) = opt(unit)(input)?;
-    match unit {
-        None => Ok((input, GridLength::Fixed(len.dip()))),
-        Some(Unit::Dip) => Ok((input, GridLength::Fixed(len.dip()))),
-        Some(Unit::Pt) => Ok((input, GridLength::Fixed(len.pt()))),
-        Some(Unit::In) => Ok((input, GridLength::Fixed(len.inch()))),
-        Some(Unit::Px) => Ok((input, GridLength::Fixed(len.px()))),
-        Some(Unit::Percent) => Ok((input, GridLength::Fixed(len.percent()))),
-        Some(Unit::Fractional) => Ok((input, GridLength::Flex(len as f64))),
-    }
-}
-
-fn length_or_auto(input: &str) -> IResult<&str, GridLength> {
-    context("length_or_auto", alt((map(tag("auto"), |_| GridLength::Auto), length)))(input)
-}
-
-fn identifier(input: &str) -> IResult<&str, &str> {
-    context(
-        "identifier",
-        recognize(pair(
-            alt((alpha1, tag("_"))),
-            many0_count(alt((alphanumeric1, tag("_"), tag("-")))),
-        )),
-    )(input)
-}
-
-/// Track line tag.
-fn line_tags(input: &str) -> IResult<&str, Vec<&str>> {
-    context(
-        "line_tags",
-        delimited(char('['), separated_list1(space1, identifier), char(']')),
-    )(input)
-}
-
-/// Implicit track definition
-fn implicit_track(input: &str) -> IResult<&str, GridLength> {
-    context("implicit_track", delimited(char('{'), length_or_auto, char('}')))(input)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -161,7 +49,7 @@ fn track_item(input: &str) -> IResult<&str, TrackItem> {
 // GridTemplate
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn grid_template(input: &str) -> IResult<&str, GridTemplate> {
+/*fn grid_template(input: &str) -> IResult<&str, GridTemplate> {
     let (input, _) = space0(input)?;
     let (input, row_items) = separated_list1(space1, track_item)(input)?;
     let (input, _) = delimited(space0, char('/'), space0)(input)?;
@@ -228,7 +116,7 @@ fn grid_template(input: &str) -> IResult<&str, GridTemplate> {
     };
 
     Ok((input, template))
-}
+}*/
 
 impl GridTemplate {
     pub fn parse(input: &str) -> Result<Self, nom::error::Error<String>> {
@@ -240,14 +128,14 @@ impl GridTemplate {
 // Line
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn line(input: &str) -> IResult<&str, Line> {
+/*fn line(input: &str) -> IResult<&str, Line> {
     alt((
         map(tag("auto"), |_| Line::Auto),
         map(preceded(tag("span"), preceded(space0, integer_usize)), Line::Span),
         map(identifier, Line::Named),
         map(integer_i32, Line::Index),
     ))(input)
-}
+}*/
 
 impl<'a> Line<'a> {
     pub fn parse(input: &'a str) -> Result<Self, nom::error::Error<String>> {
@@ -259,7 +147,7 @@ impl<'a> Line<'a> {
 // LineRange
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn slash_sep(input: &str) -> IResult<&str, char> {
+/*fn slash_sep(input: &str) -> IResult<&str, char> {
     delimited(space0, char('/'), space0)(input)
 }
 
@@ -291,13 +179,44 @@ impl<'a> LineRange<'a> {
     pub fn parse(input: &'a str) -> Result<Self, nom::error::Error<String>> {
         parse_standalone(input, line_range)
     }
+}*/
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// parsers
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+impl TrackBreadth {
+    pub(crate) fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<TrackBreadth, ParseError<'i, ()>> {
+        if let Ok(length) = input.try_parse(length)? {
+            Ok(TrackBreadth::Fixed(length))
+        } else {
+            match input.next()? {
+                Token::Ident(ident) if ident == "auto" => Ok(TrackBreadth::Auto),
+                Token::Dimension { value, unit, .. } => match &**unit {
+                    "fr" => Ok(TrackBreadth::Flex(value as f64)),
+                    _ => Err(input.new_custom_error(())),
+                },
+                token => Err(input.new_unexpected_token_error(token.clone())),
+            }
+        }
+    }
+}
+
+impl TrackSize {
+    pub(crate) fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<TrackSize, ParseError<'i, ()>> {
+        let breadth = TrackBreadth::parse_impl(input)?;
+        Ok(TrackSize {
+            min_size: breadth,
+            max_size: breadth,
+        })
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Area
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-fn area(input: &str) -> IResult<&str, Area> {
+/*fn area(input: &str) -> IResult<&str, Area> {
     map(
         tuple((
             line,
@@ -378,7 +297,7 @@ fn area(input: &str) -> IResult<&str, Area> {
             }
         },
     )(input)
-}
+}*/
 
 impl<'a> Area<'a> {
     pub fn parse(input: &'a str) -> Result<Self, nom::error::Error<String>> {

@@ -1,18 +1,18 @@
 use crate::{event::PointerEventKind, widget::prelude::*, Signal};
 
 #[derive(Clone)]
-pub struct Clickable<Content> {
+pub struct Clickable<Inner> {
     id: WidgetId,
-    content: Content,
+    inner: Inner,
     clicked: Signal<()>,
 }
 
-impl<Content: Widget + 'static> Clickable<Content> {
+impl<Inner: Widget + 'static> Clickable<Inner> {
     #[composable]
-    pub fn new(content: Content) -> Clickable<Content> {
+    pub fn new(inner: Inner) -> Clickable<Inner> {
         Clickable {
             id: WidgetId::here(),
-            content,
+            inner,
             clicked: Signal::new(),
         }
     }
@@ -31,12 +31,12 @@ impl<Content: Widget + 'static> Clickable<Content> {
     }
 
     /// Returns a reference to the inner widget.
-    pub fn content(&self) -> &Content {
+    pub fn inner(&self) -> &Inner {
         &self.content
     }
 
     /// Returns a mutable reference to the inner widget.
-    pub fn content_mut(&mut self) -> &mut Content {
+    pub fn inner_mut(&mut self) -> &mut Inner {
         &mut self.content
     }
 }
@@ -46,7 +46,7 @@ impl<Content: Widget + 'static> Widget for Clickable<Content> {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         self.content.layout(ctx, constraints, env)
     }
 

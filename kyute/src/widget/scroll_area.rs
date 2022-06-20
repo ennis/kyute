@@ -1,11 +1,7 @@
 use crate::{
     event::WheelDeltaMode,
     style::Style,
-    widget::{
-        grid::{GridLayoutExt, TrackSizePolicy},
-        prelude::*,
-        Container, DragController, Grid, GridLength, LayoutInspector, Null, Viewport,
-    },
+    widget::{grid::GridLayoutExt, prelude::*, Container, DragController, Grid, LayoutInspector, Null, Viewport},
     Color, Length, UnitExt,
 };
 
@@ -118,7 +114,7 @@ impl Widget for ScrollArea {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         self.inner.layout(ctx, constraints, env)
     }
 

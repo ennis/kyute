@@ -1,6 +1,6 @@
 use crate::{
     cache,
-    core::{DebugNode},
+    core::DebugNode,
     drawing,
     drawing::ToSkia,
     util::fs_watch::watch_path,
@@ -129,7 +129,7 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         match self.contents {
             ImageContents::Image { ref image, .. } => {
                 let size_i = image.size();
@@ -158,7 +158,7 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
                     }
                 };
 
-                Measurements::new(scaled_size)
+                Layout::new(scaled_size)
             }
             ImageContents::Placeholder(ref placeholder) => placeholder.layout(ctx, constraints, env),
         }

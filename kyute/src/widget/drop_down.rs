@@ -5,7 +5,6 @@ use crate::{
     widget::{prelude::*, Container, Label},
     Signal,
 };
-use kyute_common::UnitExt;
 use std::{
     convert::TryInto,
     fmt::{Debug, Display},
@@ -115,7 +114,7 @@ impl<T: Clone + 'static> Widget for DropDown<T> {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         self.inner.layout(ctx, constraints, env)
     }
 

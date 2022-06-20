@@ -1,7 +1,7 @@
 use crate::{
     animation::PaintCtx, composable, core::DebugNode, drawing::ToSkia, make_uniform_data, theme, BoxConstraints, Color,
-    Data, EnvRef, Environment, Event, EventCtx, Font, LayoutCache, LayoutCtx, Measurements, Point, RectI, RoundToPixel,
-    Transform, Widget, WidgetId,
+    Data, EnvRef, Environment, Event, EventCtx, Font, Layout, LayoutCache, LayoutConstraints, LayoutCtx, Measurements,
+    Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
 use euclid::Rect;
 use kyute_shell::text::{
@@ -250,7 +250,7 @@ impl Widget for Text {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         let layout = self.cached_layout.update(ctx, constraints, |ctx| {
             trace!("Text::layout {:?}", self.formatted_text.plain_text);
 
@@ -288,7 +288,17 @@ impl Widget for Text {
             }
         });
 
-        layout.measurements
+        Layout {
+            left: None,
+            top: None,
+            right: None,
+            bottom: None,
+            padding_left: 0.0,
+            padding_top: 0.0,
+            padding_right: 0.0,
+            padding_bottom: 0.0,
+            measurements: layout.measurements,
+        }
     }
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}

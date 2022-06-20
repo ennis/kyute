@@ -1,7 +1,6 @@
 mod key_code;
 
 use crate::{
-    align_boxes,
     animation::PaintCtx,
     application::AppCtx,
     cache, composable,

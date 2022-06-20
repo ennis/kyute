@@ -192,26 +192,38 @@ impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
         self.contents.inner().widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let mut child_constraints = constraints;
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+        let mut subconstraints = *constraints;
         if !self.constrain_width {
-            child_constraints.min.width = 0.0;
-            child_constraints.max.width = f64::INFINITY;
+            subconstraints.min.width = 0.0;
+            subconstraints.max.width = f64::INFINITY;
         }
         if !self.constrain_height {
-            child_constraints.min.height = 0.0;
-            child_constraints.max.height = f64::INFINITY;
+            subconstraints.min.height = 0.0;
+            subconstraints.max.height = f64::INFINITY;
         }
 
         // unconstrained
-        self.contents.layout(ctx, child_constraints, env);
+        self.contents.layout(ctx, &subconstraints, env);
         self.contents.set_transform(self.transform);
 
         // always take the maximum available space
         let width = constraints.finite_max_width().unwrap_or(0.0);
         let height = constraints.finite_max_height().unwrap_or(0.0);
         let size = Size::new(width, height);
-        Measurements::from(size)
+
+        // FIXME TODO we discarded any padding / alignment doesn't make much sense as well
+        Layout {
+            left: None,
+            top: None,
+            right: None,
+            bottom: None,
+            padding_left: 0.0,
+            padding_top: 0.0,
+            padding_right: 0.0,
+            padding_bottom: 0.0,
+            measurements: Measurements::from(size),
+        }
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

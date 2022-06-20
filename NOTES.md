@@ -8,10 +8,10 @@ Possibly using the underlying composition framework (Core Animation, Windows.UI.
 ~~- the `layout` method now returns `Layer` elements (which can contain sublayers). Remove the `paint` method.~~
 -> the `layout` methods still return Measurements, but also *animate* the widget's layer.
 -> add a `layer` method to Widget that returns the animation layer of the widget. For wrappers, defer to the inner widget.
-  ~~-> actually, do we still need a layer object? Just use methods on LayoutCtx to animate the "current" layer~~
+~~-> actually, do we still need a layer object? Just use methods on LayoutCtx to animate the "current" layer~~
 
 - `Layer` elements have properties that can be animated somehow.
-  - Common properties: transform (position, rotation, scale), opacity
+    - Common properties: transform (position, rotation, scale), opacity
 
 ### Questions
 How to expose the layer hierarchy to the application? Is it immutable? Do we rebuild it from scratch everytime, with some kind of caching?
@@ -23,14 +23,14 @@ e.g. `Container::new` would retrieve (get-or-create) a layer with `cache::state(
 Layers would have interior mutability: i.e. can call `set_width`, `set_height` on them, and they would still be considered to be the same object.
 
 
-Adding sublayers during layout: `layer.add_child(...)`. 
+Adding sublayers during layout: `layer.add_child(...)`.
 Problem with that: we also have to remove sublayers of child widgets that have been deleted.
 It's easy to retain references to layers of widgets that have been deleted.
 => It's a feature: we may want to animate added/moved/removed children.
 
 Properties can be changed from another thread: this could be useful for animations.
-However, calling `set_<property>` 
-doesn't change the value of the property immediately 
+However, calling `set_<property>`
+doesn't change the value of the property immediately
 (that would involve locking a mutex and traversing the tree to mark nodes dirty).
 Instead, it posts the new value of the property to the event loop, which will then perform the layer tree update
 before paint, where it has exclusive access to it.
@@ -39,11 +39,11 @@ before paint, where it has exclusive access to it.
 ### Layer animations
 - Go straight to the compositor API in most cases
 - Otherwise (when no system compositor is available):
-  - add the animation object to some global compositor queue
-  - wake the event loop (if from another thread)
-  - after layer eval, delete layers that are not reachable from the root
-    - problem: we lose state by doing that
-      - layer deletion should be tied to the deletion of the layer ref in the positional cache
+    - add the animation object to some global compositor queue
+    - wake the event loop (if from another thread)
+    - after layer eval, delete layers that are not reachable from the root
+        - problem: we lose state by doing that
+            - layer deletion should be tied to the deletion of the layer ref in the positional cache
 
 
 ### Lifecycle of Layers
@@ -52,18 +52,18 @@ before paint, where it has exclusive access to it.
 
 ```rust
 fn layout(&self) {
-    
+
     // perform child layout, collect layers
     let child_layers = ...;
-    
+
     // position child layers
     for l in child_layers.iter_mut() {
         // modifies the transform of the layer
         // copy-on-write?
         l.set_transform(...);
     }
-    
-    
+
+
 }
 ```
 
@@ -75,45 +75,45 @@ fn layout(&self) {
 
 ```rust
 impl Widget for Viewport {
-  fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) {
 
-    let mut child_constraints = constraints;
-    if !self.constrain_width {
-      child_constraints.min.width = 0.0;
-      child_constraints.max.width = f64::INFINITY;
+        let mut child_constraints = constraints;
+        if !self.constrain_width {
+            child_constraints.min.width = 0.0;
+            child_constraints.max.width = f64::INFINITY;
+        }
+        if !self.constrain_height {
+            child_constraints.min.height = 0.0;
+            child_constraints.max.height = f64::INFINITY;
+        }
+
+        // if transform changes, then layout() is called
+
+
+        // layout contents
+        // -> calls canvas.layout()
+        // -> calls set_size on the visual, which does nothing since it hasn't changed
+        // -> removes all visuals, adds canvas content
+        //      this triggers a repaint (maybe)
+        //      if we have a painted element that hasn't changed (e.g. a circle)
+        //      1. add the circle layer to the canvas, circle widget updates the content of its visual
+        //      2. canvas needs to be repainted
+        self.contents.layout(ctx, child_constraints, env);
+
+        let contents_visual = self.contents.visual();
+        // create a surface for the contents
+        contents_visual.make_surface_backed();
+        self.visual.add(contents_visual);
+
+
+        // unconstrained
+        self.contents.set_transform(self.transform);
+
+        // always take the maximum available space
+        let width = constraints.finite_max_width().unwrap_or(0.0);
+        let height = constraints.finite_max_height().unwrap_or(0.0);
+        Measurements::from(Size::new(width, height))
     }
-    if !self.constrain_height {
-      child_constraints.min.height = 0.0;
-      child_constraints.max.height = f64::INFINITY;
-    }
-    
-    // if transform changes, then layout() is called
-    
-    
-    // layout contents
-    // -> calls canvas.layout()
-    // -> calls set_size on the visual, which does nothing since it hasn't changed
-    // -> removes all visuals, adds canvas content
-    //      this triggers a repaint (maybe)
-    //      if we have a painted element that hasn't changed (e.g. a circle)
-    //      1. add the circle layer to the canvas, circle widget updates the content of its visual
-    //      2. canvas needs to be repainted
-    self.contents.layout(ctx, child_constraints, env);
-    
-    let contents_visual = self.contents.visual();
-    // create a surface for the contents
-    contents_visual.make_surface_backed();
-    self.visual.add(contents_visual);
-    
-
-    // unconstrained
-    self.contents.set_transform(self.transform);
-
-    // always take the maximum available space
-    let width = constraints.finite_max_width().unwrap_or(0.0);
-    let height = constraints.finite_max_height().unwrap_or(0.0);
-    Measurements::from(Size::new(width, height))
-  }
 }
 ```
 
@@ -123,11 +123,11 @@ impl Widget for Viewport {
 Alternatives:
 - store layers in a slotmap, `Layer` is just `(Arc<Compositor>, LayerIndex)`, layers are internally refcounted
 - pass around `&mut CompositionTree`, mutate it with IDs
-  - problem: layers must be removed manually
-    - should be removed when all layer references have dropped
-      - layers have shared ownership
+    - problem: layers must be removed manually
+        - should be removed when all layer references have dropped
+            - layers have shared ownership
 - Garbage-collect orphaned layers during update
-  - easy to stash a layer ID and forget to 
+    - easy to stash a layer ID and forget to
 
 Problem: if the layer tree is immutable, then we must rebuild it on every event (an event that starts an animation
 would have to be followed by a layout).
@@ -135,16 +135,16 @@ would have to be followed by a layout).
 
 ### Examples of GUI frameworks with compositing layers
 - JavaFX? Not exposed through the API, not sure if it uses a compositor
-- Flutter? RenderObjects, owned by widgets (via "elements"), dropped on unmount  
+- Flutter? RenderObjects, owned by widgets (via "elements"), dropped on unmount
 
 ### Issue: duplicated widget bounds
 - Need to set the widget position in WidgetPod::offset AND in the widget's visual layer
 - The visual layer should contain the truth (offset & bounds)
 - But what about animations?
-  - It's possible to animate the position of a layer; when a layer is animating, what bounds do we use for hit-testing?
-  - alternatively: what value do we read back for the position when it's animating?
-    - the *current* position? no way to get that when an animation is in progress (DirectComposition doesn't provide a way to read back values)
-    - the *target* position?
+    - It's possible to animate the position of a layer; when a layer is animating, what bounds do we use for hit-testing?
+    - alternatively: what value do we read back for the position when it's animating?
+        - the *current* position? no way to get that when an animation is in progress (DirectComposition doesn't provide a way to read back values)
+        - the *target* position?
 
 
 ## Layers during painting
@@ -153,24 +153,24 @@ would have to be followed by a layout).
 ```rust
 
 struct RenderLayer {
-  id: WidgetId,
-  layer: Layer,
-  dirty: Cell<bool>,
-  contents: impl Widget
+    id: WidgetId,
+    layer: Layer,
+    dirty: Cell<bool>,
+    contents: impl Widget
 }
 
 impl Widget for RenderLayer {
-  fn paint(&self, ctx: &mut PaintCtx) {
-    if self.dirty.get() {
-      // must redraw
-      // begin a new layer, using the specified layer ID
-      // may reuse old comp layer with the same ID 
-      ctx.layer(&self.layer, ...);
-    } else {
-      // reuse 
-      ctx.add_layer(&self.layer);
+    fn paint(&self, ctx: &mut PaintCtx) {
+        if self.dirty.get() {
+            // must redraw
+            // begin a new layer, using the specified layer ID
+            // may reuse old comp layer with the same ID 
+            ctx.layer(&self.layer, ...);
+        } else {
+            // reuse 
+            ctx.add_layer(&self.layer);
+        }
     }
-  }
 }
 
 // Issue:
@@ -197,19 +197,19 @@ impl Widget for RenderLayer {
 // when a RenderLayer receives a RenderLayerRequest, it builds a PaintCtx on its layer, and repaints it.
 
 impl<Content: Widget> Widget for Container<Content> {
-  fn paint(&self, ctx: &mut PaintCtx) {
-    
-    // paint here
-    
-    
-    ctx.layer(&self.layer_id, |ctx| {
-      // paint child (if necessary)
-      // how do we know if it's necessary?
-      // 1. a child might have requested a repaint (ctx.request_repaint()), which sets a bit in the closest parent comp layer
-      // how do we reach this place?
-      // 1. we know the ID of the widget with the dirty layer, so send it here
-    })
-  }
+    fn paint(&self, ctx: &mut PaintCtx) {
+
+        // paint here
+
+
+        ctx.layer(&self.layer_id, |ctx| {
+            // paint child (if necessary)
+            // how do we know if it's necessary?
+            // 1. a child might have requested a repaint (ctx.request_repaint()), which sets a bit in the closest parent comp layer
+            // how do we reach this place?
+            // 1. we know the ID of the widget with the dirty layer, so send it here
+        })
+    }
 }
 
 ```
@@ -218,11 +218,11 @@ impl<Content: Widget> Widget for Container<Content> {
 ## Formalizing relayout
 
 Relayout is the process of recalculating the size of widgets under new constraints, and placing child widgets.
-It may happen because: 
+It may happen because:
 - a widget explicitly requested a relayout during event handling (by calling `ctx.request_relayout`)
-  - in which case, the `layout` method *will* be called at some point in the future on the widget that requested the update
-- an external factor influencing the layout has changed: this includes the _box constraints_ and the _scale factor_. 
-  - Typically, this relayout is triggered by the parent window when it is resized.
+    - in which case, the `layout` method *will* be called at some point in the future on the widget that requested the update
+- an external factor influencing the layout has changed: this includes the _box constraints_ and the _scale factor_.
+    - Typically, this relayout is triggered by the parent window when it is resized.
 
 By default, the only retained state modified by the layout process is the offset of child widgets, which is typically managed by the `WidgetPod` wrapper.
 However, it's important to cache the calculation of subtrees if they are known to never change. This is also done in
@@ -234,13 +234,13 @@ Currently, a layout is always followed by a repaint: this is because `LayerWidge
 (which manages the composition layers on which the widgets are drawn, and which are in charge of repainting),
 schedules a repaint if it's cached layout is invalidated.
 
-Relayout is closely related to repaint: usually, calling `layout` on a widget is usually followed by a repaint. 
+Relayout is closely related to repaint: usually, calling `layout` on a widget is usually followed by a repaint.
 
 ## Next up: 3D layers
 
 For 3D content, create a layered WidgetPod.
 Add a new function to Widget, called `layer_paint`, which gets a native composition surface as input. Default impl
-creates the corresponding skia surface and calls paint. 3D views override this and can present stuff as they like, 
+creates the corresponding skia surface and calls paint. 3D views override this and can present stuff as they like,
 with whatever API.
 
 ## TODO
@@ -257,32 +257,32 @@ with whatever API.
 - Fix LinearGradient build code
 
 ## Rethink grids
-They are very flexible, but the API is not very ergonomic. 
+They are very flexible, but the API is not very ergonomic.
 A big issue is the lack of immediate feedback. To solve this, create an interactive grid designer. Or at least, some kind of live reload.
 
 
 ## Different backgrounds
 - Window default
-  - Supposed to put form controls on it
-  - Boxes background is just an overlay 
+    - Supposed to put form controls on it
+    - Boxes background is just an overlay
 - Toolbar
 - Sidebar
 - Content background
-  - for tables, edit boxes, etc.
-  - also: alternative content background
+    - for tables, edit boxes, etc.
+    - also: alternative content background
 
 ## The necessity for an interface designer
 The edit/compile/check cycle is long and tedious: adjusting the size of an element takes >30sec.
 It needs to be faster if we want the UI creation process to be pleasant.
 
 There are several solutions to that:
-- reduce compile times: not really possible 
+- reduce compile times: not really possible
 - hot-reload rust code: same, not really possible
 - separate structure from styling and hot-reload styling information separately (a.k.a. the CSS way)
-  - has a non-negligible impact on the API
+    - has a non-negligible impact on the API
 - use an interface designer
 
-Unfortunately, creating a visual interface designer from scratch is a huge project. However, we could start with 
+Unfortunately, creating a visual interface designer from scratch is a huge project. However, we could start with
 a small hot-reloadable DSL to quickly prototype interfaces.
 
 ### Another possibility: ad-hoc variables
@@ -291,26 +291,26 @@ For instance:
 ```rust
 #[composable]
 pub fn new() -> Toolbar {
-  let mut grid = Grid::new();
-  grid.push_row_definition(
-    GridTrackDefinition::new(
-        tweak("Toolbar icon row height", GridLength::Fixed(45.dip()))
-      )
+    let mut grid = Grid::new();
+    grid.push_row_definition(
+        GridTrackDefinition::new(
+            tweak("Toolbar icon row height", GridLength::Fixed(45.dip()))
+        )
     );
-  grid.set_row_gap(tweak("Toolbar icon-text gap", 5.dip()));
-  grid.push_row_definition(GridTrackDefinition::new(tweak("Toolbar text row height", GridLength::Fixed(20.dip()))));
-  grid.set_column_gap(tweak(10.dip()));
-  grid.set_column_template(GridLength::Fixed(80.dip()));
-  let inner = Container::new(grid)
-          .background(Paint::from(
+    grid.set_row_gap(tweak("Toolbar icon-text gap", 5.dip()));
+    grid.push_row_definition(GridTrackDefinition::new(tweak("Toolbar text row height", GridLength::Fixed(20.dip()))));
+    grid.set_column_gap(tweak(10.dip()));
+    grid.set_column_template(GridLength::Fixed(80.dip()));
+    let inner = Container::new(grid)
+        .background(Paint::from(
             LinearGradient::new()
-                    .angle(90.degrees())
-                    .stop(Color::from_hex("#D7D5D7"), 0.0)
-                    .stop(Color::from_hex("#F6F5F6"), 1.0),
-          ))
-          .content_padding(10.dip(), 10.dip(), 10.dip(), 10.dip())
-          .centered();
-  Toolbar { inner }
+                .angle(90.degrees())
+                .stop(Color::from_hex("#D7D5D7"), 0.0)
+                .stop(Color::from_hex("#F6F5F6"), 1.0),
+        ))
+        .content_padding(10.dip(), 10.dip(), 10.dip(), 10.dip())
+        .centered();
+    Toolbar { inner }
 }
 ```
 
@@ -377,7 +377,7 @@ sfdsd {
 ## Removing EnvRef
 I don't like it. It forces us to defer resolving things like styles to layout.
 
-The main use case for dynamic environment values are things like disabled widget trees. 
+The main use case for dynamic environment values are things like disabled widget trees.
 => replacement: widget state flag
 
 Also: changing the font of a subtree.
@@ -419,13 +419,13 @@ In CSS, positioning properties are specified on the positioned element.
 Due to our layout algorithm, we can't really do the same thing as CSS: we would need to propagate the alignment upwards during layout.
 It is possible, though:
 - replace `Measurements` with a proper `Layout` struct, containing:
-  - the size
-  - clip bounds
-  - alignment within the parent container (grid area, container)
-    - problem: all elements (text, etc) would need to carry an alignment property
-    - more generally, it could return positioning information instead
-      - e.g. relative(top,left)
-      
+    - the size
+    - clip bounds
+    - alignment within the parent container (grid area, container)
+        - problem: all elements (text, etc) would need to carry an alignment property
+        - more generally, it could return positioning information instead
+            - e.g. relative(top,left)
+
 ```rust
 struct Layout {
     size: Size,
@@ -436,10 +436,112 @@ struct Layout {
     top: Option<Length>,
     bottom: Option<Length>,
     // alignment properties
-    
+
     // might as well return the computed style of the element...
-    
+
     // alignment 
     //align: 
 }
 ```
+
+## Formalized containers
+You have a widget, which may or may not draw something, and may or may not fill its provided space.
+Use a container to force a specific size, align it within the provided space
+
+Current problem: some methods (e.g. "align" or "padding") have different implementations:
+- one as an extension trait on widgets
+- the other as a method on containers
+  They can have subtly different behaviors.
+  Instead: proper widget modifiers
+  -> WidgetAndModifiers<W, (Modifiers...)>
+  -> derefs to W
+  -> can look for a particular type in modifiers
+  trait ModifiedWidget
+  type Modifiers
+  fn modifier(&self) -> Option<T>
+  Accessing the modifiers
+  -> containers now take impl ModifiedWidget
+  -> problem: some modifiers generate wrapper widgets, others don't
+  -> just require the widget to support the modifier?
+  -> no, too much work on behalf of the widget implementor
+  -> current widget impls shouldn't change too much
+
+list of modifiers:
+* .grid_row_span
+* .grid_row
+* .grid_column
+* .grid_column_span
+* .grid_area
+* .clickable
+* .style
+* .background
+* .font_size
+* .text_color
+* .border
+* .border_radius
+* .z_index
+* .min_width
+* .min_height
+* .max_width
+* .max_height
+* .overlay
+
+e.g.
+
+    Rectangle::new()
+        .grid_column_span(2)    // GridPositioning<>
+        .min_width(100)     // Constrained<>
+        .max_width(200)     // Constrained<>
+        .background("linear-gradient(...)") // Style<>
+        .align(...)         // Align<>
+        .border(...)        // Is it affected by min-width and max-width?
+        .font_size(10.dip)  // Sets the font size for all child elements
+        .clickable()
+    
+    -> Clickable<Border<Align<Style<GridPositionModifier<Rectangle>>>>>
+    -> Widget::layout_properties() -> returns Layout with grid position (and alignment?)
+
+## Ambiguities?
+
+    .padding(4).align(right).border(...)
+
+VS
+
+    .align(right).border(...).padding(4)
+
+In a 500x500 fixed size box.
+
+`.align` doesn't do anything on the widget until it's inserted in a container.
+
+Other example:
+    
+    .max_width(50%).border().padding(40px)    // a box with a border around it, sized to 50% of the available space after padding
+    .padding(40px).border().max_width(50%)    // the element, padded 50px, with a border around it, the whole box sized to 50% of the available space
+
+    .max_width(50%).align(bottom-right).border().padding(40px)  //  
+    .max_width(50%).border().align(bottom-right).padding(40px)  // same result (alignment "passes through" borders to the nearest enclosing container)
+
+    .max_width(50%).top(5).border().padding(40px)  //  
+    .max_width(50%).border().top(5).padding(40px)  // same result (anchoring passes through to the enclosing container)
+
+    .width(3em).font_size(10)  //  width = 3em of 10dip
+    .font_size(10).width(3em)  //  width = 3em of the parent font size
+
+    .padding(50%).grid_column(1)  // padding = 50% of the size of grid column 1
+            // problem: padding is evaluated during layout_params(), which doesn't know the size of column yet
+            // layout_params() can be called again with different constraints, though
+            // 
+
+Commutativity (same result if the modifiers are switched):
+.border <> .align
+.{min/max}_width <> .padding .align
+
+
+
+How does alignment work?
+E.g. in the previous example, is the border drawn around the whole available space in which the rectangle is placed (because of align)
+or only around the rectangle?
+- Arguably, the least surprising behavior would be around the rectangle (align comes after).
+
+Alignment mechanism:
+- match position on unit rectangle
