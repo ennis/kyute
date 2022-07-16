@@ -1,9 +1,10 @@
 use crate::{
-    animation::PaintCtx, composable, core::DebugNode, drawing::ToSkia, make_uniform_data, theme, BoxConstraints, Color,
-    Data, EnvRef, Environment, Event, EventCtx, Font, Layout, LayoutCache, LayoutConstraints, LayoutCtx, Measurements,
-    Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
+    composable,
+    core::DebugNode,
+    drawing::{PaintCtx, ToSkia},
+    make_uniform_data, theme, Color, Data, EnvRef, Environment, Event, EventCtx, Font, Layout, LayoutCache,
+    LayoutConstraints, LayoutCtx, Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
-use euclid::Rect;
 use kyute_shell::text::{
     FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
     RasterizationOptions,
@@ -256,12 +257,13 @@ impl Widget for Text {
 
             let font = self.font.resolve_or_default(env);
             let color = self.color.resolve_or_default(env);
+            let font_size = constraints.parent_font_size;
 
             let paragraph_style = ParagraphStyle {
                 text_alignment: None,
                 font_style: Some(font.style),
                 font_weight: Some(font.weight),
-                font_size: Some(font.size.to_dips(ctx.scale_factor, constraints.max.height)),
+                font_size: Some(font_size),
                 font_family: Some(font.family.to_string()),
             };
             let paragraph = Paragraph::new(&self.formatted_text, constraints.max, &paragraph_style);
@@ -289,10 +291,8 @@ impl Widget for Text {
         });
 
         Layout {
-            left: None,
-            top: None,
-            right: None,
-            bottom: None,
+            x_align: Default::default(),
+            y_align: Default::default(),
             padding_left: 0.0,
             padding_top: 0.0,
             padding_right: 0.0,

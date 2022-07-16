@@ -10,7 +10,6 @@ use crate::{
     drawing::{ImageCache, IMAGE_CACHE},
     theme,
     util::fs_watch::{FileSystemWatcher, FILE_SYSTEM_WATCHER},
-    widget::WidgetPod,
     AssetLoader, Environment, Event, EventCtx, InternalEvent, Widget,
 };
 use kyute_shell::{

@@ -1,31 +1,21 @@
 use crate::{
-    animation::PaintCtx,
     application::{AppCtx, ExtEvent},
     bloom::Bloom,
     cache,
-    cache::state,
     call_id::CallId,
     composable,
-    drawing::ToSkia,
-    event::{InputState, PointerEvent, PointerEventKind},
+    drawing::PaintCtx,
     graal::vk::Handle,
-    region::Region,
     shell::{
         graal,
-        graal::{ash::vk, BufferId, ImageId},
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
-    style::VisualState,
-    Alignment, BoxConstraints, EnvKey, Environment, Event, InternalEvent, Layout, LayoutConstraints, Length,
-    Measurements, Offset, Point, Rect, State, Transform, UnitExt,
+    EnvKey, Environment, Event, InternalEvent, Layout, LayoutConstraints, Point, PointI, Rect, Transform,
 };
-use kyute::EnvValue;
-use kyute_common::{Data, PointI, Size};
 use kyute_shell::{animation::Layer, application::Application};
 use skia_safe as sk;
 use std::{
-    cell::{Cell, Ref, RefCell},
-    collections::HashSet,
+    cell::{Ref, RefCell},
     fmt,
     hash::Hash,
     sync::Arc,
@@ -34,14 +24,14 @@ use tracing::{trace, warn};
 
 pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.core.show_debug_overlay");
 //pub const SELECTED: EnvKey<bool> = EnvKey::new("kyute.core.selected");
-pub const DISABLED: EnvKey<bool> = EnvKey::new("kyute.core.disabled");
+//pub const DISABLED: EnvKey<bool> = EnvKey::new("kyute.core.disabled");
 
 #[derive(Clone, Debug)]
 pub struct DebugWidgetTreeNode {
     pub name: String,
     pub debug_node: DebugNode,
     pub id: Option<WidgetId>,
-    pub cached_measurements: Option<Measurements>,
+    pub cached_layout: Option<Layout>,
     pub transform: Option<Transform>,
     pub children: Vec<DebugWidgetTreeNode>,
 }
@@ -87,21 +77,6 @@ impl LayoutCtx {
 impl LayoutCtx {
     pub fn round_to_pixel(&self, dip_length: f64) -> f64 {
         (dip_length * self.scale_factor).round()
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct GpuResourceReferences {
-    pub images: Vec<ImageAccess>,
-    pub buffers: Vec<BufferAccess>,
-}
-
-impl GpuResourceReferences {
-    pub fn new() -> GpuResourceReferences {
-        GpuResourceReferences {
-            images: vec![],
-            buffers: vec![],
-        }
     }
 }
 
@@ -184,7 +159,7 @@ fn hit_test_helper(
 fn do_event<W: Widget + ?Sized>(
     parent_ctx: &mut EventCtx,
     widget: &W,
-    widget_id: Option<WidgetId>,
+    _widget_id: Option<WidgetId>,
     event: &mut Event,
     transform: &Transform,
     env: &Environment,
@@ -512,7 +487,7 @@ impl<'a> EventCtx<'a> {
         widget: &W,
         event: &mut Event,
         transform: &Transform,
-        cached_measurements: Option<Measurements>,
+        cached_layout: Option<Layout>,
         env: &Environment,
     ) -> Option<EventResult> {
         let id = widget.widget_id();
@@ -585,7 +560,7 @@ impl<'a> EventCtx<'a> {
                     name: widget.debug_name().to_string(),
                     debug_node: widget.debug_node(),
                     id: widget.widget_id(),
-                    cached_measurements,
+                    cached_layout,
                     transform: Some(transform.clone()),
                     children,
                 });
@@ -613,74 +588,6 @@ impl<'a> EventCtx<'a> {
         };
 
         Some(result)
-    }
-}
-
-#[derive(Debug)]
-pub struct ImageAccess {
-    pub id: ImageId,
-    pub initial_layout: vk::ImageLayout,
-    pub final_layout: vk::ImageLayout,
-    pub access_mask: vk::AccessFlags,
-    pub stage_mask: vk::PipelineStageFlags,
-}
-
-#[derive(Debug)]
-pub struct BufferAccess {
-    pub id: BufferId,
-    pub access_mask: vk::AccessFlags,
-    pub stage_mask: vk::PipelineStageFlags,
-}
-
-pub struct GpuFrameCtx<'a, 'b> {
-    /// graal context in frame recording state.
-    pub(crate) frame: &'b mut graal::Frame<'a, ()>,
-    pub(crate) resource_references: GpuResourceReferences,
-    pub(crate) measurements: Measurements,
-    pub(crate) scale_factor: f64,
-}
-
-impl<'a, 'b> GpuFrameCtx<'a, 'b> {
-    /// Returns a ref to the frame.
-    pub fn frame(&mut self) -> &mut graal::Frame<'a, ()> {
-        self.frame
-    }
-
-    #[must_use]
-    pub fn measurements(&self) -> Measurements {
-        self.measurements
-    }
-
-    /// Registers an image that will be accessed during paint.
-    pub fn reference_paint_image(
-        &mut self,
-        id: ImageId,
-        access_mask: vk::AccessFlags,
-        stage_mask: vk::PipelineStageFlags,
-        initial_layout: vk::ImageLayout,
-        final_layout: vk::ImageLayout,
-    ) {
-        self.resource_references.images.push(ImageAccess {
-            id,
-            initial_layout,
-            final_layout,
-            access_mask,
-            stage_mask,
-        })
-    }
-
-    /// Registers a buffer that will be accessed during paint.
-    pub fn reference_paint_buffer(
-        &mut self,
-        id: BufferId,
-        access_mask: vk::AccessFlags,
-        stage_mask: vk::PipelineStageFlags,
-    ) {
-        self.resource_references.buffers.push(BufferAccess {
-            id,
-            access_mask,
-            stage_mask,
-        })
     }
 }
 
@@ -893,7 +800,7 @@ pub type WidgetFilter = Bloom<WidgetId>;
 #[derive(Clone)]
 pub struct LayoutCacheInner<T: Clone> {
     constraints: LayoutConstraints,
-    layout: Option<T>,
+    value: Option<T>,
 }
 
 #[derive(Clone)]
@@ -909,28 +816,28 @@ impl<T: Clone> LayoutCache<T> {
     pub fn new() -> LayoutCache<T> {
         LayoutCache(RefCell::new(LayoutCacheInner {
             constraints: Default::default(),
-            layout: None,
+            value: None,
         }))
     }
 
     pub fn is_valid(&self) -> bool {
-        self.0.borrow().layout.is_some()
+        self.0.borrow().value.is_some()
     }
 
-    pub fn get(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints) -> Option<T> {
-        let mut inner = self.0.borrow();
-        if let Some(ref layout) = inner.layout {
+    pub fn get(&self, constraints: &LayoutConstraints) -> Option<T> {
+        let inner = self.0.borrow();
+        if let Some(ref value) = inner.value {
             if inner.constraints == *constraints {
-                return Some(layout.clone());
+                return Some(value.clone());
             }
         }
         None
     }
 
-    pub fn set(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, value: T) {
+    pub fn set(&self, constraints: &LayoutConstraints, value: T) {
         let mut inner = self.0.borrow_mut();
         inner.constraints = *constraints;
-        inner.scale_factor = ctx.scale_factor;
+        (*inner).value = Some(value);
     }
 
     pub fn update(
@@ -940,37 +847,37 @@ impl<T: Clone> LayoutCache<T> {
         f: impl FnOnce(&mut LayoutCtx) -> T,
     ) -> T {
         let mut inner = self.0.borrow_mut();
-        if inner.layout.is_none() || inner.constraints != *constraints {
+        if inner.value.is_none() || inner.constraints != *constraints {
             let layout = f(ctx);
             // don't cache speculative layouts
             if !ctx.speculative {
-                if inner.layout.is_none() {
+                if inner.value.is_none() {
                     trace!("initial layout");
                 } else {
                     trace!("layout update: constraints:{:?}->{:?}", inner.constraints, constraints);
                 }
-                inner.layout = Some(layout.clone());
+                inner.value = Some(layout.clone());
                 inner.constraints = *constraints;
             }
             layout
         } else {
-            inner.layout.as_ref().unwrap().clone()
+            inner.value.as_ref().unwrap().clone()
         }
     }
 
     pub fn get_cached(&self) -> Ref<T> {
         Ref::map(self.0.borrow(), |inner| {
-            inner.layout.as_ref().expect("layout not calculated")
+            inner.value.as_ref().expect("layout not calculated")
         })
     }
 
     pub fn get_cached_constraints(&self) -> LayoutConstraints {
-        *self.0.borrow().constraints
+        self.0.borrow().constraints
     }
 
     pub fn invalidate(&self) {
         trace!("layout explicitly invalidated");
-        self.0.borrow_mut().layout = None;
+        self.0.borrow_mut().value = None;
     }
 }
 

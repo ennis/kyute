@@ -5,13 +5,23 @@ use crate::{
 };
 
 /// Minimum-width constraint.
+#[derive(Copy, Clone, Debug)]
 pub struct MinWidth(pub Length);
 /// Maximum-width constraint.
+#[derive(Copy, Clone, Debug)]
 pub struct MaxWidth(pub Length);
 /// Minimum-height constraint.
+#[derive(Copy, Clone, Debug)]
 pub struct MinHeight(pub Length);
 /// Maximum-height constraint.
+#[derive(Copy, Clone, Debug)]
 pub struct MaxHeight(pub Length);
+/// Fixed-width constraint.
+#[derive(Copy, Clone, Debug)]
+pub struct FixedWidth(pub Length);
+/// Fixed-height constraint.
+#[derive(Copy, Clone, Debug)]
+pub struct FixedHeight(pub Length);
 
 macro_rules! impl_size_constraint {
     ($t:ident; $body:expr; $debug:literal) => {
@@ -36,20 +46,36 @@ macro_rules! impl_size_constraint {
 }
 
 impl_size_constraint!(MinWidth;
-    |constraints, sub, value| *sub.min.width = sub.min.width.max(constraints.resolve_width(value));
+    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| sub.min.width = sub.min.width.max(value.compute(constraints));
     "minimum width"
 );
 impl_size_constraint!(MinHeight;
-    |constraints, sub, value| *sub.min.height = sub.min.height.max(constraints.resolve_height(value));
+    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| sub.min.height = sub.min.height.max(value.compute(constraints));
     "minimum height"
 );
 impl_size_constraint!(MaxWidth;
-    |constraints, sub, value| *sub.max.width = sub.max.width.min(constraints.resolve_width(value));
+    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| sub.max.width = sub.max.width.min(value.compute(constraints));
     "minimum width"
 );
 impl_size_constraint!(MaxHeight;
-    |constraints, sub, value| *sub.max.height = sub.max.height.min(constraints.resolve_height(value));
+    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| sub.max.height = sub.max.height.min(value.compute(constraints));
     "minimum height"
+);
+impl_size_constraint!(FixedWidth;
+    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| {
+        let value = value.compute(constraints);
+        sub.min.width = sub.min.width.max(value);
+        sub.max.width = sub.max.width.min(value);
+    };
+    "fixed width"
+);
+impl_size_constraint!(FixedHeight;
+    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| {
+        let value = value.compute(constraints);
+        sub.min.height = sub.min.height.max(value);
+        sub.max.height = sub.max.height.min(value);
+    };
+    "fixed height"
 );
 
 pub struct Fill;

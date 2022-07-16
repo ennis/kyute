@@ -1,22 +1,27 @@
-//! Drawing code for GUI elements.
+//! Styling properties
+
+use crate::{drawing, Color, LayoutConstraints};
+use bitflags::bitflags;
+use cssparser::{ParseError, Parser};
+use once_cell::sync::Lazy;
+use std::{convert::TryFrom, sync::Arc};
+
 mod border;
-mod box_style;
-mod paint;
-pub(crate) mod parser;
-mod theme;
+mod box_shadow;
+mod image;
+mod length;
+mod shape;
+mod utils;
 
 use crate::{
-    animation::PaintCtx,
-    drawing::{svg_path_to_skia, ToSkia},
-    Color, EnvRef, Length, Offset, Rect, RectExt, UnitExt,
+    css::{parse_from_str, parse_property_remainder},
+    drawing::Paint,
 };
-use bitflags::bitflags;
-use skia_safe as sk;
-use std::convert::{TryFrom, TryInto};
-
-pub use border::{Border, BorderPosition, BorderStyle};
-pub use paint::{ColorStop, LinearGradient, Paint, RepeatMode, UniformData};
-pub use theme::{define_theme, ThemeData, ThemeLoadError};
+pub use border::Border;
+pub use box_shadow::{BoxShadow, BoxShadows};
+pub use image::Image;
+pub use length::{Length, LengthOrPercentage, UnitExt};
+pub use shape::Shape;
 
 bitflags! {
     /// Encodes the active visual states of a widget.
@@ -43,175 +48,428 @@ bitflags! {
     }
 }
 
-/// Describes a blending mode.
-// TODO move to crate::drawing?
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum BlendMode {
-    Clear,
-    Src,
-    Dst,
-    SrcOver,
-    DstOver,
-    SrcIn,
-    DstIn,
-    SrcOut,
-    DstOut,
-    SrcATop,
-    DstATop,
-    Xor,
-    Plus,
-    Modulate,
-    Screen,
-    Overlay,
-    Darken,
-    Lighten,
-    ColorDodge,
-    ColorBurn,
-    HardLight,
-    SoftLight,
-    Difference,
-    Exclusion,
-    Multiply,
-    Hue,
-    Saturation,
-    Color,
-    Luminosity,
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Computed values
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*pub trait ToComputedValue {
+    type ComputedValue;
+    fn to_computed_value(&self, constraints: &LayoutConstraints) -> Self::ComputedValue;
 }
 
-impl ToSkia for BlendMode {
-    type Target = sk::BlendMode;
+impl ToComputedValue for Length {
+    type ComputedValue = f64;
 
-    fn to_skia(&self) -> Self::Target {
+    fn to_computed_value(&self, constraints: &LayoutConstraints) -> f64 {
         match *self {
-            BlendMode::Clear => sk::BlendMode::Clear,
-            BlendMode::Src => sk::BlendMode::Src,
-            BlendMode::Dst => sk::BlendMode::Dst,
-            BlendMode::SrcOver => sk::BlendMode::SrcOver,
-            BlendMode::DstOver => sk::BlendMode::DstOver,
-            BlendMode::SrcIn => sk::BlendMode::SrcIn,
-            BlendMode::DstIn => sk::BlendMode::DstIn,
-            BlendMode::SrcOut => sk::BlendMode::SrcOut,
-            BlendMode::DstOut => sk::BlendMode::DstOut,
-            BlendMode::SrcATop => sk::BlendMode::SrcATop,
-            BlendMode::DstATop => sk::BlendMode::DstATop,
-            BlendMode::Xor => sk::BlendMode::Xor,
-            BlendMode::Plus => sk::BlendMode::Plus,
-            BlendMode::Modulate => sk::BlendMode::Modulate,
-            BlendMode::Screen => sk::BlendMode::Screen,
-            BlendMode::Overlay => sk::BlendMode::Overlay,
-            BlendMode::Darken => sk::BlendMode::Darken,
-            BlendMode::Lighten => sk::BlendMode::Lighten,
-            BlendMode::ColorDodge => sk::BlendMode::ColorDodge,
-            BlendMode::ColorBurn => sk::BlendMode::ColorBurn,
-            BlendMode::HardLight => sk::BlendMode::HardLight,
-            BlendMode::SoftLight => sk::BlendMode::SoftLight,
-            BlendMode::Difference => sk::BlendMode::Difference,
-            BlendMode::Exclusion => sk::BlendMode::Exclusion,
-            BlendMode::Multiply => sk::BlendMode::Multiply,
-            BlendMode::Hue => sk::BlendMode::Hue,
-            BlendMode::Saturation => sk::BlendMode::Saturation,
-            BlendMode::Color => sk::BlendMode::Color,
-            BlendMode::Luminosity => sk::BlendMode::Luminosity,
+            Length::Px(x) => x / constraints.scale_factor,
+            Length::Dip(x) => x,
+            Length::Em(x) => x * constraints.parent_font_size,
+            // FIXME: the reference length used for percentages depends on the property
+            // This should be handled outside
+            Length::Proportional(x) => x * constraints.max.width,
         }
     }
 }
 
-//--------------------------------------------------------------------------------------------------
+impl ToComputedValue for LengthOrPercentage {
+    type ComputedValue = f64;
 
-/// Path visual.
-pub struct Path {
-    path: sk::Path,
-    stroke: Option<Paint>,
-    fill: Option<Paint>,
-    box_shadow: Option<BoxShadow>,
+    fn to_computed_value(&self, constraints: &LayoutConstraints) -> f64 {
+        match *self {
+            LengthOrPercentage::Length(x) => x.to_computed_value(ctx, x),
+            LengthOrPercentage::Percentage(x) => x * context.parent_length,
+        }
+    }
+}*/
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Properties
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Style property declaration.
+#[derive(Clone, Debug)]
+pub enum PropertyDeclaration {
+    BorderBottomWidth(Length),
+    BorderTopWidth(Length),
+    BorderLeftWidth(Length),
+    BorderRightWidth(Length),
+    BorderTopLeftRadius(Length),
+    BorderTopRightRadius(Length),
+    BorderBottomRightRadius(Length),
+    BorderBottomLeftRadius(Length),
+    BorderBottomColor(Color),
+    BorderTopColor(Color),
+    BorderLeftColor(Color),
+    BorderRightColor(Color),
+    BorderImage(Image),
+    BorderStyle(drawing::BorderStyle),
+    BackgroundImage(Image),
+    BackgroundColor(Color),
+    BoxShadow(BoxShadows),
+    MinWidth(Length),
+    MinHeight(Length),
+    MaxWidth(Length),
+    MaxHeight(Length),
+    Width(Length),
+    Height(Length),
+    PaddingLeft(Length),
+    PaddingRight(Length),
+    PaddingTop(Length),
+    PaddingBottom(Length),
+    FontSize(Length),
+    RowGap(Length),
+    ColumnGap(Length),
 }
 
-impl Path {
-    pub fn new(svg_path: &str) -> Path {
-        Path {
-            path: svg_path_to_skia(svg_path).expect("invalid path syntax"),
-            stroke: None,
-            fill: None,
-            box_shadow: None,
-        }
-    }
-
-    /// Sets the brush used to fill the path.
-    pub fn fill(mut self, paint: impl Into<Paint>) -> Self {
-        self.fill = Some(paint.into());
-        self
-    }
-
-    /// Sets the brush used to stroke the path.
-    pub fn stroke(mut self, paint: impl Into<Paint>) -> Self {
-        self.fill = Some(paint.into());
-        self
-    }
-
-    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect) {
-        // fill
-        let canvas = ctx.surface.canvas();
-        if let Some(ref brush) = self.fill {
-            let mut paint = brush.to_sk_paint(bounds);
-            paint.set_style(sk::PaintStyle::Fill);
-            canvas.save();
-            canvas.translate(bounds.top_left().to_skia());
-            canvas.draw_path(&self.path, &paint);
-            canvas.restore();
-        }
-
-        // stroke
-        if let Some(ref stroke) = self.stroke {
-            let mut paint = stroke.to_sk_paint(bounds);
-            paint.set_style(sk::PaintStyle::Stroke);
-            canvas.save();
-            canvas.translate(bounds.top_left().to_skia());
-            canvas.draw_path(&self.path, &paint);
-            canvas.restore();
+impl PropertyDeclaration {
+    pub fn compute(&self, constraints: &LayoutConstraints, computed_values: &mut ComputedStyle) {
+        match *self {
+            PropertyDeclaration::BorderBottomWidth(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_bottom_width = specified.compute(&constraints);
+            }
+            PropertyDeclaration::BorderTopWidth(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_top_width = specified.compute(&constraints);
+            }
+            PropertyDeclaration::BorderLeftWidth(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_left_width = specified.compute(&constraints);
+            }
+            PropertyDeclaration::BorderRightWidth(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_right_width = specified.compute(&constraints);
+            }
+            PropertyDeclaration::BorderTopLeftRadius(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_top_left_radius = specified.compute(&constraints);
+            }
+            PropertyDeclaration::BorderTopRightRadius(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_top_right_radius = specified.compute(&constraints);
+            }
+            PropertyDeclaration::BorderBottomRightRadius(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_bottom_right_radius = specified.compute(&constraints);
+            }
+            PropertyDeclaration::BorderBottomLeftRadius(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_bottom_left_radius = specified.compute(&constraints);
+            }
+            PropertyDeclaration::BorderBottomColor(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::BorderTopColor(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::BorderLeftColor(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::BorderRightColor(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::BorderImage(ref specified) => {
+                Arc::make_mut(&mut computed_values.border).border_image = specified.compute_paint();
+            }
+            PropertyDeclaration::BorderStyle(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_style = Some(specified);
+            }
+            PropertyDeclaration::BackgroundImage(ref specified) => {
+                Arc::make_mut(&mut computed_values.background).background_image = specified.compute_paint();
+            }
+            PropertyDeclaration::BackgroundColor(ref specified) => {
+                Arc::make_mut(&mut computed_values.background).background_color = specified.clone();
+            }
+            PropertyDeclaration::BoxShadow(ref specified) => {
+                Arc::make_mut(&mut computed_values.box_shadow).box_shadows =
+                    specified.into_iter().map(|x| x.compute(&constraints)).collect();
+            }
+            PropertyDeclaration::MinWidth(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::MinHeight(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::MaxWidth(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::MaxHeight(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::Width(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::Height(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::PaddingLeft(specified) => {
+                Arc::make_mut(&mut computed_values.layout).padding_left = specified.compute(&constraints);
+            }
+            PropertyDeclaration::PaddingRight(specified) => {
+                Arc::make_mut(&mut computed_values.layout).padding_right = specified.compute(&constraints);
+            }
+            PropertyDeclaration::PaddingTop(specified) => {
+                Arc::make_mut(&mut computed_values.layout).padding_top = specified.compute(&constraints);
+            }
+            PropertyDeclaration::PaddingBottom(specified) => {
+                Arc::make_mut(&mut computed_values.layout).padding_bottom = specified.compute(&constraints);
+            }
+            PropertyDeclaration::FontSize(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::RowGap(_specified) => {
+                todo!()
+            }
+            PropertyDeclaration::ColumnGap(_specified) => {
+                todo!()
+            }
         }
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Styles
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Box shadow parameters.
-#[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize)]
-pub struct BoxShadow {
-    pub color: Color,
-    pub x_offset: Length,
-    pub y_offset: Length,
-    pub blur: Length,
-    pub spread: Length,
-    pub inset: bool,
+/// A set of style declarations, like:
+///
+///     border-width: 1px;
+///     background: #fff;
+///     border-radius: 10px;
+///
+///
+#[derive(Clone)]
+pub struct Style(Arc<StyleInner>);
+
+struct StyleInner {
+    declarations: Vec<PropertyDeclaration>,
+}
+
+static DEFAULT_STYLE: Lazy<Style> = Lazy::new(|| Style(Arc::new(StyleInner { declarations: vec![] })));
+
+impl Default for Style {
+    fn default() -> Self {
+        DEFAULT_STYLE.clone()
+    }
+}
+
+impl Style {
+    /// Creates a new style block.
+    pub fn new() -> Self {
+        Style(Arc::new(StyleInner { declarations: vec![] }))
+    }
+}
+
+impl Style {
+    fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<Style, ParseError<'i, ()>> {
+        let mut declarations = Vec::new();
+
+        while !input.is_exhausted() {
+            let prop_name = input.expect_ident()?.clone();
+            input.expect_colon()?;
+            match &*prop_name {
+                "background" => {
+                    let background = parse_property_remainder(input, Image::parse_impl)?;
+                    declarations.push(PropertyDeclaration::BackgroundImage(background));
+                }
+                "border" => {
+                    let border = parse_property_remainder(input, Border::parse_impl)?;
+                    declarations.push(PropertyDeclaration::BorderLeftWidth(border.widths[0]));
+                    declarations.push(PropertyDeclaration::BorderTopWidth(border.widths[1]));
+                    declarations.push(PropertyDeclaration::BorderRightWidth(border.widths[2]));
+                    declarations.push(PropertyDeclaration::BorderLeftWidth(border.widths[3]));
+                    declarations.push(PropertyDeclaration::BorderLeftColor(border.color));
+                    declarations.push(PropertyDeclaration::BorderTopColor(border.color));
+                    declarations.push(PropertyDeclaration::BorderRightColor(border.color));
+                    declarations.push(PropertyDeclaration::BorderBottomColor(border.color));
+                }
+                "border-radius" => {
+                    let radii = parse_property_remainder(input, border::border_radius)?;
+                    declarations.push(PropertyDeclaration::BorderTopLeftRadius(radii[0]));
+                    declarations.push(PropertyDeclaration::BorderTopRightRadius(radii[1]));
+                    declarations.push(PropertyDeclaration::BorderBottomRightRadius(radii[2]));
+                    declarations.push(PropertyDeclaration::BorderBottomLeftRadius(radii[3]));
+                }
+                "box-shadow" => {
+                    let box_shadows =
+                        parse_property_remainder(input, |input| input.parse_comma_separated(BoxShadow::parse_impl))?;
+                    declarations.push(PropertyDeclaration::BoxShadow(box_shadows));
+                }
+                _ => {
+                    // unrecognized property
+                    return Err(input.new_custom_error(()));
+                }
+            }
+        }
+
+        Ok(Style(Arc::new(StyleInner {
+            //hash: None,
+            declarations,
+            //nested_rules: vec![],
+        })))
+    }
+
+    pub fn parse(css: &str) -> Result<Self, ParseError<()>> {
+        // for the ID, use the hash of the css source
+        /*let source_hash = {
+            let mut s = DefaultHasher::new();
+            css.hash(&mut s);
+            s.finish()
+        };*/
+
+        let style = parse_from_str(css, Self::parse_impl)?;
+        //block_contents.hash = Some(source_hash);
+        Ok(style)
+    }
+
+    pub fn compute(&self, constraints: &LayoutConstraints) -> ComputedStyle {
+        let mut result = ComputedStyle::default();
+        result.inherited.font_size = constraints.parent_font_size;
+        for declaration in self.0.declarations.iter() {
+            declaration.compute(constraints, &mut result);
+        }
+        result
+    }
+}
+
+/// From CSS value.
+impl TryFrom<&str> for Style {
+    type Error = ();
+    fn try_from(css: &str) -> Result<Self, ()> {
+        Style::parse(css).map_err(|_| ())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Computed properties
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Calculated background properties.
+#[derive(Clone, Debug, Default)]
+pub struct BackgroundProperties {
+    pub background_image: Paint,
+    pub background_color: Color,
+}
+
+/// Calculated box-shadow properties.
+#[derive(Clone, Debug)]
+pub struct BoxShadowProperties {
+    pub box_shadows: Vec<drawing::BoxShadow>,
+}
+
+impl Default for BoxShadowProperties {
+    fn default() -> Self {
+        BoxShadowProperties { box_shadows: vec![] }
+    }
+}
+
+/// Calculated box-shadow properties.
+#[derive(Clone, Debug)]
+pub struct BorderProperties {
+    pub border_bottom_width: f64,
+    pub border_top_width: f64,
+    pub border_left_width: f64,
+    pub border_right_width: f64,
+    pub border_top_left_radius: f64,
+    pub border_top_right_radius: f64,
+    pub border_bottom_right_radius: f64,
+    pub border_bottom_left_radius: f64,
+    pub border_bottom_color: Color,
+    pub border_top_color: Color,
+    pub border_left_color: Color,
+    pub border_right_color: Color,
+    pub border_image: Paint,
+    pub border_style: Option<drawing::BorderStyle>,
+}
+
+impl Default for BorderProperties {
+    fn default() -> Self {
+        BorderProperties {
+            border_bottom_width: 0.0,
+            border_top_width: 0.0,
+            border_left_width: 0.0,
+            border_right_width: 0.0,
+            border_top_left_radius: 0.0,
+            border_top_right_radius: 0.0,
+            border_bottom_right_radius: 0.0,
+            border_bottom_left_radius: 0.0,
+            border_bottom_color: Default::default(),
+            border_top_color: Default::default(),
+            border_left_color: Default::default(),
+            border_right_color: Default::default(),
+            border_image: Paint::Color(Color::default()),
+            border_style: Default::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LayoutProperties {
+    pub top: Option<f64>,
+    pub right: Option<f64>,
+    pub bottom: Option<f64>,
+    pub left: Option<f64>,
+    pub z_index: f64,
+    //pub flex_direction: f64,
+    //pub flex_wrap: f64,
+    //pub justify_content: f64,
+    //pub align_content: f64,
+    //pub align_items: f64,
+    //pub flex_grow: f64,
+    //pub flex_shrink: f64,
+    pub align_self: f64,
+    pub order: f64,
+    pub flex_basis: f64,
+    pub width: Option<f64>,
+    pub min_width: Option<f64>,
+    pub max_width: Option<f64>,
+    pub height: Option<f64>,
+    pub min_height: Option<f64>,
+    pub max_height: Option<f64>,
+    pub aspect_ratio: f64,
+    pub padding_top: f64,
+    pub padding_right: f64,
+    pub padding_bottom: f64,
+    pub padding_left: f64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct InheritedProperties {
+    pub font_size: f64,
+}
+
+/// A set of calculated style properties.
+#[derive(Clone, Debug)]
+pub struct ComputedStyle {
+    hash: Option<u64>,
+    pub box_shadow: Arc<BoxShadowProperties>,
+    pub background: Arc<BackgroundProperties>,
+    pub border: Arc<BorderProperties>,
+    pub layout: Arc<LayoutProperties>,
+    pub inherited: InheritedProperties,
+}
+
+static DEFAULT_BOX_SHADOW_PROPERTIES: Lazy<Arc<BoxShadowProperties>> =
+    Lazy::new(|| Arc::new(BoxShadowProperties::default()));
+// `NonNull<skia_bindings::bindings::SkRuntimeEffect>` cannot be sent between threads safely
+//static DEFAULT_BACKGROUND_PROPERTIES: Lazy<Arc<BackgroundProperties>> =
+//    Lazy::new(|| Arc::new(BackgroundProperties::default()));
+//static DEFAULT_BORDER_PROPERTIES: Lazy<Arc<BorderProperties>> = Lazy::new(|| Arc::new(BorderProperties::default()));
+static DEFAULT_POSITION_PROPERTIES: Lazy<Arc<LayoutProperties>> = Lazy::new(|| Arc::new(LayoutProperties::default()));
+
+impl Default for ComputedStyle {
+    fn default() -> Self {
+        ComputedStyle {
+            hash: Some(0),
+            box_shadow: DEFAULT_BOX_SHADOW_PROPERTIES.clone(),
+            background: Arc::new(BackgroundProperties::default()),
+            border: Arc::new(BorderProperties::default()),
+            //background: DEFAULT_BACKGROUND_PROPERTIES.clone(),
+            //border: DEFAULT_BORDER_PROPERTIES.clone(),
+            layout: DEFAULT_POSITION_PROPERTIES.clone(),
+            inherited: InheritedProperties { font_size: 16.0 },
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Style
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Adapted from https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/core/paint/box_painter_base.cc;drc=3d2b7a03c8d788be1803d1fa5a79999508ad26dc;l=268
-/// Adjusts the size of the outer rrect for drawing an inset shadow
-/// (so that, once blurred, we get the correct result).
-fn area_casting_shadow_in_hole(hole: Rect, offset: Offset, blur_radius: f64, spread: f64) -> Rect {
-    let mut bounds = hole;
-    bounds = bounds.inflate(blur_radius, blur_radius);
-    if spread < 0.0 {
-        bounds = bounds.inflate(-spread, -spread);
-    }
-    let offset_bounds = bounds.translate(-offset);
-    bounds.union(&offset_bounds)
-}
-
-// Per spec, sigma is exactly half the blur radius:
-// https://www.w3.org/TR/css-backgrounds-3/#shadow-blur
-// https://html.spec.whatwg.org/C/#when-shadows-are-drawn
-
-fn blur_radius_to_std_dev(radius: f64) -> sk::scalar {
-    (radius * 0.5) as sk::scalar
-}
-
-/// Style of a container.
+/*/// Style of a container.
 #[derive(Clone, Debug)]
 pub struct Style {
     pub border_radii: [Length; 4],
@@ -224,24 +482,6 @@ impl Default for Style {
     fn default() -> Self {
         Style::new()
     }
-}
-
-fn radii_to_skia(ctx: &mut PaintCtx, bounds: Rect, radii: &[Length; 4]) -> [sk::Vector; 4] {
-    // FIXME: height-relative sizes
-    let radii_dips = [
-        radii[0].to_dips(ctx.scale_factor, bounds.size.width),
-        radii[1].to_dips(ctx.scale_factor, bounds.size.width),
-        radii[2].to_dips(ctx.scale_factor, bounds.size.width),
-        radii[3].to_dips(ctx.scale_factor, bounds.size.width),
-    ];
-
-    // TODO x,y radii
-    [
-        sk::Vector::new(radii_dips[0] as sk::scalar, radii_dips[0] as sk::scalar),
-        sk::Vector::new(radii_dips[1] as sk::scalar, radii_dips[1] as sk::scalar),
-        sk::Vector::new(radii_dips[2] as sk::scalar, radii_dips[2] as sk::scalar),
-        sk::Vector::new(radii_dips[3] as sk::scalar, radii_dips[3] as sk::scalar),
-    ]
 }
 
 impl Style {
@@ -373,23 +613,4 @@ impl Style {
     }
 }
 
-impl_env_value!(Style);
-
-/// From CSS value.
-impl TryFrom<&str> for Style {
-    type Error = ();
-    fn try_from(css: &str) -> Result<Self, ()> {
-        Style::parse(css).map_err(|_| ())
-    }
-}
-
-//--------------------------------------------------------------------------------------------------
-pub trait PaintCtxExt {
-    fn draw_styled_box(&mut self, bounds: Rect, box_style: &Style);
-}
-
-impl<'a> PaintCtxExt for PaintCtx<'a> {
-    fn draw_styled_box(&mut self, bounds: Rect, box_style: &Style) {
-        box_style.draw(self, bounds)
-    }
-}
+impl_env_value!(Style);*/

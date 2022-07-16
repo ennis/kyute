@@ -1,7 +1,6 @@
 use crate::{
     widget::{
-        formatter::Formatter, grid::GridLayoutExt, prelude::*, Container, Grid, TextEdit, ValidationResult,
-        WidgetWrapper,
+        formatter::Formatter, grid::GridLayoutExt, prelude::*, BaseTextEdit, Grid, ValidationResult, WidgetWrapper,
     },
     Widget,
 };
@@ -14,7 +13,7 @@ use std::{
 
 /// A text edit widget that validates its input with a `Formatter`.
 pub struct TextInput<T> {
-    text_edit: TextEdit,
+    text_edit: BaseTextEdit,
     new_value: Option<T>,
     _phantom: PhantomData<T>,
 }
@@ -49,7 +48,7 @@ where
             formatter.format(&value)
         };
 
-        let text_edit = TextEdit::new(text);
+        let text_edit = BaseTextEdit::new(text);
 
         if let Some(text) = text_edit.text_changed() {
             // update editing text
@@ -100,7 +99,7 @@ impl<T> Widget for TextInput<T> {
         self.text_edit.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         self.text_edit.layout(ctx, constraints, env)
     }
 

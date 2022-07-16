@@ -1,17 +1,7 @@
 //! Sliders provide a way to make a value vary linearly between two bounds by dragging a knob along
 //! a line.
-use crate::{
-    event::PointerEventKind,
-    style::{PaintCtxExt, Path, Style},
-    theme,
-    widget::prelude::*,
-    SideOffsets, Signal,
-};
-use kyute_common::Color;
-use std::{
-    cell::{Cell, RefCell},
-    sync::Arc,
-};
+use crate::{event::PointerEventKind, widget::prelude::*, Signal};
+use std::{cell::Cell, sync::Arc};
 
 /// Utility class representing a slider track on which a knob can move.
 #[derive(Copy, Clone, Debug, Default)]
@@ -61,6 +51,7 @@ impl SliderTrack {
     ctx.fill_rectangle(knob, &knob_brush);
 }*/
 
+/*
 #[derive(Clone, Default)]
 struct SliderLayout {
     track_y: f64,
@@ -130,7 +121,7 @@ impl Widget for Slider {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         let padding = SideOffsets::new_all_same(0.0);
         let height = env.get(theme::SLIDER_HEIGHT).unwrap();
         let track_y = env.get(theme::SLIDER_TRACK_Y).unwrap_or_default();
@@ -140,7 +131,7 @@ impl Widget for Slider {
         let knob_y = env.get(theme::SLIDER_KNOB_Y).unwrap_or_default();
 
         // fixed height
-        let size = Size::new(constraints.max_width(), constraints.constrain_height(height));
+        let size = Size::new(constraints.max.width, constraints.constrain_height(height));
 
         // position the slider track inside the layout
         let inner_bounds = Rect::new(Point::origin(), size).inner_rect(padding);
@@ -171,7 +162,7 @@ impl Widget for Slider {
             });
         }
 
-        Measurements::from(size)
+        Layout::new(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
@@ -230,11 +221,12 @@ impl Widget for Slider {
         // track
         ctx.draw_styled_box(track_bounds, &layout.track_style);
 
-        Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
+        drawing::Path::new("M 0.5 0.5 L 10.5 0.5 L 10.5 5.5 L 5.5 10.5 L 0.5 5.5 Z")
             .fill(Color::new(0.0, 0.0, 0.0, 0.6))
             .draw(ctx, knob_bounds);
     }
 }
+*/
 
 //--------------------------------------------------------------------------------------------------
 pub struct SliderBase {
@@ -280,21 +272,25 @@ impl Widget for SliderBase {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
-        let knob_measurements = self.knob.layout(ctx, constraints, env);
-        let background_measurements = self.background.layout(ctx, constraints, env);
+        let knob_layout = self.knob.layout(ctx, constraints, env);
+        let background_layout = self.background.layout(ctx, constraints, env);
 
-        let width = background_measurements.width();
-        let height = knob_measurements.height().max(background_measurements.height());
+        let width = background_layout.measurements.size.width;
+        let height = knob_layout
+            .measurements
+            .size
+            .height
+            .max(background_layout.measurements.size.height);
 
         let track_y = height * 0.5;
-        let bg_offset_y = 0.5 * (height - background_measurements.height());
-        let knob_offset_y = 0.5 * (height - knob_measurements.height());
+        let bg_offset_y = 0.5 * (height - background_layout.measurements.size.height);
+        let knob_offset_y = 0.5 * (height - knob_layout.measurements.size.height);
 
         if !ctx.speculative {
             self.background.set_offset(Offset::new(0.0, bg_offset_y));
         }
 
-        let hkw = 0.5 * knob_measurements.width();
+        let hkw = 0.5 * knob_layout.measurements.size.width;
         let track = SliderTrack {
             start: Point::new(hkw, track_y),
             end: Point::new(width - hkw, track_y),

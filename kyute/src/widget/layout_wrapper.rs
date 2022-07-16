@@ -1,4 +1,4 @@
-use crate::{widget::prelude::*};
+use crate::widget::prelude::*;
 
 /*#[derive(Clone)]
 pub struct LayoutWrapper<W> {
@@ -134,15 +134,15 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
 
 /// A wrapper widget that makes the result of its layout available to the composition step.
 #[derive(Clone)]
-pub struct LayoutInspector<Content> {
-    content: Content,
+pub struct LayoutInspector<Inner> {
+    inner: Inner,
     size: Size,
     size_changed: Signal<Size>,
 }
 
-impl<Content: Widget + 'static> LayoutInspector<Content> {
+impl<Inner: Widget + 'static> LayoutInspector<Inner> {
     #[composable]
-    pub fn new(content: Content) -> LayoutInspector<Content> {
+    pub fn new(inner: Inner) -> LayoutInspector<Inner> {
         #[state]
         let mut size = Size::zero();
         let size_changed = Signal::new();
@@ -151,7 +151,7 @@ impl<Content: Widget + 'static> LayoutInspector<Content> {
         }
 
         LayoutInspector {
-            content,
+            inner,
             size,
             size_changed,
         }
@@ -172,34 +172,34 @@ impl<Content: Widget + 'static> LayoutInspector<Content> {
     }
 
     /// Returns a reference to the inner widget.
-    pub fn contents(&self) -> &Content {
-        &self.content
+    pub fn inner(&self) -> &Inner {
+        &self.inner
     }
 
     /// Returns a mutable reference to the inner widget.
-    pub fn contents_mut(&mut self) -> &mut Content {
-        &mut self.content
+    pub fn inner_mut(&mut self) -> &mut Inner {
+        &mut self.inner
     }
 }
 
-impl<Content: Widget + 'static> Widget for LayoutInspector<Content> {
+impl<Inner: Widget + 'static> Widget for LayoutInspector<Inner> {
     fn widget_id(&self) -> Option<WidgetId> {
-        self.content.widget_id()
+        self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let measurements = self.content.layout(ctx, constraints, env);
-        if measurements.size != self.size {
-            self.size_changed.signal(measurements.size);
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+        let layout = self.inner.layout(ctx, constraints, env);
+        if layout.measurements.size != self.size {
+            self.size_changed.signal(layout.measurements.size);
         }
-        measurements
+        layout
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.content.route_event(ctx, event, env)
+        self.inner.route_event(ctx, event, env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
-        self.content.paint(ctx)
+        self.inner.paint(ctx)
     }
 }

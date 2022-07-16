@@ -1,20 +1,23 @@
 //! Frame containers
 use crate::{
     widget::{prelude::*, WidgetWrapper},
-    LayoutConstraints,
+    LayoutConstraints, LengthOrPercentage,
 };
-use std::cmp::min;
 
 /// A container with a fixed width and height, into which an unique widget is placed.
 pub struct Frame<W> {
-    width: Length,
-    height: Length,
+    width: LengthOrPercentage,
+    height: LengthOrPercentage,
     inner: WidgetPod<W>,
 }
 
-impl<W> Frame<W> {
-    pub fn new(width: Length, height: Length, inner: W) -> Frame<W> {
-        Frame { inner, width, height }
+impl<W: Widget + 'static> Frame<W> {
+    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, inner: W) -> Frame<W> {
+        Frame {
+            inner: WidgetPod::new(inner),
+            width,
+            height,
+        }
     }
 }
 
@@ -22,16 +25,17 @@ impl<W: Widget + 'static> WidgetWrapper for Frame<W> {
     type Inner = W;
 
     fn inner(&self) -> &Self::Inner {
-        &self.inner
+        self.inner.inner()
     }
+
     fn inner_mut(&mut self) -> &mut Self::Inner {
-        &mut self.inner
+        self.inner.inner_mut()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         // calculate width and height
-        let width = constraints.resolve_width(self.width);
-        let height = constraints.resolve_height(self.height);
+        let width = self.width.compute(constraints, constraints.max.width);
+        let height = self.height.compute(constraints, constraints.max.height);
 
         let mut sub = *constraints;
         sub.max.width = constraints.max.width.min(width);

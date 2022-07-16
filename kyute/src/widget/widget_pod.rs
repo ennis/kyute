@@ -1,12 +1,10 @@
 use crate::{
-    application::{AppCtx, ExtEvent},
     cache,
     core::{DebugNode, LayerPaintCtx, PaintDamage},
     widget::prelude::*,
-    Bloom, InternalEvent, LayoutConstraints, PointerEventKind, WidgetFilter,
+    Bloom, InternalEvent, LayoutConstraints, PointerEventKind, SizeI, WidgetFilter,
 };
-use kyute_common::SizeI;
-use kyute_shell::{animation::Layer, application::Application, winit::event_loop::EventLoopWindowTarget};
+use kyute_shell::animation::Layer;
 use skia_safe as sk;
 use std::{
     cell::{Cell, RefCell, RefMut},
@@ -165,7 +163,7 @@ pub struct WidgetPod<T: ?Sized = dyn Widget> {
     paint_damage: Cell<PaintDamage>,
     cached_constraints: Cell<LayoutConstraints>,
     /// Cached layout result.
-    cached_measurements: Cell<Option<Measurements>>,
+    cached_layout: Cell<Option<Layout>>,
 
     /// Inner widget
     content: T,
@@ -204,9 +202,8 @@ impl<T: Widget + 'static> WidgetPod<T> {
             child_filter: Cell::new(None),
             paint_damage: Cell::new(PaintDamage::Repaint),
             cached_constraints: Cell::new(Default::default()),
-            cached_scale_factor: Cell::new(0.0),
             content: widget,
-            cached_measurements: Cell::new(None),
+            cached_layout: Cell::new(None),
         }
     }
 }
@@ -277,15 +274,16 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
 
     pub(crate) fn repaint_layer(&self, skia_gpu_context: &mut sk::gpu::DirectContext) -> bool {
         if let PaintTarget::NativeLayer { ref layer } = self.paint_target {
-            assert!(self.cached_measurements.get().is_some(), "repaint called before layout");
+            assert!(self.cached_layout.get().is_some(), "repaint called before layout");
             match self.paint_damage.replace(PaintDamage::None) {
                 PaintDamage::Repaint => {
                     // straight recursive repaint
                     let _span = trace_span!("Repaint layer", id=?self.id).entered();
                     layer.remove_all_children();
                     let mut layer_paint_ctx = LayerPaintCtx { skia_gpu_context };
+                    // use the scale factor we got from the last layout
                     self.content
-                        .layer_paint(&mut layer_paint_ctx, layer, self.cached_scale_factor.get());
+                        .layer_paint(&mut layer_paint_ctx, layer, self.cached_constraints.get().scale_factor);
                     true
                 }
                 PaintDamage::SubLayers => {
@@ -319,9 +317,9 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         // If 2., then we can skip repaint if the resulting measurements are the same.
 
         if self.cached_constraints.get() == *constraints {
-            if let Some(measurements) = self.cached_measurements.get() {
+            if let Some(layout) = self.cached_layout.get() {
                 // same constraints & cached measurements still valid (no child widget requested a relayout) => skip layout & repaint
-                return measurements;
+                return layout;
             }
         }
 
@@ -332,25 +330,27 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         .entered();
 
         // child layout
-        let measurements = self.content.layout(ctx, constraints, env);
+        let layout = self.content.layout(ctx, constraints, env);
 
         // also check for invalid size values while we're at it, but that's only for debugging convenience.
-        if !measurements.size.width.is_finite() || !measurements.size.height.is_finite() {
+        if !layout.measurements.size.width.is_finite() || !layout.measurements.size.height.is_finite() {
             warn!(
                 "layout[{:?}({})] returned non-finite measurements: {:?}",
-                self.id, name, measurements
+                self.id, name, layout
             );
         }
 
         // if we are painting on our own layer OR surface, now we need to decide if we need to repaint it
 
         if !ctx.speculative {
-            if self.cached_measurements.get() != Some(measurements) {
+            if self.cached_layout.get() != Some(layout) {
                 // resize the underlying native layer or surface
                 // TODO take bounds into account
+
+                // size of the content box in physical pixels
                 let size = SizeI::new(
-                    (measurements.size.width * ctx.scale_factor) as i32,
-                    (measurements.size.height * ctx.scale_factor) as i32,
+                    (layout.measurements.size.width * ctx.scale_factor) as i32,
+                    (layout.measurements.size.height * ctx.scale_factor) as i32,
                 );
 
                 if !size.is_empty() {
@@ -371,10 +371,10 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
 
             // update cached layout
             self.cached_constraints.set(*constraints);
-            self.cached_measurements.set(Some(measurements));
+            self.cached_layout.set(Some(layout));
         }
 
-        measurements
+        layout
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -382,7 +382,7 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
-        let measurements = self.cached_measurements.get().expect("paint called before layout");
+        let layout = self.cached_layout.get().expect("paint called before layout");
 
         match self.paint_target {
             PaintTarget::NativeLayer { ref layer } => {
@@ -428,8 +428,8 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
 
                 ctx.with_transform_and_clip(
                     &self.transform.get(),
-                    measurements.local_bounds(),
-                    measurements.clip_bounds,
+                    layout.measurements.local_bounds(),
+                    layout.measurements.clip_bounds,
                     |ctx| {
                         surface.draw(
                             ctx.surface.canvas(),
@@ -444,8 +444,8 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                 // --- Direct paint on parent surface ---
                 ctx.with_transform_and_clip(
                     &self.transform.get(),
-                    measurements.local_bounds(),
-                    measurements.clip_bounds,
+                    layout.measurements.local_bounds(),
+                    layout.measurements.clip_bounds,
                     |ctx| self.content.paint(ctx),
                 )
             }
@@ -490,9 +490,10 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                     let local_pointer_pos = self.transform.get().inverse().unwrap().transform_point(p.position);
 
                     if !self
-                        .cached_measurements
+                        .cached_layout
                         .get()
                         .expect("pointer event received before layout")
+                        .measurements
                         .local_bounds()
                         .contains(local_pointer_pos)
                     {
@@ -512,7 +513,7 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
 
         // continue with default routing behavior
         let event_result =
-            parent_ctx.default_route_event(self, event, &self.transform.get(), self.cached_measurements.get(), env);
+            parent_ctx.default_route_event(self, event, &self.transform.get(), self.cached_layout.get(), env);
 
         // handle event result
         if let Some(mut event_result) = event_result {
@@ -520,7 +521,7 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                 // a child widget (or ourselves) requested a relayout during event handling;
                 // clear the cached layout, if any
                 //eprintln!("inner: {:?}, relayout requested", self.content.debug_name());
-                self.cached_measurements.set(None);
+                self.cached_layout.set(None);
             }
 
             // update damage

@@ -1,5 +1,5 @@
-use crate::{Angle, Data};
-use palette::{convert::FromColorUnclamped, RgbHue, Shade};
+use crate::Data;
+use palette::{convert::FromColorUnclamped, Shade};
 use std::{error::Error, fmt, marker::PhantomData};
 
 /// Color spec, non-linear srgb.

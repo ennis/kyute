@@ -4,12 +4,10 @@ use kyute::{
         application::Application,
         winit::{dpi::LogicalSize, window::WindowBuilder},
     },
+    style,
     text::{FontWeight, FormattedText},
-    widget::{
-        grid::{GridLayoutExt, TrackSizePolicy},
-        Button, Container, Grid, GridLength, Text,
-    },
-    Alignment, UnitExt, Widget, WidgetExt, Window,
+    widget::{grid::GridLayoutExt, Button, Grid, Text, WidgetExt},
+    Alignment, UnitExt, Widget, Window,
 };
 
 // All functions creating widgets or using features like `#[state]` must be marked as `#[composable]`.
@@ -46,27 +44,21 @@ fn counter_demo() -> impl Widget {
     //    }
     //
 
-    // now every item has style information, and all layout is done within the container...
-    // -> Container IS special: it's basically a div
-    // -> this DOESN'T MEAN that all widgets should be implemented like that.
-    //
-    // Also, not all widgets need to store style info: `.style` would just wrap the
+    let mut grid = Grid::with_template("auto auto / 1fr 1fr");
+    grid.insert((
+        Text::new(FormattedText::from(format!("Counter value: {}", counter)).attribute(14.., FontWeight::BOLD))
+            .grid_column_span(2),
+        Button::new("+")
+            .on_clicked(|| counter += 1)
+            .style("top: 5px; bottom: 5px;"),
+        Button::new("-")
+            .on_clicked(|| counter -= 1)
+            .style("top: 5px; bottom: 5px;"),
+    ));
 
-    Grid::with_template("auto auto / 1fr 1fr")
-        .insert((
-            Text::new(FormattedText::from(format!("Counter value: {}", counter)).attribute(14.., FontWeight::BOLD))
-                .grid_column_span(2),
-            Button::new("+")
-                .on_clicked(|| counter += 1)
-                .style("top: 5px; bottom: 5px;"),
-            Button::new("-")
-                .on_clicked(|| counter -= 1)
-                .style("top: 5px; bottom: 5px;"),
-        ))
-        .background("rgb(236 236 236)")
-        .clickable(|| {});
+    grid.background("rgb(236 236 236)", style::Shape::rectangle()).fill()
 
-    // 2 rows, sized according to the widgets placed in the row's cells.
+    /*// 2 rows, sized according to the widgets placed in the row's cells.
     // 2 flex columns, available space will be divided evenly among them
     let mut grid = Grid::with_template("auto auto / 1fr 1fr / 10 10");
 
@@ -76,16 +68,22 @@ fn counter_demo() -> impl Widget {
         // Row 0, span all columns, center the text in the cell.
         text.centered().grid_area((0, ..)),
         // Row 1, Column 0, align the button to the top right corner of the cell.
-        button_decrement.aligned(Alignment::TOP_RIGHT).grid_area((1, 0)),
+        button_decrement
+            .horizontal_alignment(Alignment::END)
+            .vertical_alignment(Alignment::START)
+            .grid_area((1, 0)),
         // Row 1, Column 0, align the button to the top right corner of the cell.
-        button_increment.aligned(Alignment::TOP_LEFT).grid_area((1, 1)),
+        button_increment
+            .horizontal_alignment(Alignment::START)
+            .vertical_alignment(Alignment::START)
+            .grid_area((1, 1)),
     ));
 
     // wrap grid in a container to fill the window and apply some styling to the background
-    Container::new(grid)
+    grid
         // a subset of CSS is supported here
         .background("rgb(236 236 236)")
-        .fill()
+        .fill()*/
 }
 
 #[composable]
@@ -102,5 +100,11 @@ fn main_window() -> impl Widget {
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+        .compact()
+        .with_target(false)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     application::run(main_window);
 }

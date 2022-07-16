@@ -1,6 +1,5 @@
 use crate::backend;
-use kyute_common::{Rect, SizeI, Transform};
-use std::any::Any;
+use kyute_common::{SizeI, Transform};
 
 /// A compositing layer.
 #[derive(Clone)]

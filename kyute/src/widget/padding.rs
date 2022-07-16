@@ -1,7 +1,7 @@
 use crate::{
     core::DebugNode,
     widget::{prelude::*, Modifier},
-    LayerPaintCtx, Length, SideOffsets,
+    Length, SideOffsets,
 };
 
 /// Applies padding to the inner widget.
@@ -36,10 +36,10 @@ impl Modifier for Padding {
         constraints: &LayoutConstraints,
         env: &Environment,
     ) -> Layout {
-        let top = constraints.resolve_height(self.top);
-        let right = constraints.resolve_width(self.right);
-        let bottom = constraints.resolve_height(self.bottom);
-        let left = constraints.resolve_width(self.left);
+        let top = self.top.compute(constraints);
+        let right = self.right.compute(constraints);
+        let bottom = self.bottom.compute(constraints);
+        let left = self.left.compute(constraints);
         let subconstraints = constraints.deflate(SideOffsets::new(top, right, bottom, left));
         let mut layout = widget.layout(ctx, &subconstraints, env);
         layout.padding_top += top;

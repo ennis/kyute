@@ -1,11 +1,10 @@
 use crate::{
-    cache,
     event::PointerEventKind,
     layout::Alignment,
-    style::{Style, VisualState},
-    theme,
-    widget::{prelude::*, Container, Label, WidgetExt},
-    Color, Signal, UnitExt,
+    style,
+    style::VisualState,
+    widget::{prelude::*, Label, WidgetExt},
+    Signal, UnitExt,
 };
 use std::cell::Cell;
 
@@ -13,60 +12,35 @@ use std::cell::Cell;
 // Widget definition
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+type ButtonInner = impl Widget;
+
 pub struct Button {
     id: WidgetId,
-    inner: Container<Label>,
+    inner: ButtonInner,
     clicked: Signal<()>,
     active: Cell<bool>,
+}
+
+fn button_inner(label: String) -> ButtonInner {
+    Label::new(label)
+        // TODO: if the padding cannot be honored because of size constraints, should this be adjusted automatically?
+        .padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
+        .min_height(21.dip())
+        .min_width(80.dip())
+        .horizontal_alignment(Alignment::CENTER)
+        .background("rgb(4 4 255)", style::Shape::rectangle())
 }
 
 impl Button {
     /// Creates a new button with the specified label.
     #[composable]
-    pub fn new(label: String) -> Button {
+    pub fn new(label: impl Into<String>) -> Button {
         Button {
             id: WidgetId::here(),
-            inner: Label::new(label)
-                // TODO: if the padding cannot be honored because of size constraints, should this be adjusted automatically?
-                .padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
-                .min_height(21.dip())
-                .min_width(80.dip())
-                .horizontal_alignment(Alignment::CENTER)
-                //.baseline(17.dip())
-                .box_style(theme::BUTTON.get(&cache::environment()).unwrap())
-                .alternate_box_style(
-                    VisualState::ACTIVE | VisualState::HOVER,
-                    theme::BUTTON_ACTIVE.get(&cache::environment()).unwrap(),
-                )
-                .alternate_box_style(
-                    VisualState::HOVER,
-                    theme::BUTTON_HOVER.get(&cache::environment()).unwrap(),
-                ),
+            inner: button_inner(label.into()),
             clicked: Signal::new(),
             active: Cell::new(false),
         }
-    }
-
-    /// Sets the style of this button.
-    pub fn box_style(mut self, style: impl Into<Style>) -> Button {
-        self.set_box_style(style);
-        self
-    }
-
-    /// Sets the style of this button.
-    pub fn set_box_style(&mut self, style: impl Into<Style>) {
-        self.inner.set_box_style(style.into());
-    }
-
-    /// Sets the text color of this button.
-    pub fn text_color(mut self, color: Color) -> Button {
-        self.set_text_color(color);
-        self
-    }
-
-    /// Sets the text color of this button.
-    pub fn set_text_color(&mut self, color: Color) {
-        self.inner.inner_mut().set_color(color);
     }
 
     /// Returns whether this button has been clicked.
@@ -92,7 +66,7 @@ impl Widget for Button {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         self.inner.layout(ctx, constraints, env)
     }
 

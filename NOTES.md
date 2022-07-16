@@ -545,3 +545,56 @@ or only around the rectangle?
 
 Alignment mechanism:
 - match position on unit rectangle
+
+
+## Backgrounds, shapes, borders, etc.
+
+What has been decided so far:
+- in order to "style" an element, apply a modifier `Background` on it, which will draw stuff behind the element
+- provide a `Rectangle` (possibly rounded) shape widget to be used for simple backgrounds.
+- there are also `StyledBoxes`, which draw box decorations around a content element, but also handle the layout of the content within
+  - `StyledBox` should stay
+
+There's some duplication:
+- borders are added by `StyledBox`, `Border` widgets, and `Rectangle` widgets.
+  - there's duplicated code in all of those related to the computation of final border radii.
+- we could remove borders from `Rectangle`, but we'd still need to keep the radii of the rectangle, which should be in sync
+  with the radii of the border around it:
+
+```
+    widget.background(
+        Rectangle::new()
+            .radius(4.px()) // this length ...
+            .paint(...)
+            .border(4.px()))  // ... and this length must match!
+```
+
+Proposition:
+- don't add borders to the rectangle shape widget, but make it so that border widgets push a clip mask
+  - this way, to round a rectangle, simply add a rounded border to it
+
+Alternative:
+- keep border in rectangle, make it a "stroke style" 
+  - problem: the stroke size wouldn't be taken into account  
+
+Underlying question: do we emphasize the _shape_ (A) (rectangle, paths, etc.) or do we emphasize the _content_ (B) (text)
+A: widgets are visual primitives, like rectangles, rounded rectangles, paths, text elements, etc. They are composed via overlays.
+```
+  Rectangle::new().fill(...).radius(4.px()).overlay(Text::new("hello"))
+```
+B: widgets are either content containers (text) or decorations around content. 
+```
+  Container::new(Null)
+      .fill("rgb(255 255 255 / 30)")
+      .border("4px solid blue")       // order-dependent: putting the fill after will fill the whole rectangle
+```
+
+Prefer B, that's what we started with, and what compose is doing.
+What about drop shadows?
+
+```
+  Container::new(Null)
+      .fill("rgb(255 255 255 / 30)")
+      .border("4px solid blue")       // draw border and clip  
+      .shadow("10px 5px 5px black")   // ??? for now, specify shape explicitly
+```

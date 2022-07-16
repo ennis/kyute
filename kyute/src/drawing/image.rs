@@ -63,11 +63,14 @@ impl Asset for Image {
         }
     }
 }
+
+/// Image cache entry.
 #[derive(Clone)]
 struct Entry {
     image: Image,
 }
 
+/// Image cache innards.
 struct Inner {
     entries: HashMap<String, Entry>,
 }

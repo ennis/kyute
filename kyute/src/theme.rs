@@ -1,8 +1,5 @@
 //! Environment keys that control the visual aspect (theme) of common widgets.
-use crate::{
-    style::{Border, BorderPosition, BoxShadow, LinearGradient, Style},
-    Color, EnvKey, Environment, Font, Length, SideOffsets, UnitExt,
-};
+use crate::{style::Style, Color, EnvKey, Environment, Font, Length, SideOffsets, UnitExt};
 
 pub const FONT_SIZE: EnvKey<f64> = EnvKey::new("kyute.theme.font_size"); // [14.0];
 pub const FONT_NAME: EnvKey<String> = EnvKey::new("kyute.theme.font_name");
@@ -517,7 +514,7 @@ textarea {
 pub fn setup_default_style(env: &mut Environment) {
     keys::setup_default_colors(env);
 
-    let control_border = Border::new_all_same(1.px()).paint(env.get(keys::CONTROL_BORDER_COLOR).unwrap());
+    //let control_border = Border::new_all_same(1.px()).paint(env.get(keys::CONTROL_BORDER_COLOR).unwrap());
 
     /*let blue_button_like_frame = BoxStyle::from_css(
         r#"
@@ -535,7 +532,7 @@ pub fn setup_default_style(env: &mut Environment) {
         "#,
     );*/
 
-    let blue_button_like_frame = Style::new()
+    /*let blue_button_like_frame = Style::new()
         .radius(3.dip())
         .background(
             LinearGradient::new()
@@ -558,9 +555,9 @@ pub fn setup_default_style(env: &mut Environment) {
         .unwrap();
         env.set(BUTTON, button_frame);
         env.set(DROP_DOWN, blue_button_like_frame);
-    }
+    }*/
 
-    {
+    /*{
         let button_active_frame = Style::new()
             .radius(4.dip())
             .background(
@@ -611,7 +608,7 @@ pub fn setup_default_style(env: &mut Environment) {
             .radius(4.dip())
             .background(palette::GREY_800)
             .border(Border::new_all_same(1.px()).paint(palette::GREY_900)),
-    );
+    );*/
 
     let base_label_height = 15;
 

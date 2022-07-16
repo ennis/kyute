@@ -1,4 +1,4 @@
-use crate::{ widget::prelude::*};
+use crate::widget::prelude::*;
 
 /// Null widget. Takes no space, ignores all events.
 #[derive(Clone, Debug)]
@@ -9,11 +9,11 @@ impl Widget for Null {
         None
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: BoxConstraints, _env: &Environment) -> Measurements {
-        Measurements::default()
+    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutConstraints, _env: &Environment) -> Layout {
+        Layout::default()
     }
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}
 
-    fn paint(&self, ctx: &mut PaintCtx) {}
+    fn paint(&self, _ctx: &mut PaintCtx) {}
 }

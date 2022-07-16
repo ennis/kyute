@@ -6,7 +6,6 @@ use crate::{
 use parking_lot::Mutex;
 use std::{
     any::Any,
-    borrow::Borrow,
     cell::{Cell, RefCell},
     collections::hash_map::DefaultHasher,
     convert::TryInto,
@@ -922,7 +921,7 @@ where
     } = scoped(revision, || state_inner(|| Poll::Pending));
 
     if inserted || restart {
-        with_cache_cx(|cx| {
+        with_cache_cx(|_cx| {
             let result_key_2 = result_key.clone();
             // spawn task that will set the value
             let handle = tokio::spawn(async move {

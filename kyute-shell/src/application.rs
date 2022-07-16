@@ -2,13 +2,9 @@
 use crate::backend;
 use lazy_static::lazy_static;
 use std::{
-    ffi::{c_void, OsString},
-    ops::Deref,
-    ptr,
     sync::{Arc, Mutex, MutexGuard},
     time::Duration,
 };
-use threadbound::ThreadBound;
 
 /// Mutex-protected and ref-counted alias to `graal::Context`.
 pub type GpuContext = Arc<Mutex<graal::Context>>;

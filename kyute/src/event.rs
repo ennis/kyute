@@ -1,6 +1,6 @@
 //! [`Events`](Event) sent to widgets, and related types.
-use crate::{bloom::Bloom, Measurements, PaintCtx, Point, WidgetId};
-use std::{collections::HashMap, sync::Arc};
+use crate::{bloom::Bloom, Point, WidgetId};
+use std::collections::HashMap;
 use winit::event::DeviceId;
 // FIXME: reexport/import from kyute-shell?
 use crate::core::DebugWidgetTreeNode;

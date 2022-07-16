@@ -118,7 +118,7 @@ impl FileSystemWatcher {
                 true
             } else {
                 eprintln!("removing watcher for path `{:?}`", p);
-                watcher.unwatch(&w.canonical_path);
+                watcher.unwatch(&w.canonical_path).unwrap();
                 false
             }
         });

@@ -1,17 +1,16 @@
 mod key_code;
 
 use crate::{
-    animation::PaintCtx,
-    application::AppCtx,
     cache, composable,
     core::{DebugNode, FocusState},
+    drawing::PaintCtx,
     event::{InputState, KeyboardEvent, PointerButton, PointerEvent, PointerEventKind, WheelDeltaMode, WheelEvent},
     graal,
-    graal::{vk::Handle, MemoryLocation},
+    graal::vk::Handle,
     region::Region,
     widget::{Menu, WidgetPod},
-    Alignment, BoxConstraints, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, Measurements, Point, Rect,
-    RoundToPixel, Size, Widget, WidgetId,
+    Data, Environment, Event, EventCtx, InternalEvent, Layout, LayoutConstraints, LayoutCtx, Point, Size, Widget,
+    WidgetId,
 };
 use keyboard_types::{KeyState, Modifiers};
 use kyute_shell::{
@@ -131,7 +130,7 @@ impl WindowState {
         //let _span = trace_span!("process_window_event", ?window_event).entered();
 
         let event = {
-            let window = self
+            let _window = self
                 .window
                 .as_mut()
                 .expect("process_window_event received but window not initialized");
@@ -158,7 +157,7 @@ impl WindowState {
                     self.scale_factor = *scale_factor;
                     None
                 }
-                WindowEvent::Resized(size) => None,
+                WindowEvent::Resized(_size) => None,
                 WindowEvent::Focused(true) => {
                     // TODO
                     None
@@ -250,7 +249,7 @@ impl WindowState {
                 WindowEvent::MouseWheel {
                     device_id,
                     delta,
-                    phase,
+                    phase: _,
                     ..
                 } => {
                     let pointer_state = self.inputs.pointers.entry(*device_id).or_default();
@@ -564,8 +563,8 @@ impl Widget for Window {
         Some(self.id)
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: BoxConstraints, _env: &Environment) -> Measurements {
-        Measurements::default()
+    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutConstraints, _env: &Environment) -> Layout {
+        Layout::default()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -623,7 +622,16 @@ impl Widget for Window {
                 let scale_factor = window.scale_factor();
                 let size = window.logical_inner_size();
                 let mut layout_ctx = LayoutCtx::new(scale_factor);
-                self.content.layout(&mut layout_ctx, BoxConstraints::loose(size), env);
+                self.content.layout(
+                    &mut layout_ctx,
+                    &LayoutConstraints {
+                        parent_font_size: 16.0,
+                        scale_factor,
+                        min: Size::zero(),
+                        max: size,
+                    },
+                    env,
+                );
             }
 
             {
@@ -637,7 +645,7 @@ impl Widget for Window {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx) {
+    fn paint(&self, _ctx: &mut PaintCtx) {
         panic!("shouldn't be called")
     }
 

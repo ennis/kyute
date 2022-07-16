@@ -101,34 +101,38 @@ impl Widget for Canvas {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         // a canvas always takes the maximum available space
         let width = constraints.finite_max_width().unwrap_or(0.0);
         let height = constraints.finite_max_height().unwrap_or(0.0);
 
-        let left = self.left.to_dips(ctx.scale_factor, width);
-        let top = self.top.to_dips(ctx.scale_factor, height);
-        let right = self.right.to_dips(ctx.scale_factor, width);
-        let bottom = self.bottom.to_dips(ctx.scale_factor, height);
+        let left = self.left.compute(constraints);
+        let top = self.top.compute(constraints);
+        let right = self.right.compute(constraints);
+        let bottom = self.bottom.compute(constraints);
 
         // place the items in the canvas
+        // padding is ignored
         for item in self.items.iter() {
-            let measurements = item.widget.layout(ctx, BoxConstraints::new(.., ..), env);
-            let mut offset = Offset::new(
-                item.offset_x.to_dips(ctx.scale_factor, width),
-                item.offset_y.to_dips(ctx.scale_factor, height),
-            );
+            let child_layout_constraints = LayoutConstraints {
+                parent_font_size: constraints.parent_font_size,
+                scale_factor: constraints.scale_factor,
+                min: Size::zero(),
+                max: Size::new(f64::INFINITY, f64::INFINITY),
+            };
+            let layout = item.widget.layout(ctx, &child_layout_constraints, env);
+            let mut offset = Offset::new(item.offset_x.compute(constraints), item.offset_y.compute(constraints));
 
             // prevent item from going out of bounds
-            offset.x = offset.x.clamp(left, right - measurements.width());
-            offset.y = offset.y.clamp(top, bottom - measurements.height());
+            offset.x = offset.x.clamp(left, right - layout.measurements.width());
+            offset.y = offset.y.clamp(top, bottom - layout.measurements.height());
 
             let transform = offset.to_transform().then(&self.transform);
             item.widget.set_transform(transform);
         }
 
         let size = Size::new(width, height);
-        Measurements::new(size)
+        Layout::new(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -214,10 +218,8 @@ impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
 
         // FIXME TODO we discarded any padding / alignment doesn't make much sense as well
         Layout {
-            left: None,
-            top: None,
-            right: None,
-            bottom: None,
+            x_align: Default::default(),
+            y_align: Default::default(),
             padding_left: 0.0,
             padding_top: 0.0,
             padding_right: 0.0,

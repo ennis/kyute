@@ -2,24 +2,21 @@ use crate::{
     bloom::Bloom,
     cache,
     core::DebugNode,
-    drawing::ToSkia,
-    style::{Paint, PaintCtxExt, Style},
+    css::parse_from_str,
+    drawing::{Paint, PaintCtxExt, Shape, ToSkia},
     widget::prelude::*,
-    Color, Data, EnvKey, EnvRef, GpuFrameCtx, InternalEvent, Length, PointerEventKind, RoundToPixel, State,
-    WidgetFilter, WidgetId,
+    Color, Data, EnvKey, Length, RoundToPixel, State, WidgetId,
 };
 use cssparser::{ParseError, Parser, Token};
+use kyute::css::parse_css_length;
 use lazy_static::lazy_static;
 use std::{
-    cell::{Cell, RefCell},
-    cmp::{max, min},
-    collections::HashMap,
+    cell::Cell,
     convert::{TryFrom, TryInto},
     mem,
     ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
     sync::Arc,
 };
-use svgtypes::Align;
 
 pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = EnvKey::new("kyute.show_grid_layout_lines");
 
@@ -91,6 +88,36 @@ impl From<TrackBreadth> for TrackSize {
     }
 }
 
+impl TrackBreadth {
+    pub(crate) fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<TrackBreadth, ParseError<'i, ()>> {
+        if let Ok(length) = input.try_parse(parse_css_length) {
+            Ok(TrackBreadth::Fixed(length))
+        } else {
+            match input.next()? {
+                Token::Ident(ident) if &**ident == "auto" => Ok(TrackBreadth::Auto),
+                Token::Dimension { value, unit, .. } => match &**unit {
+                    "fr" => Ok(TrackBreadth::Flex(*value as f64)),
+                    _ => Err(input.new_custom_error(())),
+                },
+                token => {
+                    let token = token.clone();
+                    Err(input.new_unexpected_token_error(token))
+                }
+            }
+        }
+    }
+}
+
+impl TrackSize {
+    pub(crate) fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<TrackSize, ParseError<'i, ()>> {
+        let breadth = TrackBreadth::parse_impl(input)?;
+        Ok(TrackSize {
+            min_size: breadth,
+            max_size: breadth,
+        })
+    }
+}
+
 /// Orientation of a grid track.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 enum Axis {
@@ -100,14 +127,14 @@ enum Axis {
     Column,
 }
 
-/// Returns the size of a box along the specified axis.
+/*/// Returns the size of a box along the specified axis.
 fn size_along(axis: Axis, size: Size) -> f64 {
     // TODO depends on the writing mode
     match axis {
         Axis::Row => size.width,
         Axis::Column => size.height,
     }
-}
+}*/
 
 /// Returns the size of a box along the specified axis.
 fn size_across(axis: Axis, size: Size) -> f64 {
@@ -119,7 +146,7 @@ fn size_across(axis: Axis, size: Size) -> f64 {
 }
 
 /// List of tracks.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TrackList {
     sizes: Vec<TrackSize>,
     line_names: Vec<(usize, String)>,
@@ -128,7 +155,7 @@ pub struct TrackList {
 fn grid_line_names<'i>(input: &mut Parser<'i, '_>) -> Result<Vec<String>, ParseError<'i, ()>> {
     input.expect_square_bracket_block()?;
     input.parse_nested_block(|input| {
-        let idents = input.parse_comma_separated(Parser::expect_ident)?;
+        let idents = input.parse_comma_separated(|input| Ok(input.expect_ident()?.clone()))?;
         Ok(idents.iter().map(|x| x.to_string()).collect::<Vec<_>>())
     })
 }
@@ -145,14 +172,13 @@ impl TrackList {
                 }
             }
 
-            if let Ok(track_size) = input.try_parse(TrackSize::parse_impl)? {
+            if let Ok(track_size) = input.try_parse(TrackSize::parse_impl) {
                 sizes.push(track_size);
             } else {
                 break;
             }
         }
 
-        input.expect_exhausted()?;
         Ok(TrackList { sizes, line_names })
     }
 }
@@ -193,9 +219,24 @@ impl GridTemplate {
 impl GridTemplate {
     pub(crate) fn parse_css<'i>(input: &mut Parser<'i, '_>) -> Result<GridTemplate, ParseError<'i, ()>> {
         // TODO
-        let rows = TrackList::parse_impl(input)?;
-        let columns = TrackList::parse_impl(input)?;
+        let rows = TrackList::parse_css(input)?;
+        input.expect_delim('/')?;
+        let columns = TrackList::parse_css(input)?;
         Ok(GridTemplate { rows, columns })
+    }
+}
+
+impl<'a> TryFrom<&'a str> for GridTemplate {
+    type Error = ParseError<'a, ()>;
+
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        match parse_from_str(value, GridTemplate::parse_css) {
+            Ok(val) => Ok(val),
+            Err(err) => {
+                warn!("GridTemplate parse error: {:?}", err);
+                Err(err)
+            }
+        }
     }
 }
 
@@ -204,72 +245,72 @@ impl GridTemplate {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Identifies a particular grid line or a line span.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Line<'a> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Line {
     Auto,
     /// Identifies a line by its name, as defined in the grid template.
-    Named(&'a str),
+    Named(String),
     /// Identifies a line by its index.
     Index(i32),
     Span(usize),
 }
 
-impl<'a> Default for Line<'a> {
+impl Default for Line {
     fn default() -> Self {
         Line::Auto
     }
 }
 
-impl<'a> From<i32> for Line<'a> {
+impl From<i32> for Line {
     fn from(p: i32) -> Self {
         Line::Index(p)
     }
 }
 
-impl<'a> From<&'a str> for Line<'a> {
+impl<'a> From<&'a str> for Line {
     fn from(s: &'a str) -> Self {
-        Line::Named(s)
+        Line::Named(s.to_string())
     }
 }
 
-impl<'a> Line<'a> {
+impl Line {
     /// Parses a <grid-line> CSS value.
-    pub(crate) fn parse_css(input: &mut Parser<'a, '_>) -> Result<Line<'a>, ParseError<'a, ()>> {
-        let first = input.next()?;
-        let second = input.try_parse(|input| input.next());
+    pub(crate) fn parse_css<'a, 'b>(input: &mut Parser<'a, 'b>) -> Result<Line, ParseError<'a, ()>> {
+        let first = input.next()?.clone();
+        let second = input.try_parse(|input| input.next().cloned());
         match (first, second) {
             // auto
-            (Ok(Token::Ident(id)), Err(_)) if &**id == "auto" => Ok(Line::Auto),
+            (Token::Ident(id), Err(_)) if &*id == "auto" => Ok(Line::Auto),
             // span N
             (
-                Ok(Token::Ident(id)),
+                Token::Ident(id),
                 Ok(Token::Number {
                     int_value: Some(span), ..
                 }),
-            ) if &**id == "span" => {
+            ) if &*id == "span" => {
                 // FIXME check for negative values
-                Ok(Line::Span(*span as usize))
+                Ok(Line::Span(span as usize))
             }
             // N span
             (
-                Ok(Token::Number {
+                Token::Number {
                     int_value: Some(span), ..
-                }),
+                },
                 Ok(Token::Ident(id)),
-            ) if &**id == "span" => {
+            ) if &*id == "span" => {
                 // FIXME check for negative values
-                Ok(Line::Span(*span as usize))
+                Ok(Line::Span(span as usize))
             }
             // integer
             (
-                Ok(Token::Number {
+                Token::Number {
                     int_value: Some(line_index),
                     ..
-                }),
+                },
                 Err(_),
-            ) => Ok(Line::Index(*line_index)),
+            ) => Ok(Line::Index(line_index)),
             // <custom-ident>
-            (Ok(Token::Ident(id)), Err(_)) => Ok(Line::Named(&**id)),
+            (Token::Ident(id), Err(_)) => Ok(Line::Named(id.to_string())),
             _ => Err(input.new_custom_error(())),
         }
     }
@@ -279,14 +320,14 @@ impl<'a> Line<'a> {
 //  LineRange
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
-pub struct LineRange<'a> {
-    pub start: Line<'a>,
-    pub end: Line<'a>,
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct LineRange {
+    pub start: Line,
+    pub end: Line,
 }
 
-impl<'a> From<Line<'a>> for LineRange<'a> {
-    fn from(start: Line<'a>) -> Self {
+impl From<Line> for LineRange {
+    fn from(start: Line) -> Self {
         LineRange {
             start,
             end: Line::Span(1),
@@ -294,7 +335,7 @@ impl<'a> From<Line<'a>> for LineRange<'a> {
     }
 }
 
-impl<'a> From<i32> for LineRange<'a> {
+impl From<i32> for LineRange {
     fn from(p: i32) -> Self {
         LineRange {
             start: Line::Index(p),
@@ -303,7 +344,7 @@ impl<'a> From<i32> for LineRange<'a> {
     }
 }
 
-impl<'a> From<usize> for LineRange<'a> {
+impl From<usize> for LineRange {
     fn from(p: usize) -> Self {
         LineRange {
             start: Line::Index(p as i32),
@@ -312,7 +353,7 @@ impl<'a> From<usize> for LineRange<'a> {
     }
 }
 
-impl<'a> From<Range<i32>> for LineRange<'a> {
+impl From<Range<i32>> for LineRange {
     fn from(v: Range<i32>) -> Self {
         LineRange {
             start: Line::Index(v.start),
@@ -321,7 +362,7 @@ impl<'a> From<Range<i32>> for LineRange<'a> {
     }
 }
 
-impl<'a> From<Range<usize>> for LineRange<'a> {
+impl From<Range<usize>> for LineRange {
     fn from(v: Range<usize>) -> Self {
         LineRange {
             start: Line::Index(v.start as i32),
@@ -330,7 +371,7 @@ impl<'a> From<Range<usize>> for LineRange<'a> {
     }
 }
 
-impl<'a> From<RangeTo<i32>> for LineRange<'a> {
+impl From<RangeTo<i32>> for LineRange {
     fn from(v: RangeTo<i32>) -> Self {
         LineRange {
             start: Line::Index(0),
@@ -339,7 +380,7 @@ impl<'a> From<RangeTo<i32>> for LineRange<'a> {
     }
 }
 
-impl<'a> From<RangeFrom<i32>> for LineRange<'a> {
+impl From<RangeFrom<i32>> for LineRange {
     fn from(v: RangeFrom<i32>) -> Self {
         LineRange {
             start: Line::Index(v.start),
@@ -348,7 +389,7 @@ impl<'a> From<RangeFrom<i32>> for LineRange<'a> {
     }
 }
 
-impl<'a> From<RangeInclusive<i32>> for LineRange<'a> {
+impl From<RangeInclusive<i32>> for LineRange {
     fn from(v: RangeInclusive<i32>) -> Self {
         LineRange {
             start: Line::Index(*v.start()),
@@ -357,7 +398,7 @@ impl<'a> From<RangeInclusive<i32>> for LineRange<'a> {
     }
 }
 
-impl<'a> From<RangeInclusive<usize>> for LineRange<'a> {
+impl From<RangeInclusive<usize>> for LineRange {
     fn from(v: RangeInclusive<usize>) -> Self {
         LineRange {
             start: Line::Index(*v.start() as i32),
@@ -366,7 +407,7 @@ impl<'a> From<RangeInclusive<usize>> for LineRange<'a> {
     }
 }
 
-impl<'a> From<RangeToInclusive<i32>> for LineRange<'a> {
+impl From<RangeToInclusive<i32>> for LineRange {
     fn from(v: RangeToInclusive<i32>) -> Self {
         LineRange {
             start: Line::Index(0),
@@ -375,7 +416,7 @@ impl<'a> From<RangeToInclusive<i32>> for LineRange<'a> {
     }
 }
 
-impl<'a> From<RangeToInclusive<usize>> for LineRange<'a> {
+impl From<RangeToInclusive<usize>> for LineRange {
     fn from(v: RangeToInclusive<usize>) -> Self {
         LineRange {
             start: Line::Index(0),
@@ -384,7 +425,7 @@ impl<'a> From<RangeToInclusive<usize>> for LineRange<'a> {
     }
 }
 
-impl<'a> From<RangeFull> for LineRange<'a> {
+impl From<RangeFull> for LineRange {
     fn from(_: RangeFull) -> Self {
         LineRange {
             start: Line::Index(0),
@@ -393,21 +434,13 @@ impl<'a> From<RangeFull> for LineRange<'a> {
     }
 }
 
-impl<'a> TryFrom<&'a str> for LineRange<'a> {
-    type Error = nom::error::Error<String>;
-
-    fn try_from(input: &'a str) -> Result<Self, Self::Error> {
-        LineRange::parse(input)
-    }
-}
-
-impl<'a> LineRange<'a> {
+impl LineRange {
     /// Parses the value of a `grid-row` or `grid-column` property declaration.
-    pub(crate) fn parse_impl(input: &mut Parser<'a, '_>) -> Result<LineRange<'a>, ParseError<'a, ()>> {
+    pub(crate) fn parse_impl<'a>(input: &mut Parser<'a, '_>) -> Result<LineRange, ParseError<'a, ()>> {
         // FIXME this is definitely not what the spec says
-        let start = Line::parse_impl(input)?;
+        let start = Line::parse_css(input)?;
         if let Ok(_) = input.try_parse(|input| input.expect_delim('/')) {
-            let end = Line::parse_impl(input)?;
+            let end = Line::parse_css(input)?;
             Ok(LineRange { start, end })
         } else {
             Ok(LineRange {
@@ -415,6 +448,14 @@ impl<'a> LineRange<'a> {
                 end: Line::Auto,
             })
         }
+    }
+}
+
+impl<'a> TryFrom<&'a str> for LineRange {
+    type Error = ParseError<'a, ()>;
+
+    fn try_from(input: &'a str) -> Result<Self, Self::Error> {
+        parse_from_str(input, LineRange::parse_impl)
     }
 }
 
@@ -431,9 +472,9 @@ fn line_index(index: i32, line_count: usize) -> usize {
     }
 }
 
-impl<'a> LineRange<'a> {
-    fn resolve(&self, named_lines: &HashMap<String, usize>, line_count: usize) -> (Option<usize>, usize) {
-        if let (Line::Span(_), Line::Span(_)) = (self.start, self.end) {
+impl LineRange {
+    fn resolve(&self, named_lines: &[(usize, String)], line_count: usize) -> (Option<usize>, usize) {
+        if let (Line::Span(_), Line::Span(_)) = (&self.start, &self.end) {
             warn!("invalid line range");
             return (None, 1);
         }
@@ -446,8 +487,11 @@ impl<'a> LineRange<'a> {
             Line::Auto => {
                 //if let Line::
             }
-            Line::Named(ident) => {
-                start = named_lines.get(ident).cloned();
+            Line::Named(ref ident) => {
+                start = named_lines
+                    .iter()
+                    .find_map(|(line, name)| if name == ident { Some(line) } else { None })
+                    .cloned();
             }
             Line::Index(index) => {
                 start = Some(line_index(index, line_count));
@@ -461,8 +505,11 @@ impl<'a> LineRange<'a> {
             Line::Auto => {
                 //if let Line::
             }
-            Line::Named(ident) => {
-                end = named_lines.get(ident).cloned();
+            Line::Named(ref ident) => {
+                end = named_lines
+                    .iter()
+                    .find_map(|(line, name)| if name == ident { Some(line) } else { None })
+                    .cloned();
             }
             Line::Index(index) => {
                 end = Some(line_index(index, line_count));
@@ -500,10 +547,10 @@ impl<'a> LineRange<'a> {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// The parsed form of a grid area specifier.
-#[derive(Copy, Default, Clone, Debug, PartialEq, Eq)]
-pub struct Area<'a> {
-    row: LineRange<'a>,
-    column: LineRange<'a>,
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct Area {
+    row: LineRange,
+    column: LineRange,
 }
 
 /*impl<'a> TryFrom<&'a str> for Area<'a> {
@@ -514,10 +561,10 @@ pub struct Area<'a> {
     }
 }*/
 
-impl<'a, Rows, Columns> From<(Rows, Columns)> for Area<'a>
+impl<Rows, Columns> From<(Rows, Columns)> for Area
 where
-    Rows: Into<LineRange<'a>>,
-    Columns: Into<LineRange<'a>>,
+    Rows: Into<LineRange>,
+    Columns: Into<LineRange>,
 {
     fn from((rows, columns): (Rows, Columns)) -> Self {
         Area {
@@ -527,14 +574,14 @@ where
     }
 }
 
-impl<'a> Area<'a> {
+impl Area {
     /// Parses the value of a `grid-area` CSS property.
-    pub(crate) fn parse_impl(input: &mut Parser<'a, '_>) -> Result<Area<'a>, ParseError<'a, ()>> {
+    pub(crate) fn parse_impl<'a>(input: &mut Parser<'a, '_>) -> Result<Area, ParseError<'a, ()>> {
         // FIXME this is definitely not what the spec says
-        let row_start = Line::parse_impl(input)?;
-        let column_start = input.try_parse(Line::parse_impl);
-        let row_end = input.try_parse(Line::parse_impl);
-        let column_end = input.try_parse(Line::parse_impl);
+        let row_start = Line::parse_css(input)?;
+        let column_start = input.try_parse(Line::parse_css);
+        let row_end = input.try_parse(Line::parse_css);
+        let column_end = input.try_parse(Line::parse_css);
         Ok(Area {
             row: LineRange {
                 start: row_start,
@@ -557,10 +604,12 @@ struct DefiniteArea {
     column_span: usize,
 }
 
-impl<'a> Area<'a> {
+impl Area {
     fn resolve(&self, grid: &Grid) -> DefiniteArea {
-        let (row, row_span) = self.row.resolve(&grid.named_row_lines, grid.row_count() + 1);
-        let (column, column_span) = self.column.resolve(&grid.named_column_lines, grid.column_count() + 1);
+        let (row, row_span) = self.row.resolve(&grid.template.rows.line_names, grid.row_count() + 1);
+        let (column, column_span) = self
+            .column
+            .resolve(&grid.template.columns.line_names, grid.column_count() + 1);
 
         DefiniteArea {
             row,
@@ -579,22 +628,19 @@ impl<'a> Area<'a> {
 // Insertable
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// Items that can be inserted into a grid.
+///
+/// Either widgets or a grid placement wrapper around a widget (see `Placement`).
 pub trait Insertable {
-    fn insert(self, cursor: &mut FlowCursor);
+    fn insert(self, grid: &mut Grid);
 }
 
 impl<W> Insertable for W
 where
     W: Widget + Sized + 'static,
 {
-    fn insert(self, cursor: &mut FlowCursor) {
-        cursor.place(Area::default(), 0, Alignment::TOP_LEFT, Arc::new(WidgetPod::new(self)))
-    }
-}
-
-impl Insertable for () {
-    fn insert(self, cursor: &mut FlowCursor) {
-        cursor.next(1, 1);
+    fn insert(self, grid: &mut Grid) {
+        grid.place(&Area::default(), 0, Arc::new(WidgetPod::new(self)));
     }
 }
 
@@ -605,11 +651,11 @@ macro_rules! tuple_insertable {
             $t: Insertable + 'static,
             $( $ts: Insertable + 'static ),*
         {
-            fn insert(self, cursor: &mut FlowCursor)
+            fn insert(self, grid: &mut Grid)
             {
                 let ($w, $($ws,)*) = self;
-                $w.insert(cursor);
-                $($ws.insert(cursor);)*
+                $w.insert(grid);
+                $($ws.insert(grid);)*
             }
         }
 
@@ -633,37 +679,35 @@ tuple_insertable! {
 // GridPlacer
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct GridPlacer<'a, W> {
-    area: Area<'a>,
-    alignment: Alignment,
+pub struct Placement<W> {
+    area: Area,
     widget: W,
 }
 
-impl<'a, W> GridPlacer<'a, W> {
-    pub fn new(widget: W) -> GridPlacer<'a, W> {
-        GridPlacer {
+impl<W> Placement<W> {
+    pub fn new(widget: W) -> Placement<W> {
+        Placement {
             area: Default::default(),
-            alignment: Alignment::TOP_LEFT,
             widget,
         }
     }
 
-    pub fn grid_row_start(mut self, line: impl TryInto<Line<'a>>) -> Self {
+    pub fn grid_row_start(mut self, line: impl TryInto<Line>) -> Self {
         self.area.row.start = line.try_into().unwrap_or_default();
         self
     }
 
-    pub fn grid_row_end(mut self, line: impl TryInto<Line<'a>>) -> Self {
+    pub fn grid_row_end(mut self, line: impl TryInto<Line>) -> Self {
         self.area.row.end = line.try_into().unwrap_or_default();
         self
     }
 
-    pub fn grid_column_start(mut self, line: impl TryInto<Line<'a>>) -> Self {
+    pub fn grid_column_start(mut self, line: impl TryInto<Line>) -> Self {
         self.area.column.start = line.try_into().unwrap_or_default();
         self
     }
 
-    pub fn grid_column_end(mut self, line: impl TryInto<Line<'a>>) -> Self {
+    pub fn grid_column_end(mut self, line: impl TryInto<Line>) -> Self {
         self.area.column.end = line.try_into().unwrap_or_default();
         self
     }
@@ -678,66 +722,66 @@ impl<'a, W> GridPlacer<'a, W> {
         self
     }
 
-    pub fn grid_row(mut self, range: impl TryInto<LineRange<'a>>) -> Self {
+    pub fn grid_row(mut self, range: impl TryInto<LineRange>) -> Self {
         self.area.row = range.try_into().unwrap_or_default();
         self
     }
 
-    pub fn grid_column(mut self, range: impl TryInto<LineRange<'a>>) -> Self {
+    pub fn grid_column(mut self, range: impl TryInto<LineRange>) -> Self {
         self.area.column = range.try_into().unwrap_or_default();
         self
     }
 
-    pub fn grid_area(mut self, area: impl TryInto<Area<'a>>) -> Self {
+    pub fn grid_area(mut self, area: impl TryInto<Area>) -> Self {
         self.area = area.try_into().unwrap_or_default();
         self
     }
 }
 
-impl<'a, W> Insertable for GridPlacer<'a, W>
+impl<W> Insertable for Placement<W>
 where
     W: Widget + 'static,
 {
-    fn insert(self, cursor: &mut FlowCursor) {
-        cursor.place(self.area, 1, self.alignment, Arc::new(WidgetPod::new(self.widget)));
+    fn insert(self, grid: &mut Grid) {
+        grid.place(&self.area, 1, Arc::new(WidgetPod::new(self.widget)));
     }
 }
 
 pub trait GridLayoutExt: Widget + Sized {
-    fn grid_row_start<'a>(self, line: impl TryInto<Line<'a>>) -> GridPlacer<'a, Self> {
-        GridPlacer::new(self).grid_row_start(line)
+    fn grid_row_start<'a>(self, line: impl TryInto<Line>) -> Placement<Self> {
+        Placement::new(self).grid_row_start(line)
     }
 
-    fn grid_row_end<'a>(self, line: impl TryInto<Line<'a>>) -> GridPlacer<'a, Self> {
-        GridPlacer::new(self).grid_row_start(line)
+    fn grid_row_end<'a>(self, line: impl TryInto<Line>) -> Placement<Self> {
+        Placement::new(self).grid_row_start(line)
     }
 
-    fn grid_column_start<'a>(self, line: impl TryInto<Line<'a>>) -> GridPlacer<'a, Self> {
-        GridPlacer::new(self).grid_column_start(line)
+    fn grid_column_start<'a>(self, line: impl TryInto<Line>) -> Placement<Self> {
+        Placement::new(self).grid_column_start(line)
     }
 
-    fn grid_column_end<'a>(self, line: impl TryInto<Line<'a>>) -> GridPlacer<'a, Self> {
-        GridPlacer::new(self).grid_column_end(line)
+    fn grid_column_end<'a>(self, line: impl TryInto<Line>) -> Placement<Self> {
+        Placement::new(self).grid_column_end(line)
     }
 
-    fn grid_row_span<'a>(self, len: usize) -> GridPlacer<'a, Self> {
-        GridPlacer::new(self).grid_row_span(len)
+    fn grid_row_span<'a>(self, len: usize) -> Placement<Self> {
+        Placement::new(self).grid_row_span(len)
     }
 
-    fn grid_column_span<'a>(self, len: usize) -> GridPlacer<'a, Self> {
-        GridPlacer::new(self).grid_column_span(len)
+    fn grid_column_span<'a>(self, len: usize) -> Placement<Self> {
+        Placement::new(self).grid_column_span(len)
     }
 
-    fn grid_row<'a>(self, range: impl TryInto<LineRange<'a>>) -> GridPlacer<'a, Self> {
-        GridPlacer::new(self).grid_row(range)
+    fn grid_row<'a>(self, range: impl TryInto<LineRange>) -> Placement<Self> {
+        Placement::new(self).grid_row(range)
     }
 
-    fn grid_column<'a>(self, range: impl TryInto<LineRange<'a>>) -> GridPlacer<'a, Self> {
-        GridPlacer::new(self).grid_column(range)
+    fn grid_column<'a>(self, range: impl TryInto<LineRange>) -> Placement<Self> {
+        Placement::new(self).grid_column(range)
     }
 
-    fn grid_area<'a>(self, area: impl TryInto<Area<'a>>) -> GridPlacer<'a, Self> {
-        GridPlacer::new(self).grid_area(area)
+    fn grid_area<'a>(self, area: impl TryInto<Area>) -> Placement<Self> {
+        Placement::new(self).grid_area(area)
     }
 }
 
@@ -752,24 +796,32 @@ impl<W> GridLayoutExt for W where W: Widget + Sized {}
 struct GridItem {
     /// Specified area.
     area: DefiniteArea,
-    row_range: Cell<Range<usize>>,
-    column_range: Cell<Range<usize>>,
+    row_range: Cell<(usize, usize)>,
+    column_range: Cell<(usize, usize)>,
     z_order: i32,
     widget: Arc<WidgetPod>,
-    // only used for "degenerate" row/col spans
-    line_alignment: Alignment,
 }
 
 impl GridItem {
+    fn row_range(&self) -> Range<usize> {
+        let (start, end) = self.row_range.get();
+        start..end
+    }
+
+    fn column_range(&self) -> Range<usize> {
+        let (start, end) = self.column_range.get();
+        start..end
+    }
+
     fn is_in_track(&self, axis: Axis, index: usize) -> bool {
         // "grid line" items (those with row_range.len() == 0 or column_range.len() == 0)
         // are not considered to belong to any track, and don't intervene during track sizing
-        if self.row_range.is_empty() || self.column_range.is_empty() {
+        if self.row_range().is_empty() || self.column_range().is_empty() {
             return false;
         }
         match axis {
-            Axis::Row => self.row_range.start == index,
-            Axis::Column => self.column_range.start == index,
+            Axis::Row => self.row_range().start == index,
+            Axis::Column => self.column_range().start == index,
         }
     }
 }
@@ -848,7 +900,7 @@ fn track_span_width(layout: &[GridTrackLayout], span: Range<usize>, gap: f64) ->
 }
 
 lazy_static! {
-    static ref DEFAULT_GRID_STYLE: Arc<GridStyle> = Arc::new(GridStyle::default());
+    //static ref DEFAULT_GRID_STYLE: Arc<GridStyle> = Arc::new(GridStyle::default());
     static ref DEFAULT_GRID_TEMPLATE: Arc<GridTemplate> = Arc::new(GridTemplate::default());
 }
 
@@ -864,10 +916,17 @@ impl Grid {
             align_items: AlignItems::Start,
             justify_items: JustifyItems::Start,
             auto_flow_dir: FlowDirection::Row,
-            style: DEFAULT_GRID_STYLE.clone(),
+            style: Arc::new(GridStyle::default()),
             calculated_layout: cache::state(|| Default::default()),
             cached_child_filter: Cell::new(None),
         }
+    }
+
+    pub fn with_template(template: impl TryInto<GridTemplate>) -> Grid {
+        Grid::new(Arc::new(template.try_into().unwrap_or_else(|_err| {
+            warn!("invalid grid template");
+            GridTemplate::default()
+        })))
     }
 
     /// Creates a single-column grid.
@@ -884,6 +943,32 @@ impl Grid {
         let mut grid = Grid::new(Arc::new(template));
         grid.auto_flow_dir = FlowDirection::Column;
         grid
+    }
+
+    /// Returns the number of columns in the grid template.
+    pub fn column_count(&self) -> usize {
+        self.template.columns.sizes.len()
+    }
+
+    /// Returns the number of rows in the grid template.
+    pub fn row_count(&self) -> usize {
+        self.template.rows.sizes.len()
+    }
+
+    /// Inserts items into the grid.
+    pub fn insert(&mut self, items: impl Insertable) {
+        items.insert(self);
+    }
+
+    fn place(&mut self, area: &Area, z_order: i32, widget: Arc<WidgetPod>) {
+        let area = area.resolve(self);
+        self.items.push(GridItem {
+            area,
+            column_range: Cell::new((0, 0)),
+            row_range: Cell::new((0, 0)),
+            widget,
+            z_order,
+        });
     }
 
     /// Sets the auto flow direction
@@ -943,7 +1028,7 @@ impl Grid {
 }
 
 #[derive(Copy, Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
-enum FlowDirection {
+pub enum FlowDirection {
     /// Fill rows first
     Row,
     /// Fill colums first
@@ -1039,6 +1124,18 @@ impl FlowCursor {
 impl Grid {
     /// Position items inside the grid.
     fn position_items(&self) -> (usize, usize) {
+        trace!(
+            "=== [{:?}] positioning {} items ===",
+            self.widget_id(),
+            self.items.len()
+        );
+        trace!(
+            "{} template rows, {} template columns, autoflow: {:?}",
+            self.template.rows.sizes.len(),
+            self.template.columns.sizes.len(),
+            self.auto_flow_dir
+        );
+
         let mut final_row_count = self.template.rows.sizes.len();
         let mut final_column_count = self.template.columns.sizes.len();
 
@@ -1056,9 +1153,27 @@ impl Grid {
             let (row_range, column_range) = flow_cursor.place(item.area);
             final_row_count = final_row_count.max(row_range.end);
             final_column_count = final_column_count.max(column_range.end);
-            item.row_range.set(row_range);
-            item.column_range.set(column_range);
+
+            trace!(
+                "{:?}: rows {}..{} columns {}..{} (area = {:?}, cursor = {:?})",
+                item.widget.widget_id(),
+                row_range.start,
+                row_range.end,
+                column_range.start,
+                column_range.end,
+                item.area,
+                flow_cursor
+            );
+
+            item.row_range.set((row_range.start, row_range.end));
+            item.column_range.set((column_range.start, column_range.end));
         }
+
+        trace!(
+            "final track count: rows={} columns={}",
+            final_row_count,
+            final_column_count
+        );
 
         (final_row_count, final_column_count)
     }
@@ -1094,12 +1209,14 @@ impl Grid {
         let num_gutters = if track_count > 1 { track_count - 1 } else { 0 };
 
         let get_track_size = |i| {
-            if i < track_count {
+            if i < tracks.len() {
                 tracks[i]
             } else {
                 implicit_track_size
             }
         };
+
+        trace!("=== [{:?}] laying out: {:?} ===", self.widget_id(), axis);
 
         // base sizes (cross-axis) of the tracks (column widths, or row heights)
         let mut base_size = vec![0.0; track_count];
@@ -1107,11 +1224,13 @@ impl Grid {
 
         // for each track, update base_size and growth limit
         for i in 0..track_count {
+            trace!("--- laying out track {} ---", i);
+
             // If automatic sizing is requested (for min or max), compute the items natural sizes (result of layout with unbounded boxconstraints)
             // Also, for rows (axis == TrackAxis::Row) with AlignItems::Baseline, compute the max baseline offset of all items in the track
             let track_size = get_track_size(i);
             let auto_sized = track_size.min_size == TrackBreadth::Auto || track_size.max_size == TrackBreadth::Auto;
-            let mut max_natural_size = 0.0;
+            let mut max_natural_size = 0.0f64;
 
             if auto_sized {
                 let mut natural_layouts = Vec::new();
@@ -1126,17 +1245,19 @@ impl Grid {
                     if let Some(column_layout) = column_layout {
                         // ... however, if we already determined the size of the columns,
                         // constrain the width by the size of the column range
-                        let w = track_span_width(column_layout, item.column_range.get().clone(), column_gap);
+                        let w = track_span_width(column_layout, item.column_range(), column_gap);
+                        trace!("using column width constraint: max_width = {}", w);
                         constraints.max.width = w;
                     }
 
                     // get the "natural size" of the item under unbounded (or semi-bounded) constraints.
                     let natural_layout = item.widget.speculative_layout(layout_ctx, &constraints, env);
+                    trace!("natural layout={:?}", natural_layout);
                     natural_layouts.push(natural_layout);
                 }
 
                 // calculate max baseline for items with baseline alignment
-                let mut max_baseline = 0.0;
+                let mut max_baseline = 0.0f64;
                 for layout in natural_layouts.iter() {
                     if layout.y_align == Alignment::FirstBaseline {
                         max_baseline = max_baseline.max(layout.padding_box_baseline().unwrap_or(0.0));
@@ -1154,6 +1275,11 @@ impl Grid {
                     }
                     max_natural_size = max_natural_size.max(size);
                 }
+
+                trace!("max_natural_size={:?}", max_natural_size);
+                trace!("max_baseline={:?}", max_baseline);
+
+                trace!("track #{} max_natural_size={:?}", i, max_natural_size);
             }
 
             // apply min size constraint
@@ -1161,8 +1287,8 @@ impl Grid {
                 TrackBreadth::Fixed(min) => {
                     // TODO width or height
                     base_size[i] = match axis {
-                        Axis::Row => parent_layout_constraints.resolve_height(min),
-                        Axis::Column => parent_layout_constraints.resolve_width(min),
+                        Axis::Row => min.compute(parent_layout_constraints),
+                        Axis::Column => min.compute(parent_layout_constraints),
                     };
                 }
                 TrackBreadth::Auto => {
@@ -1175,8 +1301,8 @@ impl Grid {
             match track_size.max_size {
                 TrackBreadth::Fixed(max) => {
                     growth_limit[i] = match axis {
-                        Axis::Row => parent_layout_constraints.resolve_height(max),
-                        Axis::Column => parent_layout_constraints.resolve_width(max),
+                        Axis::Row => max.compute(parent_layout_constraints),
+                        Axis::Column => max.compute(parent_layout_constraints),
                     };
                 }
                 TrackBreadth::Auto => {
@@ -1269,7 +1395,7 @@ impl Widget for Grid {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         // TODO the actual direction of rows and columns depends on the writing mode
         // When (or if) we support other writing modes, rewrite this. Layout is complicated!
 
@@ -1277,8 +1403,8 @@ impl Widget for Grid {
         let (row_count, column_count) = self.position_items();
 
         // compute gap sizes
-        let column_gap = constraints.resolve_width(self.style.column_gap);
-        let row_gap = constraints.resolve_height(self.style.row_gap);
+        let column_gap = self.style.column_gap.compute(constraints);
+        let row_gap = self.style.row_gap.compute(constraints);
 
         trace!("grid: recomputing track sizes");
         // no match, recalculate
@@ -1319,10 +1445,15 @@ impl Widget for Grid {
             Some(&column_layout[..]),
         );
 
+        trace!("=== final row layout {:?} ===", row_layout);
+        trace!("=== final column layout {:?} ===", column_layout);
+
         // layout items
         for item in self.items.iter() {
-            let w: f64 = track_span_width(&column_layout, item.column_range.get().clone(), column_gap);
-            let h: f64 = track_span_width(&row_layout, item.row_range.get().clone(), row_gap);
+            let (column_start, column_end) = item.column_range.get();
+            let (row_start, row_end) = item.row_range.get();
+            let w: f64 = track_span_width(&column_layout, column_start..column_end, column_gap);
+            let h: f64 = track_span_width(&row_layout, row_start..row_end, row_gap);
 
             let mut subconstraints = *constraints;
             subconstraints.max.width = w;
@@ -1336,13 +1467,21 @@ impl Widget for Grid {
                 // TODO
             }
 
-            let x = column_layout[item.column_range.start].pos;
-            let y = row_layout[item.row_range.start].pos;
+            let x = column_layout[column_start].pos;
+            let y = row_layout[row_start].pos;
             let cell_offset = Offset::new(x, y);
+            let final_offset = (cell_offset + offset).round_to_pixel(ctx.scale_factor);
+
+            trace!(
+                "=== [{:?}] constraints={:?}, result={:?}, offset={:?} ===",
+                item.widget.widget_id(),
+                subconstraints,
+                sublayout,
+                final_offset
+            );
 
             // TODO baselines...
-            item.widget
-                .set_offset((cell_offset + offset).round_to_pixel(ctx.scale_factor));
+            item.widget.set_offset(final_offset);
         }
 
         // ------ update cache ------
@@ -1357,7 +1496,7 @@ impl Widget for Grid {
         }));
 
         // TODO baseline
-        Measurements::new(Size::new(width, height))
+        Layout::new(Size::new(width, height))
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -1378,42 +1517,42 @@ impl Widget for Grid {
         let column_layout = &layout.column_layout;
 
         // draw row backgrounds
-        if !self.row_background.is_transparent() && !self.alternate_row_background.is_transparent() {
+        if !self.style.row_background.is_transparent() && !self.style.alternate_row_background.is_transparent() {
             for (i, row) in row_layout.iter().enumerate() {
                 // TODO start index
                 let bg = if i % 2 == 0 {
-                    self.row_background.clone()
+                    self.style.row_background.clone()
                 } else {
-                    self.alternate_row_background.clone()
+                    self.style.alternate_row_background.clone()
                 };
-                ctx.draw_styled_box(
-                    Rect::new(Point::new(0.0, row.pos), Size::new(width, row.size)),
-                    &Style::new().background(bg),
+                ctx.fill_shape(
+                    &Shape::from(Rect::new(Point::new(0.0, row.pos), Size::new(width, row.size))),
+                    &bg,
                 );
             }
         }
 
         // draw gap backgrounds
-        if !self.row_gap_background.is_transparent() {
+        if !self.style.row_gap_background.is_transparent() {
             // draw only inner gaps
             for row in row_layout.iter().skip(1) {
-                ctx.draw_styled_box(
-                    Rect::new(
+                ctx.fill_shape(
+                    &Shape::from(Rect::new(
                         Point::new(0.0, row.pos - layout.row_gap),
                         Size::new(width, layout.row_gap),
-                    ),
-                    &Style::new().background(self.row_gap_background.clone()),
+                    )),
+                    &self.style.row_gap_background,
                 );
             }
         }
-        if !self.column_gap_background.is_transparent() {
+        if !self.style.column_gap_background.is_transparent() {
             for column in column_layout.iter().skip(1) {
-                ctx.draw_styled_box(
-                    Rect::new(
+                ctx.fill_shape(
+                    &Shape::from(Rect::new(
                         Point::new(column.pos - layout.column_gap, 0.0),
                         Size::new(layout.column_gap, height),
-                    ),
-                    &Style::new().background(self.column_gap_background.clone()),
+                    )),
+                    &self.style.column_gap_background,
                 );
             }
         }

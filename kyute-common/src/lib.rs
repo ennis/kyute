@@ -6,12 +6,6 @@ mod color;
 pub mod counter;
 mod data;
 
-use std::{
-    fmt,
-    fmt::Formatter,
-    ops::{Mul, Neg},
-};
-
 pub use crate::{
     atom::{make_unique_atom, Atom},
     color::Color,

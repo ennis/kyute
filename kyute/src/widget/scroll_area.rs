@@ -1,17 +1,15 @@
 use crate::{
     event::WheelDeltaMode,
-    style::Style,
-    widget::{grid::GridLayoutExt, prelude::*, Container, DragController, Grid, LayoutInspector, Null, Viewport},
-    Color, Length, UnitExt,
+    widget::{grid::GridLayoutExt, prelude::*, DragController, Grid, LayoutInspector, Null, Viewport},
 };
 
 pub struct ScrollArea {
     inner: LayoutInspector<Grid>,
-    line_height: Length,
+    line_height_dip: f64,
     scroll: Signal<f64>,
 }
 
-const DEFAULT_LINE_HEIGHT: Length = Length::Dip(20.0);
+const DEFAULT_LINE_HEIGHT_DIP: f64 = 20.0;
 
 impl ScrollArea {
     #[composable]
@@ -51,12 +49,10 @@ impl ScrollArea {
 
         if content_height <= viewport_height {
             content_viewport.set_transform(Offset::new(0.0, 0.0).to_transform());
-            grid_container
-                .contents_mut()
-                .insert(content_viewport.grid_area((0, ..)));
+            grid_container.inner_mut().insert(content_viewport.grid_area((0, ..)));
             return ScrollArea {
                 inner: grid_container,
-                line_height: DEFAULT_LINE_HEIGHT,
+                line_height_dip: DEFAULT_LINE_HEIGHT_DIP,
                 scroll,
             };
         }
@@ -77,36 +73,31 @@ impl ScrollArea {
             thumb_size
         );
 
-        let scroll_thumb = DragController::new(
-            Container::new(Null)
-                .fix_size(Size::new(5.0, thumb_size))
-                .box_style(Style::new().radius(2.dip()).background(Color::from_hex("#FF7F31"))),
-        )
-        .on_started(|| tmp_pos = content_pos)
-        .on_delta(|offset| {
-            content_pos = tmp_pos + offset.y / content_to_thumb;
-        });
+        //.box_style(Style::new().radius(2.dip()).background(Color::from_hex("#FF7F31"))),
+        let scroll_thumb = DragController::new(Null.fix_width(5.0).fix_height(thumb_size))
+            .on_started(|| tmp_pos = content_pos)
+            .on_delta(|offset| {
+                content_pos = tmp_pos + offset.y / content_to_thumb;
+            });
 
         content_pos = content_pos.clamp(0.0, content_max);
         content_viewport.set_transform(Offset::new(0.0, -content_pos).to_transform());
 
         let scroll_bar = Viewport::new(scroll_thumb).transform(Offset::new(0.0, thumb_pos).to_transform());
 
-        grid_container
-            .contents_mut()
-            .insert(content_viewport.grid_area((0, ..)));
-        grid_container.contents_mut().insert(scroll_bar.grid_area((0, 1)));
+        grid_container.inner_mut().insert(content_viewport.grid_area((0, ..)));
+        grid_container.inner_mut().insert(scroll_bar.grid_area((0, 1)));
         ScrollArea {
             inner: grid_container,
             scroll,
-            line_height: DEFAULT_LINE_HEIGHT,
+            line_height_dip: DEFAULT_LINE_HEIGHT_DIP,
         }
     }
 
-    pub fn line_height(mut self, line_height: Length) -> Self {
+    /*pub fn line_height(mut self, line_height: Length) -> Self {
         self.line_height = line_height.into();
         self
-    }
+    }*/
 }
 
 impl Widget for ScrollArea {
@@ -128,13 +119,7 @@ impl Widget for ScrollArea {
                         self.scroll.signal(-wheel.delta_y);
                     }
                     WheelDeltaMode::Line => {
-                        let scale_factor = ctx
-                            .parent_window
-                            .as_ref()
-                            .expect("event received without parent window")
-                            .scale_factor();
-                        let line_height_dips = self.line_height.to_dips(scale_factor, self.inner.size().height);
-                        self.scroll.signal(-line_height_dips * wheel.delta_y);
+                        self.scroll.signal(-self.line_height_dip * wheel.delta_y);
                     }
                     WheelDeltaMode::Page => {
                         // TODO

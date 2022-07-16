@@ -23,9 +23,9 @@ impl<Placeholder: Widget> ImageContents<Placeholder> {
         ImageContents::Image { uri, image }
     }
 
-    pub fn placeholder(placeholder: Placeholder) -> ImageContents<Placeholder> {
+    /*pub fn placeholder(placeholder: Placeholder) -> ImageContents<Placeholder> {
         ImageContents::Placeholder(placeholder)
-    }
+    }*/
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -198,7 +198,7 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
                 }
                 msg
             }
-            ImageContents::Placeholder(ref placeholder) => "placeholder".to_string(),
+            ImageContents::Placeholder(_) => "placeholder".to_string(),
         })
     }
 }

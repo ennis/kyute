@@ -1,18 +1,18 @@
 //! Tree views.
 use crate::{
     cache,
-    style::{Paint, Style},
-    theme,
+    drawing::Paint,
+    style::Style,
     widget::{
         grid,
         grid::{GridLayoutExt, GridTemplate},
         prelude::*,
-        Clickable, Container, DragController, Grid, Image, Null, Scaling, WidgetWrapper,
+        Clickable, DragController, Grid, Image, Null, Scaling,
     },
-    Data, EnvRef, GpuFrameCtx, Length, UnitExt,
+    Data, Length, UnitExt,
 };
 use kyute_common::imbl;
-use std::{collections::HashSet, hash::Hash, sync::Arc};
+use std::{hash::Hash, sync::Arc};
 
 /// Represents a set of selected table rows.
 #[derive(Default, Clone, Data)]
@@ -201,7 +201,8 @@ impl TableView {
     #[composable]
     pub fn new<Id: Hash + Eq + Clone>(mut params: TableViewParams<Id>) -> TableView {
         // create the main grid
-        let mut grid = Grid::with_template(params.template);
+        // TODO fix the Arc<GridTemplate> mess
+        let mut grid = Grid::new(Arc::new(params.template));
         let num_columns = grid.column_count();
 
         // row counter
@@ -219,10 +220,8 @@ impl TableView {
                 // they are drag handles for resizing the columns.
                 for i in 1..num_columns {
                     let resize_handle = DragController::new(
-                        Container::new(Null)
-                            .background(Paint::from(theme::palette::RED_800))
-                            .fixed_width(4.dip())
-                            .fixed_height(100.percent()),
+                        Null.fill().fix_width(4.dip()),
+                        //.background(Paint::from(theme::palette::RED_800))
                     );
                     // positioning
                     //let resize_handle = LayoutWrapper::with_offset((-2.0, 0.0), resize_handle);
@@ -249,10 +248,12 @@ impl TableView {
             let icon_size = 20.dip();
 
             // chevron icons
-            let chevron_expanded =
-                Image::from_uri("data/icons/chevron.png", Scaling::Contain).fix_size(icon_size, icon_size);
-            let chevron_collapsed =
-                Image::from_uri("data/icons/chevron-collapsed.png", Scaling::Contain).fix_size(icon_size, icon_size);
+            let chevron_expanded = Image::from_uri("data/icons/chevron.png", Scaling::Contain)
+                .min_width(icon_size)
+                .min_height(icon_size);
+            let chevron_collapsed = Image::from_uri("data/icons/chevron-collapsed.png", Scaling::Contain)
+                .min_width(icon_size)
+                .min_height(icon_size);
 
             // fill the visit stack with the initial rows
             let mut visit: Vec<_> = params.rows.into_iter().map(|row| (0usize, row)).rev().collect();
@@ -263,12 +264,9 @@ impl TableView {
                 if let Some(selection) = params.selection.as_mut() {
                     if selection.contains(&row.id) {
                         // draw a filled rect with the selection style that spans the whole row
-                        grid.insert(
-                            Container::new(Null)
-                                .fill()
-                                .box_style(params.selected_style.clone())
-                                .grid_area((i, ..)),
-                        );
+
+                        // .box_style(params.selected_style.clone())
+                        grid.insert(Null.fill().grid_area((i, ..)));
                     }
                     // also add a clickable rect, and clicking it adds the row to the selection
                     grid.insert(
@@ -335,7 +333,7 @@ impl Widget for TableView {
         self.grid.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         self.grid.layout(ctx, constraints, env)
     }
 

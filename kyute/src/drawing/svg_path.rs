@@ -16,7 +16,6 @@ pub enum PathCommand {
     Quadratic,
     SmoothQuadratic,
     EllipticalArc,
-    //ClosePath,
 }
 
 pub(crate) fn svg_path_to_skia(svg_path: &str) -> Result<sk::Path, svgtypes::Error> {

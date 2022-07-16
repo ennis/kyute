@@ -1,19 +1,14 @@
 //! Text editor widget.
 use crate::{
-    cache, composable,
+    composable,
     core::Widget,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
-    style::{PaintCtxExt, Style},
-    theme,
-    widget::{prelude::*, Container, Text},
-    Color, Data, UnitExt,
+    widget::{prelude::*, Text},
 };
-use anyhow::Error;
 use keyboard_types::KeyState;
-use kyute_shell::text::{Attribute, FormattedText, Selection, TextAffinity, TextPosition};
-use skia_safe as sk;
-use std::{fmt::Display, marker::PhantomData, str::FromStr, sync::Arc};
+use kyute_shell::text::{FormattedText, Selection, TextAffinity, TextPosition};
+use std::sync::Arc;
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
 
@@ -35,7 +30,7 @@ fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
 }
 
 /// Text editor widget.
-pub struct TextEdit {
+pub struct BaseTextEdit {
     id: WidgetId,
 
     /// Input formatted text.
@@ -48,7 +43,7 @@ pub struct TextEdit {
     text_changed: Signal<Arc<str>>,
     selection_changed: Signal<Selection>,
 
-    inner: WidgetPod<Container<Text>>,
+    inner: WidgetPod<Text>,
 }
 
 /// Helper function that creates a new string with the text under `selection` replaced by the specified string.
@@ -64,34 +59,31 @@ fn edit_text(text: &str, selection: Selection, replace_with: &str) -> (Arc<str>,
     (text, Selection::empty(min + replace_with.len()))
 }
 
-impl TextEdit {
-    /// Creates a new `TextEdit` widget displaying the specified `FormattedText`.
+impl BaseTextEdit {
+    /// Creates a new `TextEditInner` widget displaying the specified `FormattedText`.
     #[composable]
-    pub fn with_selection(formatted_text: impl Into<FormattedText>, mut selection: Selection) -> TextEdit {
+    pub fn with_selection(formatted_text: impl Into<FormattedText>, mut selection: Selection) -> BaseTextEdit {
         let formatted_text = formatted_text.into();
 
         // clamp selection
         selection.start = selection.start.min(formatted_text.plain_text.len());
         selection.end = selection.end.min(formatted_text.plain_text.len());
+        let inner = WidgetPod::new(Text::new(formatted_text.clone()));
 
-        let inner = Container::new(Text::new(formatted_text.clone()))
-            .box_style(theme::TEXT_EDIT.get(&cache::environment()).unwrap())
-            .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip());
-
-        TextEdit {
+        BaseTextEdit {
             id: WidgetId::here(),
             formatted_text,
             selection,
             selection_changed: Signal::new(),
             editing_finished: Signal::new(),
             text_changed: Signal::new(),
-            inner: WidgetPod::new(inner),
+            inner,
         }
     }
 
     /// Use if you don't care about the selection.
     #[composable]
-    pub fn new(formatted_text: impl Into<FormattedText>) -> TextEdit {
+    pub fn new(formatted_text: impl Into<FormattedText>) -> BaseTextEdit {
         #[state]
         let mut selection = Selection::empty(0);
         Self::with_selection(formatted_text, selection).on_selection_changed(|s| selection = s)
@@ -187,69 +179,36 @@ impl TextEdit {
 
     /// Returns the position in the text (character offset between grapheme clusters) that is closest to the given point.
     fn text_position(&self, pos: Point) -> TextPosition {
-        let paragraph = self.inner.inner().inner().paragraph();
+        let paragraph = self.inner.inner().paragraph();
         TextPosition {
-            position: paragraph.hit_test_point(pos - self.inner.inner().content_offset()).idx,
+            position: paragraph.hit_test_point(pos).idx,
             affinity: TextAffinity::Upstream,
         }
     }
 
-    fn notify_selection_changed(&self, ctx: &mut EventCtx, new_selection: Selection) {
+    fn notify_selection_changed(&self, _ctx: &mut EventCtx, new_selection: Selection) {
         if new_selection != self.selection {
             eprintln!("notify selection changed {:?}->{:?}", self.selection, new_selection);
             self.selection_changed.signal(new_selection);
         }
     }
 
-    fn notify_text_changed(&self, ctx: &mut EventCtx, new_text: Arc<str>) {
+    fn notify_text_changed(&self, _ctx: &mut EventCtx, new_text: Arc<str>) {
         self.text_changed.signal(new_text);
     }
 
-    fn notify_editing_finished(&self, ctx: &mut EventCtx, new_text: Arc<str>) {
+    fn notify_editing_finished(&self, _ctx: &mut EventCtx, new_text: Arc<str>) {
         self.editing_finished.signal(new_text);
     }
 }
 
-impl Widget for TextEdit {
+impl Widget for BaseTextEdit {
     fn widget_id(&self) -> Option<WidgetId> {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        let measurements = self.inner.layout(ctx, constraints.tighten(), env);
-        measurements
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx) {
-        // paint the text
-        self.inner.paint(ctx);
-
-        // paint the selection over it
-        let offset = self.inner.inner().content_offset();
-        let paragraph = self.inner.inner().inner().paragraph();
-        let selection_boxes =
-            paragraph.hit_test_text_range(self.selection.min()..self.selection.max(), Point::origin());
-        for mut tb in selection_boxes {
-            tb.bounds.origin += offset;
-            ctx.draw_styled_box(tb.bounds, &Style::new().background(Color::new(0.0, 0.1, 0.8, 0.5)));
-        }
-
-        // paint the caret
-        /*if ctx.has_focus() {
-            let caret_hit_test = paragraph.hit_test_text_position(TextPosition {
-                position: self.selection.end,
-                affinity: TextAffinity::Downstream,
-            });
-
-            //dbg!(caret_hit_test);
-            /*let caret_color = env.get(theme::CARET_COLOR).unwrap();
-            let paint = sk::Paint::new(caret_color.to_skia(), None);
-            let pos = caret_hit_test.point + offset;
-            ctx.canvas().draw_rect(
-                Rect::new(pos.floor(), Size::new(1.0, caret_hit_test.metrics.bounds.size.height)).to_skia(),
-                &paint,
-            );*/
-        }*/
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+        self.inner.layout(ctx, constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
@@ -373,5 +332,37 @@ impl Widget for TextEdit {
             Event::Composition(_) => {}
             _ => {}
         }
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        // paint the text
+        self.inner.paint(ctx);
+
+        // paint the selection over it
+        let paragraph = self.inner.inner().paragraph();
+        let _selection_boxes =
+            paragraph.hit_test_text_range(self.selection.min()..self.selection.max(), Point::origin());
+
+        // TODO
+        //for mut tb in selection_boxes {
+        //    ctx.draw_styled_box(tb.bounds, &Style::new().background(Color::new(0.0, 0.1, 0.8, 0.5)));
+        //}
+
+        // paint the caret
+        /*if ctx.has_focus() {
+            let caret_hit_test = paragraph.hit_test_text_position(TextPosition {
+                position: self.selection.end,
+                affinity: TextAffinity::Downstream,
+            });
+
+            //dbg!(caret_hit_test);
+            /*let caret_color = env.get(theme::CARET_COLOR).unwrap();
+            let paint = sk::Paint::new(caret_color.to_skia(), None);
+            let pos = caret_hit_test.point + offset;
+            ctx.canvas().draw_rect(
+                Rect::new(pos.floor(), Size::new(1.0, caret_hit_test.metrics.bounds.size.height)).to_skia(),
+                &paint,
+            );*/
+        }*/
     }
 }

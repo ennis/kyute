@@ -1,15 +1,5 @@
-use crate::{
-    event::PointerEventKind,
-    style::{Style, VisualState},
-    theme,
-    widget::{grid::GridLayoutExt, prelude::*, Button, Container, Grid, Label, WidgetWrapper},
-    Color, Signal, UnitExt,
-};
-use std::{
-    cell::Cell,
-    cmp,
-    ops::{Add, Neg},
-};
+use crate::widget::{grid::GridLayoutExt, prelude::*, Button, Grid, WidgetWrapper};
+use std::ops::{Add, Neg};
 
 /// Two small up & down arrows to select a numeric value
 #[derive(WidgetWrapper)]

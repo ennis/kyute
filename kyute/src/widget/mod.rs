@@ -4,7 +4,7 @@ mod baseline;
 mod button;
 mod clickable;
 mod constrained;
-mod container;
+//mod container;
 pub mod drop_down;
 mod flex;
 pub mod grid;
@@ -21,32 +21,34 @@ mod text_edit;
 //mod text_v1;
 mod border;
 mod canvas;
-mod color_picker;
+//mod color_picker;
 //mod layer_widget;
 mod env_override;
 mod formatter;
 mod frame;
 mod popup;
-mod position;
 mod scroll_area;
 //mod selectable;
 mod font_size;
+mod overlay;
+mod shape;
 mod stepper;
+mod styled_box;
 mod table;
 mod text_input;
 mod thumb;
 mod titled_pane;
 mod widget_pod;
 
+use std::convert::TryInto;
 //pub use align::Align;
 //pub use baseline::Baseline;
 pub use border::Border;
 pub use button::Button;
 pub use canvas::{Canvas, Viewport};
 pub use clickable::Clickable;
-pub use color_picker::{ColorPaletteItem, ColorPicker, ColorPickerMode, ColorPickerParams, HsvColorSquare};
+//pub use color_picker::{ColorPaletteItem, ColorPicker, ColorPickerMode, ColorPickerParams, HsvColorSquare};
 //pub use constrained::ConstrainedBox;
-pub use container::Container;
 pub use drop_down::DropDown;
 pub use env_override::EnvOverride;
 pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
@@ -63,29 +65,32 @@ pub use null::Null;
 pub use padding::Padding;
 pub use popup::Popup;
 pub use scroll_area::ScrollArea;
-pub use separator::separator;
-pub use slider::Slider;
+pub use slider::SliderBase;
 pub use stepper::Stepper;
+pub use styled_box::StyledBox;
 pub use table::{ColumnHeaders, TableRow, TableSelection, TableView, TableViewParams};
 pub use text::Text;
-pub use text_edit::TextEdit;
-pub use text_input::{StepperTextInput, TextInput};
+pub use text_edit::BaseTextEdit;
+//pub use text_input::{StepperTextInput, TextInput};
+pub use overlay::{Overlay, ZOrder};
+pub use shape::Shape;
 pub use thumb::{DragController, Thumb};
 pub use titled_pane::TitledPane;
 pub use widget_pod::WidgetPod;
 
 use crate::{
-    animation::PaintCtx,
     core::DebugNode,
+    drawing::PaintCtx,
     layout::Alignment,
+    style,
+    style::Style,
     widget::{
         align::{HorizontalAlignment, VerticalAlignment},
-        constrained::{Fill, MaxHeight, MaxWidth, MinHeight, MinWidth},
+        constrained::{Fill, FixedHeight, FixedWidth, MaxHeight, MaxWidth, MinHeight, MinWidth},
         font_size::FontSize,
-        position::RelativePositioning,
     },
-    BoxConstraints, Environment, Event, EventCtx, Layout, LayoutConstraints, LayoutCtx, Length, Measurements, UnitExt,
-    Widget, WidgetId,
+    Environment, Event, EventCtx, Layout, LayoutConstraints, LayoutCtx, Length, LengthOrPercentage, UnitExt, Widget,
+    WidgetId,
 };
 
 // TODO move somewhere else
@@ -120,6 +125,7 @@ pub trait Modifier {
 }
 
 /// Wraps a widget with a layout modifier.
+#[derive(Clone)]
 pub struct Modified<M, W>(pub M, pub W);
 
 impl<M, W> WidgetWrapper for Modified<M, W>
@@ -206,9 +212,35 @@ impl<T: WidgetWrapper> Widget for T {
 
 /// Extension methods on widgets.
 pub trait WidgetExt: Widget + Sized + 'static {
+    /// Adds a border around the widget.
+    #[must_use]
+    fn border(self, width: impl Into<Length>, shape: impl Into<style::Shape>) -> Border<Self> {
+        let width = width.into();
+        let shape = shape.into();
+        Border::new(
+            style::Border {
+                widths: [width; 4],
+                color: Default::default(),
+                line_style: Default::default(),
+            },
+            shape.into(),
+            self,
+        )
+    }
+
+    /// Sets the background paint of the widget.
+    #[must_use]
+    fn background(self, image: impl TryInto<style::Image>, shape: impl Into<style::Shape>) -> Overlay<Self, Shape> {
+        let image = image.try_into().unwrap_or_else(|_| {
+            warn!("invalid CSS image value");
+            style::Image::default()
+        });
+        Overlay::new(self, Shape::new(shape.into(), image), ZOrder::Below)
+    }
+
     /// Sets the minimum width of the widget.
     #[must_use]
-    fn frame(self, width: impl Into<Length>, height: impl Into<Length>) -> Frame<Self> {
+    fn frame(self, width: impl Into<LengthOrPercentage>, height: impl Into<LengthOrPercentage>) -> Frame<Self> {
         Frame::new(width.into(), height.into(), self)
     }
 
@@ -250,6 +282,16 @@ pub trait WidgetExt: Widget + Sized + 'static {
     #[must_use]
     fn max_height(self, max_height: impl Into<Length>) -> Modified<MaxHeight, Self> {
         Modified(MaxHeight(max_height.into()), self)
+    }
+
+    #[must_use]
+    fn fix_width(self, width: impl Into<Length>) -> Modified<FixedWidth, Self> {
+        Modified(FixedWidth(width.into()), self)
+    }
+
+    #[must_use]
+    fn fix_height(self, height: impl Into<Length>) -> Modified<FixedHeight, Self> {
+        Modified(FixedHeight(height.into()), self)
     }
 
     /*/// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
@@ -346,7 +388,12 @@ pub trait WidgetExt: Widget + Sized + 'static {
     /// Sets the font size.
     #[must_use]
     fn font_size(self, size: impl Into<Length>) -> Modified<FontSize, Self> {
-        Modified(FontSize::new(size.into()), self)
+        Modified(FontSize(size.into()), self)
+    }
+
+    #[must_use]
+    fn style(self, style: impl TryInto<Style>) -> StyledBox<Self> {
+        StyledBox::new(self, style)
     }
 }
 
@@ -356,8 +403,8 @@ impl<W: Widget + 'static> WidgetExt for W {}
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
-        animation::PaintCtx, cache::Signal, composable, widget::WidgetPod, widget::WidgetWrapper, Alignment,
-        BoxConstraints, Environment, Event, EventCtx, Layout, LayoutCache, LayoutConstraints, LayoutCtx, Length,
-        Measurements, Offset, Orientation, Point, Rect, Size, Transform, Widget, WidgetId,
+        cache::Signal, composable, drawing::PaintCtx, widget::WidgetExt, widget::WidgetPod, widget::WidgetWrapper,
+        Alignment, BoxConstraints, Environment, Event, EventCtx, Layout, LayoutCache, LayoutConstraints, LayoutCtx,
+        Length, Measurements, Offset, Orientation, Point, Rect, Size, Transform, UnitExt, Widget, WidgetId,
     };
 }

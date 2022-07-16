@@ -1,9 +1,7 @@
 use crate::{
-    cache,
     event::{PointerButton, PointerEventKind},
-    theme,
-    widget::{prelude::*, Container, Label},
-    Signal,
+    widget::{prelude::*, Label},
+    Signal, UnitExt,
 };
 use std::{
     convert::TryInto,
@@ -40,12 +38,21 @@ impl<T: Debug> Formatter<T> for DebugFormatter {
     }
 }
 
+type DropDownInner = impl Widget;
+
 /// Selects one option among choices with a drop-down menu.
 pub struct DropDown<T> {
     id: WidgetId,
     choices: Vec<DropDownChoice<T>>,
     selected_item_changed: Signal<(usize, T)>,
-    inner: Container<Label>,
+    inner: DropDownInner,
+}
+
+fn drop_down_inner(choice: String) -> DropDownInner {
+    let inner = Label::new(choice)
+        .min_height(26.dip())
+        .padding(5.dip(), 5.dip(), 5.dip(), 5.dip());
+    inner
 }
 
 impl<T: Clone + PartialEq + 'static> DropDown<T> {
@@ -63,11 +70,7 @@ impl<T: Clone + 'static> DropDown<T> {
     /// Creates a new drop down with the specified choices.
     #[composable]
     pub fn with_selected_index(selected_index: usize, choices: Vec<T>, formatter: impl Formatter<T>) -> DropDown<T> {
-        let inner = Container::new(Label::new(formatter.format(&choices[selected_index])))
-            .min_height(26.dip())
-            .baseline(21.dip())
-            .content_padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
-            .box_style(theme::DROP_DOWN.get(&cache::environment()).unwrap());
+        let inner = drop_down_inner(formatter.format(&choices[selected_index]));
 
         // create menu IDs for each choice
         let mut choices_with_ids = Vec::new();

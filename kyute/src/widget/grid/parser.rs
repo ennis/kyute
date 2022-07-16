@@ -185,33 +185,6 @@ impl<'a> LineRange<'a> {
 // parsers
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-impl TrackBreadth {
-    pub(crate) fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<TrackBreadth, ParseError<'i, ()>> {
-        if let Ok(length) = input.try_parse(length)? {
-            Ok(TrackBreadth::Fixed(length))
-        } else {
-            match input.next()? {
-                Token::Ident(ident) if ident == "auto" => Ok(TrackBreadth::Auto),
-                Token::Dimension { value, unit, .. } => match &**unit {
-                    "fr" => Ok(TrackBreadth::Flex(value as f64)),
-                    _ => Err(input.new_custom_error(())),
-                },
-                token => Err(input.new_unexpected_token_error(token.clone())),
-            }
-        }
-    }
-}
-
-impl TrackSize {
-    pub(crate) fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<TrackSize, ParseError<'i, ()>> {
-        let breadth = TrackBreadth::parse_impl(input)?;
-        Ok(TrackSize {
-            min_size: breadth,
-            max_size: breadth,
-        })
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Area
 ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -102,13 +102,13 @@ pub(crate) struct Application {
     pub(crate) command_completion_fence_value: Mutex<u64>,
     pub(crate) dxgi_factory: DXGIFactory3,
     pub(crate) dwrite_factory: DWriteFactory,
-    pub(crate) wic_factory: WICImagingFactory2,
+    //pub(crate) wic_factory: WICImagingFactory2,
     pub(crate) composition_device: ThreadBound<IDCompositionDesktopDevice>,
 }
 
 impl Application {
     pub(crate) fn new() -> Application {
-        let d3d12_debug = {
+        let _d3d12_debug = {
             // D3D12 debug interface
             let mut dbg: Option<ID3D12Debug> = None;
             unsafe {
@@ -149,10 +149,6 @@ impl Application {
                 desc.AdapterLuid.HighPart,
                 desc.AdapterLuid.LowPart,
             );
-        }
-
-        unsafe {
-            //d3d12_debug.EnableDebugLayer();
         }
 
         let d3d12_device = unsafe {
@@ -230,13 +226,13 @@ impl Application {
             )
         };*/
 
-        // ---------- Create the Windows Imaging Component (WIC) factory ----------
+        /*// ---------- Create the Windows Imaging Component (WIC) factory ----------
         let wic_factory = unsafe {
             CoInitialize(ptr::null_mut()).unwrap();
             let wic: IWICImagingFactory2 = CoCreateInstance(&CLSID_WICImagingFactory2, None, CLSCTX_INPROC_SERVER)
                 .expect("CoCreateInstance(CLSID_WICImagingFactory2) failed");
             WICImagingFactory2(wic)
-        };
+        };*/
 
         // --------- Compositor -----------
         let composition_device = unsafe {
@@ -249,7 +245,7 @@ impl Application {
             .expect("DCompositionCreateDevice failed");
             // enable composition device debug
             let composition_device = composition_device.unwrap();
-            let debug: IDCompositionDeviceDebug = composition_device.cast::<IDCompositionDeviceDebug>().unwrap();
+            let _debug: IDCompositionDeviceDebug = composition_device.cast::<IDCompositionDeviceDebug>().unwrap();
             //debug.EnableDebugCounters();
             ThreadBound::new(composition_device)
         };
@@ -267,7 +263,7 @@ impl Application {
             command_completion_fence_value: Mutex::new(0),
             dxgi_factory,
             dwrite_factory,
-            wic_factory,
+            //wic_factory,
             composition_device,
         }
     }
@@ -278,7 +274,8 @@ impl Application {
             *fence_value += 1;
             self.d3d12_command_queue
                 .0
-                .Signal(&self.command_completion_fence.0, *fence_value);
+                .Signal(&self.command_completion_fence.0, *fence_value)
+                .expect("ID3D12CommandQueue::Signal failed");
             if self.command_completion_fence.0.GetCompletedValue() < *fence_value {
                 self.command_completion_fence
                     .0

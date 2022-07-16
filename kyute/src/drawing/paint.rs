@@ -6,7 +6,7 @@ use crate::{
 };
 use skia_safe as sk;
 use skia_safe::gradient_shader::GradientShaderColors;
-use std::{convert::TryFrom, ffi::c_void, fmt, mem};
+use std::{ffi::c_void, fmt, mem};
 
 /// Image repeat mode.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Data, serde::Deserialize)]
@@ -53,7 +53,7 @@ macro_rules! make_uniform_data {
             )*
 
             data.set_len(total_size);
-            $crate::style::UniformData(skia_safe::Data::new_copy(&data))
+            $crate::drawing::UniformData(skia_safe::Data::new_copy(&data))
         }
     };
 }
@@ -70,11 +70,11 @@ fn compare_runtime_effects(left: &sk::RuntimeEffect, right: &sk::RuntimeEffect) 
 }
 
 /// Paint.
-#[derive(Clone, Debug, Data)]
+#[derive(Clone, Debug)]
 //#[serde(tag = "type")]
 pub enum Paint {
     //#[serde(rename = "color")]
-    SolidColor(Color),
+    Color(Color),
     //#[serde(rename = "linear-gradient")]
     LinearGradient(LinearGradient),
     //#[serde(rename = "image")]
@@ -86,7 +86,6 @@ pub enum Paint {
     },
     // TODO: shader effects
     Shader {
-        #[data(same_fn = "compare_runtime_effects")]
         effect: sk::RuntimeEffect,
         uniforms: UniformData,
     },
@@ -96,13 +95,13 @@ impl_env_value!(Paint);
 
 impl Default for Paint {
     fn default() -> Self {
-        Paint::SolidColor(Color::new(0.0, 0.0, 0.0, 0.0))
+        Paint::Color(Color::new(0.0, 0.0, 0.0, 0.0))
     }
 }
 
 impl Paint {
     pub fn is_transparent(&self) -> bool {
-        if let Paint::SolidColor(color) = self {
+        if let Paint::Color(color) = self {
             color.alpha() == 0.0
         } else {
             false
@@ -112,7 +111,7 @@ impl Paint {
     /// Converts this object to a skia `SkPaint`.
     pub fn to_sk_paint(&self, bounds: Rect) -> sk::Paint {
         match self {
-            Paint::SolidColor(color) => {
+            Paint::Color(color) => {
                 let mut paint = sk::Paint::new(color.to_skia(), None);
                 paint.set_anti_alias(true);
                 paint
@@ -207,14 +206,14 @@ impl Paint {
                 repeat_y,
             }
         } else {
-            Paint::SolidColor(Default::default())
+            Paint::Color(Default::default())
         }
     }
 }
 
 impl From<Color> for Paint {
     fn from(color: Color) -> Self {
-        Paint::SolidColor(color)
+        Paint::Color(color)
     }
 }
 
@@ -360,10 +359,10 @@ impl From<LinearGradient> for Paint {
     }
 }
 
-/// From CSS value.
+/*/// From CSS value.
 impl TryFrom<&str> for Paint {
     type Error = ();
     fn try_from(css: &str) -> Result<Self, ()> {
         Paint::parse(css).map_err(|_| ())
     }
-}
+}*/

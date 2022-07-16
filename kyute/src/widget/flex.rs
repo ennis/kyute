@@ -1,9 +1,4 @@
-use crate::{
-    style::{PaintCtxExt, Style},
-    theme,
-    widget::prelude::*,
-    RoundToPixel,
-};
+use crate::{widget::prelude::*, RoundToPixel};
 use std::sync::Arc;
 
 pub fn main_axis_length(orientation: Orientation, size: Size) -> f64 {
@@ -89,7 +84,7 @@ impl Widget for Flex {
 
         let max_cross_axis_len = item_layouts
             .iter()
-            .map(|m| cross_axis_length(self.axis_orientation, m.size))
+            .map(|m| cross_axis_length(self.axis_orientation, m.measurements.size))
             .fold(0.0, f64::max);
 
         // preferred size of this flex: max size in axis direction, max elem width in cross-axis direction
@@ -105,7 +100,8 @@ impl Widget for Flex {
 
         for i in 0..self.items.len() {
             //eprintln!("flex {:?} item pos {}", self.axis, d);
-            let len = main_axis_length(self.axis_orientation, item_layouts[i].size).round_to_pixel(ctx.scale_factor);
+            let len = main_axis_length(self.axis_orientation, item_layouts[i].measurements.size)
+                .round_to_pixel(ctx.scale_factor);
             let offset = match self.axis_orientation {
                 Orientation::Vertical => Offset::new(0.0, d),
                 Orientation::Horizontal => Offset::new(d, 0.0),
@@ -132,7 +128,7 @@ impl Widget for Flex {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx) {
-        ctx.draw_styled_box(ctx.bounds, &Style::new().background(theme::palette::GREY_500));
+    fn paint(&self, _ctx: &mut PaintCtx) {
+        //ctx.draw_styled_box(ctx.bounds, &Style::new().background(theme::palette::GREY_500));
     }
 }

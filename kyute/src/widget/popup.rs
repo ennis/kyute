@@ -41,8 +41,8 @@ impl Widget for Popup {
         Some(self.id)
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: BoxConstraints, _env: &Environment) -> Measurements {
-        Measurements::default()
+    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutConstraints, _env: &Environment) -> Layout {
+        Layout::default()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -51,7 +51,7 @@ impl Widget for Popup {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx) {
+    fn paint(&self, _ctx: &mut PaintCtx) {
         // nothing to paint
     }
 }

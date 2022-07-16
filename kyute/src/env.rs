@@ -3,7 +3,6 @@ use std::{
     any::Any,
     collections::HashMap,
     fmt,
-    fmt::Formatter,
     hash::{Hash, Hasher},
     marker::PhantomData,
     sync::Arc,
@@ -222,7 +221,7 @@ impl<T: fmt::Debug> fmt::Debug for EnvRef<T> {
             EnvRef::Inline(val) => f.debug_tuple("Inline").field(val).finish(),
             EnvRef::Env(key) => f.debug_tuple("Env").field(key).finish(),
             EnvRef::Fn(ptr) => f.debug_tuple("Fn").field(ptr as &fn(&'a Environment) -> T).finish(),
-            EnvRef::Closure(ptr) => f.debug_struct("Closure").finish_non_exhaustive(),
+            EnvRef::Closure(_ptr) => f.debug_struct("Closure").finish_non_exhaustive(),
         }
     }
 }

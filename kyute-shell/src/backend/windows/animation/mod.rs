@@ -1,15 +1,11 @@
 //! Composition layers - DirectComposition
-use crate::{application::Application, backend::windows::util::ToWide};
+use crate::application::Application;
 use graal::{platform::windows::DeviceExtWindows, vk};
 use kyute_common::{counter::Counter, SizeI, Transform};
-use skia_safe::luma_color_filter::new;
 use std::{
-    cell::{Cell, Ref, RefCell, RefMut},
+    cell::{Cell, RefCell, RefMut},
     ptr,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Weak,
-    },
+    sync::Arc,
 };
 use tracing::trace;
 use windows::{
@@ -18,7 +14,6 @@ use windows::{
     Win32::{
         Foundation::{CloseHandle, HANDLE},
         Graphics::{
-            Direct2D::Common::{D2D_MATRIX_3X2_F, D2D_MATRIX_3X2_F_0, D2D_MATRIX_4X4_F, D2D_MATRIX_4X4_F_0},
             Direct3D12::ID3D12Resource,
             DirectComposition::{IDCompositionVisual2, IDCompositionVisual3},
             Dxgi::{
@@ -35,7 +30,7 @@ use windows::{
 // Swap chain
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const COMPOSITION_SWAP_CHAIN_COUNTER: Counter = Counter::new();
+//const COMPOSITION_SWAP_CHAIN_COUNTER: Counter = Counter::new();
 
 /// A wrapper around a DXGI swap chain, whose buffers are shared with vulkan images.
 struct CompositionSwapChain {
@@ -294,7 +289,10 @@ impl Layer {
             if swap_chain.is_none() {
                 let sc = CompositionSwapChain::new(self.0.size.get());
                 unsafe {
-                    self.0.visual.SetContent(sc.swap_chain.clone());
+                    self.0
+                        .visual
+                        .SetContent(sc.swap_chain.clone())
+                        .expect("SetContent failed");
                 }
                 *swap_chain = Some(sc);
             }

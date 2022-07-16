@@ -1,6 +1,6 @@
 use crate::{
-    composable, core::DebugNode, widget::WidgetWrapper, BoxConstraints, EnvKey, EnvValue, Environment, Event, EventCtx,
-    LayoutCtx, Measurements, PaintCtx, Widget, WidgetId,
+    composable, core::DebugNode, EnvKey, EnvValue, Environment, Event, EventCtx, Layout, LayoutConstraints, LayoutCtx,
+    PaintCtx, Widget, WidgetId,
 };
 
 pub struct EnvOverride<W> {
@@ -29,7 +29,7 @@ impl<W: Widget> Widget for EnvOverride<W> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         let merged_env = env.merged(self.env.clone());
         self.inner.layout(ctx, constraints, &merged_env)
     }

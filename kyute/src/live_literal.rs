@@ -2,14 +2,13 @@
 use crate::{cache, composable, util};
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
-use similar::{utils::TextDiffRemapper, Change, DiffOp, DiffTag};
+use similar::{DiffOp, DiffTag};
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
     fs, io,
     ops::Range,
-    path::{Path, PathBuf},
-    sync::Arc,
+    path::PathBuf,
 };
 
 /// A type that can be parsed from a rust literal expression and supports live-editing.

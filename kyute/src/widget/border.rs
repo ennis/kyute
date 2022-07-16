@@ -1,10 +1,6 @@
 //! Baseline alignment.
-use crate::{
-    style,
-    style::BorderPosition,
-    widget::{prelude::*, Container, Null},
-    RoundToPixel, SideOffsets,
-};
+use crate::{drawing, drawing::PaintCtxExt, style, widget::prelude::*, SideOffsets};
+use std::cell::{Cell, RefCell};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Widget definition
@@ -12,18 +8,26 @@ use crate::{
 
 /// Applies a border around a widget.
 pub struct Border<Inner> {
-    border_layer: WidgetPod<Container<Null>>,
+    //border_layer: WidgetPod<Null>,
     inner: WidgetPod<Inner>,
     border: style::Border,
+    shape: style::Shape,
+    /// Computed border widths
+    computed_widths: Cell<[f64; 4]>,
+    computed_shape: Cell<drawing::Shape>,
 }
 
 impl<Inner: Widget + 'static> Border<Inner> {
+    // TODO radii should be propagated up during layout
     #[composable]
-    pub fn new(border: style::Border, inner: Inner) -> Border<Inner> {
+    pub fn new(border: style::Border, shape: style::Shape, inner: Inner) -> Border<Inner> {
         Border {
-            border_layer: WidgetPod::with_surface(Container::new(Null)),
+            //border_layer: WidgetPod::with_surface(Container::new(Null)),
             inner: WidgetPod::new(inner),
             border,
+            shape,
+            computed_widths: Cell::new([0.0; 4]),
+            computed_shape: Cell::new(drawing::Shape::RoundedRect(drawing::RoundedRect::default())),
         }
     }
 
@@ -48,14 +52,19 @@ impl<Inner: Widget> Widget for Border<Inner> {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
-        let border_top = constraints.resolve_height(self.border.widths[0]);
-        let border_right = constraints.resolve_width(self.border.widths[1]);
-        let border_bottom = constraints.resolve_height(self.border.widths[2]);
-        let border_left = constraints.resolve_width(self.border.widths[3]);
+        let border_top = self.border.widths[0].compute(constraints);
+        let border_right = self.border.widths[1].compute(constraints);
+        let border_bottom = self.border.widths[2].compute(constraints);
+        let border_left = self.border.widths[3].compute(constraints);
 
         let subconstraints =
             constraints.deflate(SideOffsets::new(border_top, border_right, border_bottom, border_left));
         let sublayout = self.inner.layout(ctx, &subconstraints, env);
+
+        let mut size = sublayout.padding_box_size();
+        size.width += border_right + border_left;
+        size.height += border_top + border_bottom;
+        let baseline = sublayout.padding_box_baseline().map(|x| x + border_top);
 
         if !ctx.speculative {
             // TODO
@@ -64,17 +73,35 @@ impl<Inner: Widget> Widget for Border<Inner> {
                 max: sublayout.measurements.size,
                 ..*constraints
             };
-            self.border_layer.layout(ctx, &border_constraints, env);
+            //self.border_layer.layout(ctx, &border_constraints, env);
             self.inner.set_offset(Offset::new(
                 border_left + sublayout.padding_left,
                 border_top + sublayout.padding_top,
             ));
-        }
+            self.computed_widths
+                .set([border_top, border_right, border_bottom, border_left]);
 
-        let mut size = sublayout.padding_box_size();
-        size.width += border_right + border_left;
-        size.height += border_top + border_bottom;
-        let baseline = sublayout.padding_box_baseline().map(|x| x + border_top);
+            match self.shape {
+                style::Shape::RoundedRect { radii } => {
+                    let radius_top_left = radii[0].compute(constraints);
+                    let radius_top_right = radii[1].compute(constraints);
+                    let radius_bottom_right = radii[2].compute(constraints);
+                    let radius_bottom_left = radii[3].compute(constraints);
+                    self.computed_shape.set(
+                        drawing::RoundedRect {
+                            rect: Rect::new(Point::origin(), size),
+                            radii: [
+                                Offset::new(radius_top_left, radius_top_left),
+                                Offset::new(radius_top_right, radius_top_right),
+                                Offset::new(radius_bottom_right, radius_bottom_right),
+                                Offset::new(radius_bottom_left, radius_bottom_left),
+                            ],
+                        }
+                        .into(),
+                    );
+                }
+            }
+        }
 
         Layout {
             padding_left: 0.0,
@@ -96,6 +123,14 @@ impl<Inner: Widget> Widget for Border<Inner> {
 
     fn paint(&self, ctx: &mut PaintCtx) {
         self.inner.paint(ctx);
-        //self.border_layer.paint(ctx);
+
+        let border = drawing::Border {
+            widths: self.computed_widths.get(),
+            paint: drawing::Paint::Color(self.border.color),
+            line_style: self.border.line_style,
+            blend_mode: drawing::BlendMode::SrcOver,
+        };
+
+        ctx.draw_border(&self.computed_shape.get(), &border);
     }
 }

@@ -16,7 +16,7 @@ impl Modifier for FontSize {
         env: &Environment,
     ) -> Layout {
         let subconstraints = LayoutConstraints {
-            parent_font_size: constraints.resolve_height(self.0),
+            parent_font_size: self.0.compute(constraints),
             ..*constraints
         };
         widget.layout(ctx, &subconstraints, env)

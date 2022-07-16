@@ -1,7 +1,7 @@
 use crate::{
-    cache, composable, theme,
-    widget::{grid, separator::separator, Clickable, Container, Grid, Image, Scaling, Text, WidgetWrapper},
-    Alignment, Orientation, UnitExt, Widget,
+    composable,
+    widget::{grid, Clickable, Grid, Image, Null, Scaling, Text, WidgetExt, WidgetWrapper},
+    Alignment, UnitExt, Widget,
 };
 
 /// A widget with a title.
@@ -38,24 +38,29 @@ impl TitledPane {
             },
             Scaling::Contain,
         )
-        .fix_size(20.dip(), 20.dip());
+        .min_width(20.dip())
+        .min_height(20.dip());
 
         // Title bar
 
         let title_bar = {
             let mut grid = Grid::with_template("auto / 20 3 1fr 20");
-            grid.insert((icon, (), Text::new(title).aligned(Alignment::CENTER_LEFT)));
+            grid.insert((
+                icon,
+                Null,
+                Text::new(title)
+                    .vertical_alignment(Alignment::CENTER)
+                    .horizontal_alignment(Alignment::START),
+            ));
             Clickable::new(
-                Container::new(grid)
-                    .content_padding(2.dip(), 2.dip(), 2.dip(), 2.dip())
-                    .box_style(theme::TITLED_PANE_HEADER.get(&cache::environment()).unwrap()),
+                grid.padding(2.dip(), 2.dip(), 2.dip(), 2.dip()), //.box_style(theme::TITLED_PANE_HEADER.get(&cache::environment()).unwrap()),
             )
         };
 
         let collapsed_changed = if title_bar.clicked() { Some(!collapsed) } else { None };
 
         inner.insert(title_bar);
-        inner.insert(separator(Orientation::Horizontal));
+        //inner.insert(separator(Orientation::Horizontal));
 
         // Add contents if not collapsed
         if !collapsed {

@@ -1,6 +1,6 @@
 //! Baseline alignment.
-use crate::{widget::prelude::*, RoundToPixel};
 
+/*
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Definition
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -41,7 +41,7 @@ impl<Inner: Widget> Widget for Baseline<Inner> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Measurements {
         let m = self.inner.layout(ctx, constraints, env);
         // baselines are not guaranteed to fall on a pixel boundary, round it manually
         let y_offset = (self.baseline - m.baseline.unwrap_or(m.size.height)).round_to_pixel(ctx.scale_factor);
@@ -64,3 +64,4 @@ impl<Inner: Widget> Widget for Baseline<Inner> {
         self.inner.paint(ctx)
     }
 }
+*/

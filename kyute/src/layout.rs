@@ -1,300 +1,10 @@
 //! Types and functions used for layouting widgets.
 use crate::{Data, Offset, Point, Rect, SideOffsets, Size};
-use kyute_common::Angle;
 use std::{
     fmt,
     hash::{Hash, Hasher},
-    ops::{Bound, Mul, Neg, RangeBounds},
+    ops::{Bound, RangeBounds},
 };
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Length
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Context used to compute the final value of a Length.
-pub struct LengthCtx {
-    /// Font size of the current element in DIPs.
-    pub font_size: f64,
-
-    /// Size in DIPs of the containing block size (width or height, depending on the value being resolved).
-    ///
-    /// Used to resolve percentage lengths.
-    pub containing_block_size: f64,
-
-    /// Target scale factor.
-    pub scale_factor: f64,
-}
-
-/// Length specification.
-#[derive(Copy, Clone, PartialEq)]
-#[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
-#[cfg_attr(feature = "serializing", serde(tag = "unit", content = "value"))]
-pub enum Length {
-    /// Actual screen pixels (the actual physical size depends on the density of the screen).
-    #[cfg_attr(feature = "serializing", serde(rename = "px"))]
-    Px(f64),
-    /// Device-independent pixels (DIPs), close to 1/96th of an inch.
-    #[cfg_attr(feature = "serializing", serde(rename = "dip"))]
-    Dip(f64),
-    /// Length relative to the current font size.
-    Em(f64),
-    /// Length relative to the parent element.
-    Proportional(f64),
-}
-
-impl fmt::Debug for Length {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Length::Px(v) | Length::Dip(v) | Length::Proportional(v) if v == 0.0 => {
-                write!(f, "0")
-            }
-            Length::Px(v) => {
-                write!(f, "{}px", v)
-            }
-            Length::Dip(v) => {
-                write!(f, "{}dip", v)
-            }
-            Length::Em(v) => {
-                write!(f, "{}em", v)
-            }
-            Length::Proportional(v) => {
-                write!(f, "{}%", v * 100.0)
-            }
-        }
-    }
-}
-
-impl Length {
-    /// Scale the length by the given amount.
-    pub fn scale(self, by: f64) -> Self {
-        let mut v = self;
-        match v {
-            Length::Px(ref mut v)
-            | Length::Dip(ref mut v)
-            | Length::Em(ref mut v)
-            | Length::Proportional(ref mut v) => {
-                *v *= by;
-            }
-        }
-        v
-    }
-
-    /// Zero length.
-    pub fn zero() -> Length {
-        Length::Dip(0.0)
-    }
-
-    /// Convert to dips, given a scale factor and a parent length for proportional length specifications.
-    pub fn to_dips(self, ctx: &LengthCtx) -> f64 {
-        match self {
-            Length::Px(x) => x / ctx.scale_factor,
-            Length::Dip(x) => x,
-            Length::Em(x) => x * ctx.font_size,
-            Length::Proportional(x) => x * ctx.containing_block_size,
-        }
-    }
-}
-
-impl Neg for Length {
-    type Output = Length;
-
-    fn neg(self) -> Self::Output {
-        match self {
-            Length::Px(v) => Length::Px(-v),
-            Length::Dip(v) => Length::Dip(-v),
-            Length::Proportional(v) => Length::Proportional(-v),
-            Length::Em(v) => Length::Em(-v),
-        }
-    }
-}
-
-/// Length scaling
-impl Mul<Length> for f64 {
-    type Output = Length;
-    fn mul(self, rhs: Length) -> Self::Output {
-        rhs.scale(self)
-    }
-}
-
-/// Length scaling
-impl Mul<f64> for Length {
-    type Output = Length;
-    fn mul(self, rhs: f64) -> Self::Output {
-        self.scale(rhs)
-    }
-}
-
-impl Default for Length {
-    fn default() -> Self {
-        Length::Dip(0.0)
-    }
-}
-
-/// By default, a naked i32 represents a dip.
-impl From<i32> for Length {
-    fn from(v: i32) -> Self {
-        Length::Dip(v as f64)
-    }
-}
-
-/// By default, a naked f64 represents a dip.
-impl From<f64> for Length {
-    fn from(v: f64) -> Self {
-        Length::Dip(v)
-    }
-}
-
-/// Trait to interpret numeric values as units of measure.
-pub trait UnitExt {
-    /// Interprets the value as a length in device-independent pixels (1/96 inch).
-    fn dip(self) -> Length;
-    /// Interprets the value as a length in inches.
-    fn inch(self) -> Length;
-    /// Interprets the value as a length in physical pixels.
-    fn px(self) -> Length;
-    /// Interprets the value as a length in points (1/72 in, 96/72 dip (4/3))
-    fn pt(self) -> Length;
-    /// Interprets the value as a length in ems.
-    fn em(self) -> Length;
-    /// Interprets the value as a length expressed as a percentage of the parent element's length.
-    ///
-    /// The precise definition of "parent element" depends on the context in which the length is used.
-    fn percent(self) -> Length;
-    /// Interprets the value as an angle expressed in degrees.
-    fn degrees(self) -> Angle;
-    /// Interprets the value as an angle expressed in radians.
-    fn radians(self) -> Angle;
-}
-
-/// Point-to-DIP conversion factor.
-///
-/// # Examples
-///
-/// ```rust
-/// use kyute_common::PT_TO_DIP;
-/// let size_in_points = 12.0;
-/// let size_in_dips = size_in_points * PT_TO_DIP;
-/// ```
-pub const PT_TO_DIP: f64 = 4.0 / 3.0;
-
-/// Inches-to-DIP conversion factor.
-///
-/// # Examples
-///
-/// ```rust
-/// use kyute_common::IN_TO_DIP;
-/// let size_in_inches = 2.5;
-/// let size_in_dips = size_in_inches * IN_TO_DIP;
-/// ```
-pub const IN_TO_DIP: f64 = 96.0;
-
-impl UnitExt for f32 {
-    fn dip(self) -> Length {
-        Length::Dip(self as f64)
-    }
-    fn inch(self) -> Length {
-        Length::Dip((self as f64) * IN_TO_DIP)
-    }
-    fn px(self) -> Length {
-        Length::Px(self as f64)
-    }
-    fn pt(self) -> Length {
-        Length::Dip((self as f64) * PT_TO_DIP)
-    }
-    fn percent(self) -> Length {
-        Length::Proportional(self as f64 / 100.0)
-    }
-    fn em(self) -> Length {
-        Length::Em(self as f64)
-    }
-    fn degrees(self) -> Angle {
-        Angle::degrees(self as f64)
-    }
-    fn radians(self) -> Angle {
-        Angle::radians(self as f64)
-    }
-}
-
-impl UnitExt for f64 {
-    fn dip(self) -> Length {
-        Length::Dip(self)
-    }
-    fn inch(self) -> Length {
-        Length::Dip(self * IN_TO_DIP)
-    }
-    fn px(self) -> Length {
-        Length::Px(self)
-    }
-    fn pt(self) -> Length {
-        Length::Dip(self * PT_TO_DIP)
-    }
-    fn em(self) -> Length {
-        Length::Em(self)
-    }
-    fn percent(self) -> Length {
-        Length::Proportional(self / 100.0)
-    }
-    fn degrees(self) -> Angle {
-        Angle::degrees(self)
-    }
-    fn radians(self) -> Angle {
-        Angle::radians(self)
-    }
-}
-
-impl UnitExt for i32 {
-    fn dip(self) -> Length {
-        Length::Dip(self as f64)
-    }
-    fn inch(self) -> Length {
-        Length::Dip((self as f64) * IN_TO_DIP)
-    }
-    fn px(self) -> Length {
-        Length::Px(self as f64)
-    }
-    fn pt(self) -> Length {
-        Length::Dip((self as f64) * PT_TO_DIP)
-    }
-    fn em(self) -> Length {
-        Length::Em(self as f64)
-    }
-    fn percent(self) -> Length {
-        Length::Proportional(self as f64 / 100.0)
-    }
-    fn degrees(self) -> Angle {
-        Angle::degrees(self as f64)
-    }
-    fn radians(self) -> Angle {
-        Angle::radians(self as f64)
-    }
-}
-
-impl UnitExt for u32 {
-    fn dip(self) -> Length {
-        Length::Dip(self as f64)
-    }
-    fn inch(self) -> Length {
-        Length::Dip((self as f64) * IN_TO_DIP)
-    }
-    fn px(self) -> Length {
-        Length::Px(self as f64)
-    }
-    fn pt(self) -> Length {
-        Length::Dip((self as f64) * PT_TO_DIP)
-    }
-    fn em(self) -> Length {
-        Length::Em(self as f64)
-    }
-    fn percent(self) -> Length {
-        Length::Proportional(self as f64 / 100.0)
-    }
-    fn degrees(self) -> Angle {
-        Angle::degrees(self as f64)
-    }
-    fn radians(self) -> Angle {
-        Angle::radians(self as f64)
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // LayoutConstraints
@@ -311,6 +21,17 @@ pub struct LayoutConstraints {
     pub min: Size,
     /// Maximum allowed size (can be infinite).
     pub max: Size,
+}
+
+impl Default for LayoutConstraints {
+    fn default() -> Self {
+        LayoutConstraints {
+            parent_font_size: 16.0,
+            scale_factor: 1.0,
+            min: Size::zero(),
+            max: Size::new(f64::INFINITY, f64::INFINITY),
+        }
+    }
 }
 
 // required because we also have a custom hash impl
@@ -370,7 +91,19 @@ impl LayoutConstraints {
         }
     }
 
-    fn resolve_length(&self, length: Length, max_length: f64) -> f64 {
+    pub fn constrain(&self, size: Size) -> Size {
+        Size::new(self.constrain_width(size.width), self.constrain_height(size.height))
+    }
+
+    pub fn constrain_width(&self, width: f64) -> f64 {
+        width.max(self.min.width).min(self.max.width)
+    }
+
+    pub fn constrain_height(&self, height: f64) -> f64 {
+        height.max(self.min.height).min(self.max.height)
+    }
+
+    /*fn resolve_length(&self, length: Length, max_length: f64) -> f64 {
         match length {
             Length::Px(px) => px / self.scale_factor,
             Length::Dip(dip) => dip,
@@ -385,7 +118,7 @@ impl LayoutConstraints {
 
     pub fn resolve_height(&self, height: Length) -> f64 {
         self.resolve_length(height, self.max.height)
-    }
+    }*/
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -608,7 +341,7 @@ impl Default for Alignment {
 }
 
 /// Describes a box to be positioned inside a containing block.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Layout {
     pub x_align: Alignment,
     pub y_align: Alignment,
@@ -618,6 +351,8 @@ pub struct Layout {
     pub padding_right: f64,
     pub padding_bottom: f64,
     pub measurements: Measurements,
+    // TODO layout should also contain shape information. This is useful for e.g. borders, which need
+    // the border radii. Also this way we'd be able to accumulate borders.
 }
 
 impl Layout {
@@ -660,16 +395,6 @@ impl Layout {
         bounds.size.width -= self.padding_left + self.padding_right;
         bounds.size.height -= self.padding_top + self.padding_bottom;
 
-        // align right => x = 1.0
-        // content size = 40, parent size = 100, padding = 5
-        // => offset should be: 100 - 5 - 40 = 55
-        //
-        // calculation:
-        // 1.0 * (100 - 40 - 5 - 5)
-        //
-        // offset + x * content_size == x * parent_size
-        // offset = x * (parent_size - content_size - )
-
         let x = match self.x_align {
             Alignment::Relative(x) => {
                 self.padding_left
@@ -695,7 +420,23 @@ impl Layout {
     }
 }
 
+impl Default for Layout {
+    fn default() -> Self {
+        Layout {
+            x_align: Default::default(),
+            y_align: Default::default(),
+            padding_left: 0.0,
+            padding_top: 0.0,
+            padding_right: 0.0,
+            padding_bottom: 0.0,
+            measurements: Default::default(),
+        }
+    }
+}
+
 /// Measurements of a Widget, returned by `Widget::layout`.
+///
+/// TODO fuse with `Layout` above
 #[derive(Copy, Clone, Debug)]
 pub struct Measurements {
     /// Calculated size of the widget.
@@ -784,6 +525,8 @@ impl Measurements {
     /// Returns the bounding rectangle of the widget in its local space.
     ///
     /// The rectangle's upper-left corner is at the origin (0,0), and its size is `self.size`.
+    ///
+    /// TODO rename this?
     pub fn local_bounds(&self) -> Rect {
         Rect::new(Point::origin(), self.size)
     }

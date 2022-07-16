@@ -135,10 +135,10 @@ impl CallIdStack {
         self.current_node.clone()
     }
 
-    /// Returns the call node corresponding to the specified CallId.
+    /*/// Returns the call node corresponding to the specified CallId.
     pub fn call_node(&self, id: CallId) -> Option<Arc<CallNode>> {
         self.nodes.get(&id).cloned()
-    }
+    }*/
 
     /// Returns whether the stack is empty.
     ///
