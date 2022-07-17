@@ -1,6 +1,6 @@
 use crate::{
     drawing,
-    drawing::{BlendMode, PaintCtxExt, RoundedRect, Shape},
+    drawing::{BlendMode, Paint, PaintCtxExt, RoundedRect, Shape},
     style,
     style::Style,
     widget::prelude::*,
@@ -37,17 +37,19 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             .computed
             .update(ctx, constraints, |_| self.style.compute(constraints));
 
-        // properties influencing the downstream constraints:
-        // - min-width, max-width (-height)
-        // - width, height
-        // - padding
+        trace!("=== [{:?}] StyledBox layout ===", self.inner.widget_id());
 
-        // constraints:
-        // - padding-left + content width + padding-right = width &&  min-width <= width <= max-width
-        // 0 <= content-width <= max-width - padding
+        // horizontal & vertical padding, including border widths
+        let padding_h = computed.layout.padding_right
+            + computed.layout.padding_left
+            + computed.border.border_left_width
+            + computed.border.border_right_width;
+        let padding_v = computed.layout.padding_top
+            + computed.layout.padding_bottom
+            + computed.border.border_top_width
+            + computed.border.border_bottom_width;
 
-        let padding_h = computed.layout.padding_right + computed.layout.padding_left;
-        let padding_v = computed.layout.padding_top + computed.layout.padding_bottom;
+        trace!("computed styles: {:#?}", computed);
 
         // compute actual min/max heights
         let mut min_width = computed
@@ -84,6 +86,14 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         let content_max_width = (max_width - padding_h).max(0.0);
         let content_max_height = (max_height - padding_v).max(0.0);
 
+        trace!(
+            "max: {}x{}, content_max: {}x{}",
+            max_width,
+            max_height,
+            content_max_width,
+            content_max_height
+        );
+
         // layout contents with modified constraints
         let sublayout = self.inner.layout(
             ctx,
@@ -102,6 +112,13 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         // compute our box size
         let width = (content_size.width + padding_h).clamp(min_width, max_width);
         let height = (content_size.height + padding_v).clamp(min_height, max_height);
+        trace!(
+            "content_size={:?}, sublayout={:?}, final size={}x{}",
+            content_size,
+            sublayout,
+            width,
+            height
+        );
 
         if !ctx.speculative {
             // position the contents inside the "content area box", which is the final box minus
@@ -109,7 +126,11 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             // the width and height constraints force this widget to be bigger than the content + padding.
             let content_area_size = Size::new(width - padding_h, height - padding_v);
             let offset = sublayout.content_box_offset(content_area_size)
-                + Offset::new(computed.layout.padding_left, computed.layout.padding_top);
+                + Offset::new(
+                    computed.layout.padding_left + computed.border.border_left_width,
+                    computed.layout.padding_top + computed.border.border_top_width,
+                );
+            trace!("content offset={:?}", offset);
             self.inner.set_offset(offset);
         }
 
@@ -133,6 +154,8 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             layout.padding_right = right;
         }
 
+        trace!("final layout ={:#?}", layout);
+
         layout
     }
 
@@ -143,7 +166,14 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
     fn paint(&self, ctx: &mut PaintCtx) {
         let style = self.computed.get_cached();
 
-        let shape = Shape::RoundedRect(RoundedRect {
+        let border_widths = [
+            style.border.border_top_width,
+            style.border.border_right_width,
+            style.border.border_bottom_width,
+            style.border.border_left_width,
+        ];
+
+        let outer_border_rrect = RoundedRect {
             rect: ctx.bounds,
             radii: [
                 Offset::new(style.border.border_top_left_radius, style.border.border_top_left_radius),
@@ -160,29 +190,40 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
                     style.border.border_bottom_left_radius,
                 ),
             ],
-        });
+        };
+        let inner_border_rrect = outer_border_rrect.contract(border_widths);
+        let outer_border_shape = Shape::RoundedRect(outer_border_rrect);
+        let inner_border_shape = Shape::RoundedRect(inner_border_rrect);
 
-        if let Some(border_style) = style.border.border_style {
+        // draw drop shadows
+        for box_shadow in style.box_shadow.box_shadows.iter() {
+            if !box_shadow.inset {
+                ctx.draw_box_shadow(&outer_border_shape, box_shadow);
+            }
+        }
+
+        // fill shape with background paint
+        ctx.fill_shape(&inner_border_shape, &style.background.background_image);
+
+        // draw inset shadows
+        for box_shadow in style.box_shadow.box_shadows.iter() {
+            if box_shadow.inset {
+                ctx.draw_box_shadow(&inner_border_shape, box_shadow);
+            }
+        }
+
+        /*if let Some(border_style) = style.border.border_style {
             let border = drawing::Border {
-                widths: [
-                    style.border.border_top_width,
-                    style.border.border_right_width,
-                    style.border.border_bottom_width,
-                    style.border.border_left_width,
-                ],
-                paint: style.border.border_image.clone(),
+                widths: border_widths,
+                // TODO: support border-image and nonuniform colors
+                paint: Paint::Color(style.border.border_top_color),
                 line_style: border_style,
                 blend_mode: BlendMode::SrcOver,
             };
-            ctx.draw_border(&shape, &border);
-        }
+            ctx.draw_border(&outer_border_shape, &border);
+        }*/
 
-        for box_shadow in style.box_shadow.box_shadows.iter() {
-            ctx.draw_box_shadow(&shape, &box_shadow);
-        }
-
-        ctx.fill_shape(&shape, &style.background.background_image);
-
+        // TODO: clip to inner border rect
         self.inner.paint(ctx);
     }
 }

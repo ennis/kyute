@@ -150,6 +150,8 @@ pub enum InternalEvent<'a> {
         target: WidgetId,
         event: Box<Event<'a>>,
     },
+    /// Contains a pointer event delivered directly to a target widget (because e.g. it captured
+    /// the pointer).
     RoutePointerEvent {
         target: WidgetId,
         event: PointerEvent,

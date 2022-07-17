@@ -497,13 +497,17 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                         .local_bounds()
                         .contains(local_pointer_pos)
                     {
-                        // hit test pass
                         trace!(
                             "do_event: pointer event FAIL @ {:?}{:?}",
                             self.content.debug_name(),
                             p.position,
                         );
                         return;
+                    }
+
+                    // FIXME this is ugly, maybe add a function to EventCtx
+                    if let Some(focus_state) = &mut parent_ctx.focus_state {
+                        focus_state.hot = self.id;
                     }
                 }
             }

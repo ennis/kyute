@@ -375,6 +375,8 @@ impl WindowState {
             //------------------------------------------------
             // Send event
             let old_focus = self.focus_state.focus;
+            let old_hot = self.focus_state.hot;
+            let mut pointer_device_id = None;
 
             let pointer_grab_auto_release = matches!(
                 event,
@@ -390,6 +392,7 @@ impl WindowState {
                     pointer: ref pointer_event,
                     ..
                 }) => {
+                    pointer_device_id = Some(pointer_event.pointer_id);
                     // Pointer and wheel events are delivered to the node that is currently grabbing the pointer.
                     // If nothing is grabbing the pointer, the pointer event is delivered to a widget
                     // that passes the hit-test
@@ -435,6 +438,42 @@ impl WindowState {
             if pointer_grab_auto_release {
                 //trace!("forcing release of pointer grab");
                 self.focus_state.pointer_grab = None;
+            }
+
+            //------------------------------------------------
+            // signal hot widget changes
+            if old_hot != self.focus_state.hot {
+                if let Some(device_id) = pointer_device_id {
+                    if let Some(old_and_busted) = old_hot {
+                        self.do_event(
+                            parent_ctx,
+                            content,
+                            &mut Event::Internal(InternalEvent::RoutePointerEvent {
+                                target: old_and_busted,
+                                event: self
+                                    .inputs
+                                    .synthetic_pointer_event(device_id, PointerEventKind::PointerOut, None)
+                                    .unwrap(),
+                            }),
+                            env,
+                        );
+                    }
+
+                    if let Some(new_hotness) = self.focus_state.hot {
+                        self.do_event(
+                            parent_ctx,
+                            content,
+                            &mut Event::Internal(InternalEvent::RoutePointerEvent {
+                                target: new_hotness,
+                                event: self
+                                    .inputs
+                                    .synthetic_pointer_event(device_id, PointerEventKind::PointerOver, None)
+                                    .unwrap(),
+                            }),
+                            env,
+                        );
+                    }
+                }
             }
 
             //------------------------------------------------

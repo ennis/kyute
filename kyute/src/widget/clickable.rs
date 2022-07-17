@@ -5,6 +5,8 @@ pub struct Clickable<Inner> {
     id: WidgetId,
     inner: Inner,
     clicked: Signal<()>,
+    active: Signal<bool>,
+    hovered: Signal<bool>,
 }
 
 impl<Inner: Widget + 'static> Clickable<Inner> {
@@ -14,6 +16,8 @@ impl<Inner: Widget + 'static> Clickable<Inner> {
             id: WidgetId::here(),
             inner,
             clicked: Signal::new(),
+            active: Signal::new(),
+            hovered: Signal::new(),
         }
     }
 
@@ -28,6 +32,54 @@ impl<Inner: Widget + 'static> Clickable<Inner> {
     /// Returns whether this button has been clicked.
     pub fn clicked(&self) -> bool {
         self.clicked.signalled()
+    }
+
+    /// Returns whether this button is active (holding the mouse button over it).
+    pub fn activated(&self) -> bool {
+        self.active.value() == Some(true)
+    }
+
+    /// Returns whether this button is active (holding the mouse button over it).
+    pub fn deactivated(&self) -> bool {
+        self.active.value() == Some(false)
+    }
+
+    pub fn on_activated(self, f: impl FnOnce()) -> Self {
+        if self.activated() {
+            f();
+        }
+        self
+    }
+
+    pub fn on_deactivated(self, f: impl FnOnce()) -> Self {
+        if self.deactivated() {
+            f();
+        }
+        self
+    }
+
+    /// Returns whether the pointer entered the clickable area.
+    pub fn pointer_entered(&self) -> bool {
+        self.hovered.value() == Some(true)
+    }
+
+    /// Returns whether the pointer exited the clickable area.
+    pub fn pointer_exited(&self) -> bool {
+        self.hovered.value() == Some(false)
+    }
+
+    pub fn on_pointer_entered(self, f: impl FnOnce()) -> Self {
+        if self.pointer_entered() {
+            f();
+        }
+        self
+    }
+
+    pub fn on_pointer_exited(self, f: impl FnOnce()) -> Self {
+        if self.pointer_exited() {
+            f();
+        }
+        self
     }
 
     /// Returns a reference to the inner widget.
@@ -52,11 +104,26 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         if let Event::Pointer(p) = event {
-            if p.kind == PointerEventKind::PointerDown {
-                self.clicked.signal(());
-                ctx.request_focus();
-                //ctx.request_redraw();
-                ctx.set_handled();
+            match p.kind {
+                PointerEventKind::PointerDown => {
+                    ctx.request_focus();
+                    ctx.set_handled();
+                    ctx.capture_pointer();
+                    self.active.signal(true);
+                }
+                PointerEventKind::PointerUp => {
+                    self.active.signal(false);
+                    self.clicked.signal(());
+                }
+                PointerEventKind::PointerOver => {
+                    eprintln!("clickable PointerOver");
+                    self.hovered.signal(true);
+                }
+                PointerEventKind::PointerOut => {
+                    eprintln!("clickable PointerOut");
+                    self.hovered.signal(false);
+                }
+                _ => {}
             }
         }
 

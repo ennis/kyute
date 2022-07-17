@@ -375,7 +375,14 @@ pub trait WidgetExt: Widget + Sized + 'static {
 
     /// Adds padding around the widget.
     #[must_use]
-    fn padding(
+    fn padding(self, padding: impl Into<Length>) -> Modified<Padding, Self> {
+        let padding = padding.into();
+        Modified(Padding::new(padding, padding, padding, padding), self)
+    }
+
+    /// Adds padding around the widget.
+    #[must_use]
+    fn padding_trbl(
         self,
         top: impl Into<Length>,
         right: impl Into<Length>,
@@ -394,6 +401,14 @@ pub trait WidgetExt: Widget + Sized + 'static {
     #[must_use]
     fn style(self, style: impl TryInto<Style>) -> StyledBox<Self> {
         StyledBox::new(self, style)
+    }
+
+    /// Makes this widget clickable.
+    ///
+    /// See `Clickable`.
+    #[must_use]
+    fn clickable(self) -> Clickable<Self> {
+        Clickable::new(self)
     }
 }
 

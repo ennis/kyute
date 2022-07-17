@@ -614,7 +614,7 @@ impl CacheWriter {
         let result = if self.sync() {
             match self.cache.slots[self.pos] {
                 Slot::Value { ref var } => CacheEntryInsertResult {
-                    key: State(var.clone().downcast::<T>().unwrap()),
+                    key: State(var.clone().downcast::<T>().expect("unexpected type of state variable")),
                     dirty: var.dep_node.is_dirty(),
                     inserted: false,
                 },

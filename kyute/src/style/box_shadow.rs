@@ -93,3 +93,10 @@ impl BoxShadow {
 ///
 /// The value of a CSS `box-shadow` property.
 pub type BoxShadows = Vec<BoxShadow>;
+
+pub(crate) fn parse_box_shadows<'i>(input: &mut Parser<'i, '_>) -> Result<Vec<BoxShadow>, ParseError<'i, ()>> {
+    if input.try_parse(|i| i.expect_ident_matching("none")).is_ok() {
+        return Ok(vec![]);
+    }
+    input.parse_comma_separated(BoxShadow::parse_impl)
+}

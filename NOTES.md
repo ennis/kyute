@@ -598,3 +598,39 @@ What about drop shadows?
       .border("4px solid blue")       // draw border and clip  
       .shadow("10px 5px 5px black")   // ??? for now, specify shape explicitly
 ```
+
+# PointerOver / PointerOut events
+Those got lost along the way. 
+
+Proposed implementation: in "focus_state", keep a "hot" widget ID. Whenever _a widget successfully passes the hit-test_,
+update the hot ID to this widget ID (this includes setting the hot ID to None if the widget has no ID).
+The window that emitted the event then compares the previous and the new hot widget IDs. If they are different, a PointerOut
+event is sent to the old widget ID (if not None), and a PointerOver event is sent to the new ID (if not None).
+
+Problem: what does "successfully passing the hit-test" means? 
+Hit-testing is only done in `WidgetPod` => PointerOver/PointerOut events will be received by all with the same ID.
+It's confusing: if we have WidgetPod -> Padding(40px) -> CustomWidget, the custom will receive PointerOver events when the
+cursor enters the **padding area**, and not the actual widget.
+=> actually no, since within a frame, the inner widget is wrapped in a WidgetPod (that's the only mechanism for transforming child widgets)
+=> Add a WidgetPod in "frame" widgets (that's already done)
+
+```
+└Window(9700B9170AE22AE2)  `title: "Counter demo"`
+  └WidgetPod(1C6032094245E487)  `native layer 109x67 px`
+    └Overlay(1C6032094245E487)
+      └Grid(1C6032094245E487)  `0 by 0 grid`
+        ├WidgetPod(FC0D06BD03C8099C)
+        │ └Clickable(FC0D06BD03C8099C)
+        │   └StyledBox
+        │     └WidgetPod
+        │       └Label
+        │         └Text  `plain text: "-"`
+        ├WidgetPod(4FD90939EAE70F73)
+        │ └Clickable(4FD90939EAE70F73)
+        │   └StyledBox
+        │     └WidgetPod
+        │       └Label
+        │         └Text  `plain text: "+"`
+        └WidgetPod
+          └Text  `plain text: "Counter value: 1"`
+```

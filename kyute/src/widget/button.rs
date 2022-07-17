@@ -3,8 +3,8 @@ use crate::{
     layout::Alignment,
     style,
     style::VisualState,
-    widget::{prelude::*, Label, WidgetExt},
-    Signal, UnitExt,
+    widget::{prelude::*, Clickable, Label, WidgetExt},
+    Color, Signal, UnitExt,
 };
 use std::cell::Cell;
 
@@ -14,128 +14,63 @@ use std::cell::Cell;
 
 type ButtonInner = impl Widget;
 
+#[derive(WidgetWrapper)]
 pub struct Button {
-    id: WidgetId,
-    inner: ButtonInner,
-    clicked: Signal<()>,
-    active: Cell<bool>,
+    inner: Clickable<ButtonInner>,
 }
 
-fn button_inner(label: String) -> ButtonInner {
+#[composable]
+fn button_inner(label: String, active: bool, hover: bool) -> ButtonInner {
+    let mut style = "background: rgb(88 88 88);\
+             border-radius: 8px;\
+             padding: 5px;\
+             min-width: 80px;\
+             min-height: 21px;\
+             border: solid 1px rgb(49 49 49);\
+             box-shadow: inset 0px 1px rgb(115 115 115), 0px 1px 2px -1px rgb(49 49 49);"
+        .to_string();
+
+    if hover {
+        style.push_str("background: rgb(100 100 100);");
+    }
+    if active {
+        style.push_str("background: rgb(60 60 60); box-shadow: none;");
+    }
+
     Label::new(label)
-        // TODO: if the padding cannot be honored because of size constraints, should this be adjusted automatically?
-        .padding(5.dip(), 5.dip(), 5.dip(), 5.dip())
-        .min_height(21.dip())
-        .min_width(80.dip())
+        .color(Color::from_rgb_u8(200, 200, 200))
         .horizontal_alignment(Alignment::CENTER)
-        .background("rgb(4 4 255)", style::Shape::rectangle())
+        .style(style.as_str())
 }
 
 impl Button {
     /// Creates a new button with the specified label.
     #[composable]
     pub fn new(label: impl Into<String>) -> Button {
-        Button {
-            id: WidgetId::here(),
-            inner: button_inner(label.into()),
-            clicked: Signal::new(),
-            active: Cell::new(false),
-        }
+        #[state]
+        let mut hover = false;
+        #[state]
+        let mut active = false;
+
+        let inner = button_inner(label.into(), active, hover)
+            .clickable()
+            .on_activated(|| active = true)
+            .on_deactivated(|| active = false)
+            .on_pointer_entered(|| hover = true)
+            .on_pointer_exited(|| hover = false);
+
+        Button { inner }
     }
 
     /// Returns whether this button has been clicked.
     pub fn clicked(&self) -> bool {
-        self.clicked.signalled()
+        self.inner.clicked()
     }
 
     /// Runs the function when the button has been clicked.
-    pub fn on_clicked(self, f: impl FnOnce()) -> Self {
-        if self.clicked.signalled() {
-            f()
-        }
-        self
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// impl Widget
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-impl Widget for Button {
-    fn widget_id(&self) -> Option<WidgetId> {
-        Some(self.id)
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
-        self.inner.layout(ctx, constraints, env)
-    }
-
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        if let Event::Pointer(p) = event {
-            match p.kind {
-                PointerEventKind::PointerDown => {
-                    ctx.request_focus();
-                    ctx.set_handled();
-                    ctx.capture_pointer();
-                    self.active.set(true);
-                }
-                PointerEventKind::PointerUp => {
-                    self.active.set(false);
-                    self.clicked.signal(());
-                }
-                PointerEventKind::PointerOver => {
-                    //trace!("button PointerOver");
-                }
-                PointerEventKind::PointerOut => {
-                    //trace!("button PointerOut");
-                }
-                _ => {}
-            }
-        }
-
-        if !ctx.handled() {
-            self.inner.route_event(ctx, event, env)
-        }
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx) {
-        if self.active.get() {
-            ctx.with_visual_state(VisualState::ACTIVE, |ctx| {
-                self.inner.paint(ctx);
-            })
-        } else {
-            self.inner.paint(ctx)
+    pub fn on_click(self, f: impl FnOnce()) -> Self {
+        Button {
+            inner: self.inner.on_click(f),
         }
     }
 }
-
-/*
-pub struct ButtonBox {
-    grid: Grid,
-}
-
-impl ButtonBox {
-    #[composable]
-    pub fn new<I>(buttons: I)
-    where
-        I: IntoIterator<Item = Button>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        let iter = buttons.into_iter();
-        let n = iter.len();
-        for (i, mut b) in iter.enumerate() {
-            match i {
-                0 => {
-                    b.set_box_style(theme::BOX_BUTTON_LEADING);
-                }
-                x if x == n => {
-                    b.set_box_style(theme::BOX_BUTTON_INNER);
-                }
-                _ => {
-                    b.set_box_style(theme::BOX_BUTTON_TRAILING);
-                }
-            }
-        }
-    }
-}
-*/

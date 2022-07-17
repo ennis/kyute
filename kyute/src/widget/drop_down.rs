@@ -49,9 +49,7 @@ pub struct DropDown<T> {
 }
 
 fn drop_down_inner(choice: String) -> DropDownInner {
-    let inner = Label::new(choice)
-        .min_height(26.dip())
-        .padding(5.dip(), 5.dip(), 5.dip(), 5.dip());
+    let inner = Label::new(choice).min_height(26.dip()).padding(5.dip());
     inner
 }
 

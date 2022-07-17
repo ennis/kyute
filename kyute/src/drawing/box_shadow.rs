@@ -48,21 +48,51 @@ impl BoxShadow {
                     None,
                 ));
                 shadow_paint.set_color(self.color.to_skia().to_color());
+                shadow_paint.set_anti_alias(true);
 
                 if !self.inset {
                     // drop shadow
-                    // calculate base shadow shape rectangle (apply offset & spread)
                     let shadow_rrect = rrect.translate(self.offset).outset(self.spread, self.spread);
                     ctx.surface.canvas().draw_rrect(shadow_rrect.to_skia(), &shadow_paint);
                 } else {
+                    // inset shadow
+
+                    // The shadow shape of the element is a ring shape bounded by:
+                    // - inside: the inner edge of the shadow inside the element, which is the element shape
+                    //   translated by the shadow offset and inset by the spread.
+                    // - outside: a surrounding rectangle, chosen so that the area is large enough to produce the
+                    //   correct drop shadow when blurred (see `area_casting_shadow_in_hole`, taken from chromium).
+                    //
+                    // Visually:
+                    //
+                    //     outer_rrect(not rounded)
+                    //     ┌───────────────────────────────────────────────────────┐
+                    //     │      inner_rrect: inset and translated                │
+                    //     │     ╭───────────────────────────────────────────╮     │
+                    //     │     │                                           │     │
+                    //     │     │                                           │     │
+                    //     │     │                                           │     │
+                    //     │     │                                           │     │
+                    //     │     │                                           │     │
+                    //     │     │                                           │     │
+                    //     │     ╰───────────────────────────────────────────╯     │
+                    //     │                                                       │
+                    //     │                                                       │
+                    //     └───────────────────────────────────────────────────────┘
+                    //
+                    // The element shape should be wholly contained within outer_rrect.
+                    // The shadow shape is drawn (with drawDRRect) with a blur filter, and clipped to the
+                    // element shape.
                     let inner_rrect = rrect.translate(self.offset).inset(self.spread, self.spread);
                     let outer_rrect: RoundedRect =
-                        area_casting_shadow_in_hole(&rrect.rect, self.offset, self.blur, self.spread).into();
+                        area_casting_shadow_in_hole(&inner_rrect.rect, self.offset, self.blur, self.spread).into();
                     let inner_rrect = inner_rrect.to_skia();
                     let outer_rrect = outer_rrect.to_skia();
-                    ctx.surface
-                        .canvas()
-                        .draw_drrect(outer_rrect, inner_rrect, &shadow_paint);
+                    let canvas = ctx.surface.canvas();
+                    canvas.save();
+                    canvas.clip_rrect(rrect.to_skia(), sk::ClipOp::Intersect, true);
+                    canvas.draw_drrect(outer_rrect, inner_rrect, &shadow_paint);
+                    canvas.restore();
                 }
             }
         }

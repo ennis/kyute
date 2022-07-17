@@ -53,7 +53,7 @@ impl TitledPane {
                     .horizontal_alignment(Alignment::START),
             ));
             Clickable::new(
-                grid.padding(2.dip(), 2.dip(), 2.dip(), 2.dip()), //.box_style(theme::TITLED_PANE_HEADER.get(&cache::environment()).unwrap()),
+                grid.padding(2.dip()), //.box_style(theme::TITLED_PANE_HEADER.get(&cache::environment()).unwrap()),
             )
         };
 

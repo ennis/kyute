@@ -268,6 +268,15 @@ impl RoundedRect {
     pub fn outset(&self, dx: f64, dy: f64) -> RoundedRect {
         self.inset(-dx, -dy)
     }
+
+    pub fn contract(&self, widths: [f64; 4]) -> RoundedRect {
+        let [t, r, b, l] = widths;
+        let inset_x = 0.5 * (l + r);
+        let offset_x = 0.5 * (l - r);
+        let inset_y = 0.5 * (t + b);
+        let offset_y = 0.5 * (t - b);
+        self.translate(Offset::new(offset_x, offset_y)).inset(inset_x, inset_y)
+    }
 }
 
 impl From<Rect> for RoundedRect {

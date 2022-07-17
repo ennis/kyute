@@ -1,6 +1,6 @@
 //! Styling properties
 
-use crate::{drawing, Color, LayoutConstraints};
+use crate::{css, drawing, Color, LayoutConstraints};
 use bitflags::bitflags;
 use cssparser::{ParseError, Parser};
 use once_cell::sync::Lazy;
@@ -107,16 +107,16 @@ pub enum PropertyDeclaration {
     BackgroundImage(Image),
     BackgroundColor(Color),
     BoxShadow(BoxShadows),
-    MinWidth(Length),
-    MinHeight(Length),
-    MaxWidth(Length),
-    MaxHeight(Length),
-    Width(Length),
-    Height(Length),
-    PaddingLeft(Length),
-    PaddingRight(Length),
-    PaddingTop(Length),
-    PaddingBottom(Length),
+    MinWidth(LengthOrPercentage),
+    MinHeight(LengthOrPercentage),
+    MaxWidth(LengthOrPercentage),
+    MaxHeight(LengthOrPercentage),
+    Width(LengthOrPercentage),
+    Height(LengthOrPercentage),
+    PaddingLeft(LengthOrPercentage),
+    PaddingRight(LengthOrPercentage),
+    PaddingTop(LengthOrPercentage),
+    PaddingBottom(LengthOrPercentage),
     FontSize(Length),
     RowGap(Length),
     ColumnGap(Length),
@@ -149,17 +149,17 @@ impl PropertyDeclaration {
             PropertyDeclaration::BorderBottomLeftRadius(specified) => {
                 Arc::make_mut(&mut computed_values.border).border_bottom_left_radius = specified.compute(&constraints);
             }
-            PropertyDeclaration::BorderBottomColor(_specified) => {
-                todo!()
+            PropertyDeclaration::BorderBottomColor(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_bottom_color = specified;
             }
-            PropertyDeclaration::BorderTopColor(_specified) => {
-                todo!()
+            PropertyDeclaration::BorderTopColor(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_top_color = specified;
             }
-            PropertyDeclaration::BorderLeftColor(_specified) => {
-                todo!()
+            PropertyDeclaration::BorderLeftColor(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_left_color = specified;
             }
-            PropertyDeclaration::BorderRightColor(_specified) => {
-                todo!()
+            PropertyDeclaration::BorderRightColor(specified) => {
+                Arc::make_mut(&mut computed_values.border).border_right_color = specified;
             }
             PropertyDeclaration::BorderImage(ref specified) => {
                 Arc::make_mut(&mut computed_values.border).border_image = specified.compute_paint();
@@ -177,35 +177,61 @@ impl PropertyDeclaration {
                 Arc::make_mut(&mut computed_values.box_shadow).box_shadows =
                     specified.into_iter().map(|x| x.compute(&constraints)).collect();
             }
-            PropertyDeclaration::MinWidth(_specified) => {
-                todo!()
+            PropertyDeclaration::MinWidth(specified) => {
+                // FIXME: if containing element is infinite, the value is ignored
+                // TODO: finite_max_width may not be the value to use for %-lengths
+                Arc::make_mut(&mut computed_values.layout).min_width = constraints
+                    .finite_max_width()
+                    .map(|w| specified.compute(constraints, w));
             }
-            PropertyDeclaration::MinHeight(_specified) => {
-                todo!()
+            PropertyDeclaration::MinHeight(specified) => {
+                Arc::make_mut(&mut computed_values.layout).min_height = constraints
+                    .finite_max_height()
+                    .map(|h| specified.compute(constraints, h));
             }
-            PropertyDeclaration::MaxWidth(_specified) => {
-                todo!()
+            PropertyDeclaration::MaxWidth(specified) => {
+                Arc::make_mut(&mut computed_values.layout).max_width = constraints
+                    .finite_max_width()
+                    .map(|w| specified.compute(constraints, w));
             }
-            PropertyDeclaration::MaxHeight(_specified) => {
-                todo!()
+            PropertyDeclaration::MaxHeight(specified) => {
+                Arc::make_mut(&mut computed_values.layout).max_height = constraints
+                    .finite_max_height()
+                    .map(|h| specified.compute(constraints, h));
             }
-            PropertyDeclaration::Width(_specified) => {
-                todo!()
+            PropertyDeclaration::Width(specified) => {
+                Arc::make_mut(&mut computed_values.layout).width = constraints
+                    .finite_max_width()
+                    .map(|w| specified.compute(constraints, w));
             }
-            PropertyDeclaration::Height(_specified) => {
-                todo!()
+            PropertyDeclaration::Height(specified) => {
+                Arc::make_mut(&mut computed_values.layout).height = constraints
+                    .finite_max_height()
+                    .map(|h| specified.compute(constraints, h));
             }
             PropertyDeclaration::PaddingLeft(specified) => {
-                Arc::make_mut(&mut computed_values.layout).padding_left = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.layout).padding_left = constraints
+                    .finite_max_width()
+                    .map(|w| specified.compute(&constraints, w))
+                    .unwrap_or(0.0);
             }
             PropertyDeclaration::PaddingRight(specified) => {
-                Arc::make_mut(&mut computed_values.layout).padding_right = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.layout).padding_right = constraints
+                    .finite_max_width()
+                    .map(|w| specified.compute(&constraints, w))
+                    .unwrap_or(0.0);
             }
             PropertyDeclaration::PaddingTop(specified) => {
-                Arc::make_mut(&mut computed_values.layout).padding_top = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.layout).padding_top = constraints
+                    .finite_max_height()
+                    .map(|h| specified.compute(&constraints, h))
+                    .unwrap_or(0.0);
             }
             PropertyDeclaration::PaddingBottom(specified) => {
-                Arc::make_mut(&mut computed_values.layout).padding_bottom = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.layout).padding_bottom = constraints
+                    .finite_max_height()
+                    .map(|h| specified.compute(&constraints, h))
+                    .unwrap_or(0.0);
             }
             PropertyDeclaration::FontSize(_specified) => {
                 todo!()
@@ -267,10 +293,11 @@ impl Style {
                 }
                 "border" => {
                     let border = parse_property_remainder(input, Border::parse_impl)?;
+                    declarations.push(PropertyDeclaration::BorderStyle(border.line_style));
                     declarations.push(PropertyDeclaration::BorderLeftWidth(border.widths[0]));
                     declarations.push(PropertyDeclaration::BorderTopWidth(border.widths[1]));
                     declarations.push(PropertyDeclaration::BorderRightWidth(border.widths[2]));
-                    declarations.push(PropertyDeclaration::BorderLeftWidth(border.widths[3]));
+                    declarations.push(PropertyDeclaration::BorderBottomWidth(border.widths[3]));
                     declarations.push(PropertyDeclaration::BorderLeftColor(border.color));
                     declarations.push(PropertyDeclaration::BorderTopColor(border.color));
                     declarations.push(PropertyDeclaration::BorderRightColor(border.color));
@@ -284,9 +311,39 @@ impl Style {
                     declarations.push(PropertyDeclaration::BorderBottomLeftRadius(radii[3]));
                 }
                 "box-shadow" => {
-                    let box_shadows =
-                        parse_property_remainder(input, |input| input.parse_comma_separated(BoxShadow::parse_impl))?;
+                    let box_shadows = parse_property_remainder(input, box_shadow::parse_box_shadows)?;
                     declarations.push(PropertyDeclaration::BoxShadow(box_shadows));
+                }
+                "padding" => {
+                    let padding = parse_property_remainder(input, utils::padding)?;
+                    declarations.push(PropertyDeclaration::PaddingTop(padding[0]));
+                    declarations.push(PropertyDeclaration::PaddingRight(padding[1]));
+                    declarations.push(PropertyDeclaration::PaddingBottom(padding[2]));
+                    declarations.push(PropertyDeclaration::PaddingLeft(padding[3]));
+                }
+                "width" => {
+                    let width = parse_property_remainder(input, css::parse_css_length_percentage)?;
+                    declarations.push(PropertyDeclaration::Width(width));
+                }
+                "height" => {
+                    let height = parse_property_remainder(input, css::parse_css_length_percentage)?;
+                    declarations.push(PropertyDeclaration::Height(height));
+                }
+                "min-width" => {
+                    let min_width = parse_property_remainder(input, css::parse_css_length_percentage)?;
+                    declarations.push(PropertyDeclaration::MinWidth(min_width));
+                }
+                "min-height" => {
+                    let min_height = parse_property_remainder(input, css::parse_css_length_percentage)?;
+                    declarations.push(PropertyDeclaration::MinHeight(min_height));
+                }
+                "max-width" => {
+                    let max_width = parse_property_remainder(input, css::parse_css_length_percentage)?;
+                    declarations.push(PropertyDeclaration::MaxWidth(max_width));
+                }
+                "max-height" => {
+                    let max_height = parse_property_remainder(input, css::parse_css_length_percentage)?;
+                    declarations.push(PropertyDeclaration::MaxHeight(max_height));
                 }
                 _ => {
                     // unrecognized property

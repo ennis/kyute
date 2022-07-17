@@ -9,6 +9,7 @@ use kyute::{
     widget::{grid::GridLayoutExt, Button, Grid, Text, WidgetExt},
     Alignment, UnitExt, Widget, Window,
 };
+use kyute_common::Color;
 
 // All functions creating widgets or using features like `#[state]` must be marked as `#[composable]`.
 #[composable]
@@ -24,13 +25,14 @@ fn counter_demo() -> impl Widget {
             .font_size(16.0)
             .attribute(14.., FontWeight::BOLD),
     )
-    .padding(10.dip(), 10.dip(), 10.dip(), 10.dip()); // and some padding around it
+    .padding(10.dip()); // and some padding around it
 
     // Buttons to increment and decrement the counter.
     // The framework will detect if the value of `counter` changed, and will re-run the function if this is the case.
     // Note that the callback passed to `on_clicked` is run immediately, so you can borrow stuff from the surrounding scope.
-    let button_increment = Button::new("+".to_string()).on_clicked(|| counter += 1);
-    let button_decrement = Button::new("-".to_string()).on_clicked(|| counter -= 1);
+
+    //let button_increment = Button::new("+".to_string()).on_clicked(|| counter += 1);
+    //let button_decrement = Button::new("-".to_string()).on_clicked(|| counter -= 1);
 
     // Another way of writing the code above without closures:
     //
@@ -44,46 +46,16 @@ fn counter_demo() -> impl Widget {
     //    }
     //
 
-    let mut grid = Grid::with_template("auto auto / 1fr 1fr");
+    let mut grid = Grid::with_template("70 70 / 1fr 1fr");
     grid.insert((
         Text::new(FormattedText::from(format!("Counter value: {}", counter)).attribute(14.., FontWeight::BOLD))
+            .color(Color::from_rgb_u8(200, 200, 200))
             .grid_column_span(2),
-        Button::new("+")
-            .on_clicked(|| counter += 1)
-            .style("top: 5px; bottom: 5px;"),
-        Button::new("-")
-            .on_clicked(|| counter -= 1)
-            .style("top: 5px; bottom: 5px;"),
+        Button::new("+").on_click(|| counter += 1).padding(5.dip()),
+        Button::new("-").on_click(|| counter -= 1).padding(5.dip()),
     ));
 
-    grid.background("rgb(236 236 236)", style::Shape::rectangle()).fill()
-
-    /*// 2 rows, sized according to the widgets placed in the row's cells.
-    // 2 flex columns, available space will be divided evenly among them
-    let mut grid = Grid::with_template("auto auto / 1fr 1fr / 10 10");
-
-    // Insert the widgets in the grid
-
-    grid.insert((
-        // Row 0, span all columns, center the text in the cell.
-        text.centered().grid_area((0, ..)),
-        // Row 1, Column 0, align the button to the top right corner of the cell.
-        button_decrement
-            .horizontal_alignment(Alignment::END)
-            .vertical_alignment(Alignment::START)
-            .grid_area((1, 0)),
-        // Row 1, Column 0, align the button to the top right corner of the cell.
-        button_increment
-            .horizontal_alignment(Alignment::START)
-            .vertical_alignment(Alignment::START)
-            .grid_area((1, 1)),
-    ));
-
-    // wrap grid in a container to fill the window and apply some styling to the background
-    grid
-        // a subset of CSS is supported here
-        .background("rgb(236 236 236)")
-        .fill()*/
+    grid.background("rgb(71 71 71)", style::Shape::rectangle()).fill()
 }
 
 #[composable]
