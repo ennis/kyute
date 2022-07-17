@@ -294,10 +294,10 @@ impl Style {
                 "border" => {
                     let border = parse_property_remainder(input, Border::parse_impl)?;
                     declarations.push(PropertyDeclaration::BorderStyle(border.line_style));
-                    declarations.push(PropertyDeclaration::BorderLeftWidth(border.widths[0]));
-                    declarations.push(PropertyDeclaration::BorderTopWidth(border.widths[1]));
-                    declarations.push(PropertyDeclaration::BorderRightWidth(border.widths[2]));
-                    declarations.push(PropertyDeclaration::BorderBottomWidth(border.widths[3]));
+                    declarations.push(PropertyDeclaration::BorderTopWidth(border.widths[0]));
+                    declarations.push(PropertyDeclaration::BorderRightWidth(border.widths[1]));
+                    declarations.push(PropertyDeclaration::BorderBottomWidth(border.widths[2]));
+                    declarations.push(PropertyDeclaration::BorderLeftWidth(border.widths[3]));
                     declarations.push(PropertyDeclaration::BorderLeftColor(border.color));
                     declarations.push(PropertyDeclaration::BorderTopColor(border.color));
                     declarations.push(PropertyDeclaration::BorderRightColor(border.color));

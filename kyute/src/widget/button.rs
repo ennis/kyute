@@ -20,7 +20,7 @@ pub struct Button {
 }
 
 #[composable]
-fn button_inner(label: String, active: bool, hover: bool) -> ButtonInner {
+fn button_inner(label: String, active: bool, hover: bool, focus: bool) -> ButtonInner {
     let mut style = "background: rgb(88 88 88);\
              border-radius: 8px;\
              padding: 5px;\
@@ -36,9 +36,13 @@ fn button_inner(label: String, active: bool, hover: bool) -> ButtonInner {
     if active {
         style.push_str("background: rgb(60 60 60); box-shadow: none;");
     }
+    if focus {
+        // TODO outline
+        style.push_str("border: solid 1px #3895f2;");
+    }
 
     Label::new(label)
-        .color(Color::from_rgb_u8(200, 200, 200))
+        .text_color(Color::from_rgb_u8(200, 200, 200))
         .horizontal_alignment(Alignment::CENTER)
         .style(style.as_str())
 }
@@ -51,13 +55,16 @@ impl Button {
         let mut hover = false;
         #[state]
         let mut active = false;
+        #[state]
+        let mut focus = false;
 
-        let inner = button_inner(label.into(), active, hover)
+        let inner = button_inner(label.into(), active, hover, focus)
             .clickable()
             .on_activated(|| active = true)
             .on_deactivated(|| active = false)
             .on_pointer_entered(|| hover = true)
-            .on_pointer_exited(|| hover = false);
+            .on_pointer_exited(|| hover = false)
+            .on_focus_changed(|f| focus = f);
 
         Button { inner }
     }

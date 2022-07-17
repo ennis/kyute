@@ -1,4 +1,5 @@
 use crate::{event::PointerEventKind, widget::prelude::*, Signal};
+use keyboard_types::{Code, Key, KeyState};
 
 #[derive(Clone)]
 pub struct Clickable<Inner> {
@@ -7,6 +8,7 @@ pub struct Clickable<Inner> {
     clicked: Signal<()>,
     active: Signal<bool>,
     hovered: Signal<bool>,
+    focused: Signal<bool>,
 }
 
 impl<Inner: Widget + 'static> Clickable<Inner> {
@@ -18,10 +20,12 @@ impl<Inner: Widget + 'static> Clickable<Inner> {
             clicked: Signal::new(),
             active: Signal::new(),
             hovered: Signal::new(),
+            focused: Signal::new(),
         }
     }
 
     #[cfg_attr(debug_assertions, track_caller)]
+    #[must_use]
     pub fn on_click(self, f: impl FnOnce()) -> Self {
         if self.clicked.signalled() {
             f();
@@ -44,6 +48,7 @@ impl<Inner: Widget + 'static> Clickable<Inner> {
         self.active.value() == Some(false)
     }
 
+    #[must_use]
     pub fn on_activated(self, f: impl FnOnce()) -> Self {
         if self.activated() {
             f();
@@ -51,6 +56,7 @@ impl<Inner: Widget + 'static> Clickable<Inner> {
         self
     }
 
+    #[must_use]
     pub fn on_deactivated(self, f: impl FnOnce()) -> Self {
         if self.deactivated() {
             f();
@@ -68,6 +74,7 @@ impl<Inner: Widget + 'static> Clickable<Inner> {
         self.hovered.value() == Some(false)
     }
 
+    #[must_use]
     pub fn on_pointer_entered(self, f: impl FnOnce()) -> Self {
         if self.pointer_entered() {
             f();
@@ -75,9 +82,42 @@ impl<Inner: Widget + 'static> Clickable<Inner> {
         self
     }
 
+    #[must_use]
     pub fn on_pointer_exited(self, f: impl FnOnce()) -> Self {
         if self.pointer_exited() {
             f();
+        }
+        self
+    }
+
+    pub fn focus_gained(&self) -> bool {
+        self.focused.value() == Some(true)
+    }
+
+    pub fn focus_lost(&self) -> bool {
+        self.focused.value() == Some(false)
+    }
+
+    #[must_use]
+    pub fn on_focus_changed(self, f: impl FnOnce(bool)) -> Self {
+        if let Some(focus) = self.focused.value() {
+            f(focus);
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn on_focus_gained(self, f: impl FnOnce()) -> Self {
+        if self.focus_gained() {
+            f()
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn on_focus_lost(self, f: impl FnOnce()) -> Self {
+        if self.focus_lost() {
+            f()
         }
         self
     }
@@ -103,8 +143,8 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        if let Event::Pointer(p) = event {
-            match p.kind {
+        match event {
+            Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerDown => {
                     ctx.request_focus();
                     ctx.set_handled();
@@ -124,7 +164,40 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
                     self.hovered.signal(false);
                 }
                 _ => {}
+            },
+            Event::Keyboard(key) => {
+                if key.state == KeyState::Down {
+                    let press = match key.key {
+                        Key::Enter => true,
+                        Key::Character(ref s) if s == " " => true,
+                        _ => false,
+                    };
+
+                    if press {
+                        ctx.set_handled();
+                        self.active.signal(true);
+                        self.clicked.signal(());
+                    }
+
+                    if key.key == Key::Tab {
+                        // the container widget sees this
+                        // it takes note of the widget ID that sent it
+                        //ctx.move_focus(Next);
+                    }
+                }
+                if key.state == KeyState::Up {
+                    self.active.signal(false);
+                }
             }
+            Event::FocusGained => {
+                eprintln!("clickable FocusGained");
+                self.focused.signal(true)
+            }
+            Event::FocusLost => {
+                eprintln!("clickable FocusLost");
+                self.focused.signal(false)
+            }
+            _ => {}
         }
 
         if !ctx.handled() {

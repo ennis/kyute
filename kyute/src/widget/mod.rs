@@ -40,7 +40,6 @@ mod thumb;
 mod titled_pane;
 mod widget_pod;
 
-use std::convert::TryInto;
 //pub use align::Align;
 //pub use baseline::Baseline;
 pub use border::Border;
@@ -84,14 +83,16 @@ use crate::{
     layout::Alignment,
     style,
     style::Style,
+    theme,
     widget::{
         align::{HorizontalAlignment, VerticalAlignment},
         constrained::{Fill, FixedHeight, FixedWidth, MaxHeight, MaxWidth, MinHeight, MinWidth},
         font_size::FontSize,
     },
-    Environment, Event, EventCtx, Layout, LayoutConstraints, LayoutCtx, Length, LengthOrPercentage, UnitExt, Widget,
-    WidgetId,
+    Color, EnvKey, EnvValue, Environment, Event, EventCtx, Layout, LayoutConstraints, LayoutCtx, Length,
+    LengthOrPercentage, UnitExt, Widget, WidgetId,
 };
+use std::convert::TryInto;
 
 // TODO move somewhere else
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -109,48 +110,9 @@ impl Orientation {
     }
 }
 
-/// Widget modifiers.
-pub trait Modifier {
-    fn layout<W: Widget>(
-        &self,
-        ctx: &mut LayoutCtx,
-        widget: &W,
-        constraints: &LayoutConstraints,
-        env: &Environment,
-    ) -> Layout;
-
-    fn debug_node(&self) -> DebugNode {
-        DebugNode::new("Modifier")
-    }
-}
-
-/// Wraps a widget with a layout modifier.
-#[derive(Clone)]
-pub struct Modified<M, W>(pub M, pub W);
-
-impl<M, W> WidgetWrapper for Modified<M, W>
-where
-    W: Widget,
-    M: Modifier,
-{
-    type Inner = W;
-
-    fn inner(&self) -> &Self::Inner {
-        &self.1
-    }
-
-    fn inner_mut(&mut self) -> &mut Self::Inner {
-        &mut self.1
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
-        self.0.layout(ctx, &self.1, constraints, env)
-    }
-
-    fn debug_node(&self) -> DebugNode {
-        self.0.debug_node()
-    }
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// WidgetWrapper
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Widgets that have only one child and wish to defer to this child's `Widget` implementation.
 pub trait WidgetWrapper {
@@ -209,6 +171,87 @@ impl<T: WidgetWrapper> Widget for T {
         WidgetWrapper::debug_node(self)
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Modifiers
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Widget modifiers.
+pub trait Modifier {
+    fn layout<W: Widget>(
+        &self,
+        ctx: &mut LayoutCtx,
+        widget: &W,
+        constraints: &LayoutConstraints,
+        env: &Environment,
+    ) -> Layout;
+
+    fn debug_node(&self) -> DebugNode {
+        DebugNode::new("Modifier")
+    }
+}
+
+/// Wraps a widget with a layout modifier.
+#[derive(Clone)]
+pub struct Modified<M, W>(pub M, pub W);
+
+impl<M, W> WidgetWrapper for Modified<M, W>
+where
+    W: Widget,
+    M: Modifier,
+{
+    type Inner = W;
+
+    fn inner(&self) -> &Self::Inner {
+        &self.1
+    }
+
+    fn inner_mut(&mut self) -> &mut Self::Inner {
+        &mut self.1
+    }
+
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+        self.0.layout(ctx, &self.1, constraints, env)
+    }
+
+    fn debug_node(&self) -> DebugNode {
+        self.0.debug_node()
+    }
+}
+
+/// Modifier that overrides an environment value.
+pub struct EnvironmentOverride<T> {
+    key: EnvKey<T>,
+    value: T,
+}
+
+impl<T> EnvironmentOverride<T> {
+    pub fn new(key: EnvKey<T>, value: T) -> EnvironmentOverride<T> {
+        EnvironmentOverride { key, value }
+    }
+}
+
+impl<T: EnvValue> Modifier for EnvironmentOverride<T> {
+    fn layout<W: Widget>(
+        &self,
+        ctx: &mut LayoutCtx,
+        widget: &W,
+        constraints: &LayoutConstraints,
+        env: &Environment,
+    ) -> Layout {
+        let mut env = env.clone();
+        env.set(self.key, self.value.clone());
+        widget.layout(ctx, constraints, &env)
+    }
+
+    fn debug_node(&self) -> DebugNode {
+        DebugNode::new(format!("override {}", self.key.name()))
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// WidgetExt
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Extension methods on widgets.
 pub trait WidgetExt: Widget + Sized + 'static {
@@ -409,6 +452,18 @@ pub trait WidgetExt: Widget + Sized + 'static {
     #[must_use]
     fn clickable(self) -> Clickable<Self> {
         Clickable::new(self)
+    }
+
+    /// Overrides an environment value.
+    #[must_use]
+    fn env_override<T: EnvValue>(self, key: EnvKey<T>, value: T) -> Modified<EnvironmentOverride<T>, Self> {
+        Modified(EnvironmentOverride::new(key, value), self)
+    }
+
+    /// Sets the color of the text within this widget.
+    #[must_use]
+    fn text_color(self, color: impl Into<Color>) -> Modified<EnvironmentOverride<Color>, Self> {
+        self.env_override(theme::TEXT_COLOR, color.into())
     }
 }
 

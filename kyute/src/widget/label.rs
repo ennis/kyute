@@ -25,17 +25,6 @@ impl Label {
             color: theme::keys::LABEL_COLOR.into(),
         }
     }
-
-    /// Sets the color of the label.
-    pub fn color(mut self, color: Color) -> Self {
-        self.set_color(color);
-        self
-    }
-
-    /// Sets the color of the label.
-    pub fn set_color(&mut self, color: Color) {
-        self.color = color.into();
-    }
 }
 
 impl Widget for Label {

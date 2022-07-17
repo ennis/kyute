@@ -133,7 +133,7 @@ fn update_ui<W: Widget + 'static>(
         root_widget.route_event(&mut event_ctx, &mut Event::Initialize, root_env);
     }
 
-    dump_widget_tree(&root_widget);
+    //dump_widget_tree(&root_widget);
     root_widget
 }
 

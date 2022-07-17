@@ -212,7 +212,7 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             }
         }
 
-        /*if let Some(border_style) = style.border.border_style {
+        if let Some(border_style) = style.border.border_style {
             let border = drawing::Border {
                 widths: border_widths,
                 // TODO: support border-image and nonuniform colors
@@ -221,7 +221,7 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
                 blend_mode: BlendMode::SrcOver,
             };
             ctx.draw_border(&outer_border_shape, &border);
-        }*/
+        }
 
         // TODO: clip to inner border rect
         self.inner.paint(ctx);

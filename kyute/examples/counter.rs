@@ -6,10 +6,10 @@ use kyute::{
     },
     style,
     text::{FontWeight, FormattedText},
-    widget::{grid::GridLayoutExt, Button, Grid, Text, WidgetExt},
-    Alignment, UnitExt, Widget, Window,
+    widget::{grid::GridLayoutExt, BaseTextEdit, Button, Grid, Text, WidgetExt},
+    Alignment, Color, UnitExt, Widget, Window,
 };
-use kyute_common::Color;
+use std::sync::Arc;
 
 // All functions creating widgets or using features like `#[state]` must be marked as `#[composable]`.
 #[composable]
@@ -18,14 +18,8 @@ fn counter_demo() -> impl Widget {
     // The value will be remembered between invocations of `counter_demo` at the same position in the call tree.
     #[state]
     let mut counter = 0;
-
-    // Text element with attributes
-    let text = Text::new(
-        FormattedText::from(format!("Counter value: {}", counter))
-            .font_size(16.0)
-            .attribute(14.., FontWeight::BOLD),
-    )
-    .padding(10.dip()); // and some padding around it
+    #[state]
+    let mut text: Arc<str> = Arc::from("Hello");
 
     // Buttons to increment and decrement the counter.
     // The framework will detect if the value of `counter` changed, and will re-run the function if this is the case.
@@ -46,16 +40,29 @@ fn counter_demo() -> impl Widget {
     //    }
     //
 
-    let mut grid = Grid::with_template("70 70 / 1fr 1fr");
+    let mut grid = Grid::with_template("40px 40px / 1fr 1fr");
     grid.insert((
         Text::new(FormattedText::from(format!("Counter value: {}", counter)).attribute(14.., FontWeight::BOLD))
-            .color(Color::from_rgb_u8(200, 200, 200))
+            .centered()
             .grid_column_span(2),
-        Button::new("+").on_click(|| counter += 1).padding(5.dip()),
-        Button::new("-").on_click(|| counter -= 1).padding(5.dip()),
+        Button::new("+")
+            .on_click(|| counter += 1)
+            .padding(5.dip())
+            .horizontal_alignment(Alignment::END)
+            .vertical_alignment(Alignment::END),
+        Button::new("-")
+            .on_click(|| counter -= 1)
+            .padding(5.dip())
+            .horizontal_alignment(Alignment::START)
+            .vertical_alignment(Alignment::END),
+        Text::new("Text edit:"),
+        BaseTextEdit::new(text.clone()).on_editing_finished(|new_text| text = new_text),
     ));
 
-    grid.background("rgb(71 71 71)", style::Shape::rectangle()).fill()
+    grid.centered()
+        .frame(100.percent(), 100.percent())
+        .background("rgb(71 71 71)", style::Shape::rectangle())
+        .text_color(Color::from_rgb_u8(200, 200, 200))
 }
 
 #[composable]

@@ -634,3 +634,39 @@ cursor enters the **padding area**, and not the actual widget.
         └WidgetPod
           └Text  `plain text: "Counter value: 1"`
 ```
+
+# Tab navigation
+
+Declare some widgets as tab-focusable. For the tab order, use the "logical sequence" => grid insertion order. 
+
+A widget is tab-focusable if it accepts SetFocus events
+
+On tab:
+- send keyboard event to target
+- target calls `ctx.move_focus()`
+- event `Event::MoveFocus` is sent to the focused target
+- bubbles down to the target
+  - target doesn't handle it, bubbles up
+  - eventually, bubbles up to the parent container
+    - parent container sets the focus on the prev/next element (dispatch Event::SetFocus(direction) on children)
+    - if no prev/next element: MoveFocus bubbles up to parent container
+
+Alternative:
+- event return values:
+  - handled
+  - focus move
+
+- widget calls `ctx.move_focus`
+  - route_event sees this result, marks parent widget 
+
+Right now event return values are "stateful" => stashed in context.
+
+
+Alternative:
+- instead of juggling events, build the focus chain on recomp 
+  - InternalEvent::BuildFocusChain { focus_chain: &mut FocusChain }
+- problem: full tree traversal on each recomp
+  - caching?
+=> just do that, it's simple, easy to implement, flexible
+  - makes recomp (potentially) costly
+  - however, the event propagation code is already complicated enough as is, not much room for more

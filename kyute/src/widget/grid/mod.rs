@@ -1500,11 +1500,16 @@ impl Widget for Grid {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        //if let Event::MoveFocus()
+
         // run the events through the items in reverse order
         // in order to give priority to topmost items
         for item in self.items.iter().rev() {
             item.widget.route_event(ctx, event, env);
         }
+
+        // if ctx.move_focus_requested() {
+        //
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
