@@ -49,45 +49,45 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             + computed.border.border_top_width
             + computed.border.border_bottom_width;
 
-        trace!("computed styles: {:#?}", computed);
+        dbg!(constraints);
 
-        // compute actual min/max heights
-        let mut min_width = computed
-            .layout
-            .min_width
-            .unwrap_or(constraints.min.width)
-            .max(constraints.min.width);
-        let mut max_width = computed
-            .layout
-            .max_width
-            .unwrap_or(constraints.max.width)
-            .min(constraints.max.width);
-        let mut min_height = computed
-            .layout
-            .min_height
-            .unwrap_or(constraints.min.height)
-            .max(constraints.min.height);
-        let mut max_height = computed
-            .layout
-            .max_height
-            .unwrap_or(constraints.max.height)
-            .min(constraints.max.height);
-        if let Some(width) = computed.layout.width {
-            let w = width.clamp(min_width, max_width);
+        //trace!("computed styles: {:#?}", computed);
+
+        // compute min/max heights constraints
+        let mut min_width = computed.layout.min_width.unwrap_or(constraints.min.width);
+        let mut max_width = computed.layout.max_width.unwrap_or(constraints.max.width);
+        let mut min_height = computed.layout.min_height.unwrap_or(constraints.min.height);
+        let mut max_height = computed.layout.max_height.unwrap_or(constraints.max.height);
+
+        // explicit width/height declarations
+        if let Some(w) = computed.layout.width {
             min_width = w;
             max_width = w;
         }
-        if let Some(height) = computed.layout.height {
-            let h = height.clamp(min_height, max_height);
+        if let Some(h) = computed.layout.height {
             min_height = h;
             max_height = h;
+        }
+
+        // clamp to parent constraints & sanitize
+        min_width = constraints.constrain_width(min_width);
+        max_width = constraints.constrain_width(max_width);
+        min_height = constraints.constrain_height(min_height);
+        max_height = constraints.constrain_height(max_height);
+        if min_width >= max_width {
+            min_width = max_width;
+        }
+        if min_height >= max_height {
+            min_height = max_height;
         }
 
         let content_max_width = (max_width - padding_h).max(0.0);
         let content_max_height = (max_height - padding_v).max(0.0);
 
         trace!(
-            "max: {}x{}, content_max: {}x{}",
+            "min: {}x{}, max: {}x{}, content_max: {}x{}",
+            min_width,
+            min_height,
             max_width,
             max_height,
             content_max_width,
@@ -112,13 +112,13 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         // compute our box size
         let width = (content_size.width + padding_h).clamp(min_width, max_width);
         let height = (content_size.height + padding_v).clamp(min_height, max_height);
-        trace!(
+        /*trace!(
             "content_size={:?}, sublayout={:?}, final size={}x{}",
             content_size,
             sublayout,
             width,
             height
-        );
+        );*/
 
         if !ctx.speculative {
             // position the contents inside the "content area box", which is the final box minus

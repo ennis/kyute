@@ -186,6 +186,9 @@ pub enum Event<'a> {
     Composition(CompositionEvent),
     WindowEvent(winit::event::WindowEvent<'static>),
     WindowRedrawRequest,
+    BuildFocusChain {
+        chain: &'a mut Vec<WidgetId>,
+    },
     Internal(InternalEvent<'a>),
 }
 

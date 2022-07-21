@@ -4,8 +4,9 @@ use crate::{
     drawing::{Image, ToSkia, IMAGE_CACHE},
     Angle, Color, Data, Offset, Rect,
 };
+use parking_lot::Mutex;
 use skia_safe as sk;
-use skia_safe::gradient_shader::GradientShaderColors;
+use skia_safe::{gradient_shader::GradientShaderColors, Sendable};
 use std::{ffi::c_void, fmt, mem};
 
 /// Image repeat mode.
@@ -86,12 +87,14 @@ pub enum Paint {
     },
     // TODO: shader effects
     Shader {
+        // GOD FCKING DAMMIT MAKE THIS THREAD-SAFE ALREADY
         effect: sk::RuntimeEffect,
         uniforms: UniformData,
     },
 }
 
-impl_env_value!(Paint);
+// Nope, not thread safe.
+//impl_env_value!(Paint);
 
 impl Default for Paint {
     fn default() -> Self {

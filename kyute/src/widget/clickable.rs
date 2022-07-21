@@ -1,6 +1,7 @@
 use crate::{event::PointerEventKind, widget::prelude::*, Signal};
-use keyboard_types::{Code, Key, KeyState};
+use keyboard_types::{Code, Key, KeyState, Modifiers};
 
+/// Wraps an inner widget and allows the user to respond to clicks on it.
 #[derive(Clone)]
 pub struct Clickable<Inner> {
     id: WidgetId,
@@ -144,6 +145,10 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         match event {
+            Event::BuildFocusChain { chain } => {
+                // clickable items are by default focusable
+                chain.push(self.id);
+            }
             Event::Pointer(p) => match p.kind {
                 PointerEventKind::PointerDown => {
                     ctx.request_focus();
@@ -180,9 +185,11 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
                     }
 
                     if key.key == Key::Tab {
-                        // the container widget sees this
-                        // it takes note of the widget ID that sent it
-                        //ctx.move_focus(Next);
+                        if key.modifiers.contains(Modifiers::SHIFT) {
+                            ctx.focus_prev();
+                        } else {
+                            ctx.focus_next();
+                        }
                     }
                 }
                 if key.state == KeyState::Up {

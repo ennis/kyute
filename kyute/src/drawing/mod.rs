@@ -11,6 +11,7 @@ mod paint;
 mod path;
 mod svg_path;
 
+use crate::application::AppCtx;
 pub use border::{Border, BorderStyle};
 pub use box_shadow::BoxShadow;
 pub use image::{Image, ImageCache, IMAGE_CACHE};

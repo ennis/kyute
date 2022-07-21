@@ -665,8 +665,41 @@ Right now event return values are "stateful" => stashed in context.
 Alternative:
 - instead of juggling events, build the focus chain on recomp 
   - InternalEvent::BuildFocusChain { focus_chain: &mut FocusChain }
+  - which widget adds to the focus chain?
+    - clickables
+    - editors
+    - all widgets with an ID?
+
+How does the widget adds itself to the focus chain?
+- handles an event?
+- overrides 
+
 - problem: full tree traversal on each recomp
   - caching?
 => just do that, it's simple, easy to implement, flexible
   - makes recomp (potentially) costly
   - however, the event propagation code is already complicated enough as is, not much room for more
+
+
+# Event propagation results
+We want the widget that propagate the event to be able to intercept the result of event delivery:
+- if the event was handled by a descendant widget
+- whether a focus change was requested
+- dirty regions / repaint requests
+- relayout requests
+- widgets that passed the hit-test
+
+In `Widget::event`, EventCtx receives the return value, in a way.
+Q: Not sure why it's preferred over actually returning a `EventResult` object?
+A: Because with a return value, container/layout widgets need to merge the result manually; with a &mut-parameter, it's implicit, no additional code needed.
+
+=> EventCtx collects the event result, route_event merges it with the parent context.
+=> problem: if we add a vec to EventResult, lots of allocations for vectors that hold successful hit-tests
+
+# Debugging event propagation
+It can be difficult to understand how events propagate => debug visualization
+
+# Should `Window` really be a widget?
+Because of that, we're forced to have a dummy root widget and a bunch of `expect`s in EventCtx to account for this **unique** dummy root.
+Alternatives:
+- instead of a single root widget, store a list of root windows.

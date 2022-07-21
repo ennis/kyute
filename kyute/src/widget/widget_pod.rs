@@ -264,11 +264,10 @@ impl<T: Widget + ?Sized> WidgetPod<T> {
 
     fn update_child_layers(&self, skia_direct_context: &mut sk::gpu::DirectContext) {
         // "skip" this layer's items and repaint internal layers
-        let mut event_ctx = EventCtx::new();
-        self.content.route_event(
-            &mut event_ctx,
+        crate::core::send_utility_event(
+            &self.content,
             &mut Event::Internal(InternalEvent::UpdateLayers { skia_direct_context }),
-            &Environment::new(),
+            &Environment::default(),
         );
     }
 
@@ -377,8 +376,114 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         layout
     }
 
+    fn route_event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        // WidgetPod plays an important role during event propagation:
+        // First, it maintains a "child filter": a bloom filter containing the set of child widget IDs.
+        // It uses this filter to stop propagation of routed events if the target is not in the child set.
+        //
+        // Second, it also handles hit-testing of pointer events,
+        // and stops propagation to child widgets if the hit-test fails.
+
+        // ensure that the child filter has been computed and the child widgets are initialized
+        self.compute_child_filter(parent_ctx, env);
+
+        match *event {
+            // do not propagate routed events that are not directed to us, or to one of our children;
+            // use the child filter to determine if we may contain a specific children; it might be a false
+            // positive, but on average it saves some unnecessary traversals.
+            Event::Internal(InternalEvent::RouteWindowEvent { target, .. })
+            | Event::Internal(InternalEvent::RouteEvent { target, .. })
+            | Event::Internal(InternalEvent::RoutePointerEvent { target, .. })
+            | Event::Internal(InternalEvent::RouteRedrawRequest(target)) => {
+                if Some(target) != self.id && !self.may_contain(target) {
+                    return;
+                }
+            }
+            // for UpdateChildFilter, if we already have computed and cached the child filter, use that
+            // instead of propagating down the tree.
+            Event::Internal(InternalEvent::UpdateChildFilter { ref mut filter }) => {
+                if let Some(id) = self.id {
+                    filter.add(&id);
+                }
+                let child_filter = self.compute_child_filter(parent_ctx, env);
+                filter.extend(&child_filter);
+                return;
+            }
+
+            // pointer events undergo hit-testing, with some exceptions:
+            // - pointer out events are exempt from hit-test: if the pointer leaves
+            // the parent widget, we also want the child elements to know that.
+            // - if the widget is a pointer-grabbing widget, don't hit test
+            Event::Pointer(p) => {
+                let exempt_from_hit_test = p.kind == PointerEventKind::PointerOut
+                    || (self.id.is_some() && parent_ctx.pointer_capturing_widget() == self.id);
+
+                if !exempt_from_hit_test {
+                    let local_pointer_pos = self.transform.get().inverse().unwrap().transform_point(p.position);
+
+                    if !self
+                        .cached_layout
+                        .get()
+                        .expect("pointer event received before layout")
+                        .measurements
+                        .local_bounds()
+                        .contains(local_pointer_pos)
+                    {
+                        trace!(
+                            "do_event: pointer event FAIL @ {:?}{:?}",
+                            self.content.debug_name(),
+                            p.position,
+                        );
+                        return;
+                    }
+
+                    // since this widget passed the hit-test, it is now the hot widget
+                    // FIXME this is ugly, maybe add a function to EventCtx
+                    // FIXME and also more complicated than that, because there can be multiple hot
+                    // widgets (for example, if the pointer hovers over two stacked widgets)
+                    // => also need pointer enter, pointer exit
+                    if let Some(window_state) = &mut parent_ctx.window_state {
+                        window_state.focus_state.hot = self.id;
+                    }
+                }
+            }
+
+            _ => {}
+        }
+
+        // continue with default routing behavior
+        parent_ctx.default_route_event(self, event, &self.transform.get(), self.cached_layout.get(), env);
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.content.route_event(ctx, event, env)
+        self.content.route_event(ctx, event, env);
+
+        // handle event result
+        if ctx.relayout {
+            // a child widget (or ourselves) requested a relayout during event handling;
+            // clear the cached layout, if any
+            //eprintln!("inner: {:?}, relayout requested", self.content.debug_name());
+            self.cached_layout.set(None);
+        }
+
+        // update damage
+        let mut current_damage = self.paint_damage.get();
+        current_damage.merge_up(ctx.paint_damage);
+        self.paint_damage.set(current_damage);
+        /*eprintln!(
+            "inner:{:?}, incoming damage: {:?},  {:?} => {:?}",
+            self.content.debug_name(),
+            event_result.paint_damage,
+            self.layer.as_ref().unwrap().size(),
+            current_damage
+        );*/
+
+        // Downgrade `Repaint` to `SubLayers`:
+        // if the contents of a layer need to be redrawn, its parent doesn't necessarily need to.
+        // As such, a layered WidgetPod acts as a "repaint barrier".
+        if ctx.paint_damage == PaintDamage::Repaint {
+            ctx.paint_damage = PaintDamage::SubLayers;
+        }
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
@@ -449,105 +554,6 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                     |ctx| self.content.paint(ctx),
                 )
             }
-        }
-    }
-
-    fn route_event(&self, parent_ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        // ensure that the child filter has been computed and the child widgets are initialized
-        self.compute_child_filter(parent_ctx, env);
-        match *event {
-            // do not propagate routed events that are not directed to us, or to one of our children;
-            // use the child filter to determine if we may contain a specific children; it might be a false
-            // positive, but on average it saves some unnecessary traversals.
-            Event::Internal(InternalEvent::RouteWindowEvent { target, .. })
-            | Event::Internal(InternalEvent::RouteEvent { target, .. })
-            | Event::Internal(InternalEvent::RoutePointerEvent { target, .. })
-            | Event::Internal(InternalEvent::RouteRedrawRequest(target)) => {
-                if Some(target) != self.id && !self.may_contain(target) {
-                    return;
-                }
-            }
-            // for UpdateChildFilter, if we already have computed and cached the child filter, use that
-            // instead of propagating down the tree.
-            Event::Internal(InternalEvent::UpdateChildFilter { ref mut filter }) => {
-                if let Some(id) = self.id {
-                    filter.add(&id);
-                }
-                let child_filter = self.compute_child_filter(parent_ctx, env);
-                filter.extend(&child_filter);
-                return;
-            }
-
-            // pointer events undergo hit-testing, with some exceptions:
-            // - pointer out events are exempt from hit-test: if the pointer leaves
-            // the parent widget, we also want the child elements to know that.
-            // - if the widget is a pointer-grabbing widget, don't hit test
-            Event::Pointer(p) => {
-                let exempt_from_hit_test = p.kind == PointerEventKind::PointerOut
-                    || (self.id.is_some() && parent_ctx.focus_state.as_deref().unwrap().pointer_grab == self.id);
-
-                if !exempt_from_hit_test {
-                    let local_pointer_pos = self.transform.get().inverse().unwrap().transform_point(p.position);
-
-                    if !self
-                        .cached_layout
-                        .get()
-                        .expect("pointer event received before layout")
-                        .measurements
-                        .local_bounds()
-                        .contains(local_pointer_pos)
-                    {
-                        trace!(
-                            "do_event: pointer event FAIL @ {:?}{:?}",
-                            self.content.debug_name(),
-                            p.position,
-                        );
-                        return;
-                    }
-
-                    // FIXME this is ugly, maybe add a function to EventCtx
-                    if let Some(focus_state) = &mut parent_ctx.focus_state {
-                        focus_state.hot = self.id;
-                    }
-                }
-            }
-
-            _ => {}
-        }
-
-        // continue with default routing behavior
-        let event_result =
-            parent_ctx.default_route_event(self, event, &self.transform.get(), self.cached_layout.get(), env);
-
-        // handle event result
-        if let Some(mut event_result) = event_result {
-            if event_result.relayout {
-                // a child widget (or ourselves) requested a relayout during event handling;
-                // clear the cached layout, if any
-                //eprintln!("inner: {:?}, relayout requested", self.content.debug_name());
-                self.cached_layout.set(None);
-            }
-
-            // update damage
-            let mut current_damage = self.paint_damage.get();
-            current_damage.merge_up(event_result.paint_damage);
-            self.paint_damage.set(current_damage);
-            /*eprintln!(
-                "inner:{:?}, incoming damage: {:?},  {:?} => {:?}",
-                self.content.debug_name(),
-                event_result.paint_damage,
-                self.layer.as_ref().unwrap().size(),
-                current_damage
-            );*/
-
-            // We propagate the damage, but we downgrade `Repaint` to `SubLayers`:
-            // if the contents of a layer need to be redrawn, its parent doesn't necessarily need to.
-            // As such, a layered WidgetPod acts as a "repaint barrier".
-            if event_result.paint_damage == PaintDamage::Repaint {
-                event_result.paint_damage = PaintDamage::SubLayers;
-            }
-
-            parent_ctx.merge_event_result(event_result);
         }
     }
 

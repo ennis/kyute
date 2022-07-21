@@ -1,4 +1,5 @@
 use crate::{cache, Color, Data, Length, SideOffsets};
+use once_cell::sync::{Lazy, OnceCell};
 use std::{
     any::Any,
     collections::HashMap,
@@ -49,7 +50,7 @@ impl<T: EnvValue> EnvKey<T> {
 }
 
 /// Trait implemented by values that can be stored in an environment.
-pub trait EnvValue: Sized + Any + Clone {
+pub trait EnvValue: Sized + Any + Clone + Send + Sync {
     fn as_any(&self) -> &dyn Any;
 }
 
@@ -70,7 +71,7 @@ impl_env_value!(String);
 impl_env_value!(SideOffsets);
 impl_env_value!(Length);
 
-impl<T: Any> EnvValue for Arc<T> {
+impl<T: Any + Send + Sync> EnvValue for Arc<T> {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -78,6 +79,14 @@ impl<T: Any> EnvValue for Arc<T> {
 
 #[derive(Clone, Debug)]
 pub struct Environment(Arc<EnvImpl>);
+
+static EMPTY_ENVIRONMENT: Lazy<Environment> = Lazy::new(|| Environment::new());
+
+impl Default for Environment {
+    fn default() -> Self {
+        EMPTY_ENVIRONMENT.clone()
+    }
+}
 
 impl Data for Environment {
     fn same(&self, other: &Self) -> bool {
@@ -95,7 +104,7 @@ impl Hash for Environment {
 #[derive(Clone)]
 struct EnvImpl {
     parent: Option<Arc<EnvImpl>>,
-    values: HashMap<&'static str, Arc<dyn Any>>,
+    values: HashMap<&'static str, Arc<dyn Any + Send + Sync>>,
 }
 
 impl fmt::Debug for EnvImpl {
@@ -186,12 +195,6 @@ impl Environment {
             inner.parent = Some(self.0.clone())
         }
         with
-    }
-}
-
-impl Default for Environment {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

@@ -98,9 +98,7 @@ impl AppCtx {
         while !self.pending_events.is_empty() {
             let events = mem::take(&mut self.pending_events);
             for mut event in events {
-                let mut dummy_focus_state = FocusState::default();
-                let mut event_ctx = EventCtx::with_app_ctx(self, &mut dummy_focus_state, event_loop, None);
-                root_widget.route_event(&mut event_ctx, &mut event, root_env)
+                crate::core::send_root_event(self, event_loop, root_widget, &mut event, root_env);
             }
         }
     }
@@ -128,9 +126,7 @@ fn update_ui<W: Widget + 'static>(
     // send the initialize event
     {
         let _span = trace_span!("UI initialize event").entered();
-        let mut dummy_focus_state = FocusState::default();
-        let mut event_ctx = EventCtx::with_app_ctx(app_ctx, &mut dummy_focus_state, event_loop, None);
-        root_widget.route_event(&mut event_ctx, &mut Event::Initialize, root_env);
+        crate::core::send_root_event(app_ctx, event_loop, &root_widget, &mut Event::Initialize, root_env);
     }
 
     //dump_widget_tree(&root_widget);

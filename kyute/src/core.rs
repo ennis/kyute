@@ -12,6 +12,7 @@ use crate::{
     },
     EnvKey, Environment, Event, InternalEvent, Layout, LayoutConstraints, Point, PointI, Rect, Transform,
 };
+use kyute::window::WindowState;
 use kyute_shell::{animation::Layer, application::Application};
 use skia_safe as sk;
 use std::{
@@ -85,14 +86,21 @@ pub struct EventResult {
     pub handled: bool,
     pub relayout: bool,
     pub paint_damage: PaintDamage,
+    pub focus_change: Option<FocusChange>,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct WindowInfo {
-    pub scale_factor: f64,
+impl Default for EventResult {
+    fn default() -> Self {
+        EventResult {
+            handled: false,
+            relayout: false,
+            paint_damage: Default::default(),
+            focus_change: None,
+        }
+    }
 }
 
-/// Global state related to focus and pointer grab.
+/// Per-window state related to focus and pointer grab.
 #[derive(Clone, Debug, Default)]
 pub struct FocusState {
     pub(crate) focus: Option<WidgetId>,
@@ -163,7 +171,7 @@ fn do_event<W: Widget + ?Sized>(
     event: &mut Event,
     transform: &Transform,
     env: &Environment,
-) -> EventResult {
+) {
     /*let target_layer = widget.layer();
 
     let parent_to_target_transform = if let Some(parent_layer) = parent_ctx.layer {
@@ -202,32 +210,42 @@ fn do_event<W: Widget + ?Sized>(
         _ => {}
     }
 
-    // transform from the visual tree root to the widget's layer
+    // window_transform == transform from window coordinates to widget local coordinates
     let window_transform = transform.then(&parent_ctx.window_transform);
 
+    // setup the EventCtx for the target widget, and invoke the `Widget::event` handler.
     let mut target_ctx = EventCtx {
         app_ctx: parent_ctx.app_ctx.as_deref_mut(),
         event_loop: parent_ctx.event_loop.as_deref(),
-        parent_window: parent_ctx.parent_window.as_deref_mut(),
-        focus_state: parent_ctx.focus_state.as_deref_mut(),
+        window_state: parent_ctx.window_state.as_deref_mut(),
         window_transform,
         id: widget.widget_id(),
         handled: false,
         relayout: false,
         paint_damage: PaintDamage::None,
+        focus_change: None,
     };
     event.with_local_coordinates(transform, |event| {
         widget.event(&mut target_ctx, event, env);
     });
 
-    EventResult {
-        handled: target_ctx.handled,
-        relayout: target_ctx.relayout,
-        paint_damage: target_ctx.paint_damage,
+    // merge the results of event delivery to the parent EventCtx
+    let handled = target_ctx.handled;
+    let relayout = target_ctx.relayout;
+    let paint_damage = target_ctx.paint_damage;
+    let focus_change = target_ctx.focus_change;
+
+    parent_ctx.relayout |= relayout;
+    parent_ctx.handled |= handled;
+    parent_ctx.paint_damage.merge_up(paint_damage);
+    if let Some(focus_change) = focus_change {
+        parent_ctx.focus_change = Some(focus_change);
     }
 }
 
 /// Damage done to the contents of a layer that possibly justifies a repaint.
+///
+/// TODO: check documentation and wording (do layers still exist?)
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum PaintDamage {
     /// This layer and its sublayers are undamaged and do not need a repaint.
@@ -255,6 +273,21 @@ impl PaintDamage {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum FocusChange {
+    MoveNext,
+    MovePrev,
+    MoveTo(WidgetId),
+}
+
+/// Event propagation context.
+///
+/// Widgets receive an `EventCtx` object in `Widget::event`, which can be used to control what should happen as a result of the event, such as:
+///  - changing the currently focused widget (`request_focus`, `focus_next`, `focus_prev`).
+///  - capturing the mouse pointer
+///  - requesting a relayout (`request_relayout`)
+///  - requesting the widget to be repainted
+///  - stopping event propagation (`set_handled`)
 pub struct EventCtx<'a> {
     // The Option fields are here because we sometimes send "utility events" that, for practical reasons,
     // we'd like to send without having a parent window (`parent_window`, `focus_state`) or an event loop in context (`event_loop`).
@@ -266,92 +299,99 @@ pub struct EventCtx<'a> {
     // but this adds another event propagation path to the `Widget` trait which, from an ergonomic standpoint, isn't very good.
     pub(crate) app_ctx: Option<&'a mut AppCtx>,
     pub(crate) event_loop: Option<&'a EventLoopWindowTarget<ExtEvent>>,
-    pub(crate) parent_window: Option<&'a mut kyute_shell::window::Window>,
-    pub(crate) focus_state: Option<&'a mut FocusState>,
+    /// Focus state of the parent window.
+    pub(crate) window_state: Option<&'a mut WindowState>,
     pub(crate) window_transform: Transform,
     pub(crate) id: Option<WidgetId>,
+
+    // event result
     pub(crate) handled: bool,
     pub(crate) relayout: bool,
     pub(crate) paint_damage: PaintDamage,
+    pub(crate) focus_change: Option<FocusChange>,
+}
+
+/// Sends an event to the specified root widget.
+pub(crate) fn send_root_event(
+    app_ctx: &mut AppCtx,
+    event_loop: &EventLoopWindowTarget<ExtEvent>,
+    widget: &dyn Widget,
+    event: &mut Event,
+    env: &Environment,
+) -> EventResult {
+    let mut ctx = EventCtx {
+        app_ctx: Some(app_ctx),
+        event_loop: Some(event_loop),
+        window_state: None,
+        window_transform: Transform::identity(),
+        id: widget.widget_id(),
+        handled: false,
+        relayout: false,
+        paint_damage: PaintDamage::None,
+        focus_change: None,
+    };
+    widget.route_event(&mut ctx, event, env);
+    EventResult {
+        handled: ctx.handled,
+        relayout: ctx.relayout,
+        paint_damage: ctx.paint_damage,
+        focus_change: ctx.focus_change,
+    }
+}
+
+pub(crate) fn send_event_with_parent_window<W: Widget + ?Sized>(
+    ctx: &mut EventCtx,
+    window_state: &mut WindowState,
+    widget: &W,
+    event: &mut Event,
+    env: &Environment,
+) -> EventResult {
+    let mut child_ctx = EventCtx {
+        app_ctx: ctx.app_ctx.as_deref_mut(),
+        event_loop: ctx.event_loop,
+        window_state: Some(window_state),
+        window_transform: Transform::identity(),
+        id: ctx.id,
+        handled: false,
+        relayout: false,
+        paint_damage: PaintDamage::None,
+        focus_change: None,
+    };
+    widget.route_event(&mut child_ctx, event, env);
+    EventResult {
+        handled: child_ctx.handled,
+        relayout: child_ctx.relayout,
+        paint_damage: child_ctx.paint_damage,
+        focus_change: child_ctx.focus_change,
+    }
+}
+
+/// Sends an event to the specified root widget.
+pub(crate) fn send_utility_event<W: Widget + ?Sized>(widget: &W, event: &mut Event, env: &Environment) {
+    let mut ctx = EventCtx {
+        app_ctx: None,
+        event_loop: None,
+        window_state: None,
+        window_transform: Transform::identity(),
+        id: widget.widget_id(),
+        handled: false,
+        relayout: false,
+        paint_damage: PaintDamage::None,
+        focus_change: None,
+    };
+    widget.route_event(&mut ctx, event, env);
 }
 
 impl<'a> EventCtx<'a> {
-    pub(crate) fn new() -> EventCtx<'a> {
-        EventCtx {
-            app_ctx: None,
-            event_loop: None,
-            parent_window: None,
-            focus_state: None,
-            window_transform: Transform::identity(),
-            id: None,
-            handled: false,
-            relayout: false,
-            paint_damage: PaintDamage::None,
-        }
-    }
-
-    /// Creates the root `EventCtx`
-    pub(crate) fn with_app_ctx(
-        app_ctx: &'a mut AppCtx,
-        focus_state: &'a mut FocusState,
-        event_loop: &'a EventLoopWindowTarget<ExtEvent>,
-        id: Option<WidgetId>,
-    ) -> EventCtx<'a> {
-        EventCtx {
-            app_ctx: Some(app_ctx),
-            event_loop: Some(event_loop),
-            parent_window: None,
-            focus_state: Some(focus_state),
-            window_transform: Transform::identity(),
-            id,
-            handled: false,
-            relayout: false,
-            paint_damage: PaintDamage::None,
-        }
-    }
-
-    /// Creates a new `EventCtx` to propagate events in a subwindow.
-    pub fn with_local_transform<R>(
-        &mut self,
-        transform: &Transform,
-        event: &mut Event,
-        f: impl FnOnce(&mut EventCtx, &mut Event) -> R,
-    ) -> R {
-        let prev_window_transform = self.window_transform;
-        self.window_transform = transform.then(&self.window_transform);
-        let result = event.with_local_coordinates(transform, |event| f(self, event));
-        self.window_transform = prev_window_transform;
-        result
-    }
-
-    /// Creates a new `EventCtx` to propagate events in a subwindow.
-    pub(crate) fn with_window<'b>(
-        &'b mut self,
-        window: &'b mut kyute_shell::window::Window,
-        focus_state: &'b mut FocusState,
-    ) -> EventCtx<'b>
-    where
-        'a: 'b,
-    {
-        EventCtx {
-            app_ctx: self.app_ctx.as_deref_mut(),
-            event_loop: self.event_loop,
-            parent_window: Some(window),
-            focus_state: Some(focus_state),
-            window_transform: Transform::identity(),
-            id: self.id,
-            handled: false,
-            relayout: false,
-            paint_damage: PaintDamage::None,
-        }
-    }
-
-    ///
+    /*///
     pub fn merge_event_result(&mut self, event_result: EventResult) {
         self.relayout |= event_result.relayout;
         self.handled |= event_result.handled;
         self.paint_damage.merge_up(event_result.paint_damage);
-    }
+        if let Some(focus_change) = event_result.focus_change {
+            self.focus_change = Some(focus_change);
+        }
+    }*/
 
     /// Returns the parent widget ID.
     pub fn widget_id(&self) -> Option<WidgetId> {
@@ -400,13 +440,26 @@ impl<'a> EventCtx<'a> {
         self.relayout = true;
     }
 
+    #[track_caller]
+    fn window_state(&self) -> &WindowState {
+        // TODO better panic message
+        self.window_state
+            .as_deref()
+            .expect("this method can only be called when the current widget is contained in a parent window")
+    }
+
+    #[track_caller]
+    fn window_state_mut(&mut self) -> &mut WindowState {
+        self.window_state
+            .as_deref_mut()
+            .expect("this method can only be called when the current widget is contained in a parent window")
+    }
+
     /// Requests that the current node grabs all pointer events in the parent window.
     pub fn capture_pointer(&mut self) {
         if let Some(id) = self.id {
-            self.focus_state
-                .as_deref_mut()
-                .expect("invalid EventCtx call")
-                .pointer_grab = Some(id);
+            // TODO this should be a request
+            self.window_state_mut().focus_state.pointer_grab = Some(id);
         } else {
             warn!("capture_pointer: the widget capturing the pointer must have an ID")
         }
@@ -416,16 +469,21 @@ impl<'a> EventCtx<'a> {
     #[must_use]
     pub fn is_capturing_pointer(&self) -> bool {
         if let Some(id) = self.id {
-            self.focus_state.as_deref().expect("invalid EventCtx call").pointer_grab == Some(id)
+            self.window_state().focus_state.pointer_grab == Some(id)
         } else {
             false
         }
     }
 
+    /// Returns the current pointer-grabbing widget ID.
+    pub fn pointer_capturing_widget(&self) -> Option<WidgetId> {
+        self.window_state().focus_state.pointer_grab
+    }
+
     /// Releases the pointer grab, if the current node is holding it.
     pub fn release_pointer(&mut self) {
         if let Some(id) = self.id {
-            if self.focus_state.as_deref().expect("invalid EventCtx call").pointer_grab == Some(id) {
+            if self.window_state().focus_state.pointer_grab == Some(id) {
                 trace!("releasing pointer grab");
             } else {
                 warn!("pointer capture release requested but the current widget isn't capturing the pointer");
@@ -438,17 +496,27 @@ impl<'a> EventCtx<'a> {
     /// Acquires the focus.
     pub fn request_focus(&mut self) {
         if let Some(id) = self.id {
-            self.focus_state.as_deref_mut().expect("invalid EventCtx call").focus = Some(id);
+            self.focus_change = Some(FocusChange::MoveTo(id));
         } else {
             warn!("request_focus: the calling widget must have an ID")
         }
+    }
+
+    /// Moves the focus to the next element in the focus chain.
+    pub fn focus_next(&mut self) {
+        self.focus_change = Some(FocusChange::MoveNext);
+    }
+
+    /// Moves the focus to the previous element in the focus chain.
+    pub fn focus_prev(&mut self) {
+        self.focus_change = Some(FocusChange::MovePrev);
     }
 
     /// Returns whether the current node has the focus.
     #[must_use]
     pub fn has_focus(&self) -> bool {
         if let Some(id) = self.id {
-            self.focus_state.as_deref().expect("invalid EventCtx call").focus == Some(id)
+            self.window_state().focus_state.focus == Some(id)
         } else {
             false
         }
@@ -456,11 +524,9 @@ impl<'a> EventCtx<'a> {
 
     pub fn track_popup_menu(&mut self, menu: kyute_shell::Menu, at: Point) {
         if let Some(id) = self.id {
-            let parent_window = self.parent_window.as_deref_mut().expect("invalid EventCtx call");
-            self.focus_state
-                .as_deref_mut()
-                .expect("invalid EventCtx call")
-                .popup_target = Some(id);
+            let window_state = self.window_state_mut();
+            let parent_window = window_state.window.as_mut().expect("window has not been created yet");
+            window_state.focus_state.popup_target = Some(id);
             let scale_factor = parent_window.scale_factor();
             let at = PointI::new((at.x * scale_factor) as i32, (at.y * scale_factor) as i32);
             parent_window.show_context_menu(menu, at);
@@ -489,11 +555,10 @@ impl<'a> EventCtx<'a> {
         transform: &Transform,
         cached_layout: Option<Layout>,
         env: &Environment,
-    ) -> Option<EventResult> {
+    ) {
         let id = widget.widget_id();
 
-        // ---- Handle internal events (routing mostly) ----
-        let result = match *event {
+        match *event {
             ////////////////////////////////////////////////////////////////////////////////////////
             // Routed events
             Event::Internal(InternalEvent::RouteWindowEvent {
@@ -564,9 +629,10 @@ impl<'a> EventCtx<'a> {
                     transform: Some(transform.clone()),
                     children,
                 });
-
-                return None;
             }
+
+            ////////////////////////////////////////////////////////////////////////////////////////
+            // Other internal events
 
             ////////////////////////////////////////////////////////////////////////////////////////
             // Other internal events
@@ -586,8 +652,6 @@ impl<'a> EventCtx<'a> {
             // Regular event flow
             _ => do_event(self, widget, id, event, transform, env),
         };
-
-        Some(result)
     }
 }
 
@@ -708,19 +772,25 @@ pub trait Widget {
     /// Measures this widget and layouts the children of this widget.
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout;
 
-    /// Propagates an event through the widget hierarchy.
+    /// Routes an event from a parent widget to this widget.
+    ///
+    /// This method should be called by parent widgets to propagate events to their children, instead of directly
+    /// calling `event` on them. It determines whether the event is targeting the widget, and if so, invokes the `event`
+    /// method. Otherwise it skips propagation.
+    ///
+    /// It's possible to override it to inhibit event propagation in certain cases (see WidgetPod).
+    /// However, you should always call `ctx.default_route_event()`.
+    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        ctx.default_route_event(self, event, &Transform::identity(), None, env)
+    }
+
+    /// Event callback. Implement to respond to event that target this widget.
+    ///
+    /// All events received through this method should be routed to child widgets with `child.route_event()`.
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);
 
     /// Paints this widget on the given context.
     fn paint(&self, ctx: &mut PaintCtx);
-
-    ///
-    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        let event_result = ctx.default_route_event(self, event, &Transform::identity(), None, env);
-        if let Some(event_result) = event_result {
-            ctx.merge_event_result(event_result);
-        }
-    }
 
     /// Paints this widget on a native composition layer.
     fn layer_paint(&self, ctx: &mut LayerPaintCtx, layer: &Layer, scale_factor: f64) {
@@ -883,11 +953,10 @@ impl<T: Clone> LayoutCache<T> {
 
 pub(crate) fn get_debug_widget_tree<W: Widget>(w: &W) -> DebugWidgetTreeNode {
     let mut nodes = Vec::new();
-    let mut event_ctx = EventCtx::new();
-    w.route_event(
-        &mut event_ctx,
+    send_utility_event(
+        w,
         &mut Event::Internal(InternalEvent::DumpTree { nodes: &mut nodes }),
-        &Environment::new(),
+        &Environment::default(),
     );
     assert_eq!(nodes.len(), 1);
     nodes.into_iter().next().unwrap()
