@@ -2,12 +2,15 @@
 use crate::{
     composable,
     core::Widget,
+    drawing::ToSkia,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
-    widget::{prelude::*, Text},
+    widget::{prelude::*, StyledBox, Text},
 };
 use keyboard_types::KeyState;
+use kyute_common::Color;
 use kyute_shell::text::{FormattedText, Selection, TextAffinity, TextPosition};
+use skia_safe::{BlendMode, Paint};
 use std::sync::Arc;
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
@@ -32,17 +35,13 @@ fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
 /// Text editor widget.
 pub struct BaseTextEdit {
     id: WidgetId,
-
     /// Input formatted text.
     formatted_text: FormattedText,
-
     /// Current selection.
     selection: Selection,
-
     editing_finished: Signal<Arc<str>>,
     text_changed: Signal<Arc<str>>,
     selection_changed: Signal<Selection>,
-
     inner: WidgetPod<Text>,
 }
 
@@ -340,16 +339,21 @@ impl Widget for BaseTextEdit {
 
         // paint the selection over it
         let paragraph = self.inner.inner().paragraph();
-        let _selection_boxes =
+        let selection_boxes =
             paragraph.hit_test_text_range(self.selection.min()..self.selection.max(), Point::origin());
 
-        // TODO
-        //for mut tb in selection_boxes {
-        //    ctx.draw_styled_box(tb.bounds, &Style::new().background(Color::new(0.0, 0.1, 0.8, 0.5)));
-        //}
+        {
+            use skia_safe as sk;
+            let mut paint = Paint::new(Color::new(0.0, 0.8, 0.8, 0.5).to_skia(), None);
+            for mut sb in selection_boxes {
+                let canvas = ctx.surface.canvas();
+                let rect = sb.bounds.to_skia();
+                canvas.draw_rect(rect, &paint);
+            }
+        }
 
-        // paint the caret
-        /*if ctx.has_focus() {
+        /*// paint the caret
+        if ctx.has_focus() {
             let caret_hit_test = paragraph.hit_test_text_position(TextPosition {
                 position: self.selection.end,
                 affinity: TextAffinity::Downstream,
@@ -364,5 +368,79 @@ impl Widget for BaseTextEdit {
                 &paint,
             );*/
         }*/
+    }
+}
+
+// FIXME: it can be difficult to access the inner widget when it is buried under several modifiers
+// It's a common pattern: provide a widget with the base functionality, without the style,
+// then provide a styled widget that wraps the base with style modifiers.
+// The styled widget needs to forward methods to the base, and this can be difficult (i.e. lots of `.inner()`)
+// It also makes it difficult to change the style by adding/removing modifiers because then you
+// have to also modify all the method wrappers (add/remove .inner() as needed).
+//
+// Proposal: `WidgetWrapper trait has an associated
+
+#[derive(WidgetWrapper)]
+pub struct TextEdit {
+    inner: StyledBox<BaseTextEdit>,
+}
+
+impl TextEdit {
+    /// Creates a new `TextEditInner` widget displaying the specified `FormattedText`.
+    #[composable]
+    pub fn with_selection(formatted_text: impl Into<FormattedText>, mut selection: Selection) -> TextEdit {
+        let mut base = BaseTextEdit::with_selection(formatted_text, selection);
+
+        TextEdit {
+            inner: base.style(
+                "border-radius: 3px;\
+                 padding: 2px;\
+                 border: solid 1px rgb(30 30 30);\
+                 background: rgb(40 40 40);",
+            ),
+        }
+    }
+
+    /// Use if you don't care about the selection.
+    #[composable]
+    pub fn new(formatted_text: impl Into<FormattedText>) -> TextEdit {
+        #[state]
+        let mut selection = Selection::empty(0);
+        Self::with_selection(formatted_text, selection).on_selection_changed(|s| selection = s)
+    }
+
+    /// Returns whether TODO.
+    pub fn editing_finished(&self) -> Option<Arc<str>> {
+        self.inner.inner().editing_finished.value()
+    }
+
+    pub fn on_editing_finished(self, f: impl FnOnce(Arc<str>)) -> Self {
+        if let Some(text) = self.editing_finished() {
+            f(text)
+        }
+        self
+    }
+
+    /// Returns whether the text has changed.
+    pub fn text_changed(&self) -> Option<Arc<str>> {
+        self.inner.inner().text_changed.value()
+    }
+
+    pub fn on_text_changed(self, f: impl FnOnce(Arc<str>)) -> Self {
+        if let Some(text) = self.text_changed() {
+            f(text)
+        }
+        self
+    }
+
+    pub fn selection_changed(&self) -> Option<Selection> {
+        self.inner.inner().selection_changed.value()
+    }
+
+    pub fn on_selection_changed(self, f: impl FnOnce(Selection)) -> Self {
+        if let Some(selection) = self.selection_changed() {
+            f(selection)
+        }
+        self
     }
 }

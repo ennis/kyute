@@ -69,7 +69,7 @@ pub use stepper::Stepper;
 pub use styled_box::StyledBox;
 pub use table::{ColumnHeaders, TableRow, TableSelection, TableView, TableViewParams};
 pub use text::Text;
-pub use text_edit::BaseTextEdit;
+pub use text_edit::{BaseTextEdit, TextEdit};
 //pub use text_input::{StepperTextInput, TextInput};
 pub use overlay::{Overlay, ZOrder};
 pub use shape::Shape;
@@ -200,6 +200,7 @@ where
     W: Widget,
     M: Modifier,
 {
+    // FIXME: if W is itself a WidgetWrapper, should be the inner type
     type Inner = W;
 
     fn inner(&self) -> &Self::Inner {

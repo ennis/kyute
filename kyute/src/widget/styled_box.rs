@@ -25,6 +25,14 @@ impl<Inner: Widget + 'static> StyledBox<Inner> {
             inner: WidgetPod::new(inner),
         }
     }
+
+    pub fn inner(&self) -> &Inner {
+        self.inner.inner()
+    }
+
+    pub fn inner_mut(&mut self) -> &mut Inner {
+        self.inner.inner_mut()
+    }
 }
 
 impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {

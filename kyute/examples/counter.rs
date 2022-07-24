@@ -6,7 +6,7 @@ use kyute::{
     },
     style,
     text::{FontWeight, FormattedText},
-    widget::{grid::GridLayoutExt, BaseTextEdit, Button, Grid, Text, WidgetExt},
+    widget::{grid::GridLayoutExt, BaseTextEdit, Button, Grid, Text, TextEdit, WidgetExt},
     Alignment, Color, UnitExt, Widget, Window,
 };
 use std::sync::Arc;
@@ -56,7 +56,7 @@ fn counter_demo() -> impl Widget {
             .horizontal_alignment(Alignment::START)
             .vertical_alignment(Alignment::END),
         Text::new("Text edit:"),
-        BaseTextEdit::new(text.clone()).on_editing_finished(|new_text| text = new_text),
+        TextEdit::new(text.clone()).on_editing_finished(|new_text| text = new_text),
     ));
 
     grid.centered()
