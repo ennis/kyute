@@ -409,6 +409,37 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                 filter.extend(&child_filter);
                 return;
             }
+            // hit-test
+            Event::Internal(InternalEvent::HitTest {
+                ref mut position,
+                ref mut hovered,
+                ref mut hot,
+            }) => {
+                /*let local_pos = self.transform.get().inverse().unwrap().transform_point(*position);
+
+                if !self
+                    .cached_layout
+                    .get()
+                    .expect("hit test request received before layout")
+                    .measurements
+                    .local_bounds()
+                    .contains(local_pos)
+                {
+                    trace!(
+                        "InternalEvent::HitTest: FAIL @ {:?}{:?}",
+                        self.content.debug_name(),
+                        position
+                    );
+                    return;
+                } else {
+                    // update position for descendants
+                    *position = local_pos;
+                    if let Some(id) = self.id {
+                        hovered.insert(id);
+                        **hot = Some(id);
+                    }
+                }*/
+            }
 
             // pointer events undergo hit-testing, with some exceptions:
             // - pointer out events are exempt from hit-test: if the pointer leaves
@@ -434,6 +465,13 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                             self.content.debug_name(),
                             p.position,
                         );
+
+                        if let Some(ref mut window_state) = parent_ctx.window_state {
+                            // remove ourselves from the hover set
+                            if let Some(id) = self.id {
+                                window_state.hovered.remove(&id);
+                            }
+                        }
                         return;
                     }
 
@@ -442,8 +480,15 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                     // FIXME and also more complicated than that, because there can be multiple hot
                     // widgets (for example, if the pointer hovers over two stacked widgets)
                     // => also need pointer enter, pointer exit
-                    if let Some(window_state) = &mut parent_ctx.window_state {
-                        window_state.focus_state.hot = self.id;
+                    if let Some(ref mut window_state) = parent_ctx.window_state {
+                        if let Some(id) = self.id {
+                            window_state.hovered.insert(id);
+                            // set ourselves as the hot widget
+                            // note that this might be overriden by descendant widgets under this WidgetPod.
+                            // since we do so before propagating, the deepest widget passing the hit test
+                            // will be the new hotness
+                            window_state.focus_state.hot = Some(id);
+                        }
                     }
                 }
             }

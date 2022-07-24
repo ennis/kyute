@@ -22,7 +22,7 @@ use kyute_shell::{
     },
 };
 use skia_safe as sk;
-use std::{cell::RefCell, sync::Arc, time::Instant};
+use std::{cell::RefCell, collections::HashSet, mem, sync::Arc, time::Instant};
 use tracing::trace;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -94,6 +94,7 @@ pub(crate) struct WindowState {
     skia_recording_context: skia_safe::gpu::DirectContext,
     window_builder: WindowBuilder,
     pub(crate) focus_state: FocusState,
+    pub(crate) hovered: HashSet<WidgetId>,
     focus_chain: Vec<WidgetId>,
     menu: Option<Menu>,
     inputs: InputState,
@@ -400,9 +401,6 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
     }
 
     fn propagate_input_event(&mut self, mut event: Event) {
-        let old_focus = self.state.focus_state.focus;
-        let old_hot = self.state.focus_state.hot;
-        let mut pointer_device_id = None;
         let mut event_result = EventResult::default();
 
         let pointer_grab_auto_release = matches!(
@@ -413,24 +411,104 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
             })
         );
 
+        // send the event
         match event {
-            Event::Pointer(ref pointer_event)
-            | Event::Wheel(WheelEvent {
-                pointer: ref pointer_event,
-                ..
-            }) => {
-                pointer_device_id = Some(pointer_event.pointer_id);
+            Event::Pointer(_) | Event::Wheel(_) => {
+                let pointer_id = match event {
+                    Event::Pointer(ref pointer_event) => pointer_event.pointer_id,
+                    Event::Wheel(ref wheel_event) => wheel_event.pointer.pointer_id,
+                    _ => unreachable!(),
+                };
+
+                // FIXME: wheel event propagation is broken
+                //pointer_device_id = Some(pointer_event.pointer_id);
                 // Pointer and wheel events are delivered to the node that is currently grabbing the pointer.
                 // If nothing is grabbing the pointer, the pointer event is delivered to a widget
                 // that passes the hit-test
-                if let Some(pointer_grab) = self.state.focus_state.pointer_grab {
-                    trace!("routing pointer event to pointer-capturing widget {:?}", pointer_grab);
-                    // must use RoutePointerEvent so that relative pointer positions are computed during propagation
-                    event_result = self.send_routed_pointer_event(pointer_grab, *pointer_event);
+                if let Some(target) = self.state.focus_state.pointer_grab {
+                    trace!("routing pointer event to pointer-capturing widget {:?}", target);
+                    match event {
+                        Event::Pointer(ref pointer_event) => {
+                            self.send_event(&mut Event::Internal(InternalEvent::RoutePointerEvent {
+                                event: pointer_event.clone(),
+                                target,
+                            }));
+                        }
+                        Event::Wheel(ref wheel_event) => {
+                            self.send_event(&mut Event::Internal(InternalEvent::RouteWheelEvent {
+                                event: wheel_event.clone(),
+                                target,
+                            }));
+                        }
+                        _ => unreachable!(),
+                    }
                 } else {
-                    // just forward to content, will do a hit-test
+                    let old_hot = self.state.focus_state.hot;
+                    let old_hovered = mem::take(&mut self.state.hovered);
+
+                    // send event to computed target
                     event_result = self.send_event(&mut event);
-                };
+
+                    let new_hot = self.state.focus_state.hot;
+                    let new_hovered = mem::take(&mut self.state.hovered);
+
+                    /*self.send_event(&mut Event::Internal(InternalEvent::HitTest {
+                        hot: &mut hot,
+                        hovered: &mut hovered,
+                        position: pointer_event.position,
+                    }));*/
+
+                    // signal hot widget changes (PointerOver/PointerOut)
+                    if old_hot != new_hot {
+                        trace!("Old hot: {:?}, new hot: {:?}", old_hot, new_hot);
+                        if let Some(old_and_busted) = old_hot {
+                            self.send_routed_pointer_event(
+                                old_and_busted,
+                                self.state
+                                    .inputs
+                                    .synthetic_pointer_event(pointer_id, PointerEventKind::PointerOut, None)
+                                    .unwrap(),
+                            );
+                        }
+
+                        if let Some(new_hotness) = new_hot {
+                            self.send_routed_pointer_event(
+                                new_hotness,
+                                self.state
+                                    .inputs
+                                    .synthetic_pointer_event(pointer_id, PointerEventKind::PointerOver, None)
+                                    .unwrap(),
+                            );
+                        }
+                    }
+
+                    // Enter/exit events (PointerEnter/PointerExit)
+                    if old_hovered != new_hovered {
+                        trace!("Old hovered: {:?}, new hovered: {:?}", old_hovered, new_hovered);
+                    }
+
+                    for old_and_busted in old_hovered.difference(&new_hovered) {
+                        self.send_routed_pointer_event(
+                            *old_and_busted,
+                            self.state
+                                .inputs
+                                .synthetic_pointer_event(pointer_id, PointerEventKind::PointerExit, None)
+                                .unwrap(),
+                        );
+                    }
+                    for new_hotness in new_hovered.difference(&old_hovered) {
+                        self.send_routed_pointer_event(
+                            *new_hotness,
+                            self.state
+                                .inputs
+                                .synthetic_pointer_event(pointer_id, PointerEventKind::PointerEnter, None)
+                                .unwrap(),
+                        );
+                    }
+
+                    self.state.hovered = new_hovered;
+                    self.state.focus_state.hot = new_hot;
+                }
             }
             Event::Keyboard(_) => {
                 // keyboard events are delivered to the widget that has the focus.
@@ -449,32 +527,6 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
         if pointer_grab_auto_release {
             //trace!("forcing release of pointer grab");
             self.state.focus_state.pointer_grab = None;
-        }
-
-        //------------------------------------------------
-        // signal hot widget changes
-        if old_hot != self.state.focus_state.hot {
-            if let Some(device_id) = pointer_device_id {
-                if let Some(old_and_busted) = old_hot {
-                    self.send_routed_pointer_event(
-                        old_and_busted,
-                        self.state
-                            .inputs
-                            .synthetic_pointer_event(device_id, PointerEventKind::PointerOut, None)
-                            .unwrap(),
-                    );
-                }
-
-                if let Some(new_hotness) = self.state.focus_state.hot {
-                    self.send_routed_pointer_event(
-                        new_hotness,
-                        self.state
-                            .inputs
-                            .synthetic_pointer_event(device_id, PointerEventKind::PointerOver, None)
-                            .unwrap(),
-                    );
-                }
-            }
         }
 
         //------------------------------------------------
@@ -585,6 +637,7 @@ impl Window {
                 skia_recording_context,
                 window_builder,
                 focus_state: FocusState::default(),
+                hovered: Default::default(),
                 focus_chain: vec![],
                 menu: None,
                 inputs: Default::default(),
@@ -645,6 +698,7 @@ impl Widget for Window {
                         self.content.route_event(ctx, event, env);
 
                         // build focus chain
+                        wstate.focus_chain.clear();
                         self.content.route_event(
                             ctx,
                             &mut Event::BuildFocusChain {

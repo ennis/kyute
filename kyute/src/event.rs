@@ -1,6 +1,6 @@
 //! [`Events`](Event) sent to widgets, and related types.
 use crate::{bloom::Bloom, Point, WidgetId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use winit::event::DeviceId;
 // FIXME: reexport/import from kyute-shell?
 use crate::core::DebugWidgetTreeNode;
@@ -77,6 +77,8 @@ pub enum PointerEventKind {
     PointerMove,
     PointerOver,
     PointerOut,
+    PointerEnter,
+    PointerExit,
 }
 
 /// Modeled after [W3C's PointerEvent](https://www.w3.org/TR/pointerevents3/#pointerevent-interface)
@@ -156,6 +158,10 @@ pub enum InternalEvent<'a> {
         target: WidgetId,
         event: PointerEvent,
     },
+    RouteWheelEvent {
+        target: WidgetId,
+        event: WheelEvent,
+    },
     RouteWindowEvent {
         target: WidgetId,
         event: winit::event::WindowEvent<'static>,
@@ -164,6 +170,11 @@ pub enum InternalEvent<'a> {
     //RouteInitialize,
     UpdateChildFilter {
         filter: &'a mut Bloom<WidgetId>,
+    },
+    HitTest {
+        position: Point,
+        hovered: &'a mut HashSet<WidgetId>,
+        hot: &'a mut Option<WidgetId>,
     },
     DumpTree {
         nodes: &'a mut Vec<DebugWidgetTreeNode>,
@@ -202,6 +213,17 @@ impl<'a> Event<'a> {
                 let mut event_copy = *event;
                 event_copy.position = transform.inverse().unwrap().transform_point(event_copy.position);
                 f(&mut Event::Internal(InternalEvent::RoutePointerEvent {
+                    event: event_copy,
+                    target,
+                }))
+            }
+            Event::Internal(InternalEvent::RouteWheelEvent { ref event, target }) => {
+                let mut event_copy = *event;
+                event_copy.pointer.position = transform
+                    .inverse()
+                    .unwrap()
+                    .transform_point(event_copy.pointer.position);
+                f(&mut Event::Internal(InternalEvent::RouteWheelEvent {
                     event: event_copy,
                     target,
                 }))

@@ -10,13 +10,15 @@ use crate::{
         graal,
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
-    EnvKey, Environment, Event, InternalEvent, Layout, LayoutConstraints, Point, PointI, Rect, Transform,
+    EnvKey, Environment, Event, InternalEvent, Layout, LayoutConstraints, Point, PointI, PointerEvent,
+    PointerEventKind, Rect, Transform,
 };
 use kyute::window::WindowState;
 use kyute_shell::{animation::Layer, application::Application};
 use skia_safe as sk;
 use std::{
     cell::{Ref, RefCell},
+    collections::HashSet,
     fmt,
     hash::Hash,
     sync::Arc,
@@ -633,9 +635,6 @@ impl<'a> EventCtx<'a> {
 
             ////////////////////////////////////////////////////////////////////////////////////////
             // Other internal events
-
-            ////////////////////////////////////////////////////////////////////////////////////////
-            // Other internal events
             Event::Internal(InternalEvent::UpdateChildFilter { ref mut filter }) => {
                 if let Some(id) = id {
                     filter.add(&id);
@@ -647,6 +646,19 @@ impl<'a> EventCtx<'a> {
                 // directly pass to widget
                 do_event(self, widget, id, event, transform, env)
             }
+
+            /*////////////////////////////////////////////////////////////////////////////////////////
+            // Non-propagating pointer events
+            Event::Pointer(PointerEvent { kind, .. })
+                if kind == PointerEventKind::PointerOver
+                    || kind == PointerEventKind::PointerOut
+                    || kind == PointerEventKind::PointerEnter
+                    || kind == PointerEventKind::PointerExit =>
+            {
+                // A widget may choose to not handle those messages, and forward it to its children.
+                // However,
+                return;
+            }*/
 
             ////////////////////////////////////////////////////////////////////////////////////////
             // Regular event flow

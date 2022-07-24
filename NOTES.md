@@ -703,3 +703,24 @@ It can be difficult to understand how events propagate => debug visualization
 Because of that, we're forced to have a dummy root widget and a bunch of `expect`s in EventCtx to account for this **unique** dummy root.
 Alternatives:
 - instead of a single root widget, store a list of root windows.
+
+# Hit-testing on a separate tree?
+Or rather: hit-testing in a separate tree traversal?
+This might be necessary: consider the case of drag-and-drop.
+The user clicks on the source widget, drags it towards the target.
+Since the source widget captures pointer events, the target receives nothing, and can't react when the object is dragged into it.
+Proposition:
+```
+InternalEvent::HitTest {
+  hovered: &mut HashSet<WidgetId>,
+  hot: Option<WidgetId>
+}
+```
+This event is solely handled by WidgetPods. Before sending a pointer event, send a hit-test request and send the event to the hot widget.
+(only if necessary: if the pointer position did not change, don't update)
+
+# Definitive behavior for pointer events:
+- PointerMove:
+  - deliver to root
+  - WidgetPods do hit-test and stop propagation if outside of the bounds
+

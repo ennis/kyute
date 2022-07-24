@@ -49,7 +49,7 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             + computed.border.border_top_width
             + computed.border.border_bottom_width;
 
-        dbg!(constraints);
+        //dbg!(constraints);
 
         //trace!("computed styles: {:#?}", computed);
 
