@@ -56,7 +56,7 @@ fn counter_demo() -> impl Widget {
             .horizontal_alignment(Alignment::START)
             .vertical_alignment(Alignment::END),
         Text::new("Text edit:"),
-        TextEdit::new(text.clone()).on_editing_finished(|new_text| text = new_text),
+        TextEdit::new(text.clone()).on_text_changed(|new_text| text = new_text),
     ));
 
     grid.centered()

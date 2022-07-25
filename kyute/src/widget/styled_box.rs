@@ -6,7 +6,10 @@ use crate::{
     widget::prelude::*,
 };
 use kyute_common::SideOffsets;
-use std::convert::TryInto;
+use std::{
+    convert::TryInto,
+    ops::{Deref, DerefMut},
+};
 
 pub struct StyledBox<Inner> {
     style: Style,
@@ -31,6 +34,20 @@ impl<Inner: Widget + 'static> StyledBox<Inner> {
     }
 
     pub fn inner_mut(&mut self) -> &mut Inner {
+        self.inner.inner_mut()
+    }
+}
+
+impl<Inner> Deref for StyledBox<Inner> {
+    type Target = Inner;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.inner()
+    }
+}
+
+impl<Inner> DerefMut for StyledBox<Inner> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner.inner_mut()
     }
 }

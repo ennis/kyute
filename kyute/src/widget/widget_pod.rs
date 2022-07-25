@@ -618,7 +618,7 @@ impl fmt::Debug for WidgetPod {
     }
 }
 
-impl<T: ?Sized + Widget> WidgetPod<T> {
+impl<T: ?Sized> WidgetPod<T> {
     /// Returns a reference to the wrapped widget.
     pub fn inner(&self) -> &T {
         &self.content

@@ -92,7 +92,10 @@ use crate::{
     Color, EnvKey, EnvValue, Environment, Event, EventCtx, Layout, LayoutConstraints, LayoutCtx, Length,
     LengthOrPercentage, UnitExt, Widget, WidgetId,
 };
-use std::convert::TryInto;
+use std::{
+    convert::TryInto,
+    ops::{Deref, DerefMut},
+};
 
 // TODO move somewhere else
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -217,6 +220,20 @@ where
 
     fn debug_node(&self) -> DebugNode {
         self.0.debug_node()
+    }
+}
+
+impl<M, W> Deref for Modified<M, W> {
+    type Target = W;
+
+    fn deref(&self) -> &Self::Target {
+        &self.1
+    }
+}
+
+impl<M, W> DerefMut for Modified<M, W> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.1
     }
 }
 

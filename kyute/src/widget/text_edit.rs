@@ -309,8 +309,8 @@ impl Widget for BaseTextEdit {
                     }
                     keyboard_types::Key::Character(ref c) => {
                         // reject control characters (handle in KeyDown instead)
-                        trace!("insert {:?}", c);
                         let (new_text, new_selection) = edit_text(&self.formatted_text.plain_text, self.selection, c);
+                        trace!("insert {:?}; text after = {}", c, new_text);
                         self.notify_text_changed(ctx, new_text);
                         self.notify_selection_changed(ctx, new_selection);
                         ctx.request_relayout();
@@ -379,6 +379,8 @@ impl Widget for BaseTextEdit {
 // have to also modify all the method wrappers (add/remove .inner() as needed).
 //
 // Proposal: `WidgetWrapper trait has an associated
+//
+// Alternative proposal: modifiers implement Deref<Target=Widget>
 
 #[derive(WidgetWrapper)]
 pub struct TextEdit {
@@ -395,6 +397,7 @@ impl TextEdit {
             inner: base.style(
                 "border-radius: 3px;\
                  padding: 2px;\
+                 width: 100%;\
                  border: solid 1px rgb(30 30 30);\
                  background: rgb(40 40 40);",
             ),
