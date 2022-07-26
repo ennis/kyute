@@ -1,11 +1,12 @@
 use crate::{
     drawing,
-    drawing::{BlendMode, Paint, PaintCtxExt, RoundedRect, Shape},
+    drawing::{BlendMode, Paint, PaintCtxExt, RoundedRect, Shape, ToSkia},
     style,
     style::Style,
     widget::prelude::*,
+    SideOffsets,
 };
-use kyute_common::SideOffsets;
+use skia_safe as sk;
 use std::{
     convert::TryInto,
     ops::{Deref, DerefMut},
@@ -52,9 +53,23 @@ impl<Inner> DerefMut for StyledBox<Inner> {
     }
 }
 
-impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
+impl<Inner: Widget + 'static> WidgetWrapper for StyledBox<Inner> {
+    type Inner = Inner;
+
+    fn inner(&self) -> &Self::Inner {
+        self.inner.inner()
+    }
+
+    fn inner_mut(&mut self) -> &mut Self::Inner {
+        self.inner.inner_mut()
+    }
+
     fn widget_id(&self) -> Option<WidgetId> {
         self.inner.widget_id()
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.inner.route_event(ctx, event, env)
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
@@ -184,10 +199,6 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         layout
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.route_event(ctx, event, env)
-    }
-
     fn paint(&self, ctx: &mut PaintCtx) {
         let style = self.computed.get_cached();
 
@@ -248,7 +259,12 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             ctx.draw_border(&outer_border_shape, &border);
         }
 
-        // TODO: clip to inner border rect
+        // draw the contents, clipped by the inner border rounded rect
+        ctx.surface.canvas().save();
+        ctx.surface
+            .canvas()
+            .clip_rrect(inner_border_rrect.to_skia(), sk::ClipOp::Intersect, true);
         self.inner.paint(ctx);
+        ctx.surface.canvas().restore();
     }
 }

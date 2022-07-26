@@ -4,9 +4,8 @@ use crate::{
     drawing::{Image, ToSkia, IMAGE_CACHE},
     Angle, Color, Data, Offset, Rect,
 };
-use parking_lot::Mutex;
 use skia_safe as sk;
-use skia_safe::{gradient_shader::GradientShaderColors, Sendable};
+use skia_safe::gradient_shader::GradientShaderColors;
 use std::{ffi::c_void, fmt, mem};
 
 /// Image repeat mode.

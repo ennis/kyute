@@ -1,6 +1,6 @@
 //! Baseline alignment.
 use crate::{drawing, drawing::PaintCtxExt, style, widget::prelude::*, SideOffsets};
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Widget definition

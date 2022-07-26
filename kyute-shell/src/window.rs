@@ -5,7 +5,7 @@ use raw_window_handle::HasRawWindowHandle;
 use std::ptr;
 use winit::{
     event_loop::EventLoopWindowTarget,
-    window::{WindowBuilder, WindowId},
+    window::{CursorIcon, WindowBuilder, WindowId},
 };
 
 /// Encapsulates a window and associated resources for drawing to it.
@@ -55,6 +55,10 @@ impl Window {
     /// Returns the size of the window's _client area_ in physical pixels.
     pub fn physical_inner_size(&self) -> SizeI {
         self.0.physical_inner_size()
+    }
+
+    pub fn set_cursor_icon(&mut self, cursor_icon: CursorIcon) {
+        self.0.set_cursor_icon(cursor_icon)
     }
 
     /// Creates a new window from the options given in the provided [`WindowBuilder`].

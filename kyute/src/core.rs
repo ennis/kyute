@@ -10,15 +10,13 @@ use crate::{
         graal,
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
-    EnvKey, Environment, Event, InternalEvent, Layout, LayoutConstraints, Point, PointI, PointerEvent,
-    PointerEventKind, Rect, Transform,
+    EnvKey, Environment, Event, InternalEvent, Layout, LayoutConstraints, Point, PointI, Rect, Transform,
 };
 use kyute::window::WindowState;
-use kyute_shell::{animation::Layer, application::Application};
+use kyute_shell::{animation::Layer, application::Application, winit};
 use skia_safe as sk;
 use std::{
     cell::{Ref, RefCell},
-    collections::HashSet,
     fmt,
     hash::Hash,
     sync::Arc,
@@ -442,6 +440,14 @@ impl<'a> EventCtx<'a> {
         self.relayout = true;
     }
 
+    pub fn set_cursor_icon(&mut self, cursor_icon: winit::window::CursorIcon) {
+        if let Some(window_state) = self.window_state.as_mut() {
+            if let Some(window) = window_state.window.as_mut() {
+                window.set_cursor_icon(cursor_icon)
+            }
+        }
+    }
+
     #[track_caller]
     fn window_state(&self) -> &WindowState {
         // TODO better panic message
@@ -741,11 +747,13 @@ impl<'a> LayerPaintCtx<'a> {
         .unwrap();
         surface.canvas().clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
 
+        // invoke the provided closure
         {
             let mut paint_ctx = PaintCtx::new(&mut surface, layer, scale_factor, self.skia_gpu_context);
             f(&mut paint_ctx);
         }
 
+        // flush the GPU frame
         let _span = trace_span!("Flush skia surface").entered();
         let mut gr_ctx = Application::instance().lock_gpu_context();
         let mut frame = gr_ctx.start_frame(Default::default());

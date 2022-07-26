@@ -719,8 +719,26 @@ InternalEvent::HitTest {
 This event is solely handled by WidgetPods. Before sending a pointer event, send a hit-test request and send the event to the hot widget.
 (only if necessary: if the pointer position did not change, don't update)
 
-# Definitive behavior for pointer events:
+# Definitive behavior for pointer events
 - PointerMove:
   - deliver to root
   - WidgetPods do hit-test and stop propagation if outside of the bounds
 
+# Accessing inner widgets
+FIXME: it can be difficult to access the inner widget when it is buried under several modifiers
+It's a common pattern: provide a widget with the base functionality, without the style,
+then provide a styled widget that wraps the base with style modifiers.
+The styled widget needs to forward methods to the base, and this can be difficult (i.e. lots of `.inner()`)
+It also makes it difficult to change the style by adding/removing modifiers because then you
+have to also modify all the method wrappers (add/remove .inner() as needed).
+
+
+Alternative proposal: modifiers implement Deref<Target=Widget>, inner widget is a TAIT like `impl Widget + Deref<Target=BaseWidget>`
+Problem: this only works for one level of deref
+
+Proposal: `Modified` trait, like Iterator:
+```rust
+pub trait Modified {
+    type Inner = 
+}
+```

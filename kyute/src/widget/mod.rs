@@ -158,16 +158,16 @@ impl<T: WidgetWrapper> Widget for T {
         WidgetWrapper::layout(self, ctx, constraints, env)
     }
 
+    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        WidgetWrapper::route_event(self, ctx, event, env)
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         WidgetWrapper::event(self, ctx, event, env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
         WidgetWrapper::paint(self, ctx)
-    }
-
-    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        WidgetWrapper::route_event(self, ctx, event, env)
     }
 
     fn debug_node(&self) -> DebugNode {
@@ -203,7 +203,6 @@ where
     W: Widget,
     M: Modifier,
 {
-    // FIXME: if W is itself a WidgetWrapper, should be the inner type
     type Inner = W;
 
     fn inner(&self) -> &Self::Inner {
@@ -223,6 +222,22 @@ where
     }
 }
 
+/*impl<W> WidgetWrapper for Modified<(), W>
+where
+    W: WidgetWrapper,
+{
+    type Inner = W::Inner;
+
+    fn inner(&self) -> &Self::Inner {
+        &self.1
+    }
+
+    fn inner_mut(&mut self) -> &mut Self::Inner {
+        &mut self.1
+    }
+}*/
+
+/*
 impl<M, W> Deref for Modified<M, W> {
     type Target = W;
 
@@ -235,7 +250,7 @@ impl<M, W> DerefMut for Modified<M, W> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.1
     }
-}
+}*/
 
 /// Modifier that overrides an environment value.
 pub struct EnvironmentOverride<T> {
@@ -287,6 +302,12 @@ pub trait WidgetExt: Widget + Sized + 'static {
             shape.into(),
             self,
         )
+    }
+
+    /// Wraps this widget in a type that implements WidgetWrapper.
+    #[must_use]
+    fn wrap(self) -> Modified<(), Self> {
+        Modified((), self)
     }
 
     /// Sets the background paint of the widget.

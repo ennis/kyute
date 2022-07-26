@@ -1,5 +1,5 @@
 use crate::{event::PointerEventKind, widget::prelude::*, Signal};
-use keyboard_types::{Code, Key, KeyState, Modifiers};
+use keyboard_types::{Key, KeyState, Modifiers};
 
 /// Wraps an inner widget and allows the user to respond to clicks on it.
 #[derive(Clone)]

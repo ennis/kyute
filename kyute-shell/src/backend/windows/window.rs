@@ -15,7 +15,7 @@ use windows::Win32::{
 use winit::{
     event_loop::EventLoopWindowTarget,
     platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
-    window::{WindowBuilder, WindowId},
+    window::{CursorIcon, WindowBuilder, WindowId},
 };
 
 /// Encapsulates a Win32 window and associated resources for drawing to it.
@@ -110,6 +110,11 @@ impl Window {
     pub fn physical_inner_size(&self) -> SizeI {
         let winit::dpi::PhysicalSize { width, height } = self.window.inner_size();
         SizeI::new(width as i32, height as i32)
+    }
+
+    /// Sets the current cursor icon.
+    pub fn set_cursor_icon(&mut self, cursor_icon: CursorIcon) {
+        self.window.set_cursor_icon(cursor_icon)
     }
 
     /// Creates a new window from the options given in the provided [`WindowBuilder`].

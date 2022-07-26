@@ -1,17 +1,24 @@
 //! Text editor widget.
 use crate::{
-    composable,
+    cache, composable,
     core::Widget,
     drawing::ToSkia,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
     widget::{prelude::*, StyledBox, Text},
+    State,
 };
 use keyboard_types::KeyState;
 use kyute_common::Color;
-use kyute_shell::text::{FormattedText, Selection, TextAffinity, TextPosition};
-use skia_safe::{BlendMode, Paint};
-use std::sync::Arc;
+use kyute_shell::{
+    text::{FormattedText, Selection, TextAffinity, TextPosition},
+    winit::window::CursorIcon,
+};
+use std::{
+    cell::Cell,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 use tracing::trace;
 use unicode_segmentation::GraphemeCursor;
 
@@ -42,7 +49,10 @@ pub struct BaseTextEdit {
     editing_finished: Signal<Arc<str>>,
     text_changed: Signal<Arc<str>>,
     selection_changed: Signal<Selection>,
+    focused_changed: Signal<bool>,
+    focused: bool,
     inner: WidgetPod<Text>,
+    horizontal_offset: State<f64>,
 }
 
 /// Helper function that creates a new string with the text under `selection` replaced by the specified string.
@@ -62,12 +72,21 @@ impl BaseTextEdit {
     /// Creates a new `TextEditInner` widget displaying the specified `FormattedText`.
     #[composable]
     pub fn with_selection(formatted_text: impl Into<FormattedText>, mut selection: Selection) -> BaseTextEdit {
+        #[state]
+        let mut focused = false;
+
         let formatted_text = formatted_text.into();
 
         // clamp selection
         selection.start = selection.start.min(formatted_text.plain_text.len());
         selection.end = selection.end.min(formatted_text.plain_text.len());
         let inner = WidgetPod::new(Text::new(formatted_text.clone()));
+
+        // handle focus changes
+        let focused_changed = Signal::new();
+        if let Some(f) = focused_changed.value() {
+            focused = f;
+        }
 
         BaseTextEdit {
             id: WidgetId::here(),
@@ -76,7 +95,10 @@ impl BaseTextEdit {
             selection_changed: Signal::new(),
             editing_finished: Signal::new(),
             text_changed: Signal::new(),
+            focused,
+            focused_changed,
             inner,
+            horizontal_offset: cache::state(|| 0.0),
         }
     }
 
@@ -177,8 +199,9 @@ impl BaseTextEdit {
     }*/
 
     /// Returns the position in the text (character offset between grapheme clusters) that is closest to the given point.
-    fn text_position(&self, pos: Point) -> TextPosition {
+    fn text_position(&self, mut pos: Point) -> TextPosition {
         let paragraph = self.inner.inner().paragraph();
+        pos.x -= self.horizontal_offset.get();
         TextPosition {
             position: paragraph.hit_test_point(pos).idx,
             affinity: TextAffinity::Upstream,
@@ -207,24 +230,65 @@ impl Widget for BaseTextEdit {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
-        self.inner.layout(ctx, constraints, env)
+        // relax text constraints
+        let text_constraints = LayoutConstraints {
+            min: Size::zero(),
+            max: Size::new(f64::INFINITY, f64::INFINITY),
+            ..*constraints
+        };
+        let child_layout = self.inner.layout(ctx, &text_constraints, env);
+
+        let width = constraints
+            .finite_max_width()
+            .unwrap_or(child_layout.measurements.width());
+        let height = constraints
+            .finite_max_height()
+            .unwrap_or(child_layout.measurements.height());
+
+        if !ctx.speculative {
+            // update the horizontal offset if the cursor position
+            // overflows the available space
+            let mut h_offset = self.horizontal_offset.get();
+            let paragraph = self.inner.inner().paragraph();
+            let cursor_hit = paragraph.hit_test_text_position(TextPosition {
+                position: self.selection.end,
+                affinity: TextAffinity::Upstream,
+            });
+
+            if cursor_hit.point.x + h_offset > width {
+                trace!("cursor pos overflow to the right");
+                h_offset = -cursor_hit.point.x + width;
+            } else if cursor_hit.point.x + h_offset < 0.0 {
+                trace!("cursor pos overflow to the left");
+                h_offset = -cursor_hit.point.x;
+            }
+
+            self.inner.set_offset(Offset::new(h_offset, 0.0));
+            self.horizontal_offset.set_without_invalidation(h_offset);
+        }
+
+        Layout::new(Size::new(width, height))
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
         match event {
             Event::FocusGained => {
                 trace!("text edit: focus gained");
+                self.focused_changed.signal(true);
             }
             Event::FocusLost => {
                 trace!("text edit: focus lost");
                 let pos = self.selection.end;
                 if self.selection.start != self.selection.end {
-                    self.notify_selection_changed(ctx, Selection { start: pos, end: pos })
+                    self.notify_selection_changed(ctx, Selection { start: pos, end: pos });
                 }
                 self.notify_editing_finished(ctx, self.formatted_text.plain_text.clone());
+                self.focused_changed.signal(false);
             }
             Event::Pointer(p) => {
                 match p.kind {
+                    PointerEventKind::PointerOver => ctx.set_cursor_icon(CursorIcon::Text),
+                    PointerEventKind::PointerOut => ctx.set_cursor_icon(CursorIcon::Default),
                     PointerEventKind::PointerDown => {
                         if p.repeat_count == 2 {
                             trace!("text edit: select all");
@@ -334,8 +398,12 @@ impl Widget for BaseTextEdit {
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
+        use skia_safe as sk;
+
         // paint the text
         self.inner.paint(ctx);
+
+        let h_offset = self.horizontal_offset.get();
 
         // paint the selection over it
         let paragraph = self.inner.inner().paragraph();
@@ -343,44 +411,36 @@ impl Widget for BaseTextEdit {
             paragraph.hit_test_text_range(self.selection.min()..self.selection.max(), Point::origin());
 
         {
-            use skia_safe as sk;
-            let mut paint = Paint::new(Color::new(0.0, 0.8, 0.8, 0.5).to_skia(), None);
+            // TODO color from environment or theme
+            let mut paint = sk::Paint::new(Color::new(0.0, 0.8, 0.8, 0.5).to_skia(), None);
             for mut sb in selection_boxes {
                 let canvas = ctx.surface.canvas();
-                let rect = sb.bounds.to_skia();
+                let offset_sb_bounds = sb.bounds.translate(Offset::new(h_offset, 0.0));
+                let rect = offset_sb_bounds.to_skia();
                 canvas.draw_rect(rect, &paint);
             }
         }
 
-        /*// paint the caret
-        if ctx.has_focus() {
+        // paint the caret
+        if self.focused {
             let caret_hit_test = paragraph.hit_test_text_position(TextPosition {
                 position: self.selection.end,
                 affinity: TextAffinity::Downstream,
             });
 
-            //dbg!(caret_hit_test);
-            /*let caret_color = env.get(theme::CARET_COLOR).unwrap();
+            // TODO color from environment or theme
+            let caret_color = Color::new(1.0, 1.0, 1.0, 1.0);
             let paint = sk::Paint::new(caret_color.to_skia(), None);
-            let pos = caret_hit_test.point + offset;
-            ctx.canvas().draw_rect(
+            let mut pos = caret_hit_test.point;
+            pos.x += h_offset;
+            let canvas = ctx.surface.canvas();
+            canvas.draw_rect(
                 Rect::new(pos.floor(), Size::new(1.0, caret_hit_test.metrics.bounds.size.height)).to_skia(),
                 &paint,
-            );*/
-        }*/
+            );
+        }
     }
 }
-
-// FIXME: it can be difficult to access the inner widget when it is buried under several modifiers
-// It's a common pattern: provide a widget with the base functionality, without the style,
-// then provide a styled widget that wraps the base with style modifiers.
-// The styled widget needs to forward methods to the base, and this can be difficult (i.e. lots of `.inner()`)
-// It also makes it difficult to change the style by adding/removing modifiers because then you
-// have to also modify all the method wrappers (add/remove .inner() as needed).
-//
-// Proposal: `WidgetWrapper trait has an associated
-//
-// Alternative proposal: modifiers implement Deref<Target=Widget>
 
 #[derive(WidgetWrapper)]
 pub struct TextEdit {

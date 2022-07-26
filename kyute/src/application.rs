@@ -6,11 +6,11 @@ use crate::{
     asset::ASSET_LOADER,
     cache,
     cache::Cache,
-    core::{dump_widget_tree, FocusState, WidgetId},
+    core::{dump_widget_tree, WidgetId},
     drawing::{ImageCache, IMAGE_CACHE},
     theme,
     util::fs_watch::{FileSystemWatcher, FILE_SYSTEM_WATCHER},
-    AssetLoader, Environment, Event, EventCtx, InternalEvent, Widget,
+    AssetLoader, Environment, Event, InternalEvent, Widget,
 };
 use kyute_shell::{
     winit,
