@@ -37,6 +37,12 @@ impl Default for TrackBreadth {
     }
 }
 
+impl From<Length> for TrackBreadth {
+    fn from(length: Length) -> Self {
+        TrackBreadth::Fixed(length)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Data)]
 pub enum JustifyItems {
     Start,
@@ -604,6 +610,12 @@ struct DefiniteArea {
     column_span: usize,
 }
 
+impl DefiniteArea {
+    fn is_null(&self) -> bool {
+        self.row_span == 0 || self.column_span == 0
+    }
+}
+
 impl Area {
     fn resolve(&self, grid: &Grid) -> DefiniteArea {
         let (row, row_span) = self.row.resolve(&grid.template.rows.line_names, grid.row_count() + 1);
@@ -961,7 +973,14 @@ impl Grid {
     }
 
     fn place(&mut self, area: &Area, z_order: i32, widget: Arc<WidgetPod>) {
-        let area = area.resolve(self);
+        let mut area = area.resolve(self);
+        if area.is_null() {
+            warn!(
+                "null grid area specified, widget {:?} will not be inserted in the grid",
+                widget.widget_id()
+            );
+            return;
+        }
         self.items.push(GridItem {
             area,
             column_range: Cell::new((0, 0)),
@@ -969,6 +988,14 @@ impl Grid {
             widget,
             z_order,
         });
+    }
+
+    pub fn set_implicit_row_size(&mut self, height: impl Into<TrackBreadth>) {
+        self.implicit_row_size = height.into();
+    }
+
+    pub fn set_implicit_column_size(&mut self, width: impl Into<TrackBreadth>) {
+        self.implicit_column_size = width.into();
     }
 
     /// Sets the auto flow direction
@@ -1150,6 +1177,13 @@ impl Grid {
         };
 
         for item in self.items.iter() {
+            if item.area.is_null() {
+                // this should not happen because we check for null areas when adding the item to
+                // the grid, but check it here as well for good measure
+                error!("null grid area during placement (id={:?})", item.widget.widget_id());
+                continue;
+            }
+
             let (row_range, column_range) = flow_cursor.place(item.area);
             final_row_count = final_row_count.max(row_range.end);
             final_column_count = final_column_count.max(column_range.end);
@@ -1449,6 +1483,7 @@ impl Widget for Grid {
         trace!("=== final column layout {:?} ===", column_layout);
 
         // layout items
+        //trace!("=== START LAYOUT ===");
         for item in self.items.iter() {
             let (column_start, column_end) = item.column_range.get();
             let (row_start, row_end) = item.row_range.get();
@@ -1467,6 +1502,13 @@ impl Widget for Grid {
                 // TODO
             }
 
+            trace!(
+                "column_start={}, len={}, row_start={}, len={}",
+                column_start,
+                column_layout.len(),
+                row_start,
+                row_layout.len()
+            );
             let x = column_layout[column_start].pos;
             let y = row_layout[row_start].pos;
             let cell_offset = Offset::new(x, y);
@@ -1483,6 +1525,7 @@ impl Widget for Grid {
             // TODO baselines...
             item.widget.set_offset(final_offset);
         }
+        // trace!("=== END LAYOUT ===");
 
         // ------ update cache ------
         self.calculated_layout.set(Arc::new(GridLayout {

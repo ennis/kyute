@@ -78,6 +78,7 @@ impl_size_constraint!(FixedHeight;
     "fixed height"
 );
 
+#[derive(Copy, Clone, Debug)]
 pub struct Fill;
 
 impl Modifier for Fill {

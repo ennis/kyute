@@ -3,61 +3,58 @@ use crate::GalleryWidget::ContextMenu;
 use kyute::{
     application, composable,
     shell::application::Application,
-    style::{LinearGradient, Style, VisualState},
+    style,
+    style::{Style, VisualState},
     theme,
     theme::palette,
     widget::{
-        grid::TrackSizePolicy, Align, Container, Grid, GridLength, Null, Padding, Selectable, Text, WidgetWrapper,
+        grid::{GridLayoutExt, TrackBreadth},
+        Button, Grid, Null, Padding, StyledBox, Text, WidgetExt, WidgetPod, WidgetWrapper,
     },
-    Alignment, Color, Data, Environment, Length, UnitExt, Widget, WidgetExt, Window,
+    Alignment, Color, Data, Environment, Length, UnitExt, Widget, Window,
 };
-use kyute_shell::winit::window::WindowBuilder;
-use kyute_text::{FontStyle, FormattedText};
+use kyute_shell::{
+    text::{FontStyle, FormattedText},
+    winit::window::WindowBuilder,
+};
+use std::sync::Arc;
 
 mod grids;
 
 /// A 3-element application scaffolding: a sidebar on the left, a toolbar on the top and the rest is the content area.
-#[derive(Clone, WidgetWrapper)]
+#[derive(WidgetWrapper)]
 pub struct Scaffold {
-    grid: Grid,
+    grid: StyledBox<Grid>,
 }
 
 impl Scaffold {
-    #[composable]
-    pub fn new() -> Scaffold {
-        let mut grid = Grid::with_template("150 2 1fr / 300 2 1fr");
+    #[composable(live_literals)]
+    pub fn new(
+        toolbar: impl Widget + 'static,
+        sidebar: impl Widget + 'static,
+        content: impl Widget + 'static,
+    ) -> Scaffold {
+        let mut grid = Grid::with_template("150px 2px 1fr / 300px 2px 1fr");
         // separators
-        grid.place("1 / ..", Container::new(Null).background(theme::palette::GREY_800));
-        grid.place(".. / 1", Container::new(Null).background(theme::palette::GREY_800));
+        grid.insert(
+            Null.fill()
+                .background(theme::palette::GREY_800, style::Shape::rectangle())
+                .grid_row(1)
+                .grid_column(..),
+        );
+        grid.insert(
+            Null.fill()
+                .background(theme::palette::GREY_800, style::Shape::rectangle())
+                .grid_row(..)
+                .grid_column(1),
+        );
 
-        Scaffold { grid }
-    }
-
-    pub fn sidebar(mut self, sidebar: impl Widget + 'static) -> Self {
-        self.set_sidebar(sidebar);
-        self
-    }
-
-    pub fn set_sidebar(&mut self, sidebar: impl Widget + 'static) {
-        self.grid.add_item(0..1, 0, 0, sidebar);
-    }
-
-    pub fn toolbar(mut self, toolbar: impl Widget + 'static) -> Self {
-        self.set_toolbar(toolbar);
-        self
-    }
-
-    pub fn set_toolbar(&mut self, toolbar: impl Widget + 'static) {
-        self.grid.add_item(0, 1, 0, toolbar);
-    }
-
-    pub fn content(mut self, content: impl Widget + 'static) -> Self {
-        self.set_content(content);
-        self
-    }
-
-    pub fn set_content(&mut self, content: impl Widget + 'static) {
-        self.grid.add_item(1, 1, 0, content);
+        grid.insert(toolbar.grid_area((0, 1)));
+        grid.insert(sidebar.grid_area((0..1, 0)));
+        grid.insert(content.grid_area((2, 2)));
+        Scaffold {
+            grid: grid.style("background: rgb(71 71 71)"),
+        }
     }
 }
 
@@ -76,25 +73,11 @@ enum GalleryWidget {
 
 #[composable]
 fn gallery_sidebar_item(name: &str, kind: GalleryWidget, selected: &mut GalleryWidget) -> impl Widget {
-    let widget = Text::new(name);
-    let mut container = Container::new(widget)
-        .alignment(Alignment::CENTER_LEFT)
-        .content_padding(8.dip(), 8.dip(), 8.dip(), 8.dip())
-        .fill();
-    container.push_alternate_box_style(
-        VisualState::HOVER,
-        Style::new()
-            .radius(8.dip())
-            .background(palette::GREY_100.with_alpha(0.2)),
-    );
-    if kind == *selected {
-        container.set_box_style(
-            Style::new()
-                .radius(8.dip())
-                .background(palette::BLUE_700.with_alpha(0.8)),
-        );
+    let button = Button::new(name);
+    if button.clicked() {
+        *selected = kind;
     }
-    Selectable::new(selected, kind, container)
+    button.fill()
 }
 
 #[composable]
@@ -102,12 +85,10 @@ fn root_view() -> impl Widget + Clone {
     #[state]
     let mut selected = GalleryWidget::Home;
 
-    let mut scaffold = Scaffold::new();
-
     // widget list
-    let mut widget_list = Grid::with_template("auto-flow 35dip / 1fr / 8 0");
-
-    // widgets
+    let mut widget_list = Grid::column(TrackBreadth::Flex(1.0));
+    widget_list.set_implicit_row_size(40.dip());
+    widget_list.set_row_gap(8.px());
 
     widget_list.insert((
         gallery_sidebar_item("Home", GalleryWidget::Home, &mut selected),
@@ -179,10 +160,9 @@ fn root_view() -> impl Widget + Clone {
         .centered(),
     };
 
-    scaffold.set_sidebar(widget_list.padding(8.dip(), 8.dip(), 8.dip(), 8.dip()));
-    scaffold.set_content(right_panel);
-
-    scaffold.fix_size(100.percent(), 100.percent())
+    Arc::new(WidgetPod::new(
+        Scaffold::new(Null, widget_list.padding(8.dip()), right_panel).fill(),
+    ))
 }
 
 #[composable(cached)]
@@ -196,9 +176,7 @@ fn main() {
         .with_target(false)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let _app = Application::new();
     let mut env = Environment::new();
     //env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
     application::run_with_env(main_window, env);
-    Application::shutdown();
 }

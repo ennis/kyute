@@ -23,7 +23,7 @@ impl ScrollArea {
         let scroll = Signal::new();
 
         // container grid: one row
-        let mut grid_container = LayoutInspector::new(Grid::with_template("1fr / 1fr 5dip"));
+        let mut grid_container = LayoutInspector::new(Grid::with_template("1fr / 1fr 5px"));
 
         // HACK: even if the content already fits in the grid container, we still have to wrap
         // the content widget in a Viewport, because otherwise the size returned by the LayoutInspector

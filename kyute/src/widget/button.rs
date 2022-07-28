@@ -25,7 +25,7 @@ fn button_inner(label: String, active: bool, hover: bool, focus: bool) -> Button
              border-radius: 8px;\
              padding: 5px;\
              min-width: 80px;\
-             min-height: 21px;\
+             min-height: 30px;\
              border: solid 1px rgb(49 49 49);\
              box-shadow: inset 0px 1px rgb(115 115 115), 0px 1px 2px -1px rgb(49 49 49);"
         .to_string();

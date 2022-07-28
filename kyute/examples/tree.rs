@@ -4,15 +4,14 @@ use kyute::{
     style::Style,
     theme,
     widget::{
-        grid::{GridTemplate, TrackSizePolicy},
-        Button, ColumnHeaders, Container, Flex, Grid, GridLength, Image, Label, Null, Popup, ScrollArea, TableRow,
-        TableSelection, TableView, TableViewParams, Text, TextEdit, TitledPane, WidgetPod,
+        grid::GridTemplate, Button, ColumnHeaders, Flex, Grid, Image, Label, Null, Popup, ScrollArea, TableRow,
+        TableSelection, TableView, TableViewParams, Text, TextEdit, TitledPane, WidgetExt, WidgetPod,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Length, Orientation, SideOffsets, Size, UnitExt,
-    Widget, WidgetExt, Window,
+    Widget, Window,
 };
 use kyute_common::{Atom, Data};
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 use tracing::trace;
 
 #[composable(cached)]
@@ -26,7 +25,7 @@ fn cell(text: impl Into<String> + Data) -> impl Widget {
     // Solution:
     // - inside WidgetPod, put cached data inside Arc => hidden cost
     // - don't make widgets `Clone`.
-    Arc::new(WidgetPod::with_surface(Text::new(text.into()).padding(
+    Arc::new(WidgetPod::with_surface(Text::new(text.into()).padding_trbl(
         0.dip(),
         5.dip(),
         0.dip(),
@@ -38,7 +37,7 @@ fn cell(text: impl Into<String> + Data) -> impl Widget {
 fn edit() -> impl Widget {
     #[state]
     let mut text: Arc<str> = Arc::from("Leaf node. Doesn't contain anything.");
-    TextEdit::new(text.clone()).padding(0.dip(), 5.dip(), 0.dip(), 5.dip())
+    TextEdit::new(text.clone()).padding_trbl(0.dip(), 5.dip(), 0.dip(), 5.dip())
 }
 
 #[composable]
@@ -73,7 +72,7 @@ fn tree_test() -> impl Widget {
 
     let params = TableViewParams {
         selection: Some(&mut selection),
-        template: GridTemplate::parse("20 / 200 1fr").unwrap_or_default(),
+        template: GridTemplate::try_from("20px / 200px 1fr").unwrap_or_default(),
         column_headers: Some(ColumnHeaders::new().add(cell("Name")).add(cell("Description"))),
         main_column: 0,
         rows: vec![root],
@@ -87,12 +86,12 @@ fn tree_test() -> impl Widget {
         column_separator_width: 1.px(),
         row_separator_background: theme::palette::GREY_900.into(),
         column_separator_background: theme::palette::GREY_900.into(),
-        selected_style: Style::new().radius(8.dip()).background(theme::palette::BLUE_800),
+        selected_style: Style::try_from("border-radius: 8px; background: #1565c0;").unwrap(),
         ..Default::default()
     };
 
     let table = TableView::new(params);
-    ScrollArea::new(table).fix_width(Length::Proportional(1.0))
+    ScrollArea::new(table).fill()
 }
 
 #[composable]
@@ -101,11 +100,11 @@ fn ui_root() -> impl Widget {
 }
 
 fn main() {
-    /*tracing_subscriber::fmt()
-    .compact()
-    .with_target(false)
-    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-    .init();*/
+    tracing_subscriber::fmt()
+        .compact()
+        .with_target(false)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     /*use tracing_subscriber::layer::SubscriberExt;
     tracing::subscriber::set_global_default(
         tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new().with_stackdepth(0)),
