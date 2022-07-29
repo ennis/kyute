@@ -148,52 +148,62 @@ impl Widget for Canvas {
     }
 }
 
-pub struct Viewport<Contents> {
-    contents: WidgetPod<Contents>,
+/// A widget that applies an arbitrary transform to its content.
+pub struct Viewport<Content> {
+    content: WidgetPod<Content>,
     transform: Transform,
     constrain_width: bool,
     constrain_height: bool,
 }
 
-impl<Contents: Widget + 'static> Viewport<Contents> {
+impl<Content: Widget + 'static> Viewport<Content> {
     #[composable]
-    pub fn new(contents: Contents) -> Viewport<Contents> {
+    pub fn new(content: Content) -> Viewport<Content> {
         Viewport {
             transform: Transform::identity(),
-            contents: WidgetPod::new(contents),
+            content: WidgetPod::new(content),
             constrain_width: false,
             constrain_height: false,
         }
     }
 
+    /// Sets the transform of the content.
     pub fn transform(mut self, transform: Transform) -> Self {
         self.set_transform(transform);
         self
     }
 
+    /// Sets the transform of the content.
     pub fn set_transform(&mut self, transform: Transform) {
         self.transform = transform;
     }
 
-    /// Constrain the max width of the viewport to the parent.
+    /// Constrains the content width to this viewport's width.
+    ///
+    /// By default, the content width is unconstrained.
+    /// Calling this method constrains the maximum content width to be less than this viewport's width.
     pub fn constrain_width(mut self) -> Self {
         self.constrain_width = true;
         self
     }
 
+    /// Constrains the content height to this viewport's height.
+    ///
+    /// By default, the content height is unconstrained.
+    /// Calling this method constrains the maximum content height to be less than this viewport's height.
     pub fn constrain_height(mut self) -> Self {
         self.constrain_height = true;
         self
     }
 
-    pub fn contents(&self) -> &Contents {
-        self.contents.inner()
+    pub fn content(&self) -> &Content {
+        self.content.inner()
     }
 }
 
-impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
+impl<Content: Widget + 'static> Widget for Viewport<Content> {
     fn widget_id(&self) -> Option<WidgetId> {
-        self.contents.inner().widget_id()
+        self.content.inner().widget_id()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
@@ -208,8 +218,11 @@ impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
         }
 
         // unconstrained
-        self.contents.layout(ctx, &subconstraints, env);
-        self.contents.set_transform(self.transform);
+        self.content.layout(ctx, &subconstraints, env);
+
+        if !ctx.speculative {
+            self.content.set_transform(self.transform);
+        }
 
         // always take the maximum available space
         let width = constraints.finite_max_width().unwrap_or(0.0);
@@ -229,10 +242,10 @@ impl<Contents: Widget + 'static> Widget for Viewport<Contents> {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.contents.route_event(ctx, event, env)
+        self.content.route_event(ctx, event, env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
-        self.contents.paint(ctx)
+        self.content.paint(ctx)
     }
 }

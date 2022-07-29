@@ -36,7 +36,7 @@ impl ScrollArea {
         }
 
         assert!(
-            content_viewport.contents().size().is_finite(),
+            content_viewport.content().size().is_finite(),
             "the content widget of a ScrollArea should have finite dimensions"
         );
 
@@ -45,7 +45,7 @@ impl ScrollArea {
         // t = thumb height
         // t_p = thumb position
         let viewport_height = grid_container.size().height;
-        let content_height = content_viewport.contents().size().height;
+        let content_height = content_viewport.content().size().height;
 
         if content_height <= viewport_height {
             content_viewport.set_transform(Offset::new(0.0, 0.0).to_transform());
@@ -78,7 +78,8 @@ impl ScrollArea {
             .on_started(|| tmp_pos = content_pos)
             .on_delta(|offset| {
                 content_pos = tmp_pos + offset.y / content_to_thumb;
-            });
+            })
+            .style("border-radius: 2px; background: #FF7F31;");
 
         content_pos = content_pos.clamp(0.0, content_max);
         content_viewport.set_transform(Offset::new(0.0, -content_pos).to_transform());
@@ -102,15 +103,15 @@ impl ScrollArea {
 
 impl Widget for ScrollArea {
     fn widget_id(&self) -> Option<WidgetId> {
-        self.inner.widget_id()
+        Widget::widget_id(&self.inner)
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
-        self.inner.layout(ctx, constraints, env)
+        Widget::layout(&self.inner, ctx, constraints, env)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.route_event(ctx, event, env);
+        Widget::route_event(&self.inner, ctx, event, env);
 
         if !ctx.handled {
             if let Event::Wheel(wheel) = event {

@@ -55,7 +55,6 @@ pub use formatter::{DisplayFormatter, FloatingPointNumberFormatter, Formatter, V
 pub use frame::Frame;
 pub use grid::Grid;
 pub use image::{Image, Scaling};
-pub use kyute_macros::WidgetWrapper;
 pub use label::Label;
 //pub use layer_widget::LayerWidget;
 pub use layout_wrapper::LayoutInspector;
@@ -198,23 +197,35 @@ pub trait Modifier {
 #[derive(Clone)]
 pub struct Modified<M, W>(pub M, pub W);
 
-impl<M, W> WidgetWrapper for Modified<M, W>
+impl<M, W> Modified<M, W> {
+    pub fn inner(&self) -> &W {
+        &self.1
+    }
+
+    pub fn inner_mut(&mut self) -> &mut W {
+        &mut self.1
+    }
+}
+
+impl<M, W> Widget for Modified<M, W>
 where
     W: Widget,
     M: Modifier,
 {
-    type Inner = W;
-
-    fn inner(&self) -> &Self::Inner {
-        &self.1
-    }
-
-    fn inner_mut(&mut self) -> &mut Self::Inner {
-        &mut self.1
+    fn widget_id(&self) -> Option<WidgetId> {
+        self.1.widget_id()
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         self.0.layout(ctx, &self.1, constraints, env)
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        self.1.route_event(ctx, event, env)
+    }
+
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.1.paint(ctx)
     }
 
     fn debug_node(&self) -> DebugNode {
@@ -510,9 +521,11 @@ impl<W: Widget + 'static> WidgetExt for W {}
 
 /// Prelude containing commonly used items for writing custom widgets.
 pub mod prelude {
-    #[doc(hidden)]
     pub use crate::{
-        cache::Signal, composable, drawing::PaintCtx, widget::WidgetExt, widget::WidgetPod, widget::WidgetWrapper,
+        cache::Signal,
+        composable,
+        drawing::PaintCtx,
+        widget::{WidgetExt, WidgetPod, WidgetWrapper},
         Alignment, BoxConstraints, Environment, Event, EventCtx, Layout, LayoutCache, LayoutConstraints, LayoutCtx,
         Length, Measurements, Offset, Orientation, Point, Rect, Size, Transform, UnitExt, Widget, WidgetId,
     };

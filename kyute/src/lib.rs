@@ -29,8 +29,6 @@ pub mod util;
 pub mod widget;
 mod window;
 
-pub use kyute_macros::composable;
-
 pub use crate::{
     asset::{Asset, AssetId, AssetLoader, AssetUri},
     bloom::Bloom,
@@ -47,6 +45,7 @@ pub use crate::{
     window::Window,
 };
 
+pub use kyute_macros::{composable, Widget};
 pub use kyute_shell as shell;
 pub use kyute_shell::{graal, text};
 

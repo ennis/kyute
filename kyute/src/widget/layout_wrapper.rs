@@ -132,7 +132,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
     }
 }*/
 
-/// A wrapper widget that makes the result of its layout available to the composition step.
+/// A wrapper around a widget that makes its layout available to the composition step.
 #[derive(Clone)]
 pub struct LayoutInspector<Inner> {
     inner: Inner,
@@ -157,15 +157,17 @@ impl<Inner: Widget + 'static> LayoutInspector<Inner> {
         }
     }
 
-    /// Returns the current size of the thing.
+    /// Returns the current size of the inner widget.
     pub fn size(&self) -> Size {
         self.size
     }
 
+    /// Returns whether the current size of the inner widget has changed since the last composition.
     pub fn size_changed(&self) -> Option<Size> {
         self.size_changed.value()
     }
 
+    /// Calls the given closure if the current size of the inner widget has changed since the last composition.
     pub fn on_size_changed(self, f: impl FnOnce(Size)) -> Self {
         self.size_changed.map(f);
         self

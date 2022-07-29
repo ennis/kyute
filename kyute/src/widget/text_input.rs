@@ -113,7 +113,7 @@ impl<T> Widget for TextInput<T> {
 }
 
 /// A combo of a numeric TextInput and a stepper.
-#[derive(WidgetWrapper)]
+#[derive(Widget)]
 pub struct StepperTextInput<T> {
     grid: Grid,
     new_value: Option<T>,

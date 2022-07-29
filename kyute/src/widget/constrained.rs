@@ -90,7 +90,12 @@ impl Modifier for Fill {
         env: &Environment,
     ) -> Layout {
         let mut subconstraints = *constraints;
-        subconstraints.min = subconstraints.max;
+        if subconstraints.max.width.is_finite() {
+            subconstraints.min.width = subconstraints.max.width;
+        }
+        if subconstraints.max.height.is_finite() {
+            subconstraints.min.height = subconstraints.max.height;
+        }
         widget.layout(ctx, &subconstraints, env)
     }
 

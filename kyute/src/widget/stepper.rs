@@ -2,7 +2,7 @@ use crate::widget::{grid::GridLayoutExt, prelude::*, Button, Grid, WidgetWrapper
 use std::ops::{Add, Neg};
 
 /// Two small up & down arrows to select a numeric value
-#[derive(WidgetWrapper)]
+#[derive(Widget)]
 pub struct Stepper<T> {
     grid: Grid,
     new_value: Option<T>,
@@ -31,7 +31,7 @@ where
             }
         }
 
-        let mut grid = Grid::with_template("12 12 / 12 / 1 0");
+        let mut grid = Grid::with_template("12px 12px / 12px");
         grid.insert((up.grid_row(0), down.grid_row(1)));
         Stepper { grid, new_value }
     }

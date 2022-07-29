@@ -838,16 +838,16 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::layout(&**self, ctx, constraints, env)
     }
 
+    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        Widget::route_event(&**self, ctx, event, env)
+    }
+
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         Widget::event(&**self, ctx, event, env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
         Widget::paint(&**self, ctx)
-    }
-
-    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        Widget::route_event(&**self, ctx, event, env)
     }
 
     fn layer_paint(&self, ctx: &mut LayerPaintCtx, layer: &Layer, scale_factor: f64) {

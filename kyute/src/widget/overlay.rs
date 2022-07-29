@@ -1,5 +1,5 @@
 //! Stacking wdiget.
-use crate::{drawing, drawing::PaintCtxExt, style, widget::prelude::*, SideOffsets};
+use crate::widget::prelude::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Widget definition

@@ -976,8 +976,9 @@ impl Grid {
         let mut area = area.resolve(self);
         if area.is_null() {
             warn!(
-                "null grid area specified, widget {:?} will not be inserted in the grid",
-                widget.widget_id()
+                "null grid area specified, widget {:?}({}) will not be inserted in the grid",
+                widget.inner().widget_id(),
+                widget.inner().debug_name(),
             );
             return;
         }

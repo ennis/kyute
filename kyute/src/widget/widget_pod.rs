@@ -363,7 +363,11 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                         _ => {}
                     }
                 } else {
-                    warn!("empty layer or surface: {:?}", self.debug_name());
+                    warn!(
+                        "empty layer or surface contents: {:?} ({:?})",
+                        self.inner().widget_id(),
+                        self.inner().debug_name()
+                    );
                 }
                 self.paint_damage.set(PaintDamage::Repaint)
             }

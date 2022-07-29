@@ -226,7 +226,7 @@ impl TableView {
                     // positioning
                     //let resize_handle = LayoutWrapper::with_offset((-2.0, 0.0), resize_handle);
                     // FIXME arbitrary Z-order here should be documented
-                    grid.insert(resize_handle.grid_area((.., i..i)));
+                    //grid.insert(resize_handle.grid_area((.., i..i)));
                 }
             }
 
@@ -269,12 +269,12 @@ impl TableView {
                         grid.insert(Null.fill().grid_area((i, ..)));
                     }
                     // also add a clickable rect, and clicking it adds the row to the selection
-                    grid.insert(
-                        Clickable::new(Null)
+                    /*grid.insert(
+                        Null.clickable()
                             .on_click(|| selection.flip(row.id.clone()))
                             .fill()
                             .grid_area((i, ..)),
-                    );
+                    );*/
                 }
 
                 // add the main widget (widget in the main column)

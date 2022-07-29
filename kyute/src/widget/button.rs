@@ -14,7 +14,7 @@ use std::cell::Cell;
 
 type ButtonInner = impl Widget;
 
-#[derive(WidgetWrapper)]
+#[derive(Widget)]
 pub struct Button {
     inner: Clickable<ButtonInner>,
 }

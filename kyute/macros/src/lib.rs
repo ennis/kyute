@@ -26,7 +26,7 @@ pub fn composable(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) 
     generate_composable(attr, item)
 }
 
-#[proc_macro_derive(WidgetWrapper, attributes(inner))]
+#[proc_macro_derive(Widget, attributes(inner))]
 pub fn widget_wrapper_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     derive_widget_wrapper_impl(input)
 }

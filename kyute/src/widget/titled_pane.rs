@@ -1,11 +1,11 @@
 use crate::{
     composable,
-    widget::{grid, Clickable, Grid, Image, Null, Scaling, Text, WidgetExt, WidgetWrapper},
+    widget::{grid, Clickable, Grid, Image, Null, Scaling, Text, WidgetExt},
     Alignment, UnitExt, Widget,
 };
 
 /// A widget with a title.
-#[derive(WidgetWrapper)]
+#[derive(Widget)]
 pub struct TitledPane {
     inner: Grid,
     collapsed_changed: Option<bool>,

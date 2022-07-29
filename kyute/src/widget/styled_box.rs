@@ -53,17 +53,7 @@ impl<Inner> DerefMut for StyledBox<Inner> {
     }
 }
 
-impl<Inner: Widget + 'static> WidgetWrapper for StyledBox<Inner> {
-    type Inner = Inner;
-
-    fn inner(&self) -> &Self::Inner {
-        self.inner.inner()
-    }
-
-    fn inner_mut(&mut self) -> &mut Self::Inner {
-        self.inner.inner_mut()
-    }
-
+impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
     fn widget_id(&self) -> Option<WidgetId> {
         self.inner.widget_id()
     }

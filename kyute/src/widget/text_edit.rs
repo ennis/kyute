@@ -442,7 +442,7 @@ impl Widget for BaseTextEdit {
     }
 }
 
-#[derive(WidgetWrapper)]
+#[derive(Widget)]
 pub struct TextEdit {
     inner: StyledBox<BaseTextEdit>,
 }

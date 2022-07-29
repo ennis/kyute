@@ -13,7 +13,7 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
             Diagnostic::spanned(
                 input.span().unwrap(),
                 Level::Error,
-                "`WidgetWrapper` can only be derived on non-unit structs",
+                "`Widget` can only be derived on non-unit structs",
             )
             .emit();
             return quote! {}.into();
@@ -22,7 +22,7 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
             Diagnostic::spanned(
                 input.span().unwrap(),
                 Level::Error,
-                "`WidgetWrapper` can only be derived on non-unit structs",
+                "`Widget` can only be derived on non-unit structs",
             )
             .emit();
             return quote! {}.into();
@@ -37,7 +37,7 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
             Diagnostic::spanned(
                 input.span().unwrap(),
                 Level::Error,
-                "`WidgetWrapper` can only be derived on non-unit structs",
+                "`Widget` can only be derived on non-unit structs",
             )
             .emit();
             return quote! {}.into();
@@ -61,7 +61,7 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
             input.ident.span().unwrap(),
             Level::Error,
             "more than one inner widget specified",
-        ).note("a struct with `#[derive(WidgetWrapper)]` must have exactly one inner widget to delegate to and more than one was found");
+        ).note("a struct with `#[derive(Widget)]` must have exactly one inner widget to delegate to and more than one was found");
 
         for f in inner_fields.iter() {
             diag = diag.span_note(f.1.span().unwrap(), "field marked as inner here");
@@ -84,15 +84,34 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
 
     quote! {
-        impl #impl_generics #CRATE::widget::WidgetWrapper for #outer_ty #type_generics #where_clause {
-            type Inner = #inner_ty;
+        impl #impl_generics #CRATE::widget::Widget for #outer_ty #type_generics #where_clause {
 
-            fn inner(&self) -> &Self::Inner {
-                &self.#access
+            fn widget_id(&self) -> Option<#CRATE::WidgetId> {
+                self.#access.widget_id()
             }
 
-            fn inner_mut(&mut self) -> &mut Self::Inner {
-                &mut self.#access
+            fn event(&self, ctx: &mut #CRATE::EventCtx, event: &mut #CRATE::Event, env: &#CRATE::Environment) {
+                self.#access.event(ctx, event, env)
+            }
+
+            fn route_event(&self, ctx: &mut #CRATE::EventCtx, event: &mut #CRATE::Event, env: &#CRATE::Environment) {
+                self.#access.route_event(ctx, event, env)
+            }
+
+            fn layout(&self, ctx: &mut #CRATE::LayoutCtx, constraints: &#CRATE::LayoutConstraints, env: &#CRATE::Environment) -> #CRATE::Layout {
+                self.#access.layout(ctx, constraints, env)
+            }
+
+            fn paint(&self, ctx: &mut #CRATE::PaintCtx) {
+                self.#access.paint(ctx)
+            }
+
+            fn layer_paint(&self, ctx: &mut #CRATE::LayerPaintCtx, layer: &#CRATE::shell::animation::Layer, scale_factor: f64) {
+                self.#access.layer_paint(ctx, layer, scale_factor)
+            }
+
+            fn debug_node(&self) -> #CRATE::core::DebugNode {
+                self.#access.debug_node()
             }
         }
     }
