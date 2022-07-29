@@ -65,7 +65,7 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
         let computed = self
             .computed
-            .update(ctx, constraints, |_| self.style.compute(constraints));
+            .update(ctx, constraints, |_| self.style.compute(constraints, env));
 
         trace!("=== [{:?}] StyledBox layout ===", self.inner.widget_id());
 

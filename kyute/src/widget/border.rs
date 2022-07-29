@@ -1,5 +1,5 @@
 //! Baseline alignment.
-use crate::{drawing, drawing::PaintCtxExt, style, widget::prelude::*, SideOffsets};
+use crate::{drawing, drawing::PaintCtxExt, style, widget::prelude::*, Color, SideOffsets};
 use std::cell::Cell;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -15,6 +15,7 @@ pub struct Border<Inner> {
     /// Computed border widths
     computed_widths: Cell<[f64; 4]>,
     computed_shape: Cell<drawing::Shape>,
+    computed_color: Cell<Color>,
 }
 
 impl<Inner: Widget + 'static> Border<Inner> {
@@ -28,6 +29,7 @@ impl<Inner: Widget + 'static> Border<Inner> {
             shape,
             computed_widths: Cell::new([0.0; 4]),
             computed_shape: Cell::new(drawing::Shape::RoundedRect(drawing::RoundedRect::default())),
+            computed_color: Cell::new(Default::default()),
         }
     }
 
@@ -80,6 +82,7 @@ impl<Inner: Widget> Widget for Border<Inner> {
             ));
             self.computed_widths
                 .set([border_top, border_right, border_bottom, border_left]);
+            self.computed_color.set(self.border.color.compute(env));
 
             match self.shape {
                 style::Shape::RoundedRect { radii } => {
@@ -126,7 +129,7 @@ impl<Inner: Widget> Widget for Border<Inner> {
 
         let border = drawing::Border {
             widths: self.computed_widths.get(),
-            paint: drawing::Paint::Color(self.border.color),
+            paint: drawing::Paint::Color(self.computed_color.get()),
             line_style: self.border.line_style,
             blend_mode: drawing::BlendMode::SrcOver,
         };

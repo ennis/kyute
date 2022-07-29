@@ -1,6 +1,6 @@
 //! Styling properties
 
-use crate::{css, drawing, Color, LayoutConstraints};
+use crate::{css, drawing, LayoutConstraints};
 use bitflags::bitflags;
 use cssparser::{ParseError, Parser};
 use once_cell::sync::Lazy;
@@ -8,6 +8,7 @@ use std::{convert::TryFrom, sync::Arc};
 
 mod border;
 mod box_shadow;
+mod color;
 mod image;
 mod length;
 mod shape;
@@ -19,7 +20,10 @@ use crate::{
 };
 pub use border::Border;
 pub use box_shadow::{BoxShadow, BoxShadows};
+pub use color::Color;
 pub use image::Image;
+use kyute::Environment;
+use kyute_common::Atom;
 pub use length::{Length, LengthOrPercentage, UnitExt};
 pub use shape::Shape;
 
@@ -123,7 +127,7 @@ pub enum PropertyDeclaration {
 }
 
 impl PropertyDeclaration {
-    pub fn compute(&self, constraints: &LayoutConstraints, computed_values: &mut ComputedStyle) {
+    pub fn compute(&self, constraints: &LayoutConstraints, env: &Environment, computed_values: &mut ComputedStyle) {
         match *self {
             PropertyDeclaration::BorderBottomWidth(specified) => {
                 Arc::make_mut(&mut computed_values.border).border_bottom_width = specified.compute(&constraints);
@@ -149,33 +153,33 @@ impl PropertyDeclaration {
             PropertyDeclaration::BorderBottomLeftRadius(specified) => {
                 Arc::make_mut(&mut computed_values.border).border_bottom_left_radius = specified.compute(&constraints);
             }
-            PropertyDeclaration::BorderBottomColor(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_bottom_color = specified;
+            PropertyDeclaration::BorderBottomColor(ref specified) => {
+                Arc::make_mut(&mut computed_values.border).border_bottom_color = specified.compute(env);
             }
-            PropertyDeclaration::BorderTopColor(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_top_color = specified;
+            PropertyDeclaration::BorderTopColor(ref specified) => {
+                Arc::make_mut(&mut computed_values.border).border_top_color = specified.compute(env);
             }
-            PropertyDeclaration::BorderLeftColor(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_left_color = specified;
+            PropertyDeclaration::BorderLeftColor(ref specified) => {
+                Arc::make_mut(&mut computed_values.border).border_left_color = specified.compute(env);
             }
-            PropertyDeclaration::BorderRightColor(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_right_color = specified;
+            PropertyDeclaration::BorderRightColor(ref specified) => {
+                Arc::make_mut(&mut computed_values.border).border_right_color = specified.compute(env);
             }
             PropertyDeclaration::BorderImage(ref specified) => {
-                Arc::make_mut(&mut computed_values.border).border_image = specified.compute_paint();
+                Arc::make_mut(&mut computed_values.border).border_image = specified.compute_paint(env);
             }
             PropertyDeclaration::BorderStyle(specified) => {
                 Arc::make_mut(&mut computed_values.border).border_style = Some(specified);
             }
             PropertyDeclaration::BackgroundImage(ref specified) => {
-                Arc::make_mut(&mut computed_values.background).background_image = specified.compute_paint();
+                Arc::make_mut(&mut computed_values.background).background_image = specified.compute_paint(env);
             }
             PropertyDeclaration::BackgroundColor(ref specified) => {
                 Arc::make_mut(&mut computed_values.background).background_color = specified.clone();
             }
             PropertyDeclaration::BoxShadow(ref specified) => {
                 Arc::make_mut(&mut computed_values.box_shadow).box_shadows =
-                    specified.into_iter().map(|x| x.compute(&constraints)).collect();
+                    specified.into_iter().map(|x| x.compute(&constraints, env)).collect();
             }
             PropertyDeclaration::MinWidth(specified) => {
                 // FIXME: if containing element is infinite, the value is ignored
@@ -256,7 +260,6 @@ impl PropertyDeclaration {
 ///     background: #fff;
 ///     border-radius: 10px;
 ///
-///
 #[derive(Clone)]
 pub struct Style(Arc<StyleInner>);
 
@@ -298,10 +301,10 @@ impl Style {
                     declarations.push(PropertyDeclaration::BorderRightWidth(border.widths[1]));
                     declarations.push(PropertyDeclaration::BorderBottomWidth(border.widths[2]));
                     declarations.push(PropertyDeclaration::BorderLeftWidth(border.widths[3]));
-                    declarations.push(PropertyDeclaration::BorderLeftColor(border.color));
-                    declarations.push(PropertyDeclaration::BorderTopColor(border.color));
-                    declarations.push(PropertyDeclaration::BorderRightColor(border.color));
-                    declarations.push(PropertyDeclaration::BorderBottomColor(border.color));
+                    declarations.push(PropertyDeclaration::BorderLeftColor(border.color.clone()));
+                    declarations.push(PropertyDeclaration::BorderTopColor(border.color.clone()));
+                    declarations.push(PropertyDeclaration::BorderRightColor(border.color.clone()));
+                    declarations.push(PropertyDeclaration::BorderBottomColor(border.color.clone()));
                 }
                 "border-radius" => {
                     let radii = parse_property_remainder(input, border::border_radius)?;
@@ -372,11 +375,11 @@ impl Style {
         Ok(style)
     }
 
-    pub fn compute(&self, constraints: &LayoutConstraints) -> ComputedStyle {
+    pub fn compute(&self, constraints: &LayoutConstraints, env: &Environment) -> ComputedStyle {
         let mut result = ComputedStyle::default();
         result.inherited.font_size = constraints.parent_font_size;
         for declaration in self.0.declarations.iter() {
-            declaration.compute(constraints, &mut result);
+            declaration.compute(constraints, env, &mut result);
         }
         result
     }
@@ -424,10 +427,10 @@ pub struct BorderProperties {
     pub border_top_right_radius: f64,
     pub border_bottom_right_radius: f64,
     pub border_bottom_left_radius: f64,
-    pub border_bottom_color: Color,
-    pub border_top_color: Color,
-    pub border_left_color: Color,
-    pub border_right_color: Color,
+    pub border_bottom_color: crate::Color,
+    pub border_top_color: crate::Color,
+    pub border_left_color: crate::Color,
+    pub border_right_color: crate::Color,
     pub border_image: Paint,
     pub border_style: Option<drawing::BorderStyle>,
 }
@@ -447,7 +450,7 @@ impl Default for BorderProperties {
             border_top_color: Default::default(),
             border_left_color: Default::default(),
             border_right_color: Default::default(),
-            border_image: Paint::Color(Color::default()),
+            border_image: Paint::Color(Default::default()),
             border_style: Default::default(),
         }
     }

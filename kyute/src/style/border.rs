@@ -1,8 +1,8 @@
 //! Border description.
 use crate::{
     css::{parse_css_length, parse_from_str},
-    drawing,
-    style::utils::css_color,
+    drawing, style,
+    style::color::css_color,
     Color, Length, UnitExt,
 };
 use cssparser::{ParseError, Parser, Token};
@@ -13,7 +13,7 @@ use std::convert::TryFrom;
 pub struct Border {
     /// Left,top,right,bottom border widths.
     pub widths: [Length; 4],
-    pub color: Color,
+    pub color: style::Color,
     pub line_style: drawing::BorderStyle,
 }
 
@@ -21,7 +21,7 @@ impl Default for Border {
     fn default() -> Self {
         Border {
             widths: [Length::zero(); 4],
-            color: Color::default(),
+            color: style::Color::default(),
             line_style: Default::default(),
         }
     }

@@ -14,6 +14,10 @@ use std::cell::Cell;
 
 type ButtonInner = impl Widget;
 
+/// Button widget.
+///
+/// A button widget with the default visual style. To add button-like behavior to your visual, you can use the
+/// `Clickable` wrapper.
 #[derive(Widget)]
 pub struct Button {
     inner: Clickable<ButtonInner>,
@@ -44,6 +48,7 @@ fn button_inner(label: String, active: bool, hover: bool, focus: bool) -> Button
     Label::new(label)
         .text_color(Color::from_rgb_u8(200, 200, 200))
         .horizontal_alignment(Alignment::CENTER)
+        .vertical_alignment(Alignment::CENTER)
         .style(style.as_str())
 }
 

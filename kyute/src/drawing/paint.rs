@@ -2,7 +2,7 @@
 use crate::{
     cache,
     drawing::{Image, ToSkia, IMAGE_CACHE},
-    Angle, Color, Data, Offset, Rect,
+    style, Angle, Color, Data, Offset, Rect,
 };
 use skia_safe as sk;
 use skia_safe::gradient_shader::GradientShaderColors;

@@ -1,17 +1,54 @@
 //! Description of paints.
-use crate::{css::parse_from_str, drawing, style::utils::css_color, Color, UnitExt};
+use crate::{css::parse_from_str, drawing, style, style::color::css_color, Color, Environment, UnitExt};
 use cssparser::{ParseError, Parser, Token};
+use kyute_common::Angle;
 use std::{convert::TryFrom, f32::consts::PI};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // CSS image
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// Represents a gradient stop.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ColorStop {
+    /// Position of the stop along the gradient segment, normalized between zero and one.
+    ///
+    /// If `None`, the position is inferred from the position of the surrounding stops.
+    pub position: Option<f64>,
+    /// Stop color.
+    pub color: style::Color,
+}
+
+/// Describes a linear color gradient.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LinearGradient {
+    /// Direction of the gradient line.
+    pub angle: Angle,
+    /// List of color stops.
+    pub stops: Vec<ColorStop>,
+}
+
+impl LinearGradient {
+    pub fn compute(&self, env: &Environment) -> drawing::LinearGradient {
+        drawing::LinearGradient {
+            angle: self.angle,
+            stops: self
+                .stops
+                .iter()
+                .map(|stop| drawing::ColorStop {
+                    position: stop.position,
+                    color: stop.color.compute(env),
+                })
+                .collect(),
+        }
+    }
+}
+
 /// Value of the background property.
 #[derive(Clone, Debug)]
 pub enum Image {
-    Color(Color),
-    LinearGradient(drawing::LinearGradient),
+    Color(style::Color),
+    LinearGradient(LinearGradient),
 }
 
 impl Default for Image {
@@ -21,17 +58,17 @@ impl Default for Image {
 }
 
 impl Image {
-    pub fn compute_paint(&self) -> drawing::Paint {
+    pub fn compute_paint(&self, env: &Environment) -> drawing::Paint {
         match self {
-            Image::Color(color) => drawing::Paint::Color(*color),
-            Image::LinearGradient(gradient) => drawing::Paint::LinearGradient(gradient.clone()),
+            Image::Color(color) => drawing::Paint::Color(color.compute(env)),
+            Image::LinearGradient(gradient) => drawing::Paint::LinearGradient(gradient.compute(env)),
         }
     }
 }
 
 impl From<Color> for Image {
     fn from(color: Color) -> Self {
-        Image::Color(color)
+        Image::Color(style::Color::Value(color))
     }
 }
 
@@ -127,16 +164,16 @@ impl LineDirection {
     }
 }
 
-fn color_stop<'i>(input: &mut Parser<'i, '_>) -> Result<drawing::ColorStop, ParseError<'i, ()>> {
+fn color_stop<'i>(input: &mut Parser<'i, '_>) -> Result<ColorStop, ParseError<'i, ()>> {
     let color = css_color(input)?;
     let position = input.try_parse(Parser::expect_percentage).ok();
-    Ok(drawing::ColorStop {
+    Ok(ColorStop {
         color,
         position: position.map(|x| x as f64),
     })
 }
 
-fn linear_gradient<'i>(input: &mut Parser<'i, '_>) -> Result<drawing::LinearGradient, ParseError<'i, ()>> {
+fn linear_gradient<'i>(input: &mut Parser<'i, '_>) -> Result<LinearGradient, ParseError<'i, ()>> {
     input.expect_function_matching("linear-gradient")?;
     input.parse_nested_block(|input| {
         let direction = if let Some(line_direction) = input.try_parse(LineDirection::parse).ok() {
@@ -153,7 +190,7 @@ fn linear_gradient<'i>(input: &mut Parser<'i, '_>) -> Result<drawing::LinearGrad
             stops.push(color_stop(input)?);
         }
 
-        Ok(drawing::LinearGradient {
+        Ok(LinearGradient {
             angle: direction.angle.degrees(),
             stops,
         })

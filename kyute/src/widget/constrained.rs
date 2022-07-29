@@ -1,5 +1,5 @@
+//! Size constraint modifiers
 use crate::{
-    core::DebugNode,
     widget::{prelude::*, Modifier},
     LayoutConstraints, Length,
 };

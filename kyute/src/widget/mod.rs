@@ -1,6 +1,5 @@
 //! built-in widgets.
 mod align;
-mod baseline;
 mod button;
 mod clickable;
 mod constrained;
@@ -526,7 +525,7 @@ pub mod prelude {
         composable,
         drawing::PaintCtx,
         widget::{WidgetExt, WidgetPod, WidgetWrapper},
-        Alignment, BoxConstraints, Environment, Event, EventCtx, Layout, LayoutCache, LayoutConstraints, LayoutCtx,
-        Length, Measurements, Offset, Orientation, Point, Rect, Size, Transform, UnitExt, Widget, WidgetId,
+        Alignment, BoxConstraints, DebugNode, Environment, Event, EventCtx, Layout, LayoutCache, LayoutConstraints,
+        LayoutCtx, Length, Measurements, Offset, Orientation, Point, Rect, Size, Transform, UnitExt, Widget, WidgetId,
     };
 }

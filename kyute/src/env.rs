@@ -1,4 +1,5 @@
 use crate::{cache, Color, Data, Length, SideOffsets};
+use kyute_common::Atom;
 use once_cell::sync::Lazy;
 use std::{
     any::Any,
@@ -8,10 +9,12 @@ use std::{
     marker::PhantomData,
     sync::Arc,
 };
+use syn::token::At;
 
 /// A type that identifies a named value in an [`Environment`], of a particular type `T`.
 #[derive(Debug, Eq, PartialEq)]
 pub struct EnvKey<T> {
+    // TODO: this should be an atom, potentially static
     key: &'static str,
     _type: PhantomData<T>,
 }
@@ -104,7 +107,7 @@ impl Hash for Environment {
 #[derive(Clone)]
 struct EnvImpl {
     parent: Option<Arc<EnvImpl>>,
-    values: HashMap<&'static str, Arc<dyn Any + Send + Sync>>,
+    values: HashMap<Atom, Arc<dyn Any + Send + Sync>>,
 }
 
 impl fmt::Debug for EnvImpl {
@@ -115,7 +118,7 @@ impl fmt::Debug for EnvImpl {
 }
 
 impl EnvImpl {
-    fn get<T>(&self, key: &str) -> Option<T>
+    fn get<T>(&self, key: &Atom) -> Option<T>
     where
         T: EnvValue,
     {
@@ -139,12 +142,14 @@ impl Environment {
         }))
     }
 
-    fn set_inner<T>(&mut self, key: &'static str, value: T)
+    fn set_inner<T>(&mut self, key: impl Into<Atom>, value: T)
     where
         T: EnvValue,
     {
+        let key = key.into();
+
         // checks that the type is correct
-        self.0.get::<T>(key);
+        self.0.get::<T>(&key);
 
         match Arc::get_mut(&mut self.0) {
             Some(env) => {
@@ -166,7 +171,7 @@ impl Environment {
     where
         T: EnvValue,
     {
-        self.set_inner(key.key, value);
+        self.set_inner(Atom::from(key.key), value);
         self
     }
 
@@ -175,7 +180,7 @@ impl Environment {
     where
         T: EnvValue,
     {
-        self.set_inner(key.key, value);
+        self.set_inner(Atom::from(key.key), value);
     }
 
     /// Returns the value corresponding to the key.
@@ -183,7 +188,16 @@ impl Environment {
     where
         T: EnvValue,
     {
-        self.0.get(key.key)
+        self.0.get(&Atom::from(key.key))
+    }
+
+    pub fn get_by_name<T, A>(&self, name: A) -> Option<T>
+    where
+        T: EnvValue,
+        A: Into<Atom>,
+    {
+        let name = name.into();
+        self.0.get(&name)
     }
 
     pub fn merged(&self, mut with: Environment) -> Environment {

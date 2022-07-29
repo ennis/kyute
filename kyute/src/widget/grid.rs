@@ -886,7 +886,7 @@ pub struct GridStyle {
 
 /// Grid layout container.
 ///
-/// TODO it's a bit heavyweight for just layouting two buttons in a column...
+/// TODO it's a bit heavy for laying out two buttons in a column...
 #[derive(Debug)]
 pub struct Grid {
     id: WidgetId,

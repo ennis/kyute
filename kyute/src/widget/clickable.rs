@@ -1,3 +1,4 @@
+//! Clickable widget wrapper
 use crate::{event::PointerEventKind, widget::prelude::*, Signal};
 use keyboard_types::{Key, KeyState, Modifiers};
 

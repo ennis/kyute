@@ -84,7 +84,7 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
 
     quote! {
-        impl #impl_generics #CRATE::widget::Widget for #outer_ty #type_generics #where_clause {
+        impl #impl_generics #CRATE::Widget for #outer_ty #type_generics #where_clause {
 
             fn widget_id(&self) -> Option<#CRATE::WidgetId> {
                 self.#access.widget_id()
@@ -110,7 +110,7 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
                 self.#access.layer_paint(ctx, layer, scale_factor)
             }
 
-            fn debug_node(&self) -> #CRATE::core::DebugNode {
+            fn debug_node(&self) -> #CRATE::DebugNode {
                 self.#access.debug_node()
             }
         }

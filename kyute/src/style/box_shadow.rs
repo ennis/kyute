@@ -1,16 +1,16 @@
 use crate::{
     css::{parse_css_length, parse_from_str},
-    drawing,
-    style::utils::css_color,
-    Color, LayoutConstraints, Length, Offset,
+    drawing, style,
+    style::color::css_color,
+    Color, Environment, LayoutConstraints, Length, Offset,
 };
 use cssparser::{ParseError, Parser};
 
 /// Box shadow parameters.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
 pub struct BoxShadow {
-    pub color: Color,
+    pub color: style::Color,
     pub x_offset: Length,
     pub y_offset: Length,
     pub blur: Length,
@@ -19,9 +19,9 @@ pub struct BoxShadow {
 }
 
 impl BoxShadow {
-    pub(crate) fn compute(&self, constraints: &LayoutConstraints) -> drawing::BoxShadow {
+    pub(crate) fn compute(&self, constraints: &LayoutConstraints, env: &Environment) -> drawing::BoxShadow {
         drawing::BoxShadow {
-            color: self.color.clone(),
+            color: self.color.compute(env),
             offset: Offset::new(self.x_offset.compute(constraints), self.y_offset.compute(constraints)),
             blur: self.blur.compute(constraints),
             spread: self.spread.compute(constraints),
@@ -75,7 +75,7 @@ impl BoxShadow {
 
         let lengths = lengths.ok_or(input.new_custom_error(()))?;
         Ok(BoxShadow {
-            color: color.unwrap_or(Color::new(0.0, 0.0, 0.0, 1.0)),
+            color: color.unwrap_or(style::Color::Value(Color::new(0.0, 0.0, 0.0, 1.0))),
             x_offset: lengths.0,
             y_offset: lengths.1,
             blur: lengths.2,

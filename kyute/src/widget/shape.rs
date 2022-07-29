@@ -56,7 +56,7 @@ impl Widget for Shape {
                 }
             }
 
-            self.computed_paint.replace(self.paint.compute_paint());
+            self.computed_paint.replace(self.paint.compute_paint(env));
         }
 
         Layout::new(size)

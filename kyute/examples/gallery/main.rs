@@ -20,9 +20,10 @@ use kyute_shell::{
 use std::sync::Arc;
 
 mod grids;
+mod stepper;
 
 /// A 3-element application scaffolding: a sidebar on the left, a toolbar on the top and the rest is the content area.
-#[derive(WidgetWrapper)]
+#[derive(Widget)]
 pub struct Scaffold {
     grid: StyledBox<Grid>,
 }
@@ -40,7 +41,7 @@ impl Scaffold {
             Null.fill()
                 .background(theme::palette::GREY_800, style::Shape::rectangle())
                 .grid_row(1)
-                .grid_column(..),
+                .grid_column(1..),
         );
         grid.insert(
             Null.fill()
@@ -69,10 +70,11 @@ enum GalleryWidget {
     TextInput,
     TitledPanes,
     TreeView,
+    Steppers,
 }
 
 #[composable]
-fn gallery_sidebar_item(name: &str, kind: GalleryWidget, selected: &mut GalleryWidget) -> impl Widget {
+fn gallery_item(name: &str, kind: GalleryWidget, selected: &mut GalleryWidget) -> impl Widget {
     let button = Button::new(name);
     if button.clicked() {
         *selected = kind;
@@ -81,93 +83,62 @@ fn gallery_sidebar_item(name: &str, kind: GalleryWidget, selected: &mut GalleryW
 }
 
 #[composable]
+fn gallery_showcase_unimplemented(name: &str) -> Arc<WidgetPod> {
+    Arc::new(WidgetPod::new(
+        Text::new(FormattedText::from(name).font_size(30.0).font_style(FontStyle::Italic)).centered(),
+    ))
+}
+
+#[composable]
 fn root_view() -> impl Widget + Clone {
     #[state]
     let mut selected = GalleryWidget::Home;
 
     // widget list
-    let mut widget_list = Grid::column(TrackBreadth::Flex(1.0));
-    widget_list.set_implicit_row_size(40.dip());
-    widget_list.set_row_gap(8.px());
-
-    widget_list.insert((
-        gallery_sidebar_item("Home", GalleryWidget::Home, &mut selected),
-        gallery_sidebar_item("Buttons", GalleryWidget::Buttons, &mut selected),
-        gallery_sidebar_item("Formatted Text", GalleryWidget::FormattedText, &mut selected),
-        gallery_sidebar_item("Drop down", GalleryWidget::DropDown, &mut selected),
-        gallery_sidebar_item("Grids", GalleryWidget::Grids, &mut selected),
-        gallery_sidebar_item("Context menu", GalleryWidget::ContextMenu, &mut selected),
-        gallery_sidebar_item("Titled panes", GalleryWidget::TitledPanes, &mut selected),
-        gallery_sidebar_item("Text input", GalleryWidget::TextInput, &mut selected),
-        gallery_sidebar_item("Tree view", GalleryWidget::TreeView, &mut selected),
+    let mut items = Grid::column(TrackBreadth::Flex(1.0));
+    items.set_implicit_row_size(30.dip());
+    items.set_row_gap(8.px());
+    items.insert(gallery_item("Home", GalleryWidget::Home, &mut selected));
+    items.insert(gallery_item("Buttons", GalleryWidget::Buttons, &mut selected));
+    items.insert(gallery_item("Steppers", GalleryWidget::Steppers, &mut selected));
+    items.insert(gallery_item(
+        "Formatted Text",
+        GalleryWidget::FormattedText,
+        &mut selected,
     ));
+    items.insert(gallery_item("Drop down", GalleryWidget::DropDown, &mut selected));
+    items.insert(gallery_item("Grids", GalleryWidget::Grids, &mut selected));
+    items.insert(gallery_item("Context menu", GalleryWidget::ContextMenu, &mut selected));
+    items.insert(gallery_item("Titled panes", GalleryWidget::TitledPanes, &mut selected));
+    items.insert(gallery_item("Text input", GalleryWidget::TextInput, &mut selected));
+    items.insert(gallery_item("Tree view", GalleryWidget::TreeView, &mut selected));
 
     // content pane
-    let right_panel = match selected {
-        GalleryWidget::Home => Text::new(
-            FormattedText::from("Home (TODO)")
-                .font_size(30.0)
-                .font_style(FontStyle::Italic),
-        )
-        .centered(),
-        GalleryWidget::FormattedText => Text::new(
-            FormattedText::from("Formatted text (TODO)")
-                .font_size(30.0)
-                .font_style(FontStyle::Italic),
-        )
-        .centered(),
-        GalleryWidget::Buttons => Text::new(
-            FormattedText::from("Buttons (TODO)")
-                .font_size(30.0)
-                .font_style(FontStyle::Italic),
-        )
-        .centered(),
-        GalleryWidget::DropDown => Text::new(
-            FormattedText::from("Drop downs (TODO)")
-                .font_size(30.0)
-                .font_style(FontStyle::Italic),
-        )
-        .centered(),
-        GalleryWidget::ContextMenu => Text::new(
-            FormattedText::from("Context menu (TODO)")
-                .font_size(30.0)
-                .font_style(FontStyle::Italic),
-        )
-        .centered(),
-        GalleryWidget::Grids => Text::new(
-            FormattedText::from("Grids (TODO)")
-                .font_size(30.0)
-                .font_style(FontStyle::Italic),
-        )
-        .centered(),
-        GalleryWidget::TextInput => Text::new(
-            FormattedText::from("Text input (TODO)")
-                .font_size(30.0)
-                .font_style(FontStyle::Italic),
-        )
-        .centered(),
-        GalleryWidget::TitledPanes => Text::new(
-            FormattedText::from("Titled panes (TODO)")
-                .font_size(30.0)
-                .font_style(FontStyle::Italic),
-        )
-        .centered(),
-        GalleryWidget::TreeView => Text::new(
-            FormattedText::from("Tree View (TODO)")
-                .font_size(30.0)
-                .font_style(FontStyle::Italic),
-        )
-        .centered(),
+    let showcase = match selected {
+        GalleryWidget::Home => gallery_showcase_unimplemented("Home"),
+        GalleryWidget::FormattedText => gallery_showcase_unimplemented("Formatted text"),
+        GalleryWidget::Buttons => gallery_showcase_unimplemented("Buttons"),
+        GalleryWidget::Steppers => stepper::showcase(),
+        GalleryWidget::DropDown => gallery_showcase_unimplemented("Drop-downs"),
+        GalleryWidget::ContextMenu => gallery_showcase_unimplemented("Context menus"),
+        GalleryWidget::Grids => gallery_showcase_unimplemented("Grids"),
+        GalleryWidget::TextInput => gallery_showcase_unimplemented("Text input"),
+        GalleryWidget::TitledPanes => gallery_showcase_unimplemented("Titled panes"),
+        GalleryWidget::TreeView => gallery_showcase_unimplemented("Tree views"),
     };
 
     Arc::new(WidgetPod::new(
-        Scaffold::new(Null, widget_list.padding(8.dip()), right_panel).fill(),
+        Scaffold::new(Null, items.padding(8.dip()), showcase).fill(),
     ))
 }
 
 #[composable(cached)]
 fn main_window() -> impl Widget + Clone {
-    Window::new(WindowBuilder::new().with_title("Widget gallery"), root_view(), None)
+    Window::new(
+        WindowBuilder::new().with_title("Widget gallery"),
+        root_view().text_color(theme::palette::GREY_100),
+        None,
+    )
 }
 
 fn main() {

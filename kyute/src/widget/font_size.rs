@@ -1,8 +1,5 @@
-//! Alignment modifiers
-use crate::{
-    core::DebugNode,
-    widget::{prelude::*, Modifier},
-};
+//! Font size modifier
+use crate::widget::{prelude::*, Modifier};
 
 /// Font size modifier.
 pub struct FontSize(pub Length);

@@ -1,3 +1,4 @@
+//! Color picker widget
 use crate::{
     drawing::ToSkia,
     make_uniform_data, style,
