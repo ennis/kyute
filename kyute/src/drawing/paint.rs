@@ -200,7 +200,7 @@ impl Paint {
 
     pub fn image(uri: &str, repeat_x: RepeatMode, repeat_y: RepeatMode) -> Paint {
         // TODO: call outside of composition?
-        let image_cache = cache::environment().get(IMAGE_CACHE).unwrap();
+        let image_cache = cache::environment().get(&IMAGE_CACHE).unwrap();
         if let Ok(image) = image_cache.load(uri) {
             Paint::Image {
                 image,

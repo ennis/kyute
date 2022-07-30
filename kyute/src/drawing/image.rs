@@ -107,4 +107,4 @@ impl ImageCache {
 
 impl_env_value!(ImageCache);
 
-pub const IMAGE_CACHE: EnvKey<ImageCache> = EnvKey::new("kyute.image-cache");
+pub const IMAGE_CACHE: EnvKey<ImageCache> = builtin_env_key!("kyute.image-cache");

@@ -18,7 +18,7 @@ impl<W: Widget> EnvOverride<W> {
     }
 
     #[must_use]
-    pub fn with<T: EnvValue>(mut self, key: EnvKey<T>, value: T) -> EnvOverride<W> {
+    pub fn with<T: EnvValue>(mut self, key: &EnvKey<T>, value: T) -> EnvOverride<W> {
         self.env.set(key, value);
         self
     }

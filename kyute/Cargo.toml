@@ -33,11 +33,15 @@ nom = "7"
 cssparser = "0.29"
 similar = "2.1.0"
 once_cell = "1.12"
+string_cache = "0.8.4"
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.10", features = ["fmt", "env-filter"] }
 tracing-tracy = "0.8.0"
 rand = "0.8.4"
+
+[build-dependencies]
+string_cache_codegen = "0.5.2"
 
 [features]
 imbl = ["kyute-common/imbl"]

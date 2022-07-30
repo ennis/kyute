@@ -9,6 +9,9 @@ extern crate tracing;
 #[macro_use]
 mod env;
 
+#[macro_use]
+mod atoms;
+
 pub mod application;
 pub mod asset;
 mod bloom;
@@ -31,6 +34,7 @@ mod window;
 
 pub use crate::{
     asset::{Asset, AssetId, AssetLoader, AssetUri},
+    atoms::Atom,
     bloom::Bloom,
     cache::{changed, environment, memoize, once, run_async, state, with_environment, Signal, State},
     core::{

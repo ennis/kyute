@@ -22,7 +22,7 @@ impl Label {
         let text = text.into();
         Label {
             text: Text::new(FormattedText::new(text.into())),
-            color: theme::keys::LABEL_COLOR.into(),
+            color: EnvRef::Inline(Color::new(1.0, 1.0, 1.0, 1.0)),
         }
     }
 }

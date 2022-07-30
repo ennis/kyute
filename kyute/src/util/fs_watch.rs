@@ -41,7 +41,7 @@ pub struct FileSystemWatcher(Arc<FileWatcherInner>);
 
 impl_env_value!(FileSystemWatcher);
 
-pub(crate) const FILE_SYSTEM_WATCHER: EnvKey<FileSystemWatcher> = EnvKey::new("kyute.file-system-watcher");
+pub(crate) const FILE_SYSTEM_WATCHER: EnvKey<FileSystemWatcher> = builtin_env_key!("kyute.file-system-watcher");
 
 impl FileSystemWatcher {
     /// Creates a new FileWatcher.
@@ -83,7 +83,7 @@ impl FileSystemWatcher {
     /// Returns the FileWatcher instance from the current environment.
     pub fn instance() -> FileSystemWatcher {
         environment()
-            .get(FILE_SYSTEM_WATCHER)
+            .get(&FILE_SYSTEM_WATCHER)
             .expect("could not find a FileWatcher in the current environment")
     }
 

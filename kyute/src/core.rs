@@ -23,7 +23,7 @@ use std::{
 };
 use tracing::{trace, warn};
 
-pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = EnvKey::new("kyute.core.show_debug_overlay");
+pub const SHOW_DEBUG_OVERLAY: EnvKey<bool> = builtin_env_key!("kyute.show-debug-overlay");
 //pub const SELECTED: EnvKey<bool> = EnvKey::new("kyute.core.selected");
 //pub const DISABLED: EnvKey<bool> = EnvKey::new("kyute.core.disabled");
 

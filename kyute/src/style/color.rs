@@ -1,8 +1,7 @@
 //! Parser utilities for box styles.
-use crate::{css::parse_css_length_percentage, EnvKey, LengthOrPercentage};
+use crate::{css::parse_css_length_percentage, Atom, EnvKey, LengthOrPercentage};
 use cssparser::{ParseError, Parser, Token};
 use kyute::Environment;
-use kyute_common::Atom;
 use std::f32::consts::PI;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

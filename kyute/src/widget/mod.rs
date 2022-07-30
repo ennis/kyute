@@ -283,7 +283,7 @@ impl<T: EnvValue> Modifier for EnvironmentOverride<T> {
         env: &Environment,
     ) -> Layout {
         let mut env = env.clone();
-        env.set(self.key, self.value.clone());
+        env.set(&self.key, self.value.clone());
         widget.layout(ctx, constraints, &env)
     }
 

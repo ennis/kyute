@@ -18,7 +18,7 @@ use std::{
     sync::Arc,
 };
 
-pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = EnvKey::new("kyute.show_grid_layout_lines");
+pub const SHOW_GRID_LAYOUT_LINES: EnvKey<bool> = builtin_env_key!("kyute.grid.show-layout-lines");
 
 /// Length of a grid track.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -1536,7 +1536,7 @@ impl Widget for Grid {
             column_gap,
             width,
             height,
-            show_grid_lines: env.get(SHOW_GRID_LAYOUT_LINES).unwrap_or_default(),
+            show_grid_lines: env.get(&SHOW_GRID_LAYOUT_LINES).unwrap_or_default(),
         }));
 
         // TODO baseline

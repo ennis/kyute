@@ -1,5 +1,4 @@
-use crate::{cache, Color, Data, Length, SideOffsets};
-use kyute_common::Atom;
+use crate::{cache, Atom, Color, Data, Length, SideOffsets};
 use once_cell::sync::Lazy;
 use std::{
     any::Any,
@@ -9,35 +8,31 @@ use std::{
     marker::PhantomData,
     sync::Arc,
 };
-use syn::token::At;
 
 /// A type that identifies a named value in an [`Environment`], of a particular type `T`.
 #[derive(Debug, Eq, PartialEq)]
 pub struct EnvKey<T> {
-    // TODO: this should be an atom, potentially static
-    key: &'static str,
+    key: Atom,
     _type: PhantomData<T>,
 }
 
 impl<T> EnvKey<T> {
-    pub fn name(&self) -> &'static str {
-        self.key
+    pub fn name(&self) -> &str {
+        &*self.key
     }
 }
 
 impl<T> Clone for EnvKey<T> {
     fn clone(&self) -> Self {
         EnvKey {
-            key: self.key,
+            key: self.key.clone(),
             _type: PhantomData,
         }
     }
 }
 
-impl<T> Copy for EnvKey<T> {}
-
 impl<T> EnvKey<T> {
-    pub const fn new(key: &'static str) -> EnvKey<T> {
+    pub const fn new(key: Atom) -> EnvKey<T> {
         EnvKey {
             key,
             _type: PhantomData,
@@ -47,9 +42,16 @@ impl<T> EnvKey<T> {
 
 impl<T: EnvValue> EnvKey<T> {
     /// Returns the value of the environment variable in the current env.
-    pub fn get(self, env: &Environment) -> Option<T> {
-        env.get(self)
+    pub fn get(&self, env: &Environment) -> Option<T> {
+        env.get(&self)
     }
+}
+
+/// Declares an environment key from a static atom.
+macro_rules! builtin_env_key {
+    ($name:tt) => {
+        $crate::EnvKey::new(atom!($name))
+    };
 }
 
 /// Trait implemented by values that can be stored in an environment.
@@ -142,12 +144,10 @@ impl Environment {
         }))
     }
 
-    fn set_inner<T>(&mut self, key: impl Into<Atom>, value: T)
+    fn set_inner<T>(&mut self, key: Atom, value: T)
     where
         T: EnvValue,
     {
-        let key = key.into();
-
         // checks that the type is correct
         self.0.get::<T>(&key);
 
@@ -171,24 +171,24 @@ impl Environment {
     where
         T: EnvValue,
     {
-        self.set_inner(Atom::from(key.key), value);
+        self.set_inner(key.key.clone(), value);
         self
     }
 
     /// Adds or overrides a given key in the given environment.
-    pub fn set<T>(&mut self, key: EnvKey<T>, value: T)
+    pub fn set<T>(&mut self, key: &EnvKey<T>, value: T)
     where
         T: EnvValue,
     {
-        self.set_inner(Atom::from(key.key), value);
+        self.set_inner(key.key.clone(), value);
     }
 
     /// Returns the value corresponding to the key.
-    pub fn get<T>(&self, key: EnvKey<T>) -> Option<T>
+    pub fn get<T>(&self, key: &EnvKey<T>) -> Option<T>
     where
         T: EnvValue,
     {
-        self.0.get(&Atom::from(key.key))
+        self.0.get(&key.key)
     }
 
     pub fn get_by_name<T, A>(&self, name: A) -> Option<T>

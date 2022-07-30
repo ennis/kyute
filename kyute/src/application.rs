@@ -175,11 +175,11 @@ fn run_inner<W: Widget + 'static>(ui: fn() -> W, env_overrides: Environment) {
 
     // TODO: move those to lazy_statics
     let asset_loader = AssetLoader::new();
-    env.set(ASSET_LOADER, asset_loader.clone());
+    env.set(&ASSET_LOADER, asset_loader.clone());
     let image_cache = ImageCache::new(asset_loader);
-    env.set(IMAGE_CACHE, image_cache);
+    env.set(&IMAGE_CACHE, image_cache);
     let fs_watcher = FileSystemWatcher::new();
-    env.set(FILE_SYSTEM_WATCHER, fs_watcher);
+    env.set(&FILE_SYSTEM_WATCHER, fs_watcher);
     theme::setup_default_style(&mut env);
 
     env = env.merged(env_overrides);

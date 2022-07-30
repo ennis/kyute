@@ -111,7 +111,7 @@ impl Resolvers {
     }
 }
 
-pub(crate) const ASSET_LOADER: EnvKey<AssetLoader> = EnvKey::new("kyute.asset-loader");
+pub(crate) const ASSET_LOADER: EnvKey<AssetLoader> = builtin_env_key!("kyute.asset-loader");
 
 /// Object responsible for resolving asset URIs to streams of data.
 #[derive(Clone)]
@@ -142,7 +142,7 @@ impl AssetLoader {
     /// Returns the `AssetLoader` instance from the current environment.
     pub fn instance() -> AssetLoader {
         cache::environment()
-            .get(ASSET_LOADER)
+            .get(&ASSET_LOADER)
             .expect("could not find an AssetLoader instance in the current environment")
     }
 
