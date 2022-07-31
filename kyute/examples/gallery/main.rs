@@ -4,7 +4,7 @@ use kyute::{
     application, composable,
     shell::application::Application,
     style,
-    style::{Style, VisualState},
+    style::{Style, WidgetState},
     theme,
     theme::palette,
     widget::{

@@ -16,7 +16,7 @@ impl Modifier for HorizontalAlignment {
         &self,
         ctx: &mut LayoutCtx,
         widget: &W,
-        constraints: &LayoutConstraints,
+        constraints: &LayoutParams,
         env: &Environment,
     ) -> Layout {
         let sublayout = widget.layout(ctx, constraints, env);
@@ -36,7 +36,7 @@ impl Modifier for VerticalAlignment {
         &self,
         ctx: &mut LayoutCtx,
         widget: &W,
-        constraints: &LayoutConstraints,
+        constraints: &LayoutParams,
         env: &Environment,
     ) -> Layout {
         let sublayout = widget.layout(ctx, constraints, env);

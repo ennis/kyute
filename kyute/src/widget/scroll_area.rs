@@ -106,7 +106,7 @@ impl Widget for ScrollArea {
         Widget::widget_id(&self.inner)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         Widget::layout(&self.inner, ctx, constraints, env)
     }
 

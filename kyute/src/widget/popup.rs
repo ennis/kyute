@@ -41,7 +41,7 @@ impl Widget for Popup {
         Some(self.id)
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutConstraints, _env: &Environment) -> Layout {
+    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutParams, _env: &Environment) -> Layout {
         Layout::default()
     }
 

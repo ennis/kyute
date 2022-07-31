@@ -333,7 +333,7 @@ impl Widget for TableView {
         self.grid.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         self.grid.layout(ctx, constraints, env)
     }
 

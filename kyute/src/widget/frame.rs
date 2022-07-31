@@ -2,7 +2,7 @@
 use crate::{
     core::DebugNode,
     widget::{prelude::*, WidgetWrapper},
-    LayerPaintCtx, LayoutConstraints, LengthOrPercentage,
+    LayerPaintCtx, LayoutParams, LengthOrPercentage,
 };
 use kyute_common::RoundToPixel;
 use kyute_shell::animation::Layer;
@@ -37,7 +37,7 @@ impl<W: Widget + 'static> Widget for Frame<W> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         // calculate width and height
         let width = self.width.compute(constraints, constraints.max.width);
         let height = self.height.compute(constraints, constraints.max.height);

@@ -2,7 +2,7 @@ use crate::{
     css::{parse_css_length, parse_from_str},
     drawing, style,
     style::color::css_color,
-    Color, Environment, LayoutConstraints, Length, Offset,
+    Color, Environment, LayoutParams, Length, Offset,
 };
 use cssparser::{ParseError, Parser};
 
@@ -19,7 +19,7 @@ pub struct BoxShadow {
 }
 
 impl BoxShadow {
-    pub(crate) fn compute(&self, constraints: &LayoutConstraints, env: &Environment) -> drawing::BoxShadow {
+    pub(crate) fn compute(&self, constraints: &LayoutParams, env: &Environment) -> drawing::BoxShadow {
         drawing::BoxShadow {
             color: self.color.compute(env),
             offset: Offset::new(self.x_offset.compute(constraints), self.y_offset.compute(constraints)),

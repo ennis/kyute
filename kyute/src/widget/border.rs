@@ -53,7 +53,7 @@ impl<Inner: Widget> Widget for Border<Inner> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         let border_top = self.border.widths[0].compute(constraints);
         let border_right = self.border.widths[1].compute(constraints);
         let border_bottom = self.border.widths[2].compute(constraints);
@@ -70,7 +70,7 @@ impl<Inner: Widget> Widget for Border<Inner> {
 
         if !ctx.speculative {
             // TODO
-            let border_constraints = LayoutConstraints {
+            let border_constraints = LayoutParams {
                 min: sublayout.measurements.size,
                 max: sublayout.measurements.size,
                 ..*constraints

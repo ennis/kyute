@@ -33,7 +33,7 @@ impl Modifier for Padding {
         &self,
         ctx: &mut LayoutCtx,
         widget: &W,
-        constraints: &LayoutConstraints,
+        constraints: &LayoutParams,
         env: &Environment,
     ) -> Layout {
         let top = self.top.compute(constraints);

@@ -1,7 +1,7 @@
 //! Size constraint modifiers
 use crate::{
     widget::{prelude::*, Modifier},
-    LayoutConstraints, Length,
+    LayoutParams, Length,
 };
 
 /// Minimum-width constraint.
@@ -30,11 +30,11 @@ macro_rules! impl_size_constraint {
                 &self,
                 ctx: &mut LayoutCtx,
                 widget: &W,
-                constraints: &LayoutConstraints,
+                params: &LayoutParams,
                 env: &Environment,
             ) -> Layout {
-                let mut subconstraints = *constraints;
-                ($body)(constraints, &mut subconstraints, self.0);
+                let mut subconstraints = *params;
+                ($body)(params, &mut subconstraints, self.0);
                 widget.layout(ctx, &subconstraints, env)
             }
 
@@ -46,23 +46,23 @@ macro_rules! impl_size_constraint {
 }
 
 impl_size_constraint!(MinWidth;
-    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| sub.min.width = sub.min.width.max(value.compute(constraints));
+    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| sub.min.width = sub.min.width.max(value.compute(constraints));
     "minimum width"
 );
 impl_size_constraint!(MinHeight;
-    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| sub.min.height = sub.min.height.max(value.compute(constraints));
+    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| sub.min.height = sub.min.height.max(value.compute(constraints));
     "minimum height"
 );
 impl_size_constraint!(MaxWidth;
-    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| sub.max.width = sub.max.width.min(value.compute(constraints));
+    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| sub.max.width = sub.max.width.min(value.compute(constraints));
     "minimum width"
 );
 impl_size_constraint!(MaxHeight;
-    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| sub.max.height = sub.max.height.min(value.compute(constraints));
+    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| sub.max.height = sub.max.height.min(value.compute(constraints));
     "minimum height"
 );
 impl_size_constraint!(FixedWidth;
-    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| {
+    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| {
         let value = value.compute(constraints);
         sub.min.width = sub.min.width.max(value);
         sub.max.width = sub.max.width.min(value);
@@ -70,7 +70,7 @@ impl_size_constraint!(FixedWidth;
     "fixed width"
 );
 impl_size_constraint!(FixedHeight;
-    |constraints: &LayoutConstraints, sub: &mut LayoutConstraints, value: Length| {
+    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| {
         let value = value.compute(constraints);
         sub.min.height = sub.min.height.max(value);
         sub.max.height = sub.max.height.min(value);
@@ -86,7 +86,7 @@ impl Modifier for Fill {
         &self,
         ctx: &mut LayoutCtx,
         widget: &W,
-        constraints: &LayoutConstraints,
+        constraints: &LayoutParams,
         env: &Environment,
     ) -> Layout {
         let mut subconstraints = *constraints;

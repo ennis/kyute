@@ -1,8 +1,8 @@
 //! Styling properties
 
-use crate::{css, drawing, LayoutConstraints};
+use crate::{css, drawing, LayoutParams};
 use bitflags::bitflags;
-use cssparser::{ParseError, Parser};
+use cssparser::{ParseError, Parser, Token};
 use once_cell::sync::Lazy;
 use std::{convert::TryFrom, sync::Arc};
 
@@ -11,6 +11,7 @@ mod box_shadow;
 mod color;
 mod image;
 mod length;
+mod predicate;
 mod shape;
 mod utils;
 
@@ -25,12 +26,13 @@ pub use image::Image;
 use kyute::Environment;
 use kyute_common::Atom;
 pub use length::{Length, LengthOrPercentage, UnitExt};
+use predicate::{parse_predicate, Predicate, Pseudoclass};
 pub use shape::Shape;
 
 bitflags! {
-    /// Encodes the active visual states of a widget.
+    /// Encodes the active states of a widget.
     #[derive(Default)]
-    pub struct VisualState: u8 {
+    pub struct WidgetState: u8 {
         /// Normal state.
         const DEFAULT  = 0;
 
@@ -127,7 +129,7 @@ pub enum PropertyDeclaration {
 }
 
 impl PropertyDeclaration {
-    pub fn compute(&self, constraints: &LayoutConstraints, env: &Environment, computed_values: &mut ComputedStyle) {
+    pub fn compute(&self, constraints: &LayoutParams, env: &Environment, computed_values: &mut ComputedStyle) {
         match *self {
             PropertyDeclaration::BorderBottomWidth(specified) => {
                 Arc::make_mut(&mut computed_values.border).border_bottom_width = specified.compute(&constraints);
@@ -264,10 +266,22 @@ impl PropertyDeclaration {
 pub struct Style(Arc<StyleInner>);
 
 struct StyleInner {
-    declarations: Vec<PropertyDeclaration>,
+    /// State bits that this style depends on.
+    variant_states: WidgetState,
+    declarations: Vec<PredicatedPropertyDeclaration>,
 }
 
-static DEFAULT_STYLE: Lazy<Style> = Lazy::new(|| Style(Arc::new(StyleInner { declarations: vec![] })));
+struct PredicatedPropertyDeclaration {
+    predicate: Option<Arc<Predicate>>,
+    declaration: PropertyDeclaration,
+}
+
+static DEFAULT_STYLE: Lazy<Style> = Lazy::new(|| {
+    Style(Arc::new(StyleInner {
+        variant_states: WidgetState::DEFAULT,
+        declarations: vec![],
+    }))
+});
 
 impl Default for Style {
     fn default() -> Self {
@@ -278,75 +292,102 @@ impl Default for Style {
 impl Style {
     /// Creates a new style block.
     pub fn new() -> Self {
-        Style(Arc::new(StyleInner { declarations: vec![] }))
+        Style(Arc::new(StyleInner {
+            variant_states: WidgetState::DEFAULT,
+            declarations: vec![],
+        }))
+    }
+
+    pub fn variant_states(&self) -> WidgetState {
+        self.0.variant_states
     }
 }
 
 impl Style {
     fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<Style, ParseError<'i, ()>> {
         let mut declarations = Vec::new();
+        let mut variant_states = WidgetState::DEFAULT;
 
         while !input.is_exhausted() {
+            let predicate = if input.try_parse(|input| input.expect_square_bracket_block()).is_ok() {
+                let predicate = input.parse_nested_block(|input| {
+                    input.expect_ident_matching("if")?;
+                    parse_predicate(input)
+                })?;
+                variant_states |= predicate.variant_states();
+                Some(Arc::new(predicate))
+            } else {
+                None
+            };
+
             let prop_name = input.expect_ident()?.clone();
             input.expect_colon()?;
+
+            let mut push_decl = |declaration| {
+                declarations.push(PredicatedPropertyDeclaration {
+                    predicate: predicate.clone(),
+                    declaration,
+                })
+            };
+
             match &*prop_name {
                 "background" => {
                     let background = parse_property_remainder(input, Image::parse_impl)?;
-                    declarations.push(PropertyDeclaration::BackgroundImage(background));
+                    push_decl(PropertyDeclaration::BackgroundImage(background));
                 }
                 "border" => {
                     let border = parse_property_remainder(input, Border::parse_impl)?;
-                    declarations.push(PropertyDeclaration::BorderStyle(border.line_style));
-                    declarations.push(PropertyDeclaration::BorderTopWidth(border.widths[0]));
-                    declarations.push(PropertyDeclaration::BorderRightWidth(border.widths[1]));
-                    declarations.push(PropertyDeclaration::BorderBottomWidth(border.widths[2]));
-                    declarations.push(PropertyDeclaration::BorderLeftWidth(border.widths[3]));
-                    declarations.push(PropertyDeclaration::BorderLeftColor(border.color.clone()));
-                    declarations.push(PropertyDeclaration::BorderTopColor(border.color.clone()));
-                    declarations.push(PropertyDeclaration::BorderRightColor(border.color.clone()));
-                    declarations.push(PropertyDeclaration::BorderBottomColor(border.color.clone()));
+                    push_decl(PropertyDeclaration::BorderStyle(border.line_style));
+                    push_decl(PropertyDeclaration::BorderTopWidth(border.widths[0]));
+                    push_decl(PropertyDeclaration::BorderRightWidth(border.widths[1]));
+                    push_decl(PropertyDeclaration::BorderBottomWidth(border.widths[2]));
+                    push_decl(PropertyDeclaration::BorderLeftWidth(border.widths[3]));
+                    push_decl(PropertyDeclaration::BorderLeftColor(border.color.clone()));
+                    push_decl(PropertyDeclaration::BorderTopColor(border.color.clone()));
+                    push_decl(PropertyDeclaration::BorderRightColor(border.color.clone()));
+                    push_decl(PropertyDeclaration::BorderBottomColor(border.color.clone()));
                 }
                 "border-radius" => {
                     let radii = parse_property_remainder(input, border::border_radius)?;
-                    declarations.push(PropertyDeclaration::BorderTopLeftRadius(radii[0]));
-                    declarations.push(PropertyDeclaration::BorderTopRightRadius(radii[1]));
-                    declarations.push(PropertyDeclaration::BorderBottomRightRadius(radii[2]));
-                    declarations.push(PropertyDeclaration::BorderBottomLeftRadius(radii[3]));
+                    push_decl(PropertyDeclaration::BorderTopLeftRadius(radii[0]));
+                    push_decl(PropertyDeclaration::BorderTopRightRadius(radii[1]));
+                    push_decl(PropertyDeclaration::BorderBottomRightRadius(radii[2]));
+                    push_decl(PropertyDeclaration::BorderBottomLeftRadius(radii[3]));
                 }
                 "box-shadow" => {
                     let box_shadows = parse_property_remainder(input, box_shadow::parse_box_shadows)?;
-                    declarations.push(PropertyDeclaration::BoxShadow(box_shadows));
+                    push_decl(PropertyDeclaration::BoxShadow(box_shadows));
                 }
                 "padding" => {
                     let padding = parse_property_remainder(input, utils::padding)?;
-                    declarations.push(PropertyDeclaration::PaddingTop(padding[0]));
-                    declarations.push(PropertyDeclaration::PaddingRight(padding[1]));
-                    declarations.push(PropertyDeclaration::PaddingBottom(padding[2]));
-                    declarations.push(PropertyDeclaration::PaddingLeft(padding[3]));
+                    push_decl(PropertyDeclaration::PaddingTop(padding[0]));
+                    push_decl(PropertyDeclaration::PaddingRight(padding[1]));
+                    push_decl(PropertyDeclaration::PaddingBottom(padding[2]));
+                    push_decl(PropertyDeclaration::PaddingLeft(padding[3]));
                 }
                 "width" => {
                     let width = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    declarations.push(PropertyDeclaration::Width(width));
+                    push_decl(PropertyDeclaration::Width(width));
                 }
                 "height" => {
                     let height = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    declarations.push(PropertyDeclaration::Height(height));
+                    push_decl(PropertyDeclaration::Height(height));
                 }
                 "min-width" => {
                     let min_width = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    declarations.push(PropertyDeclaration::MinWidth(min_width));
+                    push_decl(PropertyDeclaration::MinWidth(min_width));
                 }
                 "min-height" => {
                     let min_height = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    declarations.push(PropertyDeclaration::MinHeight(min_height));
+                    push_decl(PropertyDeclaration::MinHeight(min_height));
                 }
                 "max-width" => {
                     let max_width = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    declarations.push(PropertyDeclaration::MaxWidth(max_width));
+                    push_decl(PropertyDeclaration::MaxWidth(max_width));
                 }
                 "max-height" => {
                     let max_height = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    declarations.push(PropertyDeclaration::MaxHeight(max_height));
+                    push_decl(PropertyDeclaration::MaxHeight(max_height));
                 }
                 _ => {
                     // unrecognized property
@@ -356,9 +397,8 @@ impl Style {
         }
 
         Ok(Style(Arc::new(StyleInner {
-            //hash: None,
+            variant_states,
             declarations,
-            //nested_rules: vec![],
         })))
     }
 
@@ -375,11 +415,18 @@ impl Style {
         Ok(style)
     }
 
-    pub fn compute(&self, constraints: &LayoutConstraints, env: &Environment) -> ComputedStyle {
+    pub fn compute(&self, widget_state: WidgetState, constraints: &LayoutParams, env: &Environment) -> ComputedStyle {
         let mut result = ComputedStyle::default();
         result.inherited.font_size = constraints.parent_font_size;
         for declaration in self.0.declarations.iter() {
-            declaration.compute(constraints, env, &mut result);
+            if declaration
+                .predicate
+                .as_ref()
+                .map(|pred| pred.eval(widget_state, constraints, env))
+                .unwrap_or(true)
+            {
+                declaration.declaration.compute(constraints, env, &mut result);
+            }
         }
         result
     }
@@ -389,7 +436,10 @@ impl Style {
 impl TryFrom<&str> for Style {
     type Error = ();
     fn try_from(css: &str) -> Result<Self, ()> {
-        Style::parse(css).map_err(|_| ())
+        Style::parse(css).map_err(|err| {
+            warn!("CSS syntax error: {:?}", err);
+            ()
+        })
     }
 }
 
@@ -524,153 +574,3 @@ impl Default for ComputedStyle {
         }
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Style
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*/// Style of a container.
-#[derive(Clone, Debug)]
-pub struct Style {
-    pub border_radii: [Length; 4],
-    pub border: Option<Border>,
-    pub background: Option<Paint>,
-    pub box_shadows: Vec<BoxShadow>,
-}
-
-impl Default for Style {
-    fn default() -> Self {
-        Style::new()
-    }
-}
-
-impl Style {
-    pub fn new() -> Style {
-        Style {
-            border_radii: [Length::Dip(0.0); 4],
-            background: None,
-            border: None,
-            box_shadows: vec![],
-        }
-    }
-
-    ///
-    pub fn is_transparent(&self) -> bool {
-        self.background.is_none() && self.border.is_none() && self.box_shadows.is_empty()
-    }
-
-    pub fn clip_rect(&self, bounds: Rect, scale_factor: f64) -> Rect {
-        let mut rect = bounds;
-        for box_shadow in self.box_shadows.iter() {
-            if !box_shadow.inset {
-                let mut shadow_rect = bounds;
-                shadow_rect.origin.x += box_shadow.x_offset.to_dips(scale_factor, bounds.width());
-                shadow_rect.origin.y += box_shadow.y_offset.to_dips(scale_factor, bounds.height());
-                let spread = box_shadow.spread.to_dips(scale_factor, bounds.width());
-                let radius = box_shadow.blur.to_dips(scale_factor, bounds.width());
-                shadow_rect = shadow_rect.inflate(spread + radius, spread + radius);
-                rect = rect.union(&shadow_rect);
-            }
-        }
-        rect
-    }
-
-    /// Specifies the radius of the 4 corners of the box.
-    pub fn radius(mut self, radius: impl Into<Length>) -> Self {
-        let radius = radius.into();
-        self.border_radii = [radius; 4];
-        self
-    }
-
-    /// Specifies the radius of each corner of the box separately.
-    pub fn radii(
-        mut self,
-        top_left: impl Into<Length>,
-        top_right: impl Into<Length>,
-        bottom_right: impl Into<Length>,
-        bottom_left: impl Into<Length>,
-    ) -> Self {
-        self.border_radii = [
-            top_left.into(),
-            top_right.into(),
-            bottom_right.into(),
-            bottom_left.into(),
-        ];
-        self
-    }
-
-    /// Sets the brush used to fill the rectangle.
-    pub fn background(mut self, paint: impl Into<Paint>) -> Self {
-        self.background = Some(paint.into());
-        self
-    }
-
-    /// Sets the border.
-    pub fn border(mut self, border: Border) -> Self {
-        self.border = Some(border);
-        self
-    }
-
-    /// Adds a box shadow.
-    pub fn box_shadow(mut self, box_shadow: BoxShadow) -> Self {
-        self.box_shadows.push(box_shadow);
-        self
-    }
-
-    /// Draws a box with this style in the given bounds.
-    pub fn draw(&self, ctx: &mut PaintCtx, bounds: Rect) {
-        let radii = radii_to_skia(ctx, bounds, &self.border_radii);
-        let canvas = ctx.surface.canvas();
-
-        // --- box shadows ---
-        // TODO move in own function
-        for box_shadow in self.box_shadows.iter() {
-            let x_offset = box_shadow.x_offset.to_dips(ctx.scale_factor, bounds.size.width);
-            let y_offset = box_shadow.y_offset.to_dips(ctx.scale_factor, bounds.size.height);
-            let offset = Offset::new(x_offset, y_offset);
-            let blur = box_shadow.blur.to_dips(ctx.scale_factor, bounds.size.width);
-            let spread = box_shadow.spread.to_dips(ctx.scale_factor, bounds.size.width);
-            let color = box_shadow.color;
-
-            // setup skia paint (mask blur)
-            let mut shadow_paint = sk::Paint::default();
-            shadow_paint.set_mask_filter(sk::MaskFilter::blur(
-                sk::BlurStyle::Normal,
-                blur_radius_to_std_dev(blur),
-                None,
-            ));
-            shadow_paint.set_color(color.to_skia().to_color());
-
-            if !box_shadow.inset {
-                // drop shadow
-                // calculate base shadow shape rectangle (apply offset & spread)
-                let mut rect = bounds.translate(offset).inflate(spread, spread);
-                // TODO adjust radius
-                let rrect = sk::RRect::new_rect_radii(rect.to_skia(), &radii);
-                canvas.draw_rrect(rrect, &shadow_paint);
-            } else {
-                let inner_rect = bounds.translate(offset).inflate(-spread, -spread);
-                let outer_rect = area_casting_shadow_in_hole(bounds, offset, blur, spread);
-                // TODO adjust radius
-                let inner_rrect = sk::RRect::new_rect_radii(inner_rect.to_skia(), &radii);
-                let outer_rrect = sk::RRect::new_rect_radii(outer_rect.to_skia(), &radii);
-                canvas.draw_drrect(outer_rrect, inner_rrect, &shadow_paint);
-            }
-        }
-
-        // --- background ---
-        if let Some(ref brush) = self.background {
-            let mut paint = brush.to_sk_paint(bounds);
-            paint.set_style(sk::PaintStyle::Fill);
-            let rrect = sk::RRect::new_rect_radii(bounds.to_skia(), &radii);
-            ctx.surface.canvas().draw_rrect(rrect, &paint);
-        }
-
-        // --- border ---
-        if let Some(ref border) = self.border {
-            border.draw(ctx, bounds, radii);
-        }
-    }
-}
-
-impl_env_value!(Style);*/

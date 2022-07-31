@@ -742,3 +742,50 @@ pub trait Modified {
     type Inner = 
 }
 ```
+
+# When to access the environment?
+Example: light mode / dark mode switch.
+
+During composition, or during layout? Right now we have both, and it's confusing.
+
+- During composition
+  - Env override scope is tied to function calls: must wrap composable call in a lambda
+
+- During layout
+  - Env override scope is tied to the widget tree itself: preferred
+
+
+# Styles with pseudo-class dependencies
+
+Who is in charge of tracking the widget state? (focus, hover, active, disabled) 
+How is it propagated to child widgets?
+Should we avoid recomposition?
+
+## Disabled
+
+This code should work:
+```
+let widget = MyWidget::new().style("[if disabled] opacity: 50%;").disabled(true)
+```
+
+## Focus
+Focus is tracked by the framework, but only widgets that call `ctx.request_focus` can be focused.
+
+=> currently, FocusGained, FocusLost is propagated to child widgets, so widgets with the same ID also receive it
+    but the styledbox doesn't have the same ID... it has the ID of its contents
+
+## Active
+It is the responsibility of the widget to set the active state.
+No event is propagated when a parent widget turns active, so that's not an option. 
+
+## Hover
+Tracked by the framework, but not directly exposed. Widgets that have hover behavior should respond to PointerEnter/Exit/Over/Out events.
+Should StyledBox have _hover behavior_ by default? Yes.
+
+=> can be handled locally in StyledBox by handling the pointer events.
+
+
+# Invalidating layout during pointer handling
+
+That's an issue, because we can send multiple Pointer events (PointerEnter/PointerOver) without a relayout between.
+E.g. send a PointerOver to a widget that invalidates its layout, and just after a pointer over, but the layout is now invalid.

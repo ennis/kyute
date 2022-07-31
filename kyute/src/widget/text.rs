@@ -2,8 +2,8 @@ use crate::{
     composable,
     core::DebugNode,
     drawing::{PaintCtx, ToSkia},
-    make_uniform_data, theme, Color, Data, EnvRef, Environment, Event, EventCtx, Font, Layout, LayoutCache,
-    LayoutConstraints, LayoutCtx, Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
+    make_uniform_data, theme, Color, Data, EnvRef, Environment, Event, EventCtx, Font, Layout, LayoutCache, LayoutCtx,
+    LayoutParams, Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
 use kyute_shell::text::{
     FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
@@ -251,7 +251,7 @@ impl Widget for Text {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         let layout = self.cached_layout.update(ctx, constraints, |ctx| {
             trace!("Text::layout {:?}", self.formatted_text.plain_text);
 

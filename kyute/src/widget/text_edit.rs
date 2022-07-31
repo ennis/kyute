@@ -229,9 +229,9 @@ impl Widget for BaseTextEdit {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         // relax text constraints
-        let text_constraints = LayoutConstraints {
+        let text_constraints = LayoutParams {
             min: Size::zero(),
             max: Size::new(f64::INFINITY, f64::INFINITY),
             ..*constraints

@@ -189,7 +189,7 @@ impl<Inner: Widget + 'static> Widget for LayoutInspector<Inner> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         let layout = self.inner.layout(ctx, constraints, env);
         if layout.measurements.size != self.size {
             self.size_changed.signal(layout.measurements.size);

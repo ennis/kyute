@@ -208,7 +208,7 @@ impl<Content: Widget + 'static> Widget for ContextMenu<Content> {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         self.content.layout(ctx, constraints, env)
     }
 

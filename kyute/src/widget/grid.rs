@@ -1220,7 +1220,7 @@ impl Grid {
     fn compute_track_sizes(
         &self,
         layout_ctx: &mut LayoutCtx,
-        parent_layout_constraints: &LayoutConstraints,
+        parent_layout_constraints: &LayoutParams,
         env: &Environment,
         axis: Axis,
         tracks: &[TrackSize],
@@ -1430,7 +1430,7 @@ impl Widget for Grid {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         // TODO the actual direction of rows and columns depends on the writing mode
         // When (or if) we support other writing modes, rewrite this. Layout is complicated!
 

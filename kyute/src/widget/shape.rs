@@ -28,7 +28,7 @@ impl Widget for Shape {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         // resolve lengths
         // fill the available space
         let size = constraints.max;

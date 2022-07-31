@@ -8,9 +8,9 @@ use crate::{
     graal,
     graal::vk::Handle,
     region::Region,
+    style::WidgetState,
     widget::{Menu, WidgetPod},
-    Data, Environment, Event, EventCtx, InternalEvent, Layout, LayoutConstraints, LayoutCtx, Point, Size, Widget,
-    WidgetId,
+    Data, Environment, Event, EventCtx, InternalEvent, Layout, LayoutCtx, LayoutParams, Point, Size, Widget, WidgetId,
 };
 use keyboard_types::{KeyState, Modifiers};
 use kyute_shell::{
@@ -681,7 +681,7 @@ impl Widget for Window {
         Some(self.id)
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutConstraints, _env: &Environment) -> Layout {
+    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutParams, _env: &Environment) -> Layout {
         Layout::default()
     }
 
@@ -760,7 +760,8 @@ impl Widget for Window {
                 let mut layout_ctx = LayoutCtx::new(scale_factor);
                 self.content.layout(
                     &mut layout_ctx,
-                    &LayoutConstraints {
+                    &LayoutParams {
+                        widget_state: WidgetState::default(),
                         parent_font_size: 16.0,
                         scale_factor,
                         min: Size::zero(),

@@ -1,5 +1,5 @@
 //! Drawing-related wrappers and helpers for use with skia.
-use crate::{style::VisualState, Color, Offset, Point, Rect, Size, Transform};
+use crate::{style::WidgetState, Color, Offset, Point, Rect, Size, Transform};
 use kyute_shell::animation::Layer;
 use skia_safe as sk;
 use std::fmt;
@@ -343,7 +343,7 @@ pub struct PaintCtx<'a> {
     pub scale_factor: f64,
     pub bounds: Rect,
     pub clip_bounds: Rect,
-    pub visual_state: VisualState,
+    pub visual_state: WidgetState,
 }
 
 impl<'a> fmt::Debug for PaintCtx<'a> {
@@ -386,7 +386,7 @@ impl<'a> PaintCtx<'a> {
         self.parent_layer
     }
 
-    /// Overrides the current visual state flags and calls the provided closure.
+    /*/// Overrides the current visual state flags and calls the provided closure.
     ///
     /// # Examples
     ///
@@ -399,13 +399,13 @@ impl<'a> PaintCtx<'a> {
     ///     ctx.with_visual_state(VisualState::DISABLED, |ctx| button.paint(ctx));
     /// }
     /// ```
-    pub fn with_visual_state<R>(&mut self, state: VisualState, f: impl FnOnce(&mut PaintCtx) -> R) -> R {
+    pub fn with_visual_state<R>(&mut self, state: WidgetState, f: impl FnOnce(&mut PaintCtx) -> R) -> R {
         let prev = self.visual_state;
         self.visual_state |= state;
         let result = f(self);
         self.visual_state = prev;
         result
-    }
+    }*/
 
     /// Calls the specified closure with a copy of the current painting context, with the specified
     /// transform and clip bounds applied.

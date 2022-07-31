@@ -9,7 +9,7 @@ impl Widget for Null {
         None
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, constraints: &LayoutConstraints, _env: &Environment) -> Layout {
+    fn layout(&self, _ctx: &mut LayoutCtx, constraints: &LayoutParams, _env: &Environment) -> Layout {
         Layout::new(constraints.min)
     }
 

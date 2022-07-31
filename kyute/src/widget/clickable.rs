@@ -1,6 +1,7 @@
 //! Clickable widget wrapper
-use crate::{event::PointerEventKind, widget::prelude::*, Signal};
+use crate::{cache, event::PointerEventKind, widget::prelude::*, Signal, State};
 use keyboard_types::{Key, KeyState, Modifiers};
+use kyute::style::WidgetState;
 
 /// Wraps an inner widget and allows the user to respond to clicks on it.
 #[derive(Clone)]
@@ -8,7 +9,9 @@ pub struct Clickable<Inner> {
     id: WidgetId,
     inner: Inner,
     clicked: Signal<()>,
-    active: Signal<bool>,
+    active: State<bool>,
+    focus: State<bool>,
+    activated: Signal<bool>,
     hovered: Signal<bool>,
     focused: Signal<bool>,
 }
@@ -19,8 +22,10 @@ impl<Inner: Widget + 'static> Clickable<Inner> {
         Clickable {
             id: WidgetId::here(),
             inner,
+            active: cache::state(|| false),
+            focus: cache::state(|| false),
             clicked: Signal::new(),
-            active: Signal::new(),
+            activated: Signal::new(),
             hovered: Signal::new(),
             focused: Signal::new(),
         }
@@ -42,12 +47,12 @@ impl<Inner: Widget + 'static> Clickable<Inner> {
 
     /// Returns whether this button is active (holding the mouse button over it).
     pub fn activated(&self) -> bool {
-        self.active.value() == Some(true)
+        self.activated.value() == Some(true)
     }
 
     /// Returns whether this button is active (holding the mouse button over it).
     pub fn deactivated(&self) -> bool {
-        self.active.value() == Some(false)
+        self.activated.value() == Some(false)
     }
 
     #[must_use]
@@ -140,8 +145,18 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
-        self.inner.layout(ctx, constraints, env)
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout {
+        let mut widget_state = params.widget_state;
+        widget_state.set(WidgetState::ACTIVE, self.active.get());
+        widget_state.set(WidgetState::FOCUS, self.focus.get());
+        self.inner.layout(
+            ctx,
+            &LayoutParams {
+                widget_state,
+                ..*params
+            },
+            env,
+        )
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -155,11 +170,15 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
                     ctx.request_focus();
                     ctx.set_handled();
                     ctx.capture_pointer();
-                    self.active.signal(true);
+                    self.active.set(true);
+                    self.activated.signal(true);
+                    ctx.request_relayout();
                 }
                 PointerEventKind::PointerUp => {
-                    self.active.signal(false);
+                    self.active.set(false);
+                    self.activated.signal(false);
                     self.clicked.signal(());
+                    ctx.request_relayout();
                 }
                 PointerEventKind::PointerOver => {
                     eprintln!("clickable PointerOver");
@@ -181,8 +200,10 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
 
                     if press {
                         ctx.set_handled();
-                        self.active.signal(true);
+                        self.active.set(true);
+                        self.activated.signal(true);
                         self.clicked.signal(());
+                        ctx.request_relayout();
                     }
 
                     if key.key == Key::Tab {
@@ -194,16 +215,21 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
                     }
                 }
                 if key.state == KeyState::Up {
-                    self.active.signal(false);
+                    self.active.set(false);
+                    self.activated.signal(false);
                 }
             }
             Event::FocusGained => {
                 eprintln!("clickable FocusGained");
-                self.focused.signal(true)
+                self.focus.set(true);
+                self.focused.signal(true);
+                ctx.request_relayout();
             }
             Event::FocusLost => {
                 eprintln!("clickable FocusLost");
-                self.focused.signal(false)
+                self.focus.set(false);
+                self.focused.signal(false);
+                ctx.request_relayout();
             }
             _ => {}
         }

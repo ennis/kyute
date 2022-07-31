@@ -2,7 +2,7 @@ use crate::{
     cache,
     core::{DebugNode, LayerPaintCtx, PaintDamage},
     widget::prelude::*,
-    Bloom, InternalEvent, LayoutConstraints, PointerEventKind, SizeI, WidgetFilter,
+    Bloom, InternalEvent, LayoutParams, PointerEventKind, SizeI, WidgetFilter,
 };
 use kyute_shell::animation::Layer;
 use skia_safe as sk;
@@ -161,8 +161,9 @@ pub struct WidgetPod<T: ?Sized = dyn Widget> {
     child_filter: Cell<Option<WidgetFilter>>,
     /// Paint damage done to the content of the widget pod.
     paint_damage: Cell<PaintDamage>,
-    cached_constraints: Cell<LayoutConstraints>,
+    cached_constraints: Cell<LayoutParams>,
     /// Cached layout result.
+    layout_invalid: Cell<bool>,
     cached_layout: Cell<Option<Layout>>,
 
     /// Inner widget
@@ -204,6 +205,7 @@ impl<T: Widget + 'static> WidgetPod<T> {
             cached_constraints: Cell::new(Default::default()),
             content: widget,
             cached_layout: Cell::new(None),
+            layout_invalid: Cell::new(true),
         }
     }
 }
@@ -308,14 +310,14 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         self.id
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         // we need to differentiate between two cases:
         // 1. we recalculated because the cached value has been invalidated because a child requested a relayout during eval
         // 2. we recalculated because constraints have changed
         //
         // If 2., then we can skip repaint if the resulting measurements are the same.
 
-        if self.cached_constraints.get() == *constraints {
+        if self.cached_constraints.get() == *constraints && !self.layout_invalid.get() {
             if let Some(layout) = self.cached_layout.get() {
                 // same constraints & cached measurements still valid (no child widget requested a relayout) => skip layout & repaint
                 return layout;
@@ -375,6 +377,7 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
             // update cached layout
             self.cached_constraints.set(*constraints);
             self.cached_layout.set(Some(layout));
+            self.layout_invalid.set(false);
         }
 
         layout
@@ -510,9 +513,16 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         // handle event result
         if ctx.relayout {
             // a child widget (or ourselves) requested a relayout during event handling;
-            // clear the cached layout, if any
+            // clear the cached layout, if any.
+            //
+            // Don't clear the cached layout because we may need it to handle additional pointer events
+            // that are delivered before a relayout can be done.
+            // For example, it's possible for a child widget to receive a PointerOver event,
+            // which causes it to request a relayout, and _at the same time_, a PointerEnter event,
+            // which still needs to be delivered properly.
+
             //eprintln!("inner: {:?}, relayout requested", self.content.debug_name());
-            self.cached_layout.set(None);
+            self.layout_invalid.set(true);
         }
 
         // update damage

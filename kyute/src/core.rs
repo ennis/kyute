@@ -10,7 +10,7 @@ use crate::{
         graal,
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
-    EnvKey, Environment, Event, InternalEvent, Layout, LayoutConstraints, Point, PointI, Rect, Transform,
+    EnvKey, Environment, Event, InternalEvent, Layout, LayoutParams, Point, PointI, Rect, Transform,
 };
 use kyute::window::WindowState;
 use kyute_shell::{animation::Layer, application::Application, winit};
@@ -781,7 +781,7 @@ pub trait Widget {
     /// Returns the widget identity.
     fn widget_id(&self) -> Option<WidgetId>;
 
-    fn speculative_layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn speculative_layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         let was_speculative = ctx.speculative;
         ctx.speculative = true;
         let layout = self.layout(ctx, constraints, env);
@@ -790,7 +790,7 @@ pub trait Widget {
     }
 
     /// Measures this widget and layouts the children of this widget.
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout;
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout;
 
     /// Routes an event from a parent widget to this widget.
     ///
@@ -834,7 +834,7 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::widget_id(&**self)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         Widget::layout(&**self, ctx, constraints, env)
     }
 
@@ -889,7 +889,7 @@ pub type WidgetFilter = Bloom<WidgetId>;
 
 #[derive(Clone)]
 pub struct LayoutCacheInner<T: Clone> {
-    constraints: LayoutConstraints,
+    constraints: LayoutParams,
     value: Option<T>,
 }
 
@@ -914,7 +914,7 @@ impl<T: Clone> LayoutCache<T> {
         self.0.borrow().value.is_some()
     }
 
-    pub fn get(&self, constraints: &LayoutConstraints) -> Option<T> {
+    pub fn get(&self, constraints: &LayoutParams) -> Option<T> {
         let inner = self.0.borrow();
         if let Some(ref value) = inner.value {
             if inner.constraints == *constraints {
@@ -924,18 +924,13 @@ impl<T: Clone> LayoutCache<T> {
         None
     }
 
-    pub fn set(&self, constraints: &LayoutConstraints, value: T) {
+    pub fn set(&self, constraints: &LayoutParams, value: T) {
         let mut inner = self.0.borrow_mut();
         inner.constraints = *constraints;
         (*inner).value = Some(value);
     }
 
-    pub fn update(
-        &self,
-        ctx: &mut LayoutCtx,
-        constraints: &LayoutConstraints,
-        f: impl FnOnce(&mut LayoutCtx) -> T,
-    ) -> T {
+    pub fn update(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, f: impl FnOnce(&mut LayoutCtx) -> T) -> T {
         let mut inner = self.0.borrow_mut();
         if inner.value.is_none() || inner.constraints != *constraints {
             let layout = f(ctx);
@@ -961,7 +956,7 @@ impl<T: Clone> LayoutCache<T> {
         })
     }
 
-    pub fn get_cached_constraints(&self) -> LayoutConstraints {
+    pub fn get_cached_constraints(&self) -> LayoutParams {
         self.0.borrow().constraints
     }
 

@@ -98,8 +98,8 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
                 self.#access.route_event(ctx, event, env)
             }
 
-            fn layout(&self, ctx: &mut #CRATE::LayoutCtx, constraints: &#CRATE::LayoutConstraints, env: &#CRATE::Environment) -> #CRATE::Layout {
-                self.#access.layout(ctx, constraints, env)
+            fn layout(&self, ctx: &mut #CRATE::LayoutCtx, params: &#CRATE::LayoutParams, env: &#CRATE::Environment) -> #CRATE::Layout {
+                self.#access.layout(ctx, params, env)
             }
 
             fn paint(&self, ctx: &mut #CRATE::PaintCtx) {

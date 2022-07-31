@@ -76,6 +76,7 @@ pub use titled_pane::TitledPane;
 pub use widget_pod::WidgetPod;
 
 use crate::{
+    composable,
     core::DebugNode,
     drawing::PaintCtx,
     layout::Alignment,
@@ -87,8 +88,8 @@ use crate::{
         constrained::{Fill, FixedHeight, FixedWidth, MaxHeight, MaxWidth, MinHeight, MinWidth},
         font_size::FontSize,
     },
-    Color, EnvKey, EnvValue, Environment, Event, EventCtx, Layout, LayoutConstraints, LayoutCtx, Length,
-    LengthOrPercentage, UnitExt, Widget, WidgetId,
+    Color, EnvKey, EnvValue, Environment, Event, EventCtx, Layout, LayoutCtx, LayoutParams, Length, LengthOrPercentage,
+    UnitExt, Widget, WidgetId,
 };
 use std::{
     convert::TryInto,
@@ -134,7 +135,7 @@ pub trait WidgetWrapper {
         self.inner().route_event(ctx, event, env)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         self.inner().layout(ctx, constraints, env)
     }
 
@@ -152,7 +153,7 @@ impl<T: WidgetWrapper> Widget for T {
         WidgetWrapper::widget_id(self)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         WidgetWrapper::layout(self, ctx, constraints, env)
     }
 
@@ -183,7 +184,7 @@ pub trait Modifier {
         &self,
         ctx: &mut LayoutCtx,
         widget: &W,
-        constraints: &LayoutConstraints,
+        constraints: &LayoutParams,
         env: &Environment,
     ) -> Layout;
 
@@ -215,7 +216,7 @@ where
         self.1.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         self.0.layout(ctx, &self.1, constraints, env)
     }
 
@@ -279,7 +280,7 @@ impl<T: EnvValue> Modifier for EnvironmentOverride<T> {
         &self,
         ctx: &mut LayoutCtx,
         widget: &W,
-        constraints: &LayoutConstraints,
+        constraints: &LayoutParams,
         env: &Environment,
     ) -> Layout {
         let mut env = env.clone();
@@ -491,6 +492,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
     }
 
     #[must_use]
+    #[composable]
     fn style(self, style: impl TryInto<Style>) -> StyledBox<Self> {
         StyledBox::new(self, style)
     }
@@ -499,6 +501,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
     ///
     /// See `Clickable`.
     #[must_use]
+    #[composable]
     fn clickable(self) -> Clickable<Self> {
         Clickable::new(self)
     }
@@ -525,7 +528,8 @@ pub mod prelude {
         composable,
         drawing::PaintCtx,
         widget::{WidgetExt, WidgetPod, WidgetWrapper},
-        Alignment, BoxConstraints, DebugNode, Environment, Event, EventCtx, Layout, LayoutCache, LayoutConstraints,
-        LayoutCtx, Length, Measurements, Offset, Orientation, Point, Rect, Size, Transform, UnitExt, Widget, WidgetId,
+        Alignment, BoxConstraints, DebugNode, Environment, Event, EventCtx, Layout, LayoutCache, LayoutCtx,
+        LayoutParams, Length, Measurements, Offset, Orientation, Point, Rect, Size, Transform, UnitExt, Widget,
+        WidgetId,
     };
 }

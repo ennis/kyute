@@ -1,10 +1,10 @@
 use crate::{
-    drawing,
+    cache, drawing,
     drawing::{BlendMode, Paint, PaintCtxExt, RoundedRect, Shape, ToSkia},
     style,
-    style::Style,
+    style::{Style, WidgetState},
     widget::prelude::*,
-    SideOffsets,
+    PointerEventKind, SideOffsets, State,
 };
 use skia_safe as sk;
 use std::{
@@ -16,9 +16,11 @@ pub struct StyledBox<Inner> {
     style: Style,
     computed: LayoutCache<style::ComputedStyle>,
     inner: WidgetPod<Inner>,
+    hovered: State<bool>,
 }
 
 impl<Inner: Widget + 'static> StyledBox<Inner> {
+    #[composable]
     pub fn new(inner: Inner, style: impl TryInto<Style>) -> Self {
         StyledBox {
             style: style.try_into().unwrap_or_else(|_| {
@@ -27,6 +29,7 @@ impl<Inner: Widget + 'static> StyledBox<Inner> {
             }),
             computed: Default::default(),
             inner: WidgetPod::new(inner),
+            hovered: cache::state(|| false),
         }
     }
 
@@ -58,14 +61,15 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         self.inner.widget_id()
     }
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner.route_event(ctx, event, env)
-    }
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout {
+        let mut widget_state = params.widget_state;
+        widget_state.set(WidgetState::HOVER, self.hovered.get());
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+        // TODO layout cache not enough here (doesn't take into account widget state)
+        self.computed.invalidate();
         let computed = self
             .computed
-            .update(ctx, constraints, |_| self.style.compute(constraints, env));
+            .update(ctx, params, |ctx| self.style.compute(widget_state, params, env));
 
         trace!("=== [{:?}] StyledBox layout ===", self.inner.widget_id());
 
@@ -80,14 +84,13 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             + computed.border.border_bottom_width;
 
         //dbg!(constraints);
-
         //trace!("computed styles: {:#?}", computed);
 
         // compute min/max heights constraints
-        let mut min_width = computed.layout.min_width.unwrap_or(constraints.min.width);
-        let mut max_width = computed.layout.max_width.unwrap_or(constraints.max.width);
-        let mut min_height = computed.layout.min_height.unwrap_or(constraints.min.height);
-        let mut max_height = computed.layout.max_height.unwrap_or(constraints.max.height);
+        let mut min_width = computed.layout.min_width.unwrap_or(params.min.width);
+        let mut max_width = computed.layout.max_width.unwrap_or(params.max.width);
+        let mut min_height = computed.layout.min_height.unwrap_or(params.min.height);
+        let mut max_height = computed.layout.max_height.unwrap_or(params.max.height);
 
         // explicit width/height declarations
         if let Some(w) = computed.layout.width {
@@ -100,10 +103,10 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         }
 
         // clamp to parent constraints & sanitize
-        min_width = constraints.constrain_width(min_width);
-        max_width = constraints.constrain_width(max_width);
-        min_height = constraints.constrain_height(min_height);
-        max_height = constraints.constrain_height(max_height);
+        min_width = params.constrain_width(min_width);
+        max_width = params.constrain_width(max_width);
+        min_height = params.constrain_height(min_height);
+        max_height = params.constrain_height(max_height);
         if min_width >= max_width {
             min_width = max_width;
         }
@@ -127,10 +130,10 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         // layout contents with modified constraints
         let sublayout = self.inner.layout(
             ctx,
-            &LayoutConstraints {
+            &LayoutParams {
                 min: Size::zero(),
                 max: Size::new(content_max_width, content_max_height),
-                ..*constraints
+                ..*params
             },
             env,
         );
@@ -187,6 +190,27 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         trace!("final layout ={:#?}", layout);
 
         layout
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        match event {
+            // track pointer hover
+            Event::Pointer(p) => match p.kind {
+                PointerEventKind::PointerOver => {
+                    self.hovered.set_without_invalidation(true);
+                    // TODO: only request a repaint if no layout-affecting style is touched
+                    ctx.request_relayout();
+                }
+                PointerEventKind::PointerOut => {
+                    self.hovered.set_without_invalidation(false);
+                    ctx.request_relayout();
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
+        self.inner.route_event(ctx, event, env)
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {

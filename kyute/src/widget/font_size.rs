@@ -9,10 +9,10 @@ impl Modifier for FontSize {
         &self,
         ctx: &mut LayoutCtx,
         widget: &W,
-        constraints: &LayoutConstraints,
+        constraints: &LayoutParams,
         env: &Environment,
     ) -> Layout {
-        let subconstraints = LayoutConstraints {
+        let subconstraints = LayoutParams {
             parent_font_size: self.0.compute(constraints),
             ..*constraints
         };

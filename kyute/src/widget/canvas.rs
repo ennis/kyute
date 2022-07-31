@@ -1,4 +1,5 @@
 use crate::{widget::prelude::*, Length, Transform};
+use kyute::style::WidgetState;
 use std::sync::Arc;
 
 pub enum PositioningMode {
@@ -101,7 +102,7 @@ impl Widget for Canvas {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         // a canvas always takes the maximum available space
         let width = constraints.finite_max_width().unwrap_or(0.0);
         let height = constraints.finite_max_height().unwrap_or(0.0);
@@ -114,7 +115,8 @@ impl Widget for Canvas {
         // place the items in the canvas
         // padding is ignored
         for item in self.items.iter() {
-            let child_layout_constraints = LayoutConstraints {
+            let child_layout_constraints = LayoutParams {
+                widget_state: WidgetState::default(),
                 parent_font_size: constraints.parent_font_size,
                 scale_factor: constraints.scale_factor,
                 min: Size::zero(),
@@ -206,7 +208,7 @@ impl<Content: Widget + 'static> Widget for Viewport<Content> {
         self.content.inner().widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         let mut subconstraints = *constraints;
         if !self.constrain_width {
             subconstraints.min.width = 0.0;

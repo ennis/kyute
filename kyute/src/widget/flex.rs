@@ -76,7 +76,7 @@ impl Widget for Flex {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         let item_layouts: Vec<Layout> = self
             .items
             .iter()

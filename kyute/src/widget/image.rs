@@ -129,7 +129,7 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutConstraints, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
         match self.contents {
             ImageContents::Image { ref image, .. } => {
                 let size_i = image.size();

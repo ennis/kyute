@@ -1,5 +1,5 @@
 //! Types and functions used for layouting widgets.
-use crate::{Data, Offset, Point, Rect, SideOffsets, Size};
+use crate::{style::WidgetState, Data, Offset, Point, Rect, SideOffsets, Size};
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -12,7 +12,8 @@ use std::{
 
 /// Layout constraints passed down to child widgets
 #[derive(Copy, Clone, Debug)]
-pub struct LayoutConstraints {
+pub struct LayoutParams {
+    pub widget_state: WidgetState,
     /// Parent font size.
     pub parent_font_size: f64,
     /// Scale factor.
@@ -23,9 +24,10 @@ pub struct LayoutConstraints {
     pub max: Size,
 }
 
-impl Default for LayoutConstraints {
+impl Default for LayoutParams {
     fn default() -> Self {
-        LayoutConstraints {
+        LayoutParams {
+            widget_state: WidgetState::default(),
             parent_font_size: 16.0,
             scale_factor: 1.0,
             min: Size::zero(),
@@ -36,7 +38,7 @@ impl Default for LayoutConstraints {
 
 // required because we also have a custom hash impl
 // (https://rust-lang.github.io/rust-clippy/master/index.html#derive_hash_xor_eq)
-impl PartialEq for LayoutConstraints {
+impl PartialEq for LayoutParams {
     fn eq(&self, other: &Self) -> bool {
         self.min.width.to_bits() == other.min.width.to_bits()
             && self.min.height.to_bits() == other.min.height.to_bits()
@@ -44,10 +46,11 @@ impl PartialEq for LayoutConstraints {
             && self.max.height.to_bits() == other.max.height.to_bits()
             && self.scale_factor.to_bits() == other.scale_factor.to_bits()
             && self.parent_font_size.to_bits() == other.parent_font_size.to_bits()
+            && self.widget_state == other.widget_state
     }
 }
 
-impl Hash for LayoutConstraints {
+impl Hash for LayoutParams {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.parent_font_size.to_bits().hash(state);
         self.scale_factor.to_bits().hash(state);
@@ -55,21 +58,22 @@ impl Hash for LayoutConstraints {
         self.min.height.to_bits().hash(state);
         self.max.width.to_bits().hash(state);
         self.max.height.to_bits().hash(state);
+        self.widget_state.hash(state);
     }
 }
 
-impl Data for LayoutConstraints {
+impl Data for LayoutParams {
     fn same(&self, other: &Self) -> bool {
         self == other
     }
 }
 
-impl LayoutConstraints {
-    pub fn deflate(&self, insets: SideOffsets) -> LayoutConstraints {
+impl LayoutParams {
+    pub fn deflate(&self, insets: SideOffsets) -> LayoutParams {
         let max_w = self.max.width - insets.horizontal();
         let max_h = self.max.height - insets.vertical();
 
-        LayoutConstraints {
+        LayoutParams {
             max: Size::new(max_w, max_h).max(self.min),
             ..*self
         }
