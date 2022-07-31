@@ -27,6 +27,8 @@ pub enum BorderStyle {
     Solid,
     #[serde(rename = "dotted")]
     Dotted,
+    #[serde(rename = "dashed")]
+    Dashed,
 }
 
 impl Default for BorderStyle {
@@ -70,6 +72,18 @@ impl Border {
                 let canvas = ctx.surface.canvas();
                 let mut paint = self.paint.to_sk_paint(rrect.rect);
                 paint.set_style(sk::PaintStyle::Fill);
+                match self.line_style {
+                    BorderStyle::Solid => {}
+                    BorderStyle::Dotted => {
+                        // TODO: per-side dash pattern
+                        let path_effect = sk::PathEffect::dash(&[t as sk::scalar, t as sk::scalar], 0.0);
+                        paint.set_path_effect(path_effect);
+                    }
+                    BorderStyle::Dashed => {
+                        let path_effect = sk::PathEffect::dash(&[5.0, 5.0], 0.0);
+                        paint.set_path_effect(path_effect);
+                    }
+                }
                 paint.set_blend_mode(self.blend_mode.to_skia());
                 canvas.draw_drrect(rrect.to_skia(), inset_rrect.to_skia(), &paint);
             }

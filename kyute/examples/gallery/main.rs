@@ -9,7 +9,7 @@ use kyute::{
     theme::palette,
     widget::{
         grid::{GridLayoutExt, TrackBreadth},
-        Button, Grid, Null, Padding, StyledBox, Text, WidgetExt, WidgetPod, WidgetWrapper,
+        Button, Grid, Null, Padding, Placeholder, StyledBox, Text, WidgetExt, WidgetPod, WidgetWrapper,
     },
     Alignment, Color, Data, Environment, Length, UnitExt, Widget, Window,
 };
@@ -84,9 +84,10 @@ fn gallery_item(name: &str, kind: GalleryWidget, selected: &mut GalleryWidget) -
 
 #[composable]
 fn gallery_showcase_unimplemented(name: &str) -> Arc<WidgetPod> {
-    Arc::new(WidgetPod::new(
+    Arc::new(WidgetPod::new(Placeholder.fill()))
+    /*Arc::new(WidgetPod::new(
         Text::new(FormattedText::from(name).font_size(30.0).font_style(FontStyle::Italic)).centered(),
-    ))
+    ))*/
 }
 
 #[composable]

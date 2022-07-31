@@ -781,16 +781,16 @@ pub trait Widget {
     /// Returns the widget identity.
     fn widget_id(&self) -> Option<WidgetId>;
 
-    fn speculative_layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn speculative_layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout {
         let was_speculative = ctx.speculative;
         ctx.speculative = true;
-        let layout = self.layout(ctx, constraints, env);
+        let layout = self.layout(ctx, params, env);
         ctx.speculative = was_speculative;
         layout
     }
 
     /// Measures this widget and layouts the children of this widget.
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout;
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout;
 
     /// Routes an event from a parent widget to this widget.
     ///
@@ -834,8 +834,8 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::widget_id(&**self)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
-        Widget::layout(&**self, ctx, constraints, env)
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout {
+        Widget::layout(&**self, ctx, params, env)
     }
 
     fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -889,7 +889,7 @@ pub type WidgetFilter = Bloom<WidgetId>;
 
 #[derive(Clone)]
 pub struct LayoutCacheInner<T: Clone> {
-    constraints: LayoutParams,
+    params: LayoutParams,
     value: Option<T>,
 }
 
@@ -905,7 +905,7 @@ impl<T: Clone> Default for LayoutCache<T> {
 impl<T: Clone> LayoutCache<T> {
     pub fn new() -> LayoutCache<T> {
         LayoutCache(RefCell::new(LayoutCacheInner {
-            constraints: Default::default(),
+            params: Default::default(),
             value: None,
         }))
     }
@@ -914,10 +914,10 @@ impl<T: Clone> LayoutCache<T> {
         self.0.borrow().value.is_some()
     }
 
-    pub fn get(&self, constraints: &LayoutParams) -> Option<T> {
+    pub fn get(&self, params: &LayoutParams) -> Option<T> {
         let inner = self.0.borrow();
         if let Some(ref value) = inner.value {
-            if inner.constraints == *constraints {
+            if inner.params == *params {
                 return Some(value.clone());
             }
         }
@@ -926,23 +926,23 @@ impl<T: Clone> LayoutCache<T> {
 
     pub fn set(&self, constraints: &LayoutParams, value: T) {
         let mut inner = self.0.borrow_mut();
-        inner.constraints = *constraints;
+        inner.params = *constraints;
         (*inner).value = Some(value);
     }
 
-    pub fn update(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, f: impl FnOnce(&mut LayoutCtx) -> T) -> T {
+    pub fn update(&self, ctx: &mut LayoutCtx, params: &LayoutParams, f: impl FnOnce(&mut LayoutCtx) -> T) -> T {
         let mut inner = self.0.borrow_mut();
-        if inner.value.is_none() || inner.constraints != *constraints {
+        if inner.value.is_none() || inner.params != *params {
             let layout = f(ctx);
             // don't cache speculative layouts
             if !ctx.speculative {
                 if inner.value.is_none() {
                     trace!("initial layout");
                 } else {
-                    trace!("layout update: constraints:{:?}->{:?}", inner.constraints, constraints);
+                    trace!("layout update: constraints:{:?}->{:?}", inner.params, params);
                 }
                 inner.value = Some(layout.clone());
-                inner.constraints = *constraints;
+                inner.params = *params;
             }
             layout
         } else {
@@ -956,9 +956,9 @@ impl<T: Clone> LayoutCache<T> {
         })
     }
 
-    pub fn get_cached_constraints(&self) -> LayoutParams {
-        self.0.borrow().constraints
-    }
+    //pub fn get_cached_params(&self) -> LayoutParams {
+    //    self.0.borrow().params
+    //}
 
     pub fn invalidate(&self) {
         trace!("layout explicitly invalidated");
