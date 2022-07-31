@@ -84,10 +84,7 @@ fn gallery_item(name: &str, kind: GalleryWidget, selected: &mut GalleryWidget) -
 
 #[composable]
 fn gallery_showcase_unimplemented(name: &str) -> Arc<WidgetPod> {
-    Arc::new(WidgetPod::new(Placeholder.fill()))
-    /*Arc::new(WidgetPod::new(
-        Text::new(FormattedText::from(name).font_size(30.0).font_style(FontStyle::Italic)).centered(),
-    ))*/
+    Placeholder.fill().arc_pod()
 }
 
 #[composable]

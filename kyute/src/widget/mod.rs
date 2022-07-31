@@ -96,6 +96,7 @@ use crate::{
 use std::{
     convert::TryInto,
     ops::{Deref, DerefMut},
+    sync::Arc,
 };
 
 // TODO move somewhere else
@@ -518,6 +519,26 @@ pub trait WidgetExt: Widget + Sized + 'static {
     #[must_use]
     fn text_color(self, color: impl Into<Color>) -> Modified<EnvironmentOverride<Color>, Self> {
         self.env_override(theme::TEXT_COLOR, color.into())
+    }
+
+    /// Wraps this widget in a `WidgetPod`.
+    ///
+    /// The resulting `WidgetPod` is not backed by a surface or layer.
+    #[must_use]
+    #[composable]
+    fn pod(self) -> WidgetPod<Self> {
+        WidgetPod::new(self)
+    }
+
+    /// Wraps this widget in an `Arc<WidgetPod>`.
+    ///
+    /// This is typically used with a `composable(cached)` function to get a cacheable object for a widget.
+    ///
+    /// The resulting `WidgetPod` is not backed by a surface or layer.
+    #[must_use]
+    #[composable]
+    fn arc_pod(self) -> Arc<WidgetPod<Self>> {
+        Arc::new(WidgetPod::new(self))
     }
 }
 

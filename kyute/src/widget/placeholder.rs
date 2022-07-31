@@ -25,6 +25,7 @@ impl Widget for Placeholder {
 
         let canvas = ctx.surface.canvas();
         let mut paint = skia_safe::Paint::new(Color::from_hex("#3fb1fc").to_skia(), None);
+        paint.set_anti_alias(true);
         paint.set_stroke(false);
         paint.set_alpha(128);
         canvas.draw_rect(ctx.bounds.to_skia(), &paint);
