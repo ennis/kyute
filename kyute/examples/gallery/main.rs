@@ -1,5 +1,4 @@
 //! Widget gallery
-use crate::GalleryWidget::ContextMenu;
 use kyute::{
     application, composable,
     shell::application::Application,
@@ -21,6 +20,7 @@ use std::sync::Arc;
 
 mod grids;
 mod stepper;
+mod table;
 
 /// A 3-element application scaffolding: a sidebar on the left, a toolbar on the top and the rest is the content area.
 #[derive(Widget)]
@@ -122,12 +122,10 @@ fn root_view() -> impl Widget + Clone {
         GalleryWidget::Grids => gallery_showcase_unimplemented("Grids"),
         GalleryWidget::TextInput => gallery_showcase_unimplemented("Text input"),
         GalleryWidget::TitledPanes => gallery_showcase_unimplemented("Titled panes"),
-        GalleryWidget::TreeView => gallery_showcase_unimplemented("Tree views"),
+        GalleryWidget::TreeView => table::showcase(),
     };
 
-    Arc::new(WidgetPod::new(
-        Scaffold::new(Null, items.padding(8.dip()), showcase).fill(),
-    ))
+    Scaffold::new(Null, items.padding(8.dip()), showcase).fill().arc_pod()
 }
 
 #[composable(cached)]

@@ -21,7 +21,7 @@ impl Label {
     pub fn new(text: impl Into<String> + Data) -> Label {
         let text = text.into();
         Label {
-            text: Text::new(FormattedText::new(text.into())),
+            text: Text::new(text),
             color: EnvRef::Inline(Color::new(1.0, 1.0, 1.0, 1.0)),
         }
     }

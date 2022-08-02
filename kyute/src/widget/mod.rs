@@ -29,6 +29,7 @@ mod popup;
 mod scroll_area;
 //mod selectable;
 mod font_size;
+mod form;
 mod overlay;
 mod placeholder;
 mod shape;

@@ -1,7 +1,7 @@
 mod formatted_text;
 mod paragraph;
 
-pub use formatted_text::{FormattedText, ParagraphStyle};
+pub use formatted_text::{FormattedText, FormattedTextExt, ParagraphStyle};
 pub use paragraph::{
     GlyphRun, GlyphRunAnalysis, GlyphRunDrawingEffects, HitTestMetrics, HitTestPoint, HitTestTextPosition, LineMetrics,
     Paragraph, Renderer, TextMetrics,

@@ -789,3 +789,30 @@ Should StyledBox have _hover behavior_ by default? Yes.
 
 That's an issue, because we can send multiple Pointer events (PointerEnter/PointerOver) without a relayout between.
 E.g. send a PointerOver to a widget that invalidates its layout, and just after a pointer over, but the layout is now invalid.
+=> solution: don't remove the old layout after invalidation
+
+# Sidebars
+
+MacOS-like:
+- sections
+- hierarchy
+
+# Form layouts
+
+Example user code:
+
+
+```
+let mut form = Form::new();
+
+// push(name, widget)
+form.push("Diffuse color", ColorPicker::new(color).on_color_changed(|c| *color = c)); 
+
+```
+
+- collapsible sections
+- automatically generate text
+
+
+# Formatted text extension trait
+So that users can do `text.font_style()`, with `text: impl Into<Arc<str>>`

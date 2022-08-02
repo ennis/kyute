@@ -218,7 +218,7 @@ pub struct Text {
 impl Text {
     /// Creates a new text element.
     #[composable]
-    pub fn new(formatted_text: impl Into<FormattedText> + Clone + Data) -> Text {
+    pub fn new(formatted_text: impl Into<FormattedText>) -> Text {
         let formatted_text = formatted_text.into();
         //trace!("Text::new {:?}", formatted_text.plain_text);
         Text {

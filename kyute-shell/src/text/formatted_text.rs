@@ -197,18 +197,12 @@ where
 }
 
 impl FormattedText {
-    pub fn new(text: Arc<str>) -> FormattedText {
+    pub fn new(text: impl Into<Arc<str>>) -> FormattedText {
         FormattedText {
-            plain_text: text,
+            plain_text: text.into(),
             runs: Arc::new(TextRuns { runs: vec![] }),
             paragraph_style: Default::default(),
         }
-    }
-
-    /// Returns a new formatted text object with the specified attribute applied on the range of characters.
-    pub fn attribute(mut self, range: impl RangeBounds<usize>, attribute: impl Into<Attribute>) -> FormattedText {
-        self.add_attribute(range, attribute);
-        self
     }
 
     /// Adds the specified attribute on the range of characters.
@@ -217,21 +211,9 @@ impl FormattedText {
         Arc::make_mut(&mut self.runs).merge_attribute(range, &attribute.into())
     }
 
-    /// Returns a new formatted text object with the specified font size set.
-    pub fn font_size(mut self, font_size: f64) -> FormattedText {
-        self.set_font_size(font_size);
-        self
-    }
-
     /// Sets the font size.
     pub fn set_font_size(&mut self, font_size: f64) {
         self.paragraph_style.font_size = Some(font_size);
-    }
-
-    /// Returns a new formatted text object with the specified font style set.
-    pub fn font_style(mut self, font_style: FontStyle) -> FormattedText {
-        self.set_font_style(font_style);
-        self
     }
 
     /// Sets the font style.
@@ -239,32 +221,14 @@ impl FormattedText {
         self.paragraph_style.font_style = Some(font_style);
     }
 
-    /// Returns a new formatted text object with the specified font weight set.
-    pub fn font_weight(mut self, font_weight: FontWeight) -> FormattedText {
-        self.set_font_weight(font_weight);
-        self
-    }
-
     /// Sets the font weight.
     pub fn set_font_weight(&mut self, font_weight: FontWeight) {
         self.paragraph_style.font_weight = Some(font_weight);
     }
 
-    /// Returns a new formatted text object with the specified text alignment set.
-    pub fn text_alignment(mut self, alignment: TextAlignment) -> FormattedText {
-        self.set_text_alignment(alignment);
-        self
-    }
-
     /// Sets the font weight.
     pub fn set_text_alignment(&mut self, alignment: TextAlignment) {
         self.paragraph_style.text_alignment = Some(alignment);
-    }
-
-    /// Sets the font family.
-    pub fn font_family(mut self, font_family: &str) -> FormattedText {
-        self.set_font_family(font_family);
-        self
     }
 
     /// Sets the font family.
@@ -279,5 +243,81 @@ impl FormattedText {
 
     pub fn set_paragraph_style(&mut self, style: ParagraphStyle) {
         self.paragraph_style = style;
+    }
+}
+
+pub trait FormattedTextExt {
+    /// Returns a new formatted text object with the specified font size set.
+    fn font_size(self, font_size: f64) -> FormattedText;
+    /// Returns a new formatted text object with the specified font style set.
+    fn font_style(self, font_style: FontStyle) -> FormattedText;
+    /// Sets the font family.
+    fn font_family(self, font_family: &str) -> FormattedText;
+    /// Returns a new formatted text object with the specified font weight set.
+    fn font_weight(self, font_weight: FontWeight) -> FormattedText;
+    /// Returns a new formatted text object with the specified text alignment set.
+    fn text_alignment(self, alignment: TextAlignment) -> FormattedText;
+    /// Returns a new formatted text object with the specified attribute applied on the range of characters.
+    fn attribute(self, range: impl RangeBounds<usize>, attribute: impl Into<Attribute>) -> FormattedText;
+}
+
+impl<T> FormattedTextExt for T
+where
+    T: Into<Arc<str>>,
+{
+    fn font_size(mut self, font_size: f64) -> FormattedText {
+        FormattedText::new(self.into()).font_size(font_size)
+    }
+
+    fn font_style(self, font_style: FontStyle) -> FormattedText {
+        FormattedText::new(self.into()).font_style(font_style)
+    }
+
+    fn font_family(self, font_family: &str) -> FormattedText {
+        FormattedText::new(self.into()).font_family(font_family)
+    }
+
+    fn font_weight(self, font_weight: FontWeight) -> FormattedText {
+        FormattedText::new(self.into()).font_weight(font_weight)
+    }
+
+    fn text_alignment(mut self, alignment: TextAlignment) -> FormattedText {
+        FormattedText::new(self.into()).text_alignment(alignment)
+    }
+
+    fn attribute(mut self, range: impl RangeBounds<usize>, attribute: impl Into<Attribute>) -> FormattedText {
+        FormattedText::new(self.into()).attribute(range, attribute)
+    }
+}
+
+impl FormattedTextExt for FormattedText {
+    fn font_size(mut self, font_size: f64) -> FormattedText {
+        self.set_font_size(font_size);
+        self
+    }
+
+    fn font_style(mut self, font_style: FontStyle) -> FormattedText {
+        self.set_font_style(font_style);
+        self
+    }
+
+    fn font_family(mut self, font_family: &str) -> FormattedText {
+        self.set_font_family(font_family);
+        self
+    }
+
+    fn font_weight(mut self, font_weight: FontWeight) -> FormattedText {
+        self.set_font_weight(font_weight);
+        self
+    }
+
+    fn text_alignment(mut self, alignment: TextAlignment) -> FormattedText {
+        self.set_text_alignment(alignment);
+        self
+    }
+
+    fn attribute(mut self, range: impl RangeBounds<usize>, attribute: impl Into<Attribute>) -> FormattedText {
+        self.add_attribute(range, attribute);
+        self
     }
 }

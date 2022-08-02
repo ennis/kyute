@@ -1,4 +1,5 @@
 use crate::{
+    drawing::ToSkia,
     event::WheelDeltaMode,
     widget::{grid::GridLayoutExt, prelude::*, DragController, Grid, LayoutInspector, Null, Viewport},
 };
@@ -132,6 +133,12 @@ impl Widget for ScrollArea {
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
-        self.inner.paint(ctx)
+        let bounds = ctx.bounds;
+        ctx.surface.canvas().save();
+        ctx.surface
+            .canvas()
+            .clip_rect(bounds.to_skia(), skia_safe::ClipOp::Intersect, false);
+        self.inner.paint(ctx);
+        ctx.surface.canvas().restore();
     }
 }

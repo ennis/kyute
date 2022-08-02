@@ -46,6 +46,8 @@ pub struct TableRow<Id> {
     cells: Vec<(usize, Arc<WidgetPod>)>,
     /// Whether the children of this row are expanded, if there is any.
     expanded: bool,
+    /// Whether to show the chevron.
+    show_chevron: bool,
     /// Child rows
     children: Vec<TableRow<Id>>,
     expanded_changed: Signal<bool>,
@@ -56,16 +58,22 @@ impl<Id> TableRow<Id> {
     pub fn new(id: Id, widget: impl Widget + 'static) -> TableRow<Id> {
         #[state]
         let mut expanded = false;
-        Self::new_inner(id, widget, expanded).on_expanded_changed(|v| expanded = v)
+        Self::new_inner(id, widget, expanded, true).on_expanded_changed(|v| expanded = v)
     }
 
     #[composable]
-    fn new_inner(id: Id, widget: impl Widget + 'static, expanded: bool) -> TableRow<Id> {
+    pub fn new_expanded(id: Id, widget: impl Widget + 'static) -> TableRow<Id> {
+        Self::new_inner(id, widget, true, false)
+    }
+
+    #[composable]
+    fn new_inner(id: Id, widget: impl Widget + 'static, expanded: bool, show_chevron: bool) -> TableRow<Id> {
         TableRow {
             id,
             widget: Arc::new(WidgetPod::new(widget)),
             cells: vec![],
             expanded,
+            show_chevron,
             children: vec![],
             expanded_changed: Signal::new(),
         }
@@ -293,7 +301,9 @@ impl TableView {
                     });
 
                     let mut widget_with_chevron = Grid::row(grid::TrackBreadth::Auto);
-                    widget_with_chevron.insert(icon);
+                    if row.show_chevron {
+                        widget_with_chevron.insert(icon);
+                    }
                     widget_with_chevron.insert(row.widget);
                     grid.insert(
                         widget_with_chevron

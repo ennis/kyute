@@ -1,5 +1,5 @@
 use kyute_common::Color;
-use kyute_shell::text::{Attribute, FormattedText};
+use kyute_shell::text::{Attribute, FormattedText, FormattedTextExt};
 use std::{error::Error, fmt::Display, str::FromStr};
 
 /// Validation result.
