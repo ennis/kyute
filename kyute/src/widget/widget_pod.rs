@@ -320,17 +320,29 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         if self.cached_constraints.get() == *constraints && !self.layout_invalid.get() {
             if let Some(layout) = self.cached_layout.get() {
                 // same constraints & cached measurements still valid (no child widget requested a relayout) => skip layout & repaint
+                trace!(
+                    "[{:?}] WidgetPod returning cached layout ({:?})",
+                    self.widget_id(),
+                    layout
+                );
                 return layout;
             }
         }
 
         let name = self.debug_name();
-        let _span = trace_span!("WidgetPod layout", 
+        /*let _span = trace_span!("WidgetPod layout",
                     id = ?self.id,
                     name = name)
-        .entered();
+        .entered();*/
 
         // child layout
+
+        trace!(
+            "[{:?}] enter layout (speculative={:?})",
+            self.widget_id(),
+            ctx.speculative
+        );
+
         let layout = self.content.layout(ctx, constraints, env);
 
         // also check for invalid size values while we're at it, but that's only for debugging convenience.

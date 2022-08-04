@@ -1496,9 +1496,10 @@ impl Widget for Grid {
             subconstraints.max.height = h;
             subconstraints.min.width = 0.0;
             subconstraints.min.height = 0.0;
+            trace!("ctx={:?}", ctx);
             let sublayout = item.widget.layout(ctx, &subconstraints, env);
 
-            let offset = sublayout.content_box_offset(Size::new(w, h));
+            let offset = sublayout.place_into(Size::new(w, h));
             if sublayout.y_align == Alignment::FirstBaseline || sublayout.y_align == Alignment::LastBaseline {
                 // TODO
             }

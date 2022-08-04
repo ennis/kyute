@@ -153,21 +153,23 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             height
         );*/
 
+        let mut layout = Layout::new(Size::new(width, height));
+
+        // position the contents inside the "content area box", which is the final box minus
+        // the padding. The "content area box" may be different from the "content box" if
+        // the width and height constraints force this widget to be bigger than the content + padding.
+        let content_area_size = Size::new(width - padding_h, height - padding_v);
+        let mut offset = sublayout.place_into(content_area_size);
+        offset += Offset::new(
+            computed.layout.padding_left + computed.border.border_left_width,
+            computed.layout.padding_top + computed.border.border_top_width,
+        );
+        layout.measurements.baseline = sublayout.measurements.baseline.map(|b| b + offset.y);
+
+        trace!("content offset={:?}", offset);
         if !ctx.speculative {
-            // position the contents inside the "content area box", which is the final box minus
-            // the padding. The "content area box" may be different from the "content box" if
-            // the width and height constraints force this widget to be bigger than the content + padding.
-            let content_area_size = Size::new(width - padding_h, height - padding_v);
-            let offset = sublayout.content_box_offset(content_area_size)
-                + Offset::new(
-                    computed.layout.padding_left + computed.border.border_left_width,
-                    computed.layout.padding_top + computed.border.border_top_width,
-                );
-            trace!("content offset={:?}", offset);
             self.inner.set_offset(offset);
         }
-
-        let mut layout = Layout::new(Size::new(width, height));
 
         // propagate positioning constraints upwards
         if let Some(top) = computed.layout.top {
@@ -187,7 +189,7 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             layout.padding_right = right;
         }
 
-        trace!("final layout ={:#?}", layout);
+        trace!("final layout = {:#?}", layout);
 
         layout
     }

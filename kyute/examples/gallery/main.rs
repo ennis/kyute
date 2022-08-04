@@ -18,6 +18,7 @@ use kyute_shell::{
 };
 use std::sync::Arc;
 
+mod checkbox;
 mod grids;
 mod stepper;
 mod table;
@@ -71,6 +72,7 @@ enum GalleryWidget {
     TitledPanes,
     TreeView,
     Steppers,
+    Checkboxes,
 }
 
 #[composable]
@@ -105,6 +107,7 @@ fn root_view() -> impl Widget + Clone {
         &mut selected,
     ));
     items.insert(gallery_item("Drop down", GalleryWidget::DropDown, &mut selected));
+    items.insert(gallery_item("Checkboxes", GalleryWidget::Checkboxes, &mut selected));
     items.insert(gallery_item("Grids", GalleryWidget::Grids, &mut selected));
     items.insert(gallery_item("Context menu", GalleryWidget::ContextMenu, &mut selected));
     items.insert(gallery_item("Titled panes", GalleryWidget::TitledPanes, &mut selected));
@@ -123,6 +126,7 @@ fn root_view() -> impl Widget + Clone {
         GalleryWidget::TextInput => gallery_showcase_unimplemented("Text input"),
         GalleryWidget::TitledPanes => gallery_showcase_unimplemented("Titled panes"),
         GalleryWidget::TreeView => table::showcase(),
+        GalleryWidget::Checkboxes => checkbox::showcase(),
     };
 
     Scaffold::new(Null, items.padding(8.dip()), showcase).fill().arc_pod()

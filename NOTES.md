@@ -808,11 +808,100 @@ let mut form = Form::new();
 // push(name, widget)
 form.push("Diffuse color", ColorPicker::new(color).on_color_changed(|c| *color = c)); 
 
+// alternative
+
+FormBuilder::new()
+  .checkbox("Keep position when parenting", &mut value)
+  .rgb_numeric_input("Translate", &mut translation)
+  .rgb_numeric_input("Rotate", &mut rotation);
+  
+// with extension traits on FormBuilder
+
+
+// Alternative
+form.push(Labeled::new("Stuff", Checkbox::new(...)))
+
 ```
 
 - collapsible sections
 - automatically generate text
+- labeled widgets?
+  - `Checkbox::new(label: &str) -> Labeled<Checkbox>`
+  - `Checkbox::unlabeled() -> Checkbox`
 
+
+Q: is the label tied to the widget? or specified separately?
+
+=> Collect use cases:
+- label: static element
+- label: dropdown
+- label: collection of radio choices (multiple rows)
+- label: text input
+- label: checkbox (usually rendered as `[Checkbox] Label`, so the opposite of other inputs)
+
+=> Use the same mechanism in other places? like toolbars?
+
+Accessibility?
+
+Main issue: specific layout behavior for some widgets.
+E.g. checkboxes with the label on the other side.
+
+## Option A: FormEntry trait
+A trait implemented by things (widgets, etc.) that represent an entry in a form.
+Through implementations of this trait, form entry widgets can insert themselves into a form, in the way best suited to
+the widget type.
+
+Pros:
+- different layout behaviors for some widgets (e.g. checkboxes)
+
+Cons: 
+- must be implemented for *all* widgets (that is, until specialization lands)
+
+### Suboption A.1: LabeledContent
+More general than FormEntry, LabeledContent represents some content associated with a text label.
+It has no inherent layout (it's not a widget), but is used by several widgets (forms, toolbars)
+as their element type. => See SwiftUI LabeledContent
+
+Example:
+```
+form.entry(label, content).entry(...)
+```
+
+### Suboption A.2: widgets with built-in labels, and LabeledContent for the rest
+There's a FormEntry trait, blanked-implemented for all LabeledContent. Some widgets
+directly implement FormEntry, like "toggles" (Checkbox+Label)
+
+## Option B: extension traits on FormBuilder
+All widgets that 
 
 # Formatted text extension trait
 So that users can do `text.font_style()`, with `text: impl Into<Arc<str>>`
+
+
+# BUG: invalidating cached stuff during speculative layouts
+
+The situation: 
+
+Grid launches a speculative layout on an element to compute max track sizes. This invokes WidgetPod::layout, which in turn invokes StyledBox::layout. 
+In addition to computing the layout, StyledBox::layout also computes and caches the CSS styles of the box. Currently, it *always*
+invalidates (deletes) any previously computed styles (i.e. no caching).
+However, since we're in a speculative layout, `LayoutCache::update` doesn't store the result.
+
+Now, the grid launches the final layout. This invokes WidgetPod::layout, **but** WidgetPod has a valid cached layout, so it doesn't invoke StyledBox::layout.
+Then, painting occurs, but StyledBox doesn't have the computed styles => crash.
+
+There's a slightly misleading promise here: that a call to `paint` is always preceded by a call to `layout`. This is true, but
+a **speculative** call to `layout` may happen between those. 
+=> Conclusion: Widgets shouldn't invalidate cached results during speculative calls
+
+The rules here are getting very confusing, and not even enforced by the compiler.
+Ideally, there would be a way to pass data from `layout` to `paint` in a type-safe way.
+
+Idea: `layout` returns a paint closure.
+Problem: no control over how children are drawn.
+Solution: child paint closures are moved into the closure.
+
+Q: What about caching?
+A: 
+
+Q: overhead? this allocates yet another tree

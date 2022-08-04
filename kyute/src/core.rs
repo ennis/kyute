@@ -53,6 +53,7 @@ impl DebugWidgetTreeNode {
 /// Context passed to widgets during the layout pass.
 ///
 /// See [`Widget::layout`].
+#[derive(Debug)]
 pub struct LayoutCtx {
     pub scale_factor: f64,
     pub speculative: bool,

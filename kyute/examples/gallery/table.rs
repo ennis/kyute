@@ -53,10 +53,7 @@ fn post_count(count: u32) -> impl Widget + 'static {
 
 #[composable]
 fn artist_row(id: u32, artist: &str, count: u32) -> TableRow<RowId> {
-    let mut row = TableRow::new(
-        RowId::Artist(id),
-        Text::new(artist.to_string()).color(Color::from_hex("#B92E12")),
-    );
+    let mut row = TableRow::new(RowId::Artist(id), Text::new(artist).color(Color::from_hex("#B92E12")));
     row.add_cell(1, post_count(count));
     row
 }

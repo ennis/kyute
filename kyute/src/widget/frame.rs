@@ -57,7 +57,7 @@ impl<W: Widget + 'static> Widget for Frame<W> {
 
         // position the content box
         let size = sub.max;
-        let content_offset = sublayout.content_box_offset(size).round_to_pixel(ctx.scale_factor);
+        let content_offset = sublayout.place_into(size).round_to_pixel(ctx.scale_factor);
         self.inner.set_offset(content_offset);
         Layout::new(size)
     }

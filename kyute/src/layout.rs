@@ -345,6 +345,13 @@ impl Default for Alignment {
 }
 
 /// Describes a box to be positioned inside a containing block.
+///
+/// This describes both:
+/// - the measurements of the box to be placed (width, height and baseline),
+/// - positioning constraints within a containing block (alignment and padding)
+///
+/// TODO: block? or box? what's the difference? use consistent names
+/// TODO: might be useful to have a type for "boxes with baselines"
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Layout {
     pub x_align: Alignment,
@@ -389,10 +396,10 @@ impl Layout {
         self.measurements.baseline.map(|x| x + self.padding_top)
     }
 
-    /// Places this box inside a containing block, taking into account alignment and padding.
+    /// Places this box inside a containing block of a given size.
     ///
-    /// Returns the offset of the content box.
-    pub fn content_box_offset(&self, containing_block_size: Size) -> Offset {
+    /// Returns the offset of the content box
+    pub fn place_into(&self, containing_block_size: Size) -> Offset {
         let mut bounds = Rect::new(Point::origin(), containing_block_size);
         bounds.origin.x += self.padding_left;
         bounds.origin.y += self.padding_top;
@@ -420,7 +427,9 @@ impl Layout {
             _ => 0.0,
         };
 
-        Offset::new(x, y)
+        let offset = Offset::new(x, y);
+        //let baseline = self.measurements.baseline.map(|b| b + offset.y);
+        offset
     }
 }
 

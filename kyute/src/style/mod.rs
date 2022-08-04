@@ -206,14 +206,12 @@ impl PropertyDeclaration {
                     .map(|h| specified.compute(constraints, h));
             }
             PropertyDeclaration::Width(specified) => {
-                Arc::make_mut(&mut computed_values.layout).width = constraints
-                    .finite_max_width()
-                    .map(|w| specified.compute(constraints, w));
+                Arc::make_mut(&mut computed_values.layout).width =
+                    Some(specified.compute(constraints, constraints.finite_max_width().unwrap_or(0.0)));
             }
             PropertyDeclaration::Height(specified) => {
-                Arc::make_mut(&mut computed_values.layout).height = constraints
-                    .finite_max_height()
-                    .map(|h| specified.compute(constraints, h));
+                Arc::make_mut(&mut computed_values.layout).height =
+                    Some(specified.compute(constraints, constraints.finite_max_height().unwrap_or(0.0)));
             }
             PropertyDeclaration::PaddingLeft(specified) => {
                 Arc::make_mut(&mut computed_values.layout).padding_left = constraints
