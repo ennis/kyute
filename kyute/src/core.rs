@@ -10,7 +10,8 @@ use crate::{
         graal,
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
-    EnvKey, Environment, Event, InternalEvent, Layout, LayoutParams, Point, PointI, Rect, Transform,
+    widget::WidgetExt,
+    BoxLayout, EnvKey, Environment, Event, InternalEvent, LayoutParams, Point, PointI, Rect, Transform,
 };
 use kyute::window::WindowState;
 use kyute_shell::{animation::Layer, application::Application, winit};
@@ -32,7 +33,7 @@ pub struct DebugWidgetTreeNode {
     pub name: String,
     pub debug_node: DebugNode,
     pub id: Option<WidgetId>,
-    pub cached_layout: Option<Layout>,
+    pub cached_layout: Option<BoxLayout>,
     pub transform: Option<Transform>,
     pub children: Vec<DebugWidgetTreeNode>,
 }
@@ -196,20 +197,6 @@ fn do_event<W: Widget + ?Sized>(
         // no parent layer, this is the root layer; it might have a transform though, so apply it
         target_layer.transform()
     };*/
-
-    match event {
-        Event::Pointer(p) => {
-            trace!(
-                "do_event: target={:?} pointer kind={:?} position={:?} transform offset={},{}",
-                widget.debug_name(),
-                p.kind,
-                p.position,
-                transform.m31,
-                transform.m32,
-            )
-        }
-        _ => {}
-    }
 
     // window_transform == transform from window coordinates to widget local coordinates
     let window_transform = transform.then(&parent_ctx.window_transform);
@@ -562,9 +549,11 @@ impl<'a> EventCtx<'a> {
         widget: &W,
         event: &mut Event,
         transform: &Transform,
-        cached_layout: Option<Layout>,
+        cached_layout: Option<BoxLayout>,
         env: &Environment,
     ) {
+        let _span = trace_span!("default_route_event", target = ?widget.widget_id(), target_dbg_name = ?widget.debug_name(), event = ?event).entered();
+
         let id = widget.widget_id();
 
         match *event {
@@ -782,7 +771,7 @@ pub trait Widget {
     /// Returns the widget identity.
     fn widget_id(&self) -> Option<WidgetId>;
 
-    fn speculative_layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout {
+    fn speculative_layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> BoxLayout {
         let was_speculative = ctx.speculative;
         ctx.speculative = true;
         let layout = self.layout(ctx, params, env);
@@ -791,7 +780,7 @@ pub trait Widget {
     }
 
     /// Measures this widget and layouts the children of this widget.
-    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout;
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> BoxLayout;
 
     /// Routes an event from a parent widget to this widget.
     ///
@@ -835,7 +824,7 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::widget_id(&**self)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> BoxLayout {
         Widget::layout(&**self, ctx, params, env)
     }
 

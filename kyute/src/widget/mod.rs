@@ -93,11 +93,12 @@ use crate::{
         constrained::{Fill, FixedHeight, FixedWidth, MaxHeight, MaxWidth, MinHeight, MinWidth},
         font_size::FontSize,
     },
-    Color, EnvKey, EnvValue, Environment, Event, EventCtx, Layout, LayoutCtx, LayoutParams, Length, LengthOrPercentage,
-    UnitExt, Widget, WidgetId,
+    BoxLayout, Color, EnvKey, EnvValue, Environment, Event, EventCtx, LayoutCtx, LayoutParams, Length,
+    LengthOrPercentage, UnitExt, Widget, WidgetId,
 };
 use std::{
     convert::TryInto,
+    fmt,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
@@ -141,7 +142,7 @@ pub trait WidgetWrapper {
         self.inner().route_event(ctx, event, env)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         self.inner().layout(ctx, constraints, env)
     }
 
@@ -159,7 +160,7 @@ impl<T: WidgetWrapper> Widget for T {
         WidgetWrapper::widget_id(self)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         WidgetWrapper::layout(self, ctx, constraints, env)
     }
 
@@ -192,7 +193,7 @@ pub trait Modifier {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> Layout;
+    ) -> BoxLayout;
 
     fn debug_node(&self) -> DebugNode {
         DebugNode::new("Modifier")
@@ -222,7 +223,7 @@ where
         self.1.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         self.0.layout(ctx, &self.1, constraints, env)
     }
 
@@ -288,7 +289,7 @@ impl<T: EnvValue> Modifier for EnvironmentOverride<T> {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> Layout {
+    ) -> BoxLayout {
         let mut env = env.clone();
         env.set(&self.key, self.value.clone());
         widget.layout(ctx, constraints, &env)
@@ -299,12 +300,57 @@ impl<T: EnvValue> Modifier for EnvironmentOverride<T> {
     }
 }
 
+/// Modifier that applies a set of environment values on top of the current one.
+pub struct EnvironmentOverlay {
+    overlay: Environment,
+}
+
+impl EnvironmentOverlay {
+    pub fn new(overlay: Environment) -> EnvironmentOverlay {
+        EnvironmentOverlay { overlay }
+    }
+}
+
+impl Modifier for EnvironmentOverlay {
+    fn layout<W: Widget>(
+        &self,
+        ctx: &mut LayoutCtx,
+        widget: &W,
+        constraints: &LayoutParams,
+        env: &Environment,
+    ) -> BoxLayout {
+        let mut env = env.merged(self.overlay.clone());
+        widget.layout(ctx, constraints, &env)
+    }
+
+    fn debug_node(&self) -> DebugNode {
+        DebugNode::new(format!("environment overlay"))
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // WidgetExt
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+pub struct WidgetIdDebug(Option<WidgetId>);
+impl fmt::Debug for WidgetIdDebug {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            None => write!(f, "(anonymous)"),
+            Some(id) => {
+                write!(f, "{:?}", id)
+            }
+        }
+    }
+}
+
 /// Extension methods on widgets.
 pub trait WidgetExt: Widget + Sized + 'static {
+    /// Returns a debug proxy for this widget's id (more compact than the default impl for `Option<WidgetId>`).
+    fn widget_id_dbg(&self) -> WidgetIdDebug {
+        WidgetIdDebug(self.widget_id())
+    }
+
     /// Adds a border around the widget.
     #[must_use]
     fn border(self, width: impl Into<Length>, shape: impl Into<style::Shape>) -> Border<Self> {
@@ -543,6 +589,30 @@ pub trait WidgetExt: Widget + Sized + 'static {
     fn arc_pod(self) -> Arc<WidgetPod<Self>> {
         Arc::new(WidgetPod::new(self))
     }
+
+    /// Applies the dark theme on the child widgets.
+    #[must_use]
+    #[composable]
+    fn dark_theme(self) -> Modified<EnvironmentOverlay, Self> {
+        Modified(EnvironmentOverlay::new(theme::dark_theme()), self)
+    }
+
+    /// Applies the light theme on the child widgets.
+    #[must_use]
+    #[composable]
+    fn light_theme(self) -> Modified<EnvironmentOverlay, Self> {
+        Modified(EnvironmentOverlay::new(theme::light_theme()), self)
+    }
+
+    /// Applies the selected builtin theme on the widgets.
+    #[must_use]
+    #[composable]
+    fn theme(self, theme: theme::Theme) -> Modified<EnvironmentOverlay, Self> {
+        match theme {
+            theme::Theme::Light => Modified(EnvironmentOverlay::new(theme::light_theme()), self),
+            theme::Theme::Dark => Modified(EnvironmentOverlay::new(theme::dark_theme()), self),
+        }
+    }
 }
 
 impl<W: Widget + 'static> WidgetExt for W {}
@@ -554,7 +624,7 @@ pub mod prelude {
         composable,
         drawing::PaintCtx,
         widget::{WidgetExt, WidgetPod, WidgetWrapper},
-        Alignment, BoxConstraints, DebugNode, Environment, Event, EventCtx, Layout, LayoutCache, LayoutCtx,
+        Alignment, BoxConstraints, BoxLayout, DebugNode, Environment, Event, EventCtx, LayoutCache, LayoutCtx,
         LayoutParams, Length, Measurements, Offset, Orientation, Point, Rect, Size, Transform, UnitExt, Widget,
         WidgetId,
     };

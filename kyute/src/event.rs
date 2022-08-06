@@ -1,6 +1,10 @@
 //! [`Events`](Event) sent to widgets, and related types.
 use crate::{bloom::Bloom, Point, WidgetId};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    fmt::Formatter,
+};
 use winit::event::DeviceId;
 // FIXME: reexport/import from kyute-shell?
 use crate::core::DebugWidgetTreeNode;
@@ -32,7 +36,7 @@ impl PointerButton {
 
 /// The state of the mouse buttons.
 // TODO why u no bitflags?
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub struct PointerButtons(pub u32);
 
 impl PointerButtons {
@@ -64,6 +68,30 @@ impl PointerButtons {
     }
 }
 
+impl fmt::Debug for PointerButtons {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{")?;
+        if self.test(PointerButton::LEFT) {
+            write!(f, "LEFT")?;
+        }
+        if self.test(PointerButton::RIGHT) {
+            write!(f, "RIGHT")?;
+        }
+        if self.test(PointerButton::MIDDLE) {
+            write!(f, "MIDDLE")?;
+        }
+        if self.test(PointerButton::X1) {
+            write!(f, "X1")?;
+        }
+        if self.test(PointerButton::X2) {
+            write!(f, "X2")?;
+        }
+        write!(f, " +{:04x}", self.0)?;
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
 impl Default for PointerButtons {
     fn default() -> Self {
         PointerButtons::new()
@@ -82,7 +110,7 @@ pub enum PointerEventKind {
 }
 
 /// Modeled after [W3C's PointerEvent](https://www.w3.org/TR/pointerevents3/#pointerevent-interface)
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct PointerEvent {
     pub kind: PointerEventKind,
     /// Position in device-independent (logical) pixels, relative to the visual node that the event
@@ -110,6 +138,28 @@ pub struct PointerEvent {
     //pub twist: i32,
     //pub pointer_type: PointerType,
     //pub primary: bool,
+}
+
+impl fmt::Debug for PointerEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[pointer")?;
+        let name = match self.kind {
+            PointerEventKind::PointerDown => "down",
+            PointerEventKind::PointerUp => "up",
+            PointerEventKind::PointerMove => "move",
+            PointerEventKind::PointerOver => "over",
+            PointerEventKind::PointerOut => "out",
+            PointerEventKind::PointerEnter => "enter",
+            PointerEventKind::PointerExit => "exit",
+        };
+        write!(
+            f,
+            "{} @ {:?} mods={:?} btns={:?} wp={:?} id={:?}",
+            name, self.position, self.modifiers, self.buttons, self.window_position, self.pointer_id
+        )?;
+        write!(f, "]")?;
+        Ok(())
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

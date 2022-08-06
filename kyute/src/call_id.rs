@@ -2,6 +2,7 @@ use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     fmt,
     hash::{Hash, Hasher},
+    num::NonZeroU64,
     panic::Location,
     sync::Arc,
 };
@@ -11,11 +12,11 @@ use std::{
 /// TODO more docs
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct CallId(pub u64);
+pub struct CallId(NonZeroU64);
 
 impl CallId {
     pub fn to_u64(self) -> u64 {
-        self.0
+        self.0.get()
     }
 }
 
@@ -77,7 +78,7 @@ impl fmt::Debug for CallNode {
 }
 
 pub(crate) struct CallIdStack {
-    id_stack: Vec<u64>,
+    id_stack: Vec<NonZeroU64>,
     nodes: HashMap<CallId, Arc<CallNode>>,
     current_node: Option<Arc<CallNode>>,
 }
@@ -94,8 +95,16 @@ impl CallIdStack {
 
     fn chain_hash<H: Hash>(&self, s: &H) -> u64 {
         let stacklen = self.id_stack.len();
-        let key1 = if stacklen >= 2 { self.id_stack[stacklen - 2] } else { 0 };
-        let key0 = if stacklen >= 1 { self.id_stack[stacklen - 1] } else { 0 };
+        let key1 = if stacklen >= 2 {
+            self.id_stack[stacklen - 2]
+        } else {
+            unsafe { NonZeroU64::new_unchecked(0xFFFF_FFFF_FFFF_FFFF) }
+        };
+        let key0 = if stacklen >= 1 {
+            self.id_stack[stacklen - 1]
+        } else {
+            unsafe { NonZeroU64::new_unchecked(0xFFFF_FFFF_FFFF_FFFF) }
+        };
         let mut hasher = DefaultHasher::new();
         key0.hash(&mut hasher);
         key1.hash(&mut hasher);
@@ -105,9 +114,9 @@ impl CallIdStack {
 
     /// Enters a scope in the call graph.
     pub fn enter(&mut self, location: &'static Location<'static>, index: usize) -> CallId {
-        let id = self.chain_hash(&(location, index));
-        self.id_stack.push(id);
-        let id = CallId(id);
+        let hash = self.chain_hash(&(location, index));
+        let id = CallId(NonZeroU64::new(hash).expect("invalid CallId hash"));
+        self.id_stack.push(id.0);
         let node = Arc::new(CallNode {
             id,
             parent: self.current_node.clone(),

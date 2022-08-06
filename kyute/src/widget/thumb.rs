@@ -88,7 +88,7 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         self.content.layout(ctx, constraints, env)
     }
 
@@ -216,7 +216,7 @@ impl<Content: Widget + 'static> Widget for DragController<Content> {
         self.content.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         self.content.layout(ctx, constraints, env)
     }
 

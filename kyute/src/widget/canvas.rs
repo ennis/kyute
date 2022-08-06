@@ -102,7 +102,7 @@ impl Widget for Canvas {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         // a canvas always takes the maximum available space
         let width = constraints.finite_max_width().unwrap_or(0.0);
         let height = constraints.finite_max_height().unwrap_or(0.0);
@@ -134,7 +134,7 @@ impl Widget for Canvas {
         }
 
         let size = Size::new(width, height);
-        Layout::new(size)
+        BoxLayout::new(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
@@ -208,7 +208,7 @@ impl<Content: Widget + 'static> Widget for Viewport<Content> {
         self.content.inner().widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         let mut subconstraints = *constraints;
         if !self.constrain_width {
             subconstraints.min.width = 0.0;
@@ -232,7 +232,7 @@ impl<Content: Widget + 'static> Widget for Viewport<Content> {
         let size = Size::new(width, height);
 
         // FIXME TODO we discarded any padding / alignment doesn't make much sense as well
-        Layout {
+        BoxLayout {
             x_align: Default::default(),
             y_align: Default::default(),
             padding_left: 0.0,

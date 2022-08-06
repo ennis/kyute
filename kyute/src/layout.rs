@@ -2,6 +2,7 @@
 use crate::{style::WidgetState, Data, Offset, Point, Rect, SideOffsets, Size};
 use std::{
     fmt,
+    fmt::{Debug, Formatter},
     hash::{Hash, Hasher},
     ops::{Bound, RangeBounds},
 };
@@ -11,7 +12,7 @@ use std::{
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Layout constraints passed down to child widgets
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct LayoutParams {
     pub widget_state: WidgetState,
     /// Parent font size.
@@ -65,6 +66,16 @@ impl Hash for LayoutParams {
 impl Data for LayoutParams {
     fn same(&self, other: &Self) -> bool {
         self == other
+    }
+}
+
+impl fmt::Debug for LayoutParams {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "[{:?} => {:?} (x{:.1}), st={:?}, pfs={}]",
+            self.min, self.max, self.scale_factor, self.widget_state, self.parent_font_size
+        )
     }
 }
 
@@ -346,14 +357,10 @@ impl Default for Alignment {
 
 /// Describes a box to be positioned inside a containing block.
 ///
-/// This describes both:
-/// - the measurements of the box to be placed (width, height and baseline),
-/// - positioning constraints within a containing block (alignment and padding)
-///
-/// TODO: block? or box? what's the difference? use consistent names
-/// TODO: might be useful to have a type for "boxes with baselines"
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Layout {
+/// This groups the box' measurements (see `Measurements`), and how it should be placed within
+/// a containing box (alignment and padding).
+#[derive(Copy, Clone, PartialEq)]
+pub struct BoxLayout {
     pub x_align: Alignment,
     pub y_align: Alignment,
     /// Padding around the widget
@@ -362,13 +369,40 @@ pub struct Layout {
     pub padding_right: f64,
     pub padding_bottom: f64,
     pub measurements: Measurements,
-    // TODO layout should also contain shape information. This is useful for e.g. borders, which need
+    // TODO maybe layout should also contain shape information? This is useful for e.g. borders, which need
     // the border radii. Also this way we'd be able to accumulate borders.
 }
 
-impl Layout {
-    pub fn new(size: Size) -> Layout {
-        Layout {
+impl Debug for BoxLayout {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // [ width x height, baseline:{}, padding=(t r b l), align=(x, y) ]
+
+        write!(f, "[")?;
+        write!(f, "{:?}", self.measurements.size)?;
+
+        if let Some(baseline) = self.measurements.baseline {
+            write!(f, ", baseline={}", baseline)?;
+        }
+        if self.padding_top != 0.0
+            || self.padding_right != 0.0
+            || self.padding_bottom != 0.0
+            || self.padding_left != 0.0
+        {
+            write!(
+                f,
+                ", padding=({} {} {} {})",
+                self.padding_top, self.padding_right, self.padding_bottom, self.padding_left
+            )?;
+        }
+        write!(f, ", align=({:?} {:?})", self.x_align, self.y_align)?;
+        write!(f, "]")?;
+        Ok(())
+    }
+}
+
+impl BoxLayout {
+    pub fn new(size: Size) -> BoxLayout {
+        BoxLayout {
             x_align: Alignment::START,
             y_align: Alignment::START,
             padding_left: 0.0,
@@ -379,12 +413,14 @@ impl Layout {
         }
     }
 
-    /// Returns the size of the content box (without any padding).
+    /// Returns the size of the box.
     pub fn content_box_size(&self) -> Size {
         self.measurements.size
     }
 
-    /// Returns the size of padding box (content size inflated with padding).
+    /// Returns the size of the padding box.
+    ///
+    /// The padding box is the content box inflated by the padding.   
     pub fn padding_box_size(&self) -> Size {
         Size::new(
             self.measurements.size.width + self.padding_right + self.padding_left,
@@ -396,11 +432,14 @@ impl Layout {
         self.measurements.baseline.map(|x| x + self.padding_top)
     }
 
-    /// Places this box inside a containing block of a given size.
+    /// Places this box inside a containing box with the given measurements.
     ///
-    /// Returns the offset of the content box
-    pub fn place_into(&self, containing_block_size: Size) -> Offset {
-        let mut bounds = Rect::new(Point::origin(), containing_block_size);
+    /// If this box' vertical alignment is `FirstBaseline` or `LastBaseline`,
+    /// it will be aligned to the baseline of the containing box.
+    ///
+    /// Returns the offset of the content box.
+    pub fn place_into(&self, containing_box: &Measurements) -> Offset {
+        let mut bounds = containing_box.local_bounds();
         bounds.origin.x += self.padding_left;
         bounds.origin.y += self.padding_top;
         bounds.size.width -= self.padding_left + self.padding_right;
@@ -409,21 +448,42 @@ impl Layout {
         let x = match self.x_align {
             Alignment::Relative(x) => {
                 self.padding_left
-                    + x * (containing_block_size.width
+                    + x * (containing_box.size.width
                         - self.padding_left
                         - self.padding_right
                         - self.measurements.size.width)
             }
+            // TODO vertical baseline alignment
             _ => 0.0,
         };
         let y = match self.y_align {
             Alignment::Relative(x) => {
                 self.padding_top
-                    + x * (containing_block_size.height
+                    + x * (containing_box.size.height
                         - self.padding_top
                         - self.padding_bottom
                         - self.measurements.size.height)
             }
+            Alignment::FirstBaseline => {
+                // align this box baseline to the containing box baseline
+                let mut y = match (containing_box.baseline, self.measurements.baseline) {
+                    (Some(containing_box_baseline), Some(self_baseline)) => {
+                        // containing-box-baseline == y-offset + self-baseline
+                        containing_box_baseline - self_baseline
+                    }
+                    _ => {
+                        // the containing box or this box have no baseline
+                        0.0
+                    }
+                };
+
+                // ensure sufficient padding, even if this means breaking the baseline alignment
+                if y < self.padding_top {
+                    y = self.padding_top;
+                }
+                y
+            }
+            // TODO last baseline alignment
             _ => 0.0,
         };
 
@@ -433,9 +493,9 @@ impl Layout {
     }
 }
 
-impl Default for Layout {
+impl Default for BoxLayout {
     fn default() -> Self {
-        Layout {
+        BoxLayout {
             x_align: Default::default(),
             y_align: Default::default(),
             padding_left: 0.0,
@@ -447,9 +507,7 @@ impl Default for Layout {
     }
 }
 
-/// Measurements of a Widget, returned by `Widget::layout`.
-///
-/// TODO fuse with `Layout` above
+/// Measurements of a box, returned by `Widget::layout`.
 #[derive(Copy, Clone, Debug)]
 pub struct Measurements {
     /// Calculated size of the widget.

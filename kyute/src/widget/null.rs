@@ -9,8 +9,8 @@ impl Widget for Null {
         None
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, constraints: &LayoutParams, _env: &Environment) -> Layout {
-        Layout::new(constraints.min)
+    fn layout(&self, _ctx: &mut LayoutCtx, constraints: &LayoutParams, _env: &Environment) -> BoxLayout {
+        BoxLayout::new(constraints.min)
     }
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}

@@ -1,5 +1,6 @@
 //! Environment keys that control the visual aspect (theme) of common widgets.
 use crate::{style::Style, Color, EnvKey, Environment, Font, Length, SideOffsets, UnitExt};
+use once_cell::sync::Lazy;
 
 macro_rules! theme_key {
     ($name:tt) => {
@@ -7,9 +8,17 @@ macro_rules! theme_key {
     };
 }
 
+/// Builtin themes.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Theme {
+    Dark,
+    Light,
+}
+
 pub const FONT_SIZE: EnvKey<f64> = theme_key!("font-size"); // [14.0];
 pub const TEXT_COLOR: EnvKey<Color> = theme_key!("text-color");
 pub const DEFAULT_FONT: EnvKey<Font> = theme_key!("default-font");
+pub const DARK_MODE: EnvKey<bool> = theme_key!("dark-mode");
 
 /*pub const MIN_BUTTON_WIDTH: EnvKey<f64> = EnvKey::new("kyute.theme.min_button_width"); // [30.0];
 pub const MIN_BUTTON_HEIGHT: EnvKey<f64> = EnvKey::new("kyute.theme.min_button_height"); // [14.0];
@@ -318,6 +327,28 @@ pub mod palette {
     pub const BLUE_GREY_A200: Color = Color::from_hex("#b0bec5"); // #b0bec5;
     pub const BLUE_GREY_A400: Color = Color::from_hex("#78909c"); // #78909c;
     pub const BLUE_GREY_A700: Color = Color::from_hex("#455a64"); // #455a64;
+}
+
+static DARK_THEME: Lazy<Environment> = Lazy::new(|| {
+    let mut env = Environment::new();
+    env.set(&DARK_MODE, true);
+    env.set(&TEXT_COLOR, Color::from_hex("#c8c8c8"));
+    env
+});
+
+static LIGHT_THEME: Lazy<Environment> = Lazy::new(|| {
+    let mut env = Environment::new();
+    env.set(&DARK_MODE, false);
+    env.set(&TEXT_COLOR, Color::from_hex("#141414"));
+    env
+});
+
+pub fn dark_theme() -> Environment {
+    DARK_THEME.clone()
+}
+
+pub fn light_theme() -> Environment {
+    LIGHT_THEME.clone()
 }
 
 /// Keys for common colors.

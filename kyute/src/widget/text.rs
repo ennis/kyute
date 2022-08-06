@@ -2,8 +2,8 @@ use crate::{
     composable,
     core::DebugNode,
     drawing::{PaintCtx, ToSkia},
-    make_uniform_data, theme, Color, Data, EnvRef, Environment, Event, EventCtx, Font, Layout, LayoutCache, LayoutCtx,
-    LayoutParams, Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
+    make_uniform_data, theme, BoxLayout, Color, Data, EnvRef, Environment, Event, EventCtx, Font, LayoutCache,
+    LayoutCtx, LayoutParams, Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
 use kyute_shell::text::{
     FormattedText, GlyphMaskData, GlyphMaskFormat, GlyphRun, GlyphRunDrawingEffects, Paragraph, ParagraphStyle,
@@ -119,7 +119,7 @@ impl<'a, 'b> kyute_shell::text::Renderer for Renderer<'a, 'b> {
             let _span = trace_span!("Analyze glyph run").entered();
             glyph_run.create_glyph_run_analysis(self.ctx.scale_factor, &self.ctx.layer_transform())
         };
-        let raster_opts = RasterizationOptions::Grayscale;
+        let raster_opts = RasterizationOptions::Subpixel;
         let bounds = analysis.raster_bounds(raster_opts);
         let mask = {
             let _span = trace_span!("Rasterize glyph run").entered();
@@ -251,7 +251,7 @@ impl Widget for Text {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         let layout = self.cached_layout.update(ctx, constraints, |ctx| {
             trace!("Text::layout {:?}", self.formatted_text.plain_text);
 
@@ -290,7 +290,7 @@ impl Widget for Text {
             }
         });
 
-        Layout {
+        BoxLayout {
             x_align: Default::default(),
             y_align: Default::default(),
             padding_left: 0.0,

@@ -32,7 +32,7 @@ impl Widget for Label {
         self.text.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         self.text.layout(ctx, &constraints, env)
     }
 

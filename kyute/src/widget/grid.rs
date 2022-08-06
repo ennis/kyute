@@ -842,7 +842,6 @@ impl GridItem {
 pub struct GridTrackLayout {
     pub pos: f64,
     pub size: f64,
-    //pub baseline: Option<f64>,
 }
 
 struct ComputeTrackSizeResult {
@@ -1231,6 +1230,8 @@ impl Grid {
         column_gap: f64,
         column_layout: Option<&[GridTrackLayout]>,
     ) -> ComputeTrackSizeResult {
+        let _span = trace_span!("grid track sizing", ?axis).entered();
+
         /*let tracks = match axis {
             TrackAxis::Row => &self.row_definitions[..],
             TrackAxis::Column => &self.column_definitions[..],
@@ -1430,19 +1431,20 @@ impl Widget for Grid {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+        let _span = trace_span!("grid layout", widget_id = ?self.widget_id_dbg()).entered();
+
         // TODO the actual direction of rows and columns depends on the writing mode
         // When (or if) we support other writing modes, rewrite this. Layout is complicated!
 
-        // place items
+        // first, place items in the grid (i.e. resolve their grid areas into "definite areas")
+
         let (row_count, column_count) = self.position_items();
 
         // compute gap sizes
         let column_gap = self.style.column_gap.compute(constraints);
         let row_gap = self.style.row_gap.compute(constraints);
 
-        trace!("grid: recomputing track sizes");
-        // no match, recalculate
         // first measure the width of the columns
         let ComputeTrackSizeResult {
             layout: column_layout,
@@ -1480,52 +1482,78 @@ impl Widget for Grid {
             Some(&column_layout[..]),
         );
 
-        trace!("=== final row layout {:?} ===", row_layout);
-        trace!("=== final column layout {:?} ===", column_layout);
+        trace!("final row layout {:?}", row_layout);
+        trace!("final column layout {:?}", column_layout);
 
-        // layout items
+        // --- measure the child items ---
+
+        // (containing box size, child box layout)
+        let mut child_layouts: Vec<(Size, BoxLayout)> = Vec::with_capacity(self.items.len());
+
+        // Maximum horizontal baselines for each row of the grid (y-offset to the row's starting y-coordinate)
+        let mut horizontal_baselines: Vec<f64> = vec![0.0; row_layout.len()];
+
+        // maximum vertical baselines for each column of the grid (x-offset to the row's starting x-coordinate)
+        // TODO implement vertical baselines & vertical baseline alignment
+        let mut vertical_baselines: Vec<f64> = vec![0.0; column_layout.len()];
+
         //trace!("=== START LAYOUT ===");
-        for item in self.items.iter() {
-            let (column_start, column_end) = item.column_range.get();
-            let (row_start, row_end) = item.row_range.get();
-            let w: f64 = track_span_width(&column_layout, column_start..column_end, column_gap);
-            let h: f64 = track_span_width(&row_layout, row_start..row_end, row_gap);
 
-            let mut subconstraints = *constraints;
-            subconstraints.max.width = w;
-            subconstraints.max.height = h;
-            subconstraints.min.width = 0.0;
-            subconstraints.min.height = 0.0;
-            trace!("ctx={:?}", ctx);
-            let sublayout = item.widget.layout(ctx, &subconstraints, env);
+        {
+            let _span = trace_span!("grid item measure").entered();
+            for item in self.items.iter() {
+                let (column_start, column_end) = item.column_range.get();
+                let (row_start, row_end) = item.row_range.get();
+                let w: f64 = track_span_width(&column_layout, column_start..column_end, column_gap);
+                let h: f64 = track_span_width(&row_layout, row_start..row_end, row_gap);
 
-            let offset = sublayout.place_into(Size::new(w, h));
-            if sublayout.y_align == Alignment::FirstBaseline || sublayout.y_align == Alignment::LastBaseline {
-                // TODO
+                debug_assert!(
+                    column_start < column_layout.len()
+                        && column_end <= column_layout.len()
+                        && row_start < row_layout.len()
+                        && row_end <= row_layout.len()
+                );
+
+                let mut subconstraints = *constraints;
+                subconstraints.max.width = w;
+                subconstraints.max.height = h;
+                subconstraints.min.width = 0.0;
+                subconstraints.min.height = 0.0;
+
+                let child_layout = item.widget.layout(ctx, &subconstraints, env);
+                trace!("[{:?}] constraints: {:?}", item.widget.widget_id_dbg(), subconstraints);
+                trace!("[{:?}] layout: {:?}", item.widget.widget_id_dbg(), child_layout);
+
+                child_layouts.push((Size::new(w, h), child_layout));
+
+                if child_layout.y_align == Alignment::FirstBaseline || child_layout.y_align == Alignment::LastBaseline {
+                    // TODO last baseline
+                    horizontal_baselines[row_start] =
+                        horizontal_baselines[row_start].max(child_layout.measurements.baseline.unwrap_or(0.0));
+                }
+                // TODO vertical baselines
             }
+        }
 
-            trace!(
-                "column_start={}, len={}, row_start={}, len={}",
-                column_start,
-                column_layout.len(),
-                row_start,
-                row_layout.len()
-            );
-            let x = column_layout[column_start].pos;
-            let y = row_layout[row_start].pos;
-            let cell_offset = Offset::new(x, y);
-            let final_offset = (cell_offset + offset).round_to_pixel(ctx.scale_factor);
+        {
+            let _span = trace_span!("grid item placement").entered();
+            // --- place items within their grid cells ---
+            for (item, (containing_box_size, layout)) in self.items.iter().zip(child_layouts.iter()) {
+                let (column_start, _column_end) = item.column_range.get();
+                let (row_start, _row_end) = item.row_range.get();
 
-            trace!(
-                "=== [{:?}] constraints={:?}, result={:?}, offset={:?} ===",
-                item.widget.widget_id(),
-                subconstraints,
-                sublayout,
-                final_offset
-            );
+                let cell_pos = Offset::new(column_layout[column_start].pos, row_layout[row_start].pos);
+                let content_pos = layout.place_into(&Measurements {
+                    size: *containing_box_size,
+                    clip_bounds: None,
+                    baseline: Some(horizontal_baselines[row_start]),
+                });
+                let offset = (cell_pos + content_pos).round_to_pixel(ctx.scale_factor);
 
-            // TODO baselines...
-            item.widget.set_offset(final_offset);
+                // TODO baselines...
+                trace!("[{:?}] offset: {:?}", item.widget.widget_id_dbg(), offset);
+                item.widget.set_offset(offset);
+            }
         }
         // trace!("=== END LAYOUT ===");
 
@@ -1541,7 +1569,7 @@ impl Widget for Grid {
         }));
 
         // TODO baseline
-        Layout::new(Size::new(width, height))
+        BoxLayout::new(Size::new(width, height))
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

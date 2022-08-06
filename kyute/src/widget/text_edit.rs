@@ -229,7 +229,7 @@ impl Widget for BaseTextEdit {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         // relax text constraints
         let text_constraints = LayoutParams {
             min: Size::zero(),
@@ -267,7 +267,7 @@ impl Widget for BaseTextEdit {
             self.horizontal_offset.set_without_invalidation(h_offset);
         }
 
-        Layout::new(Size::new(width, height))
+        BoxLayout::new(Size::new(width, height))
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {

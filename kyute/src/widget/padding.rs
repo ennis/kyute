@@ -35,7 +35,7 @@ impl Modifier for Padding {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> Layout {
+    ) -> BoxLayout {
         let top = self.top.compute(constraints);
         let right = self.right.compute(constraints);
         let bottom = self.bottom.compute(constraints);

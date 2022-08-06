@@ -28,7 +28,7 @@ impl Widget for Shape {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         // resolve lengths
         // fill the available space
         let size = constraints.max;
@@ -59,7 +59,7 @@ impl Widget for Shape {
             self.computed_paint.replace(self.paint.compute_paint(env));
         }
 
-        Layout::new(size)
+        BoxLayout::new(size)
     }
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {

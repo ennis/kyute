@@ -15,13 +15,6 @@ where
     input.parse_entirely(f)
 }
 
-pub(crate) fn parse_property_remainder<'i, T, F, E>(input: &mut Parser<'i, '_>, f: F) -> Result<T, ParseError<'i, E>>
-where
-    F: for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
-{
-    input.parse_until_after(cssparser::Delimiter::Semicolon, f)
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // lengths
 ////////////////////////////////////////////////////////////////////////////////////////////////////

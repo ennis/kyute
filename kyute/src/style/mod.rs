@@ -2,7 +2,7 @@
 
 use crate::{css, drawing, LayoutParams};
 use bitflags::bitflags;
-use cssparser::{ParseError, Parser, Token};
+use cssparser::{parse_one_declaration, ParseError, Parser, Token};
 use once_cell::sync::Lazy;
 use std::{convert::TryFrom, sync::Arc};
 
@@ -15,10 +15,7 @@ mod predicate;
 mod shape;
 mod utils;
 
-use crate::{
-    css::{parse_from_str, parse_property_remainder},
-    drawing::Paint,
-};
+use crate::{css::parse_from_str, drawing::Paint, style::predicate::parse_optional_predicate_block};
 pub use border::Border;
 pub use box_shadow::{BoxShadow, BoxShadows};
 pub use color::Color;
@@ -301,99 +298,133 @@ impl Style {
     }
 }
 
+fn parse_property_remainder<'i, T, F, E>(input: &mut Parser<'i, '_>, f: F) -> Result<T, ParseError<'i, E>>
+where
+    F: for<'tt> FnOnce(&mut Parser<'i, 'tt>) -> Result<T, ParseError<'i, E>>,
+{
+    input.parse_until_after(cssparser::Delimiter::Semicolon, f)
+}
+
+/// Parses a single CSS declaration (`property: value;`)
+fn parse_declaration<'i>(
+    input: &mut Parser<'i, '_>,
+    predicate: Option<Arc<Predicate>>,
+    declarations: &mut Vec<PredicatedPropertyDeclaration>,
+) -> Result<(), ParseError<'i, ()>> {
+    let mut push_decl = |declaration| {
+        declarations.push(PredicatedPropertyDeclaration {
+            predicate: predicate.clone(),
+            declaration,
+        })
+    };
+
+    let prop_name = input.expect_ident()?.clone();
+    input.expect_colon()?;
+    match &*prop_name {
+        "background" => {
+            let background = parse_property_remainder(input, Image::parse_impl)?;
+            push_decl(PropertyDeclaration::BackgroundImage(background));
+        }
+        "border" => {
+            let border = parse_property_remainder(input, Border::parse_impl)?;
+            push_decl(PropertyDeclaration::BorderStyle(border.line_style));
+            push_decl(PropertyDeclaration::BorderTopWidth(border.widths[0]));
+            push_decl(PropertyDeclaration::BorderRightWidth(border.widths[1]));
+            push_decl(PropertyDeclaration::BorderBottomWidth(border.widths[2]));
+            push_decl(PropertyDeclaration::BorderLeftWidth(border.widths[3]));
+            push_decl(PropertyDeclaration::BorderLeftColor(border.color.clone()));
+            push_decl(PropertyDeclaration::BorderTopColor(border.color.clone()));
+            push_decl(PropertyDeclaration::BorderRightColor(border.color.clone()));
+            push_decl(PropertyDeclaration::BorderBottomColor(border.color.clone()));
+        }
+        "border-radius" => {
+            let radii = parse_property_remainder(input, border::border_radius)?;
+            push_decl(PropertyDeclaration::BorderTopLeftRadius(radii[0]));
+            push_decl(PropertyDeclaration::BorderTopRightRadius(radii[1]));
+            push_decl(PropertyDeclaration::BorderBottomRightRadius(radii[2]));
+            push_decl(PropertyDeclaration::BorderBottomLeftRadius(radii[3]));
+        }
+        "box-shadow" => {
+            let box_shadows = parse_property_remainder(input, box_shadow::parse_box_shadows)?;
+            push_decl(PropertyDeclaration::BoxShadow(box_shadows));
+        }
+        "padding" => {
+            let padding = parse_property_remainder(input, utils::padding)?;
+            push_decl(PropertyDeclaration::PaddingTop(padding[0]));
+            push_decl(PropertyDeclaration::PaddingRight(padding[1]));
+            push_decl(PropertyDeclaration::PaddingBottom(padding[2]));
+            push_decl(PropertyDeclaration::PaddingLeft(padding[3]));
+        }
+        "width" => {
+            let width = parse_property_remainder(input, css::parse_css_length_percentage)?;
+            push_decl(PropertyDeclaration::Width(width));
+        }
+        "height" => {
+            let height = parse_property_remainder(input, css::parse_css_length_percentage)?;
+            push_decl(PropertyDeclaration::Height(height));
+        }
+        "min-width" => {
+            let min_width = parse_property_remainder(input, css::parse_css_length_percentage)?;
+            push_decl(PropertyDeclaration::MinWidth(min_width));
+        }
+        "min-height" => {
+            let min_height = parse_property_remainder(input, css::parse_css_length_percentage)?;
+            push_decl(PropertyDeclaration::MinHeight(min_height));
+        }
+        "max-width" => {
+            let max_width = parse_property_remainder(input, css::parse_css_length_percentage)?;
+            push_decl(PropertyDeclaration::MaxWidth(max_width));
+        }
+        "max-height" => {
+            let max_height = parse_property_remainder(input, css::parse_css_length_percentage)?;
+            push_decl(PropertyDeclaration::MaxHeight(max_height));
+        }
+        _ => {
+            // unrecognized property
+            return Err(input.new_custom_error(()));
+        }
+    }
+    Ok(())
+}
+
+/// Parses the content of a predicated block.
+fn parse_block_contents<'i>(
+    input: &mut Parser<'i, '_>,
+    parent_predicate: Option<Arc<Predicate>>,
+    declarations: &mut Vec<PredicatedPropertyDeclaration>,
+    variant_states: &mut WidgetState,
+) -> Result<(), ParseError<'i, ()>> {
+    while !input.is_exhausted() {
+        // parse optional predicate
+        let predicate = {
+            let p = parse_optional_predicate_block(input)?;
+            if let Some(ref p) = p {
+                *variant_states |= p.variant_states();
+            }
+            match (p, parent_predicate.clone()) {
+                (Some(p), Some(q)) => Some(Arc::new(Predicate::And(q, Arc::new(p)))),
+                (Some(p), None) => Some(Arc::new(p)),
+                (None, Some(q)) => Some(q),
+                (None, None) => None,
+            }
+        };
+
+        if input.try_parse(|input| input.expect_curly_bracket_block()).is_ok() {
+            // parse a nested predicated rule block
+            input.parse_nested_block(|input| parse_block_contents(input, predicate, declarations, variant_states))?;
+        } else {
+            // parse a declaration
+            parse_declaration(input, predicate, declarations)?;
+        }
+    }
+    Ok(())
+}
+
 impl Style {
     fn parse_impl<'i>(input: &mut Parser<'i, '_>) -> Result<Style, ParseError<'i, ()>> {
         let mut declarations = Vec::new();
         let mut variant_states = WidgetState::DEFAULT;
-
-        while !input.is_exhausted() {
-            let predicate = if input.try_parse(|input| input.expect_square_bracket_block()).is_ok() {
-                let predicate = input.parse_nested_block(|input| {
-                    input.expect_ident_matching("if")?;
-                    parse_predicate(input)
-                })?;
-                variant_states |= predicate.variant_states();
-                Some(Arc::new(predicate))
-            } else {
-                None
-            };
-
-            let prop_name = input.expect_ident()?.clone();
-            input.expect_colon()?;
-
-            let mut push_decl = |declaration| {
-                declarations.push(PredicatedPropertyDeclaration {
-                    predicate: predicate.clone(),
-                    declaration,
-                })
-            };
-
-            match &*prop_name {
-                "background" => {
-                    let background = parse_property_remainder(input, Image::parse_impl)?;
-                    push_decl(PropertyDeclaration::BackgroundImage(background));
-                }
-                "border" => {
-                    let border = parse_property_remainder(input, Border::parse_impl)?;
-                    push_decl(PropertyDeclaration::BorderStyle(border.line_style));
-                    push_decl(PropertyDeclaration::BorderTopWidth(border.widths[0]));
-                    push_decl(PropertyDeclaration::BorderRightWidth(border.widths[1]));
-                    push_decl(PropertyDeclaration::BorderBottomWidth(border.widths[2]));
-                    push_decl(PropertyDeclaration::BorderLeftWidth(border.widths[3]));
-                    push_decl(PropertyDeclaration::BorderLeftColor(border.color.clone()));
-                    push_decl(PropertyDeclaration::BorderTopColor(border.color.clone()));
-                    push_decl(PropertyDeclaration::BorderRightColor(border.color.clone()));
-                    push_decl(PropertyDeclaration::BorderBottomColor(border.color.clone()));
-                }
-                "border-radius" => {
-                    let radii = parse_property_remainder(input, border::border_radius)?;
-                    push_decl(PropertyDeclaration::BorderTopLeftRadius(radii[0]));
-                    push_decl(PropertyDeclaration::BorderTopRightRadius(radii[1]));
-                    push_decl(PropertyDeclaration::BorderBottomRightRadius(radii[2]));
-                    push_decl(PropertyDeclaration::BorderBottomLeftRadius(radii[3]));
-                }
-                "box-shadow" => {
-                    let box_shadows = parse_property_remainder(input, box_shadow::parse_box_shadows)?;
-                    push_decl(PropertyDeclaration::BoxShadow(box_shadows));
-                }
-                "padding" => {
-                    let padding = parse_property_remainder(input, utils::padding)?;
-                    push_decl(PropertyDeclaration::PaddingTop(padding[0]));
-                    push_decl(PropertyDeclaration::PaddingRight(padding[1]));
-                    push_decl(PropertyDeclaration::PaddingBottom(padding[2]));
-                    push_decl(PropertyDeclaration::PaddingLeft(padding[3]));
-                }
-                "width" => {
-                    let width = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    push_decl(PropertyDeclaration::Width(width));
-                }
-                "height" => {
-                    let height = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    push_decl(PropertyDeclaration::Height(height));
-                }
-                "min-width" => {
-                    let min_width = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    push_decl(PropertyDeclaration::MinWidth(min_width));
-                }
-                "min-height" => {
-                    let min_height = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    push_decl(PropertyDeclaration::MinHeight(min_height));
-                }
-                "max-width" => {
-                    let max_width = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    push_decl(PropertyDeclaration::MaxWidth(max_width));
-                }
-                "max-height" => {
-                    let max_height = parse_property_remainder(input, css::parse_css_length_percentage)?;
-                    push_decl(PropertyDeclaration::MaxHeight(max_height));
-                }
-                _ => {
-                    // unrecognized property
-                    return Err(input.new_custom_error(()));
-                }
-            }
-        }
-
+        parse_block_contents(input, None, &mut declarations, &mut variant_states)?;
         Ok(Style(Arc::new(StyleInner {
             variant_states,
             declarations,

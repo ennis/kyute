@@ -11,7 +11,7 @@ impl Modifier for FontSize {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> Layout {
+    ) -> BoxLayout {
         let subconstraints = LayoutParams {
             parent_font_size: self.0.compute(constraints),
             ..*constraints

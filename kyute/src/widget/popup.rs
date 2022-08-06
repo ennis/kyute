@@ -41,8 +41,8 @@ impl Widget for Popup {
         Some(self.id)
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutParams, _env: &Environment) -> Layout {
-        Layout::default()
+    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutParams, _env: &Environment) -> BoxLayout {
+        BoxLayout::default()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

@@ -34,8 +34,8 @@ impl Predicate {
                 }
             }
             Predicate::State(s) => state.contains(*s),
-            Predicate::Or(a, b) => a.eval(state, constraints, env) || a.eval(state, constraints, env),
-            Predicate::And(a, b) => a.eval(state, constraints, env) && a.eval(state, constraints, env),
+            Predicate::Or(a, b) => a.eval(state, constraints, env) || b.eval(state, constraints, env),
+            Predicate::And(a, b) => a.eval(state, constraints, env) && b.eval(state, constraints, env),
             Predicate::Not(a) => !a.eval(state, constraints, env),
         }
     }
@@ -107,4 +107,16 @@ fn parse_predicate_disjunction<'i>(input: &mut Parser<'i, '_>) -> Result<Predica
 
 pub(crate) fn parse_predicate<'i>(input: &mut Parser<'i, '_>) -> Result<Predicate, ParseError<'i, ()>> {
     parse_predicate_disjunction(input)
+}
+
+/// Parses an optional predicate block `[predicate]`
+pub(crate) fn parse_optional_predicate_block<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Option<Predicate>, ParseError<'i, ()>> {
+    if input.try_parse(|input| input.expect_square_bracket_block()).is_ok() {
+        let predicate = input.parse_nested_block(|input| parse_predicate(input))?;
+        Ok(Some(predicate))
+    } else {
+        Ok(None)
+    }
 }

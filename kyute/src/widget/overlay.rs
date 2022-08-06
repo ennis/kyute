@@ -48,7 +48,7 @@ impl<A: Widget + 'static, B: Widget + 'static> Widget for Overlay<A, B> {
         self.a.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         let sublayout = self.a.layout(ctx, constraints, env);
         let b_constraints = LayoutParams {
             min: sublayout.measurements.size,

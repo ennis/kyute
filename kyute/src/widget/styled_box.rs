@@ -61,15 +61,20 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> BoxLayout {
+        let _span = trace_span!("StyledBox layout", widget_id = ?self.widget_id_dbg()).entered();
+
         let mut widget_state = params.widget_state;
         widget_state.set(WidgetState::HOVER, self.hovered.get());
 
         // TODO layout cache not enough here (doesn't take into account widget state)
-        self.computed.invalidate();
-        let computed = self
-            .computed
-            .update(ctx, params, |ctx| self.style.compute(widget_state, params, env));
+        let computed = if ctx.speculative {
+            self.style.compute(widget_state, params, env)
+        } else {
+            self.computed.invalidate();
+            self.computed
+                .update(ctx, params, |ctx| self.style.compute(widget_state, params, env))
+        };
 
         trace!("=== [{:?}] StyledBox layout ===", self.inner.widget_id());
 
@@ -86,65 +91,72 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         //dbg!(constraints);
         //trace!("computed styles: {:#?}", computed);
 
-        // compute min/max heights constraints
-        let mut min_width = computed.layout.min_width.unwrap_or(params.min.width);
-        let mut max_width = computed.layout.max_width.unwrap_or(params.max.width);
-        let mut min_height = computed.layout.min_height.unwrap_or(params.min.height);
-        let mut max_height = computed.layout.max_height.unwrap_or(params.max.height);
+        // compute min/max w/h constraints
 
-        // explicit width/height declarations
-        if let Some(w) = computed.layout.width {
-            min_width = w;
-            max_width = w;
-        }
-        if let Some(h) = computed.layout.height {
-            min_height = h;
-            max_height = h;
-        }
+        let (min, max) = {
+            let mut min_width = computed.layout.min_width.unwrap_or(params.min.width);
+            let mut max_width = computed.layout.max_width.unwrap_or(params.max.width);
+            let mut min_height = computed.layout.min_height.unwrap_or(params.min.height);
+            let mut max_height = computed.layout.max_height.unwrap_or(params.max.height);
 
-        // clamp to parent constraints & sanitize
-        min_width = params.constrain_width(min_width);
-        max_width = params.constrain_width(max_width);
-        min_height = params.constrain_height(min_height);
-        max_height = params.constrain_height(max_height);
-        if min_width >= max_width {
-            min_width = max_width;
-        }
-        if min_height >= max_height {
-            min_height = max_height;
-        }
+            // explicit width/height declarations
+            if let Some(w) = computed.layout.width {
+                min_width = w;
+                max_width = w;
+            }
+            if let Some(h) = computed.layout.height {
+                min_height = h;
+                max_height = h;
+            }
 
-        let content_max_width = (max_width - padding_h).max(0.0);
-        let content_max_height = (max_height - padding_v).max(0.0);
+            // clamp to parent constraints & sanitize
+            min_width = params.constrain_width(min_width);
+            max_width = params.constrain_width(max_width);
+            min_height = params.constrain_height(min_height);
+            max_height = params.constrain_height(max_height);
+            if min_width >= max_width {
+                min_width = max_width;
+            }
+            if min_height >= max_height {
+                min_height = max_height;
+            }
 
-        trace!(
-            "min: {}x{}, max: {}x{}, content_max: {}x{}",
-            min_width,
-            min_height,
-            max_width,
-            max_height,
-            content_max_width,
-            content_max_height
-        );
+            (Size::new(min_width, min_height), Size::new(max_width, max_height))
+        };
+
+        let content_max_width = (max.width - padding_h).max(0.0);
+        let content_max_height = (max.height - padding_v).max(0.0);
+        let content_max = Size::new(content_max_width, content_max_height);
+
+        trace!("min: {:?}, max: {:?}, content_max: {:?}", min, max, content_max);
 
         // layout contents with modified constraints
-        let sublayout = self.inner.layout(
-            ctx,
-            &LayoutParams {
-                min: Size::zero(),
-                max: Size::new(content_max_width, content_max_height),
-                ..*params
-            },
-            env,
-        );
+        let sublayout = {
+            let mut sublayout = self.inner.layout(
+                ctx,
+                &LayoutParams {
+                    min: Size::zero(),
+                    max: content_max,
+                    ..*params
+                },
+                env,
+            );
 
-        // the content may include extra padding, in addition to the padding specified by this widget
-        let content_size = sublayout.padding_box_size();
+            // apply our additional padding + borders to the child box layout
+            sublayout.padding_left += computed.layout.padding_left + computed.border.border_left_width;
+            sublayout.padding_right += computed.layout.padding_right + computed.border.border_right_width;
+            sublayout.padding_top += computed.layout.padding_top + computed.border.border_top_width;
+            sublayout.padding_bottom += computed.layout.padding_bottom + computed.border.border_bottom_width;
+            sublayout
+        };
+
+        // size of contents + padding + border padding
+        // => adjusted content box
+        let content_plus_padding = sublayout.padding_box_size();
 
         //---------------------------------
         // compute our box size
-        let width = (content_size.width + padding_h).clamp(min_width, max_width);
-        let height = (content_size.height + padding_v).clamp(min_height, max_height);
+        let final_size = content_plus_padding.clamp(min, max);
         /*trace!(
             "content_size={:?}, sublayout={:?}, final size={}x{}",
             content_size,
@@ -153,17 +165,10 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             height
         );*/
 
-        let mut layout = Layout::new(Size::new(width, height));
+        let mut layout = BoxLayout::new(final_size);
 
-        // position the contents inside the "content area box", which is the final box minus
-        // the padding. The "content area box" may be different from the "content box" if
-        // the width and height constraints force this widget to be bigger than the content + padding.
-        let content_area_size = Size::new(width - padding_h, height - padding_v);
-        let mut offset = sublayout.place_into(content_area_size);
-        offset += Offset::new(
-            computed.layout.padding_left + computed.border.border_left_width,
-            computed.layout.padding_top + computed.border.border_top_width,
-        );
+        // position the adjusted content box
+        let offset = sublayout.place_into(&Measurements::new(final_size));
         layout.measurements.baseline = sublayout.measurements.baseline.map(|b| b + offset.y);
 
         trace!("content offset={:?}", offset);
@@ -189,8 +194,7 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             layout.padding_right = right;
         }
 
-        trace!("final layout = {:#?}", layout);
-
+        trace!("final layout = {:?}", layout);
         layout
     }
 

@@ -145,7 +145,7 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> BoxLayout {
         let mut widget_state = params.widget_state;
         widget_state.set(WidgetState::ACTIVE, self.active.get());
         widget_state.set(WidgetState::FOCUS, self.focus.get());

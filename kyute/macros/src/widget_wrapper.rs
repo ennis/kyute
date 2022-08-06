@@ -98,7 +98,7 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
                 self.#access.route_event(ctx, event, env)
             }
 
-            fn layout(&self, ctx: &mut #CRATE::LayoutCtx, params: &#CRATE::LayoutParams, env: &#CRATE::Environment) -> #CRATE::Layout {
+            fn layout(&self, ctx: &mut #CRATE::LayoutCtx, params: &#CRATE::LayoutParams, env: &#CRATE::Environment) -> #CRATE::BoxLayout {
                 self.#access.layout(ctx, params, env)
             }
 

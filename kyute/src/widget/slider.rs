@@ -271,7 +271,7 @@ impl Widget for SliderBase {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Layout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         let knob_layout = self.knob.layout(ctx, constraints, env);
         let background_layout = self.background.layout(ctx, constraints, env);
 
@@ -303,7 +303,7 @@ impl Widget for SliderBase {
         }
 
         let size = Size::new(width, height);
-        Layout::new(size)
+        BoxLayout::new(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
