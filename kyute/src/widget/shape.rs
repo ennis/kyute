@@ -37,10 +37,10 @@ impl Widget for Shape {
             // TODO deduplicate this code, it's the same in border.rs
             match self.shape {
                 style::Shape::RoundedRect { radii } => {
-                    let radius_top_left = radii[0].compute(constraints);
-                    let radius_top_right = radii[1].compute(constraints);
-                    let radius_bottom_right = radii[2].compute(constraints);
-                    let radius_bottom_left = radii[3].compute(constraints);
+                    let radius_top_left = radii[0].compute(constraints, env);
+                    let radius_top_right = radii[1].compute(constraints, env);
+                    let radius_bottom_right = radii[2].compute(constraints, env);
+                    let radius_bottom_left = radii[3].compute(constraints, env);
                     self.computed_shape.set(
                         drawing::RoundedRect {
                             rect: Rect::new(Point::origin(), size),

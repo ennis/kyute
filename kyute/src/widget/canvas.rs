@@ -107,23 +107,25 @@ impl Widget for Canvas {
         let width = constraints.finite_max_width().unwrap_or(0.0);
         let height = constraints.finite_max_height().unwrap_or(0.0);
 
-        let left = self.left.compute(constraints);
-        let top = self.top.compute(constraints);
-        let right = self.right.compute(constraints);
-        let bottom = self.bottom.compute(constraints);
+        let left = self.left.compute(constraints, env);
+        let top = self.top.compute(constraints, env);
+        let right = self.right.compute(constraints, env);
+        let bottom = self.bottom.compute(constraints, env);
 
         // place the items in the canvas
         // padding is ignored
         for item in self.items.iter() {
             let child_layout_constraints = LayoutParams {
                 widget_state: WidgetState::default(),
-                parent_font_size: constraints.parent_font_size,
                 scale_factor: constraints.scale_factor,
                 min: Size::zero(),
                 max: Size::new(f64::INFINITY, f64::INFINITY),
             };
             let layout = item.widget.layout(ctx, &child_layout_constraints, env);
-            let mut offset = Offset::new(item.offset_x.compute(constraints), item.offset_y.compute(constraints));
+            let mut offset = Offset::new(
+                item.offset_x.compute(constraints, env),
+                item.offset_y.compute(constraints, env),
+            );
 
             // prevent item from going out of bounds
             offset.x = offset.x.clamp(left, right - layout.measurements.width());

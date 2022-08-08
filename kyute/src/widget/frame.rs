@@ -1,9 +1,5 @@
 //! Frame containers
-use crate::{
-    core::DebugNode,
-    widget::{prelude::*, WidgetWrapper},
-    LayerPaintCtx, LayoutParams, LengthOrPercentage,
-};
+use crate::{core::DebugNode, widget::prelude::*, LayerPaintCtx, LayoutParams, LengthOrPercentage};
 use kyute_common::RoundToPixel;
 use kyute_shell::animation::Layer;
 
@@ -39,8 +35,8 @@ impl<W: Widget + 'static> Widget for Frame<W> {
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
         // calculate width and height
-        let width = self.width.compute(constraints, constraints.max.width);
-        let height = self.height.compute(constraints, constraints.max.height);
+        let width = self.width.compute(constraints, constraints.max.width, env);
+        let height = self.height.compute(constraints, constraints.max.height, env);
 
         let mut sub = *constraints;
         sub.max.width = constraints.max.width.min(width);

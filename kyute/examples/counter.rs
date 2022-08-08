@@ -9,6 +9,7 @@ use kyute::{
     widget::{grid::GridLayoutExt, BaseTextEdit, Button, Grid, Text, TextEdit, WidgetExt},
     Alignment, Color, UnitExt, Widget, Window,
 };
+use kyute_shell::text::FormattedTextExt;
 use std::sync::Arc;
 
 // All functions creating widgets or using features like `#[state]` must be marked as `#[composable]`.
@@ -42,7 +43,7 @@ fn counter_demo() -> impl Widget {
 
     let mut grid = Grid::with_template("40px 40px / 1fr 1fr");
     grid.insert((
-        Text::new(FormattedText::from(format!("Counter value: {}", counter)).attribute(14.., FontWeight::BOLD))
+        Text::new(format!("Counter value: {}", counter).attribute(14.., FontWeight::BOLD))
             .centered()
             .grid_column_span(2),
         Button::new("+")

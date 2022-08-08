@@ -1,4 +1,4 @@
-use crate::widget::{grid::GridLayoutExt, prelude::*, Button, Grid, WidgetWrapper};
+use crate::widget::{grid::GridLayoutExt, prelude::*, Button, Grid};
 use std::ops::{Add, Neg};
 
 /// Two small up & down arrows to select a numeric value

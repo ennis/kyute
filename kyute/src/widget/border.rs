@@ -54,10 +54,10 @@ impl<Inner: Widget> Widget for Border<Inner> {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
-        let border_top = self.border.widths[0].compute(constraints);
-        let border_right = self.border.widths[1].compute(constraints);
-        let border_bottom = self.border.widths[2].compute(constraints);
-        let border_left = self.border.widths[3].compute(constraints);
+        let border_top = self.border.widths[0].compute(constraints, env);
+        let border_right = self.border.widths[1].compute(constraints, env);
+        let border_bottom = self.border.widths[2].compute(constraints, env);
+        let border_left = self.border.widths[3].compute(constraints, env);
 
         let subconstraints =
             constraints.deflate(SideOffsets::new(border_top, border_right, border_bottom, border_left));
@@ -86,10 +86,10 @@ impl<Inner: Widget> Widget for Border<Inner> {
 
             match self.shape {
                 style::Shape::RoundedRect { radii } => {
-                    let radius_top_left = radii[0].compute(constraints);
-                    let radius_top_right = radii[1].compute(constraints);
-                    let radius_bottom_right = radii[2].compute(constraints);
-                    let radius_bottom_left = radii[3].compute(constraints);
+                    let radius_top_left = radii[0].compute(constraints, env);
+                    let radius_top_right = radii[1].compute(constraints, env);
+                    let radius_bottom_right = radii[2].compute(constraints, env);
+                    let radius_bottom_left = radii[3].compute(constraints, env);
                     self.computed_shape.set(
                         drawing::RoundedRect {
                             rect: Rect::new(Point::origin(), size),

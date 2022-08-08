@@ -19,5 +19,6 @@ pub fn showcase() -> Arc<WidgetPod> {
         Text::new("Checkbox:").vertical_alignment(Alignment::FirstBaseline),
         checkbox.vertical_alignment(Alignment::FirstBaseline),
     ));
+
     Arc::new(WidgetPod::new(hbox))
 }

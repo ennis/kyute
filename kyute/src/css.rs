@@ -26,6 +26,7 @@ pub(crate) fn parse_css_length<'i>(input: &mut Parser<'i, '_>) -> Result<Length,
             match &**unit {
                 "px" => Ok((*value).dip()),
                 "in" => Ok((*value).inch()),
+                "em" => Ok((*value).em()),
                 "pt" => Ok((*value).pt()),
                 "ppx" => Ok((*value).px()),
                 _ => {

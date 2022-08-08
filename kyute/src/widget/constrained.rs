@@ -34,7 +34,7 @@ macro_rules! impl_size_constraint {
                 env: &Environment,
             ) -> BoxLayout {
                 let mut subconstraints = *params;
-                ($body)(params, &mut subconstraints, self.0);
+                ($body)(params, &mut subconstraints, env, self.0);
                 widget.layout(ctx, &subconstraints, env)
             }
 
@@ -46,32 +46,32 @@ macro_rules! impl_size_constraint {
 }
 
 impl_size_constraint!(MinWidth;
-    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| sub.min.width = sub.min.width.max(value.compute(constraints));
+    |constraints: &LayoutParams, sub: &mut LayoutParams, env: &Environment, value: Length| sub.min.width = sub.min.width.max(value.compute(constraints, env));
     "minimum width"
 );
 impl_size_constraint!(MinHeight;
-    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| sub.min.height = sub.min.height.max(value.compute(constraints));
+    |constraints: &LayoutParams, sub: &mut LayoutParams, env: &Environment, value: Length| sub.min.height = sub.min.height.max(value.compute(constraints, env));
     "minimum height"
 );
 impl_size_constraint!(MaxWidth;
-    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| sub.max.width = sub.max.width.min(value.compute(constraints));
+    |constraints: &LayoutParams, sub: &mut LayoutParams, env: &Environment, value: Length| sub.max.width = sub.max.width.min(value.compute(constraints, env));
     "minimum width"
 );
 impl_size_constraint!(MaxHeight;
-    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| sub.max.height = sub.max.height.min(value.compute(constraints));
+    |constraints: &LayoutParams, sub: &mut LayoutParams, env: &Environment, value: Length| sub.max.height = sub.max.height.min(value.compute(constraints, env));
     "minimum height"
 );
 impl_size_constraint!(FixedWidth;
-    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| {
-        let value = value.compute(constraints);
+    |constraints: &LayoutParams, sub: &mut LayoutParams, env: &Environment, value: Length| {
+        let value = value.compute(constraints, env);
         sub.min.width = sub.min.width.max(value);
         sub.max.width = sub.max.width.min(value);
     };
     "fixed width"
 );
 impl_size_constraint!(FixedHeight;
-    |constraints: &LayoutParams, sub: &mut LayoutParams, value: Length| {
-        let value = value.compute(constraints);
+    |constraints: &LayoutParams, sub: &mut LayoutParams, env: &Environment, value: Length| {
+        let value = value.compute(constraints, env);
         sub.min.height = sub.min.height.max(value);
         sub.max.height = sub.max.height.min(value);
     };

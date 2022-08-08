@@ -30,7 +30,7 @@ mod scroll_area;
 //mod selectable;
 mod checkbox;
 mod font_size;
-mod form;
+pub mod form;
 mod overlay;
 mod placeholder;
 mod shape;
@@ -47,13 +47,14 @@ mod widget_pod;
 pub use border::Border;
 pub use button::Button;
 pub use canvas::{Canvas, Viewport};
-pub use checkbox::Checkbox;
+pub use checkbox::{Checkbox, CheckboxField};
 pub use clickable::Clickable;
 //pub use color_picker::{ColorPaletteItem, ColorPicker, ColorPickerMode, ColorPickerParams, HsvColorSquare};
 //pub use constrained::ConstrainedBox;
 pub use drop_down::DropDown;
 pub use env_override::EnvOverride;
 pub use flex::{CrossAxisAlignment, Flex, MainAxisAlignment, MainAxisSize};
+pub use form::Form;
 pub use formatter::{DisplayFormatter, FloatingPointNumberFormatter, Formatter, ValidationResult};
 pub use frame::Frame;
 pub use grid::Grid;
@@ -71,7 +72,7 @@ pub use stepper::Stepper;
 pub use styled_box::StyledBox;
 pub use table::{ColumnHeaders, TableRow, TableSelection, TableView, TableViewParams};
 pub use text::Text;
-pub use text_edit::{BaseTextEdit, TextEdit};
+pub use text_edit::{BaseTextEdit, TextEdit, TextField};
 //pub use text_input::{StepperTextInput, TextInput};
 pub use overlay::{Overlay, ZOrder};
 pub use placeholder::Placeholder;
@@ -119,7 +120,7 @@ impl Orientation {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
+/*////////////////////////////////////////////////////////////////////////////////////////////////////
 // WidgetWrapper
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -179,7 +180,7 @@ impl<T: WidgetWrapper> Widget for T {
     fn debug_node(&self) -> DebugNode {
         WidgetWrapper::debug_node(self)
     }
-}
+}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Modifiers
@@ -537,12 +538,6 @@ pub trait WidgetExt: Widget + Sized + 'static {
         Modified(Padding::new(top, right, bottom, left), self)
     }
 
-    /// Sets the font size.
-    #[must_use]
-    fn font_size(self, size: impl Into<Length>) -> Modified<FontSize, Self> {
-        Modified(FontSize(size.into()), self)
-    }
-
     #[must_use]
     #[composable]
     fn style(self, style: impl TryInto<Style>) -> StyledBox<Self> {
@@ -562,6 +557,12 @@ pub trait WidgetExt: Widget + Sized + 'static {
     #[must_use]
     fn env_override<T: EnvValue>(self, key: EnvKey<T>, value: T) -> Modified<EnvironmentOverride<T>, Self> {
         Modified(EnvironmentOverride::new(key, value), self)
+    }
+
+    /// Sets the font size.
+    #[must_use]
+    fn font_size(self, size: impl Into<Length>) -> Modified<FontSize, Self> {
+        Modified(FontSize(size.into()), self)
     }
 
     /// Sets the color of the text within this widget.
@@ -623,7 +624,7 @@ pub mod prelude {
         cache::Signal,
         composable,
         drawing::PaintCtx,
-        widget::{WidgetExt, WidgetPod, WidgetWrapper},
+        widget::{WidgetExt, WidgetPod},
         Alignment, BoxConstraints, BoxLayout, DebugNode, Environment, Event, EventCtx, LayoutCache, LayoutCtx,
         LayoutParams, Length, Measurements, Offset, Orientation, Point, Rect, Size, Transform, UnitExt, Widget,
         WidgetId,

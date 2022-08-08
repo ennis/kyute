@@ -2,6 +2,8 @@ text-color
 font-size
 default-font
 dark-mode
+window-background-color
+text-background-color
 
 kyute.asset-loader
 kyute.image-cache

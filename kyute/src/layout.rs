@@ -15,8 +15,6 @@ use std::{
 #[derive(Copy, Clone)]
 pub struct LayoutParams {
     pub widget_state: WidgetState,
-    /// Parent font size.
-    pub parent_font_size: f64,
     /// Scale factor.
     pub scale_factor: f64,
     /// Minimum allowed size.
@@ -29,7 +27,6 @@ impl Default for LayoutParams {
     fn default() -> Self {
         LayoutParams {
             widget_state: WidgetState::default(),
-            parent_font_size: 16.0,
             scale_factor: 1.0,
             min: Size::zero(),
             max: Size::new(f64::INFINITY, f64::INFINITY),
@@ -46,14 +43,12 @@ impl PartialEq for LayoutParams {
             && self.max.width.to_bits() == other.max.width.to_bits()
             && self.max.height.to_bits() == other.max.height.to_bits()
             && self.scale_factor.to_bits() == other.scale_factor.to_bits()
-            && self.parent_font_size.to_bits() == other.parent_font_size.to_bits()
             && self.widget_state == other.widget_state
     }
 }
 
 impl Hash for LayoutParams {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.parent_font_size.to_bits().hash(state);
         self.scale_factor.to_bits().hash(state);
         self.min.width.to_bits().hash(state);
         self.min.height.to_bits().hash(state);
@@ -73,8 +68,8 @@ impl fmt::Debug for LayoutParams {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "[{:?} => {:?} (x{:.1}), st={:?}, pfs={}]",
-            self.min, self.max, self.scale_factor, self.widget_state, self.parent_font_size
+            "[{:?} => {:?} (x{:.1}), st={:?}]",
+            self.min, self.max, self.scale_factor, self.widget_state
         )
     }
 }

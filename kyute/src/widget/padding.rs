@@ -36,10 +36,10 @@ impl Modifier for Padding {
         constraints: &LayoutParams,
         env: &Environment,
     ) -> BoxLayout {
-        let top = self.top.compute(constraints);
-        let right = self.right.compute(constraints);
-        let bottom = self.bottom.compute(constraints);
-        let left = self.left.compute(constraints);
+        let top = self.top.compute(constraints, env);
+        let right = self.right.compute(constraints, env);
+        let bottom = self.bottom.compute(constraints, env);
+        let left = self.left.compute(constraints, env);
         let subconstraints = constraints.deflate(SideOffsets::new(top, right, bottom, left));
         let mut layout = widget.layout(ctx, &subconstraints, env);
         layout.padding_top += top;

@@ -22,9 +22,12 @@ impl BoxShadow {
     pub(crate) fn compute(&self, constraints: &LayoutParams, env: &Environment) -> drawing::BoxShadow {
         drawing::BoxShadow {
             color: self.color.compute(env),
-            offset: Offset::new(self.x_offset.compute(constraints), self.y_offset.compute(constraints)),
-            blur: self.blur.compute(constraints),
-            spread: self.spread.compute(constraints),
+            offset: Offset::new(
+                self.x_offset.compute(constraints, env),
+                self.y_offset.compute(constraints, env),
+            ),
+            blur: self.blur.compute(constraints, env),
+            spread: self.spread.compute(constraints, env),
             inset: self.inset,
         }
     }

@@ -2,7 +2,7 @@
 // Length
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use crate::LayoutParams;
+use crate::{theme, Environment, LayoutParams};
 use kyute_common::Angle;
 use std::{
     fmt,
@@ -61,11 +61,11 @@ impl Length {
     }
 
     /// Convert to dips.
-    pub fn compute(self, constraints: &LayoutParams) -> f64 {
+    pub fn compute(self, constraints: &LayoutParams, env: &Environment) -> f64 {
         match self {
             Length::Px(x) => x / constraints.scale_factor,
             Length::Dip(x) => x,
-            Length::Em(x) => x * constraints.parent_font_size,
+            Length::Em(x) => x * env.get(&theme::FONT_SIZE).unwrap_or(16.0),
         }
     }
 }
@@ -136,9 +136,9 @@ impl LengthOrPercentage {
 
 impl LengthOrPercentage {
     /// Convert to dips, given a scale factor and a parent length for proportional length specifications.
-    pub fn compute(self, constraints: &LayoutParams, parent_length: f64) -> f64 {
+    pub fn compute(self, constraints: &LayoutParams, parent_length: f64, env: &Environment) -> f64 {
         match self {
-            LengthOrPercentage::Length(x) => x.compute(constraints),
+            LengthOrPercentage::Length(x) => x.compute(constraints, env),
             LengthOrPercentage::Percentage(x) => x * parent_length,
         }
     }

@@ -99,6 +99,12 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             let mut min_height = computed.layout.min_height.unwrap_or(params.min.height);
             let mut max_height = computed.layout.max_height.unwrap_or(params.max.height);
 
+            trace!(
+                "computed min:{:?}, max:{:?}",
+                Size::new(min_width, min_height),
+                Size::new(max_width, max_height)
+            );
+
             // explicit width/height declarations
             if let Some(w) = computed.layout.width {
                 min_width = w;

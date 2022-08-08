@@ -1,7 +1,5 @@
 use crate::{
-    widget::{
-        formatter::Formatter, grid::GridLayoutExt, prelude::*, BaseTextEdit, Grid, ValidationResult, WidgetWrapper,
-    },
+    widget::{formatter::Formatter, grid::GridLayoutExt, prelude::*, BaseTextEdit, Grid, ValidationResult},
     Widget,
 };
 use kyute::widget::Stepper;

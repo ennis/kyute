@@ -8,7 +8,7 @@ use kyute::{
     theme::palette,
     widget::{
         grid::{GridLayoutExt, TrackBreadth},
-        Button, Checkbox, Grid, Null, Padding, Placeholder, StyledBox, Text, WidgetExt, WidgetPod, WidgetWrapper,
+        Button, Checkbox, Grid, Null, Padding, Placeholder, StyledBox, Text, WidgetExt, WidgetPod,
     },
     Alignment, Color, Data, Environment, Length, UnitExt, Widget, Window,
 };
@@ -20,6 +20,8 @@ use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 mod checkbox;
+//mod forms;
+mod forms;
 mod grids;
 mod stepper;
 mod table;
@@ -64,10 +66,7 @@ impl Scaffold {
         grid.insert(sidebar.grid_area((0..1, 0)));
         grid.insert(content.grid_area((2, 2)));
         Scaffold {
-            grid: grid.style(
-                "[$dark-mode] background: rgb(71 71 71); \
-                 [!$dark-mode] background: rgb(255 255 255);",
-            ),
+            grid: grid.style("background: $window-background-color;"),
         }
     }
 }
@@ -79,6 +78,7 @@ enum GalleryWidget {
     Buttons,
     DropDown,
     ContextMenu,
+    Forms,
     Grids,
     TextInput,
     TitledPanes,
@@ -122,6 +122,7 @@ fn root_view() -> impl Widget + Clone {
     ));
     items.insert(gallery_item("Drop down", GalleryWidget::DropDown, &mut selected));
     items.insert(gallery_item("Checkboxes", GalleryWidget::Checkboxes, &mut selected));
+    items.insert(gallery_item("Forms", GalleryWidget::Forms, &mut selected));
     items.insert(gallery_item("Grids", GalleryWidget::Grids, &mut selected));
     items.insert(gallery_item("Context menu", GalleryWidget::ContextMenu, &mut selected));
     items.insert(gallery_item("Titled panes", GalleryWidget::TitledPanes, &mut selected));
@@ -135,6 +136,7 @@ fn root_view() -> impl Widget + Clone {
         GalleryWidget::FormattedText => gallery_showcase_unimplemented("Formatted text"),
         GalleryWidget::Buttons => gallery_showcase_unimplemented("Buttons"),
         GalleryWidget::Steppers => stepper::showcase(),
+        GalleryWidget::Forms => forms::showcase(),
         GalleryWidget::DropDown => gallery_showcase_unimplemented("Drop-downs"),
         GalleryWidget::ContextMenu => gallery_showcase_unimplemented("Context menus"),
         GalleryWidget::Grids => gallery_showcase_unimplemented("Grids"),
@@ -156,11 +158,7 @@ fn root_view() -> impl Widget + Clone {
 
 #[composable(cached)]
 fn main_window() -> impl Widget + Clone {
-    Window::new(
-        WindowBuilder::new().with_title("Widget gallery"),
-        root_view().text_color(theme::palette::GREY_100),
-        None,
-    )
+    Window::new(WindowBuilder::new().with_title("Widget gallery"), root_view(), None)
 }
 
 fn main() {

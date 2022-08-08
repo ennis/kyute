@@ -763,7 +763,6 @@ impl Widget for Window {
                     &mut layout_ctx,
                     &LayoutParams {
                         widget_state: WidgetState::default(),
-                        parent_font_size: 16.0,
                         scale_factor,
                         min: Size::zero(),
                         max: size,

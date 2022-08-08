@@ -862,14 +862,15 @@ More general than FormEntry, LabeledContent represents some content associated w
 It has no inherent layout (it's not a widget), but is used by several widgets (forms, toolbars)
 as their element type. => See SwiftUI LabeledContent
 
-Example:
-```
-form.entry(label, content).entry(...)
-```
 
 ### Suboption A.2: widgets with built-in labels, and LabeledContent for the rest
-There's a FormEntry trait, blanked-implemented for all LabeledContent. Some widgets
+There's a FormRow trait, blanked-implemented for all LabeledContent. Some widgets
 directly implement FormEntry, like "toggles" (Checkbox+Label)
+
+Basically two kinds of input widgets:
+- "naked" widgets for which you need to provide a label, via `.labeled`
+- labeled widgets, which implement LabeledContent
+
 
 ## Option B: extension traits on FormBuilder
 All widgets that 

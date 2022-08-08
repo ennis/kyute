@@ -1,6 +1,6 @@
 //! Styling properties
 
-use crate::{css, drawing, LayoutParams};
+use crate::{css, drawing, theme, LayoutParams};
 use bitflags::bitflags;
 use cssparser::{parse_one_declaration, ParseError, Parser, Token};
 use once_cell::sync::Lazy;
@@ -129,28 +129,32 @@ impl PropertyDeclaration {
     pub fn compute(&self, constraints: &LayoutParams, env: &Environment, computed_values: &mut ComputedStyle) {
         match *self {
             PropertyDeclaration::BorderBottomWidth(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_bottom_width = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.border).border_bottom_width = specified.compute(&constraints, env);
             }
             PropertyDeclaration::BorderTopWidth(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_top_width = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.border).border_top_width = specified.compute(&constraints, env);
             }
             PropertyDeclaration::BorderLeftWidth(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_left_width = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.border).border_left_width = specified.compute(&constraints, env);
             }
             PropertyDeclaration::BorderRightWidth(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_right_width = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.border).border_right_width = specified.compute(&constraints, env);
             }
             PropertyDeclaration::BorderTopLeftRadius(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_top_left_radius = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.border).border_top_left_radius =
+                    specified.compute(&constraints, env);
             }
             PropertyDeclaration::BorderTopRightRadius(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_top_right_radius = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.border).border_top_right_radius =
+                    specified.compute(&constraints, env);
             }
             PropertyDeclaration::BorderBottomRightRadius(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_bottom_right_radius = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.border).border_bottom_right_radius =
+                    specified.compute(&constraints, env);
             }
             PropertyDeclaration::BorderBottomLeftRadius(specified) => {
-                Arc::make_mut(&mut computed_values.border).border_bottom_left_radius = specified.compute(&constraints);
+                Arc::make_mut(&mut computed_values.border).border_bottom_left_radius =
+                    specified.compute(&constraints, env);
             }
             PropertyDeclaration::BorderBottomColor(ref specified) => {
                 Arc::make_mut(&mut computed_values.border).border_bottom_color = specified.compute(env);
@@ -181,57 +185,52 @@ impl PropertyDeclaration {
                     specified.into_iter().map(|x| x.compute(&constraints, env)).collect();
             }
             PropertyDeclaration::MinWidth(specified) => {
-                // FIXME: if containing element is infinite, the value is ignored
                 // TODO: finite_max_width may not be the value to use for %-lengths
-                Arc::make_mut(&mut computed_values.layout).min_width = constraints
-                    .finite_max_width()
-                    .map(|w| specified.compute(constraints, w));
+                Arc::make_mut(&mut computed_values.layout).min_width =
+                    Some(specified.compute(constraints, constraints.finite_max_width().unwrap_or(0.0), env));
             }
             PropertyDeclaration::MinHeight(specified) => {
-                Arc::make_mut(&mut computed_values.layout).min_height = constraints
-                    .finite_max_height()
-                    .map(|h| specified.compute(constraints, h));
+                Arc::make_mut(&mut computed_values.layout).min_height =
+                    Some(specified.compute(constraints, constraints.finite_max_height().unwrap_or(0.0), env));
             }
             PropertyDeclaration::MaxWidth(specified) => {
-                Arc::make_mut(&mut computed_values.layout).max_width = constraints
-                    .finite_max_width()
-                    .map(|w| specified.compute(constraints, w));
+                Arc::make_mut(&mut computed_values.layout).max_width =
+                    Some(specified.compute(constraints, constraints.finite_max_width().unwrap_or(0.0), env));
             }
             PropertyDeclaration::MaxHeight(specified) => {
-                Arc::make_mut(&mut computed_values.layout).max_height = constraints
-                    .finite_max_height()
-                    .map(|h| specified.compute(constraints, h));
+                Arc::make_mut(&mut computed_values.layout).max_height =
+                    Some(specified.compute(constraints, constraints.finite_max_height().unwrap_or(0.0), env));
             }
             PropertyDeclaration::Width(specified) => {
                 Arc::make_mut(&mut computed_values.layout).width =
-                    Some(specified.compute(constraints, constraints.finite_max_width().unwrap_or(0.0)));
+                    Some(specified.compute(constraints, constraints.finite_max_width().unwrap_or(0.0), env));
             }
             PropertyDeclaration::Height(specified) => {
                 Arc::make_mut(&mut computed_values.layout).height =
-                    Some(specified.compute(constraints, constraints.finite_max_height().unwrap_or(0.0)));
+                    Some(specified.compute(constraints, constraints.finite_max_height().unwrap_or(0.0), env));
             }
             PropertyDeclaration::PaddingLeft(specified) => {
                 Arc::make_mut(&mut computed_values.layout).padding_left = constraints
                     .finite_max_width()
-                    .map(|w| specified.compute(&constraints, w))
+                    .map(|w| specified.compute(&constraints, w, env))
                     .unwrap_or(0.0);
             }
             PropertyDeclaration::PaddingRight(specified) => {
                 Arc::make_mut(&mut computed_values.layout).padding_right = constraints
                     .finite_max_width()
-                    .map(|w| specified.compute(&constraints, w))
+                    .map(|w| specified.compute(&constraints, w, env))
                     .unwrap_or(0.0);
             }
             PropertyDeclaration::PaddingTop(specified) => {
                 Arc::make_mut(&mut computed_values.layout).padding_top = constraints
                     .finite_max_height()
-                    .map(|h| specified.compute(&constraints, h))
+                    .map(|h| specified.compute(&constraints, h, env))
                     .unwrap_or(0.0);
             }
             PropertyDeclaration::PaddingBottom(specified) => {
                 Arc::make_mut(&mut computed_values.layout).padding_bottom = constraints
                     .finite_max_height()
-                    .map(|h| specified.compute(&constraints, h))
+                    .map(|h| specified.compute(&constraints, h, env))
                     .unwrap_or(0.0);
             }
             PropertyDeclaration::FontSize(_specified) => {
@@ -446,7 +445,7 @@ impl Style {
 
     pub fn compute(&self, widget_state: WidgetState, constraints: &LayoutParams, env: &Environment) -> ComputedStyle {
         let mut result = ComputedStyle::default();
-        result.inherited.font_size = constraints.parent_font_size;
+        result.inherited.font_size = env.get(&theme::FONT_SIZE).unwrap_or(16.0);
         for declaration in self.0.declarations.iter() {
             if declaration
                 .predicate

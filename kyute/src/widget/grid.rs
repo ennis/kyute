@@ -652,7 +652,7 @@ where
     W: Widget + Sized + 'static,
 {
     fn insert(self, grid: &mut Grid) {
-        grid.place(&Area::default(), 0, Arc::new(WidgetPod::new(self)));
+        grid.place(Area::default(), 0, Arc::new(WidgetPod::new(self)));
     }
 }
 
@@ -755,7 +755,7 @@ where
     W: Widget + 'static,
 {
     fn insert(self, grid: &mut Grid) {
-        grid.place(&self.area, 1, Arc::new(WidgetPod::new(self.widget)));
+        grid.place(self.area, 1, Arc::new(WidgetPod::new(self.widget)));
     }
 }
 
@@ -971,8 +971,9 @@ impl Grid {
         items.insert(self);
     }
 
-    fn place(&mut self, area: &Area, z_order: i32, widget: Arc<WidgetPod>) {
-        let mut area = area.resolve(self);
+    /// Place an item at the specified location into the grid.
+    pub fn place(&mut self, area: impl Into<Area>, z_order: i32, widget: Arc<WidgetPod>) {
+        let mut area = area.into().resolve(self);
         if area.is_null() {
             warn!(
                 "null grid area specified, widget {:?}({}) will not be inserted in the grid",
@@ -1323,8 +1324,8 @@ impl Grid {
                 TrackBreadth::Fixed(min) => {
                     // TODO width or height
                     base_size[i] = match axis {
-                        Axis::Row => min.compute(parent_layout_constraints),
-                        Axis::Column => min.compute(parent_layout_constraints),
+                        Axis::Row => min.compute(parent_layout_constraints, env),
+                        Axis::Column => min.compute(parent_layout_constraints, env),
                     };
                 }
                 TrackBreadth::Auto => {
@@ -1337,8 +1338,8 @@ impl Grid {
             match track_size.max_size {
                 TrackBreadth::Fixed(max) => {
                     growth_limit[i] = match axis {
-                        Axis::Row => max.compute(parent_layout_constraints),
-                        Axis::Column => max.compute(parent_layout_constraints),
+                        Axis::Row => max.compute(parent_layout_constraints, env),
+                        Axis::Column => max.compute(parent_layout_constraints, env),
                     };
                 }
                 TrackBreadth::Auto => {
@@ -1442,8 +1443,8 @@ impl Widget for Grid {
         let (row_count, column_count) = self.position_items();
 
         // compute gap sizes
-        let column_gap = self.style.column_gap.compute(constraints);
-        let row_gap = self.style.row_gap.compute(constraints);
+        let column_gap = self.style.column_gap.compute(constraints, env);
+        let row_gap = self.style.row_gap.compute(constraints, env);
 
         // first measure the width of the columns
         let ComputeTrackSizeResult {

@@ -5,7 +5,7 @@ use crate::{
     drawing::ToSkia,
     env::Environment,
     event::{Event, Modifiers, PointerEventKind},
-    widget::{prelude::*, StyledBox, Text},
+    widget::{form, prelude::*, Form, StyledBox, Text},
     State,
 };
 use keyboard_types::KeyState;
@@ -267,7 +267,19 @@ impl Widget for BaseTextEdit {
             self.horizontal_offset.set_without_invalidation(h_offset);
         }
 
-        BoxLayout::new(Size::new(width, height))
+        BoxLayout {
+            x_align: Default::default(),
+            y_align: Default::default(),
+            padding_left: 0.0,
+            padding_top: 0.0,
+            padding_right: 0.0,
+            padding_bottom: 0.0,
+            measurements: Measurements {
+                size: Size::new(width, height),
+                clip_bounds: None,
+                baseline: child_layout.measurements.baseline,
+            },
+        }
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, _env: &Environment) {
@@ -442,6 +454,15 @@ impl Widget for BaseTextEdit {
     }
 }
 
+/// The built-in text edit style, compatible with light & dark modes.
+const TEXT_EDIT_STYLE: &str = r#"
+border-radius: 3px;
+padding: 2px;
+width: 100%;
+min-height: 1.5em;
+background: $text-background-color;
+"#;
+
 #[derive(Widget)]
 pub struct TextEdit {
     inner: StyledBox<BaseTextEdit>,
@@ -452,15 +473,8 @@ impl TextEdit {
     #[composable]
     pub fn with_selection(formatted_text: impl Into<FormattedText>, mut selection: Selection) -> TextEdit {
         let mut base = BaseTextEdit::with_selection(formatted_text, selection);
-
         TextEdit {
-            inner: base.style(
-                "border-radius: 3px;\
-                 padding: 2px;\
-                 width: 100%;\
-                 border: solid 1px rgb(30 30 30);\
-                 background: rgb(40 40 40);",
-            ),
+            inner: base.style(TEXT_EDIT_STYLE),
         }
     }
 
@@ -505,5 +519,68 @@ impl TextEdit {
             f(selection)
         }
         self
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Text fields
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct TextField {
+    label: Text,
+    edit: TextEdit,
+}
+
+impl TextField {
+    #[composable]
+    pub fn new(label: impl Into<FormattedText>, text: impl Into<FormattedText>) -> TextField {
+        let label = Text::new(label);
+        let edit = TextEdit::new(text);
+        TextField { label, edit }
+    }
+
+    /// Returns whether TODO.
+    pub fn editing_finished(&self) -> Option<Arc<str>> {
+        self.edit.editing_finished()
+    }
+
+    pub fn on_editing_finished(self, f: impl FnOnce(Arc<str>)) -> Self {
+        if let Some(text) = self.editing_finished() {
+            f(text)
+        }
+        self
+    }
+
+    /// Returns whether the text has changed.
+    pub fn text_changed(&self) -> Option<Arc<str>> {
+        self.edit.text_changed()
+    }
+
+    pub fn on_text_changed(self, f: impl FnOnce(Arc<str>)) -> Self {
+        if let Some(text) = self.text_changed() {
+            f(text)
+        }
+        self
+    }
+
+    pub fn selection_changed(&self) -> Option<Selection> {
+        self.edit.selection_changed()
+    }
+
+    pub fn on_selection_changed(self, f: impl FnOnce(Selection)) -> Self {
+        if let Some(selection) = self.selection_changed() {
+            f(selection)
+        }
+        self
+    }
+}
+
+impl From<TextField> for form::Row {
+    fn from(field: TextField) -> Self {
+        form::Row::Field {
+            label: field.label.vertical_alignment(Alignment::FirstBaseline).arc_pod(),
+            content: field.edit.vertical_alignment(Alignment::FirstBaseline).arc_pod(),
+            swap_content_and_label: false,
+        }
     }
 }

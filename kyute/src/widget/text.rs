@@ -257,7 +257,7 @@ impl Widget for Text {
 
             let font = self.font.resolve_or_default(env);
             let color = self.color.resolve_or_default(env);
-            let font_size = constraints.parent_font_size;
+            let font_size = env.get(&theme::FONT_SIZE).unwrap_or(16.0);
 
             let paragraph_style = ParagraphStyle {
                 text_alignment: None,

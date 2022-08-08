@@ -1,5 +1,8 @@
 //! Font size modifier
-use crate::widget::{prelude::*, Modifier};
+use crate::{
+    theme,
+    widget::{prelude::*, Modifier},
+};
 
 /// Font size modifier.
 pub struct FontSize(pub Length);
@@ -12,11 +15,8 @@ impl Modifier for FontSize {
         constraints: &LayoutParams,
         env: &Environment,
     ) -> BoxLayout {
-        let subconstraints = LayoutParams {
-            parent_font_size: self.0.compute(constraints),
-            ..*constraints
-        };
-        widget.layout(ctx, &subconstraints, env)
+        let font_size = self.0.compute(constraints, env);
+        widget.layout(ctx, &constraints, &env.clone().add(theme::FONT_SIZE, font_size))
     }
 
     fn debug_node(&self) -> DebugNode {
