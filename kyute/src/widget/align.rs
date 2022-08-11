@@ -18,9 +18,9 @@ impl Modifier for HorizontalAlignment {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> BoxLayout {
+    ) -> Geometry {
         let sublayout = widget.layout(ctx, constraints, env);
-        BoxLayout {
+        Geometry {
             x_align: self.0,
             ..sublayout
         }
@@ -38,9 +38,9 @@ impl Modifier for VerticalAlignment {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> BoxLayout {
+    ) -> Geometry {
         let sublayout = widget.layout(ctx, constraints, env);
-        BoxLayout {
+        Geometry {
             y_align: self.0,
             ..sublayout
         }

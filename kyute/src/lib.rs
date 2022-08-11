@@ -44,7 +44,7 @@ pub use crate::{
     env::{EnvKey, EnvRef, EnvValue, Environment},
     event::{Event, InputEvent, InternalEvent, PointerEvent, PointerEventKind},
     font::Font,
-    layout::{Alignment, BoxConstraints, BoxLayout, LayoutParams, Measurements},
+    layout::{Alignment, BoxConstraints, Geometry, LayoutParams, Measurements},
     live_literal::live_literal,
     style::{Length, LengthOrPercentage, UnitExt},
     widget::Orientation,

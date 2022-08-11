@@ -31,8 +31,10 @@ mod scroll_area;
 mod checkbox;
 mod font_size;
 pub mod form;
+mod group_box;
 mod overlay;
 mod placeholder;
+mod placement;
 mod shape;
 mod stepper;
 mod styled_box;
@@ -60,6 +62,7 @@ pub use frame::Frame;
 pub use grid::Grid;
 pub use image::{Image, Scaling};
 pub use label::Label;
+pub use placement::Adjacent;
 //pub use layer_widget::LayerWidget;
 pub use layout_wrapper::LayoutInspector;
 pub use menu::{Action, ContextMenu, Menu, MenuItem, Shortcut};
@@ -74,6 +77,7 @@ pub use table::{ColumnHeaders, TableRow, TableSelection, TableView, TableViewPar
 pub use text::Text;
 pub use text_edit::{BaseTextEdit, TextEdit, TextField};
 //pub use text_input::{StepperTextInput, TextInput};
+pub use group_box::GroupBox;
 pub use overlay::{Overlay, ZOrder};
 pub use placeholder::Placeholder;
 pub use shape::Shape;
@@ -94,7 +98,7 @@ use crate::{
         constrained::{Fill, FixedHeight, FixedWidth, MaxHeight, MaxWidth, MinHeight, MinWidth},
         font_size::FontSize,
     },
-    BoxLayout, Color, EnvKey, EnvValue, Environment, Event, EventCtx, LayoutCtx, LayoutParams, Length,
+    Color, EnvKey, EnvValue, Environment, Event, EventCtx, Geometry, LayoutCtx, LayoutParams, Length,
     LengthOrPercentage, UnitExt, Widget, WidgetId,
 };
 use std::{
@@ -120,68 +124,6 @@ impl Orientation {
     }
 }
 
-/*////////////////////////////////////////////////////////////////////////////////////////////////////
-// WidgetWrapper
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Widgets that have only one child and wish to defer to this child's `Widget` implementation.
-pub trait WidgetWrapper {
-    type Inner: Widget + ?Sized;
-
-    fn inner(&self) -> &Self::Inner;
-    fn inner_mut(&mut self) -> &mut Self::Inner;
-
-    fn widget_id(&self) -> Option<WidgetId> {
-        self.inner().widget_id()
-    }
-
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner().event(ctx, event, env)
-    }
-
-    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.inner().route_event(ctx, event, env)
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
-        self.inner().layout(ctx, constraints, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx) {
-        self.inner().paint(ctx)
-    }
-
-    fn debug_node(&self) -> DebugNode {
-        self.inner().debug_node()
-    }
-}
-
-impl<T: WidgetWrapper> Widget for T {
-    fn widget_id(&self) -> Option<WidgetId> {
-        WidgetWrapper::widget_id(self)
-    }
-
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
-        WidgetWrapper::layout(self, ctx, constraints, env)
-    }
-
-    fn route_event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        WidgetWrapper::route_event(self, ctx, event, env)
-    }
-
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        WidgetWrapper::event(self, ctx, event, env)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx) {
-        WidgetWrapper::paint(self, ctx)
-    }
-
-    fn debug_node(&self) -> DebugNode {
-        WidgetWrapper::debug_node(self)
-    }
-}*/
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Modifiers
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,7 +136,7 @@ pub trait Modifier {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> BoxLayout;
+    ) -> Geometry;
 
     fn debug_node(&self) -> DebugNode {
         DebugNode::new("Modifier")
@@ -224,7 +166,7 @@ where
         self.1.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         self.0.layout(ctx, &self.1, constraints, env)
     }
 
@@ -290,7 +232,7 @@ impl<T: EnvValue> Modifier for EnvironmentOverride<T> {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> BoxLayout {
+    ) -> Geometry {
         let mut env = env.clone();
         env.set(&self.key, self.value.clone());
         widget.layout(ctx, constraints, &env)
@@ -319,7 +261,7 @@ impl Modifier for EnvironmentOverlay {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> BoxLayout {
+    ) -> Geometry {
         let mut env = env.merged(self.overlay.clone());
         widget.layout(ctx, constraints, &env)
     }
@@ -344,6 +286,11 @@ impl fmt::Debug for WidgetIdDebug {
         }
     }
 }
+
+pub type Above<A: Widget, B: Widget> = impl Widget;
+pub type Below<A: Widget, B: Widget> = impl Widget;
+pub type RightOf<A: Widget, B: Widget> = impl Widget;
+pub type LeftOf<A: Widget, B: Widget> = impl Widget;
 
 /// Extension methods on widgets.
 pub trait WidgetExt: Widget + Sized + 'static {
@@ -480,6 +427,58 @@ pub trait WidgetExt: Widget + Sized + 'static {
     #[must_use]
     fn vertical_alignment(self, alignment: Alignment) -> Modified<VerticalAlignment, Self> {
         Modified(VerticalAlignment(alignment), self)
+    }
+
+    /// Places this widget to the right of the the other.
+    #[must_use]
+    fn right_of<B: Widget + 'static>(self, other: B, vertical_alignment: Alignment) -> RightOf<Self, B> {
+        // == "align left edge of self with right edge of other"
+        Adjacent::new(
+            self.horizontal_alignment(Alignment::START)
+                .vertical_alignment(vertical_alignment),
+            other
+                .horizontal_alignment(Alignment::END)
+                .vertical_alignment(vertical_alignment),
+        )
+    }
+
+    /// Places this widget to the left of the the other.
+    #[must_use]
+    fn left_of<B: Widget + 'static>(self, other: B, vertical_alignment: Alignment) -> LeftOf<Self, B> {
+        // == "align right edge of self with left edge of other"
+        Adjacent::new(
+            self.horizontal_alignment(Alignment::END)
+                .vertical_alignment(vertical_alignment),
+            other
+                .horizontal_alignment(Alignment::START)
+                .vertical_alignment(vertical_alignment),
+        )
+    }
+
+    /// Places this widget above the other (vertically).
+    #[must_use]
+    fn above<B: Widget + 'static>(self, other: B, horizontal_alignment: Alignment) -> Above<Self, B> {
+        // == "align bottom edge of self with top edge of other"
+        Adjacent::new(
+            self.vertical_alignment(Alignment::END)
+                .horizontal_alignment(horizontal_alignment),
+            other
+                .vertical_alignment(Alignment::START)
+                .horizontal_alignment(horizontal_alignment),
+        )
+    }
+
+    /// Places this widget below the other (vertically).
+    #[must_use]
+    fn below<B: Widget + 'static>(self, other: B, horizontal_alignment: Alignment) -> Below<Self, B> {
+        // == "align left edge of self with right edge of other"
+        Adjacent::new(
+            self.vertical_alignment(Alignment::START)
+                .horizontal_alignment(horizontal_alignment),
+            other
+                .vertical_alignment(Alignment::END)
+                .horizontal_alignment(horizontal_alignment),
+        )
     }
 
     /// Centers the widget in the available space.
@@ -625,7 +624,7 @@ pub mod prelude {
         composable,
         drawing::PaintCtx,
         widget::{WidgetExt, WidgetPod},
-        Alignment, BoxConstraints, BoxLayout, DebugNode, Environment, Event, EventCtx, LayoutCache, LayoutCtx,
+        Alignment, BoxConstraints, DebugNode, Environment, Event, EventCtx, Geometry, LayoutCache, LayoutCtx,
         LayoutParams, Length, Measurements, Offset, Orientation, Point, Rect, Size, Transform, UnitExt, Widget,
         WidgetId,
     };

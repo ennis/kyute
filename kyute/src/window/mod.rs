@@ -10,7 +10,7 @@ use crate::{
     region::Region,
     style::WidgetState,
     widget::{Menu, WidgetPod},
-    BoxLayout, Data, Environment, Event, EventCtx, InternalEvent, LayoutCtx, LayoutParams, Point, Size, Widget,
+    Data, Environment, Event, EventCtx, Geometry, InternalEvent, LayoutCtx, LayoutParams, Point, Size, Widget,
     WidgetId,
 };
 use keyboard_types::{KeyState, Modifiers};
@@ -682,8 +682,8 @@ impl Widget for Window {
         Some(self.id)
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutParams, _env: &Environment) -> BoxLayout {
-        BoxLayout::default()
+    fn layout(&self, _ctx: &mut LayoutCtx, _constraints: &LayoutParams, _env: &Environment) -> Geometry {
+        Geometry::default()
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

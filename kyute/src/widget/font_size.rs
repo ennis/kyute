@@ -14,7 +14,7 @@ impl Modifier for FontSize {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> BoxLayout {
+    ) -> Geometry {
         let font_size = self.0.compute(constraints, env);
         widget.layout(ctx, &constraints, &env.clone().add(theme::FONT_SIZE, font_size))
     }

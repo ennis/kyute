@@ -2,7 +2,7 @@ use crate::{
     composable,
     core::DebugNode,
     drawing::{PaintCtx, ToSkia},
-    make_uniform_data, theme, BoxLayout, Color, Data, EnvRef, Environment, Event, EventCtx, Font, LayoutCache,
+    make_uniform_data, theme, Color, Data, EnvRef, Environment, Event, EventCtx, Font, Geometry, LayoutCache,
     LayoutCtx, LayoutParams, Measurements, Point, RectI, RoundToPixel, Transform, Widget, WidgetId,
 };
 use kyute_shell::text::{
@@ -251,7 +251,7 @@ impl Widget for Text {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         let layout = self.cached_layout.update(ctx, constraints, |ctx| {
             trace!("Text::layout {:?}", self.formatted_text.plain_text);
 
@@ -290,7 +290,7 @@ impl Widget for Text {
             }
         });
 
-        BoxLayout {
+        Geometry {
             x_align: Default::default(),
             y_align: Default::default(),
             padding_left: 0.0,

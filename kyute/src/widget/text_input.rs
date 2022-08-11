@@ -97,7 +97,7 @@ impl<T> Widget for TextInput<T> {
         self.text_edit.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         self.text_edit.layout(ctx, constraints, env)
     }
 

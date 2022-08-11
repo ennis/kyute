@@ -20,9 +20,9 @@ use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 mod checkbox;
-//mod forms;
 mod forms;
 mod grids;
+mod group_box;
 mod stepper;
 mod table;
 
@@ -80,6 +80,7 @@ enum GalleryWidget {
     ContextMenu,
     Forms,
     Grids,
+    GroupBox,
     TextInput,
     TitledPanes,
     TreeView,
@@ -124,6 +125,7 @@ fn root_view() -> impl Widget + Clone {
     items.insert(gallery_item("Checkboxes", GalleryWidget::Checkboxes, &mut selected));
     items.insert(gallery_item("Forms", GalleryWidget::Forms, &mut selected));
     items.insert(gallery_item("Grids", GalleryWidget::Grids, &mut selected));
+    items.insert(gallery_item("Group box", GalleryWidget::GroupBox, &mut selected));
     items.insert(gallery_item("Context menu", GalleryWidget::ContextMenu, &mut selected));
     items.insert(gallery_item("Titled panes", GalleryWidget::TitledPanes, &mut selected));
     items.insert(gallery_item("Text input", GalleryWidget::TextInput, &mut selected));
@@ -137,6 +139,7 @@ fn root_view() -> impl Widget + Clone {
         GalleryWidget::Buttons => gallery_showcase_unimplemented("Buttons"),
         GalleryWidget::Steppers => stepper::showcase(),
         GalleryWidget::Forms => forms::showcase(),
+        GalleryWidget::GroupBox => group_box::showcase(),
         GalleryWidget::DropDown => gallery_showcase_unimplemented("Drop-downs"),
         GalleryWidget::ContextMenu => gallery_showcase_unimplemented("Context menus"),
         GalleryWidget::Grids => gallery_showcase_unimplemented("Grids"),

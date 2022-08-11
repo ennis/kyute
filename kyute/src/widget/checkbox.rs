@@ -1,9 +1,10 @@
 //! Checkboxes.
 use crate::{
-    widget::{form, prelude::*, Clickable, Label, StyledBox, Text},
+    widget::{form, prelude::*, Clickable, Label, Null, StyledBox, Text},
     Font,
 };
 use kyute_common::Color;
+use kyute_shell::text::FormattedText;
 
 type CheckboxInner = impl Widget;
 
@@ -58,16 +59,19 @@ impl Checkbox {
     }
 }
 
-pub struct CheckboxField<Label> {
-    label: Label,
+pub struct CheckboxField {
+    label: Text,
     checkbox: Checkbox,
 }
 
-impl<Label> CheckboxField<Label> {
+impl CheckboxField {
     #[composable]
-    pub fn new(label: Label, checked: bool) -> CheckboxField<Label> {
+    pub fn new(label: impl Into<FormattedText>, checked: bool) -> CheckboxField {
         let checkbox = Checkbox::new(checked);
-        CheckboxField { label, checkbox }
+        CheckboxField {
+            label: Text::new(label),
+            checkbox,
+        }
     }
 
     pub fn on_toggled(self, f: impl FnOnce(bool)) -> Self {
@@ -82,15 +86,15 @@ impl<Label> CheckboxField<Label> {
     }
 }
 
-impl<Label> From<CheckboxField<Label>> for form::Row
-where
-    Label: Widget + 'static,
-{
-    fn from(field: CheckboxField<Label>) -> Self {
+impl From<CheckboxField> for form::Row {
+    fn from(field: CheckboxField) -> Self {
         form::Row::Field {
-            label: field.label.vertical_alignment(Alignment::FirstBaseline).arc_pod(),
-            content: field.checkbox.vertical_alignment(Alignment::FirstBaseline).arc_pod(),
-            swap_content_and_label: true,
+            label: Null.arc_pod(),
+            content: field
+                .label
+                .right_of(field.checkbox.padding_right(4.dip()), Alignment::CENTER)
+                .arc_pod(),
+            swap_content_and_label: false,
         }
     }
 }

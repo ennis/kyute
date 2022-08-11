@@ -331,6 +331,10 @@ pub fn align_boxes(alignment: Alignment, parent: &mut Measurements, child: Measu
     offset
 }*/
 
+// TODO Alignment is complicated, and what is meant varies under the context:
+// - "left" or "right" is valid only when not talking about text.
+// - otherwise, it's "trailing" and "leading", which takes into account the current text direction
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Alignment {
     Relative(f64),
@@ -355,7 +359,7 @@ impl Default for Alignment {
 /// This groups the box' measurements (see `Measurements`), and how it should be placed within
 /// a containing box (alignment and padding).
 #[derive(Copy, Clone, PartialEq)]
-pub struct BoxLayout {
+pub struct Geometry {
     pub x_align: Alignment,
     pub y_align: Alignment,
     /// Padding around the widget
@@ -368,7 +372,7 @@ pub struct BoxLayout {
     // the border radii. Also this way we'd be able to accumulate borders.
 }
 
-impl Debug for BoxLayout {
+impl Debug for Geometry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // [ width x height, baseline:{}, padding=(t r b l), align=(x, y) ]
 
@@ -395,9 +399,9 @@ impl Debug for BoxLayout {
     }
 }
 
-impl BoxLayout {
-    pub fn new(size: Size) -> BoxLayout {
-        BoxLayout {
+impl Geometry {
+    pub fn new(size: Size) -> Geometry {
+        Geometry {
             x_align: Alignment::START,
             y_align: Alignment::START,
             padding_left: 0.0,
@@ -488,9 +492,9 @@ impl BoxLayout {
     }
 }
 
-impl Default for BoxLayout {
+impl Default for Geometry {
     fn default() -> Self {
-        BoxLayout {
+        Geometry {
             x_align: Default::default(),
             y_align: Default::default(),
             padding_left: 0.0,

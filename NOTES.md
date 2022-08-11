@@ -906,3 +906,63 @@ Q: What about caching?
 A: 
 
 Q: overhead? this allocates yet another tree
+
+
+# Drawing stuff
+
+Like, e.g. the check box mark.
+1. use a custom font
+2. load & draw a PNG image
+3. load & draw a SVG image
+4. hardcode in rust
+
+SVG spec too big. Alternatives:
+* IconVG
+* SVG native
+* Haiku Vector Icon Format
+* TinyVG
+
+Possible path forward: SVG native importer to `VectorImage` type (styles & paths).
+roxmltree for the base SVG.
+
+But how to generative SVG native?
+-> svgomg
+Just parse a SVG subset (minisvg) without css and stuff
+
+
+# TODO: a simple layout to place two elements relative to each other, simpler than grid
+
+e.g. 
+
+```
+// place label to the right of the content
+label.to_right(content, VerticalAlignment)
+// place label to the left of the content
+label.to_left(content, VerticalAlignment)
+
+right
+left
+above
+below
+over
+under
+
+// VStack
+item1.above(item2).above(item3).above(item3)
+
+// If feeling adventurous, implement an operator
+
+
+```
+
+Q: how to interpret vertical alignment with .above and .below modifiers,
+   and horizontal alignment with .right and .left?
+A: it is ignored
+A': it is overwritten by the layout. However, instead of being interpreted as a position relative to edges of a containing box, 
+    it's interpreted as a position relative to a line separating the A & B (horizontal for .above/.below, vertical for .right/.left).
+E.g. with .above/.below: HorizontalAlignment::Relative(0.0) aligns the top edge of A to the separating line.
+In a way it's similar to positioning within a containing box, except that the containing box is now a degenerate horizontal or vertical line (and doesn't contain the widgets at all). 
+
+
+# Writing modes, block flow directions, grids, etc.
+Out of scope for UIs?

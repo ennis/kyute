@@ -53,7 +53,7 @@ impl<Inner: Widget> Widget for Border<Inner> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         let border_top = self.border.widths[0].compute(constraints, env);
         let border_right = self.border.widths[1].compute(constraints, env);
         let border_bottom = self.border.widths[2].compute(constraints, env);
@@ -106,7 +106,7 @@ impl<Inner: Widget> Widget for Border<Inner> {
             }
         }
 
-        BoxLayout {
+        Geometry {
             padding_left: 0.0,
             padding_top: 0.0,
             padding_right: 0.0,

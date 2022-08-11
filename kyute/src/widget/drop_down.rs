@@ -115,7 +115,7 @@ impl<T: Clone + 'static> Widget for DropDown<T> {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         self.inner.layout(ctx, constraints, env)
     }
 

@@ -229,7 +229,7 @@ impl Widget for BaseTextEdit {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         // relax text constraints
         let text_constraints = LayoutParams {
             min: Size::zero(),
@@ -267,7 +267,7 @@ impl Widget for BaseTextEdit {
             self.horizontal_offset.set_without_invalidation(h_offset);
         }
 
-        BoxLayout {
+        Geometry {
             x_align: Default::default(),
             y_align: Default::default(),
             padding_left: 0.0,

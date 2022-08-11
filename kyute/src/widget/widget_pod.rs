@@ -164,7 +164,7 @@ pub struct WidgetPod<T: ?Sized = dyn Widget> {
     cached_constraints: Cell<LayoutParams>,
     /// Cached layout result.
     layout_invalid: Cell<bool>,
-    cached_layout: Cell<Option<BoxLayout>>,
+    cached_layout: Cell<Option<Geometry>>,
 
     /// Inner widget
     content: T,
@@ -310,7 +310,7 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         self.id
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         // we need to differentiate between two cases:
         // 1. we recalculated because the cached value has been invalidated because a child requested a relayout during eval
         // 2. we recalculated because constraints have changed

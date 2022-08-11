@@ -61,7 +61,7 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Geometry {
         let _span = trace_span!("StyledBox layout", widget_id = ?self.widget_id_dbg()).entered();
 
         let mut widget_state = params.widget_state;
@@ -171,7 +171,7 @@ impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
             height
         );*/
 
-        let mut layout = BoxLayout::new(final_size);
+        let mut layout = Geometry::new(final_size);
 
         // position the adjusted content box
         let offset = sublayout.place_into(&Measurements::new(final_size));

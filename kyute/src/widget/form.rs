@@ -32,7 +32,7 @@ pub enum Row {
 /// Possible to group rows into sections.
 #[derive(Widget)]
 pub struct Form {
-    inner: ScrollArea,
+    inner: Grid,
 }
 
 fn place_rows_recursive(grid: &mut Grid, current_row: &mut usize, rows: impl IntoIterator<Item = Row>) {
@@ -69,9 +69,7 @@ impl Form {
 
         place_rows_recursive(&mut grid, &mut 0, rows);
 
-        Form {
-            inner: ScrollArea::new(grid),
-        }
+        Form { inner: grid }
     }
 }
 

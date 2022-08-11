@@ -304,7 +304,7 @@ static DARK_THEME: Lazy<Environment> = Lazy::new(|| {
 static LIGHT_THEME: Lazy<Environment> = Lazy::new(|| {
     let mut env = Environment::new();
     env.set(&DARK_MODE, false);
-    env.set(&TEXT_COLOR, Color::from_hex("#141414"));
+    env.set(&TEXT_COLOR, Color::from_hex("#272727"));
     env.set(&WINDOW_BACKGROUND_COLOR, Color::from_hex("#f2f2f2"));
     env.set(&TEXT_BACKGROUND_COLOR, Color::from_hex("#ffffff"));
     env

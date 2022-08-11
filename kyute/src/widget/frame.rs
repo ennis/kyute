@@ -33,7 +33,7 @@ impl<W: Widget + 'static> Widget for Frame<W> {
         self.inner.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         // calculate width and height
         let width = self.width.compute(constraints, constraints.max.width, env);
         let height = self.height.compute(constraints, constraints.max.height, env);
@@ -45,7 +45,7 @@ impl<W: Widget + 'static> Widget for Frame<W> {
         sub.min.height = constraints.min.height.max(height);
 
         if ctx.speculative {
-            return BoxLayout::new(Size::new(width, height));
+            return Geometry::new(Size::new(width, height));
         }
 
         // measure child
@@ -58,7 +58,7 @@ impl<W: Widget + 'static> Widget for Frame<W> {
             .place_into(&Measurements::new(size))
             .round_to_pixel(ctx.scale_factor);
         self.inner.set_offset(content_offset);
-        BoxLayout::new(size)
+        Geometry::new(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

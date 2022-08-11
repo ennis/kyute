@@ -4,7 +4,7 @@ use kyute::{
         form,
         form::{Form, Section},
         grid::{AlignItems, TrackBreadth},
-        Button, Checkbox, Grid, Stepper, Text, TextEdit, TextField, WidgetExt, WidgetPod,
+        Button, Checkbox, CheckboxField, Grid, Stepper, Text, TextEdit, TextField, WidgetExt, WidgetPod,
     },
     Alignment, UnitExt, Widget,
 };
@@ -36,6 +36,7 @@ pub fn showcase() -> Arc<WidgetPod> {
             ],
         )
         .into(),
+        CheckboxField::new("Favorite", true).into(),
     ]);
 
     Arc::new(WidgetPod::new(form))

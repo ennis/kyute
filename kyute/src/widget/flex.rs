@@ -76,8 +76,8 @@ impl Widget for Flex {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
-        let item_layouts: Vec<BoxLayout> = self
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
+        let item_layouts: Vec<Geometry> = self
             .items
             .iter()
             .map(|item| item.layout(ctx, &constraints, env))
@@ -120,7 +120,7 @@ impl Widget for Flex {
         };
 
         let size = size.round_to_pixel(ctx.scale_factor);
-        BoxLayout::new(size)
+        Geometry::new(size)
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {

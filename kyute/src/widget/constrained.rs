@@ -32,7 +32,7 @@ macro_rules! impl_size_constraint {
                 widget: &W,
                 params: &LayoutParams,
                 env: &Environment,
-            ) -> BoxLayout {
+            ) -> Geometry {
                 let mut subconstraints = *params;
                 ($body)(params, &mut subconstraints, env, self.0);
                 widget.layout(ctx, &subconstraints, env)
@@ -88,7 +88,7 @@ impl Modifier for Fill {
         widget: &W,
         constraints: &LayoutParams,
         env: &Environment,
-    ) -> BoxLayout {
+    ) -> Geometry {
         let mut subconstraints = *constraints;
         if subconstraints.max.width.is_finite() {
             subconstraints.min.width = subconstraints.max.width;

@@ -129,7 +129,7 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         match self.contents {
             ImageContents::Image { ref image, .. } => {
                 let size_i = image.size();
@@ -158,7 +158,7 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
                     }
                 };
 
-                BoxLayout::new(scaled_size)
+                Geometry::new(scaled_size)
             }
             ImageContents::Placeholder(ref placeholder) => placeholder.layout(ctx, constraints, env),
         }

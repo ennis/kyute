@@ -11,7 +11,7 @@ use crate::{
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
     widget::WidgetExt,
-    BoxLayout, EnvKey, Environment, Event, InternalEvent, LayoutParams, Point, PointI, Rect, Transform,
+    EnvKey, Environment, Event, Geometry, InternalEvent, LayoutParams, Point, PointI, Rect, Transform,
 };
 use kyute::window::WindowState;
 use kyute_shell::{animation::Layer, application::Application, winit};
@@ -33,7 +33,7 @@ pub struct DebugWidgetTreeNode {
     pub name: String,
     pub debug_node: DebugNode,
     pub id: Option<WidgetId>,
-    pub cached_layout: Option<BoxLayout>,
+    pub cached_layout: Option<Geometry>,
     pub transform: Option<Transform>,
     pub children: Vec<DebugWidgetTreeNode>,
 }
@@ -549,7 +549,7 @@ impl<'a> EventCtx<'a> {
         widget: &W,
         event: &mut Event,
         transform: &Transform,
-        cached_layout: Option<BoxLayout>,
+        cached_layout: Option<Geometry>,
         env: &Environment,
     ) {
         let _span = trace_span!("default_route_event", target = ?widget.widget_id(), target_dbg_name = ?widget.debug_name(), event = ?event).entered();
@@ -771,7 +771,7 @@ pub trait Widget {
     /// Returns the widget identity.
     fn widget_id(&self) -> Option<WidgetId>;
 
-    fn speculative_layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn speculative_layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Geometry {
         let was_speculative = ctx.speculative;
         ctx.speculative = true;
         let layout = self.layout(ctx, params, env);
@@ -780,7 +780,7 @@ pub trait Widget {
     }
 
     /// Measures this widget and layouts the children of this widget.
-    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> BoxLayout;
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Geometry;
 
     /// Routes an event from a parent widget to this widget.
     ///
@@ -824,7 +824,7 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
         Widget::widget_id(&**self)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Geometry {
         Widget::layout(&**self, ctx, params, env)
     }
 

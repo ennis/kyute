@@ -1,4 +1,4 @@
-//! Stacking wdiget.
+//! Stacking widget.
 use crate::widget::prelude::*;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -48,7 +48,7 @@ impl<A: Widget + 'static, B: Widget + 'static> Widget for Overlay<A, B> {
         self.a.widget_id()
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         let sublayout = self.a.layout(ctx, constraints, env);
         let b_constraints = LayoutParams {
             min: sublayout.measurements.size,

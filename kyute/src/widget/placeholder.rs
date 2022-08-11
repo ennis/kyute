@@ -14,8 +14,8 @@ impl Widget for Placeholder {
         None
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
-        BoxLayout::new(constraints.min)
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
+        Geometry::new(constraints.min)
     }
 
     fn event(&self, _ctx: &mut EventCtx, _event: &mut Event, _env: &Environment) {}

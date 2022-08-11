@@ -1432,7 +1432,7 @@ impl Widget for Grid {
         Some(self.id)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> BoxLayout {
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
         let _span = trace_span!("grid layout", widget_id = ?self.widget_id_dbg()).entered();
 
         // TODO the actual direction of rows and columns depends on the writing mode
@@ -1489,7 +1489,7 @@ impl Widget for Grid {
         // --- measure the child items ---
 
         // (containing box size, child box layout)
-        let mut child_layouts: Vec<(Size, BoxLayout)> = Vec::with_capacity(self.items.len());
+        let mut child_layouts: Vec<(Size, Geometry)> = Vec::with_capacity(self.items.len());
 
         // Maximum horizontal baselines for each row of the grid (y-offset to the row's starting y-coordinate)
         let mut horizontal_baselines: Vec<f64> = vec![0.0; row_layout.len()];
@@ -1570,7 +1570,7 @@ impl Widget for Grid {
         }));
 
         // TODO baseline
-        BoxLayout::new(Size::new(width, height))
+        Geometry::new(Size::new(width, height))
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
