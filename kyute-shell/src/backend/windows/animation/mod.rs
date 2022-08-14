@@ -229,7 +229,7 @@ impl Drop for Surface {
         unsafe {
             let _span = trace_span!("composition_surface_present").entered();
             trace!("surface present");
-            self.swap_chain.Present(0, 0).expect("Present failed");
+            self.swap_chain.Present(0, 0).ok().expect("Present failed");
             self.layer.surface_acquired.set(false);
         }
     }
@@ -289,10 +289,7 @@ impl Layer {
             if swap_chain.is_none() {
                 let sc = CompositionSwapChain::new(self.0.size.get());
                 unsafe {
-                    self.0
-                        .visual
-                        .SetContent(sc.swap_chain.clone())
-                        .expect("SetContent failed");
+                    self.0.visual.SetContent(&sc.swap_chain).expect("SetContent failed");
                 }
                 *swap_chain = Some(sc);
             }
@@ -339,7 +336,7 @@ impl Layer {
         unsafe {
             self.0
                 .visual
-                .AddVisual(layer.0.visual.clone(), true, None)
+                .AddVisual(&layer.0.visual, true, None)
                 .expect("AddVisual failed");
         }
     }
@@ -356,7 +353,7 @@ impl Layer {
         unsafe {
             self.0
                 .visual
-                .RemoveVisual(layer.0.visual.clone())
+                .RemoveVisual(&layer.0.visual)
                 .expect("RemoveVisual failed");
         }
     }

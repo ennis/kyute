@@ -78,9 +78,7 @@ impl Window {
     pub fn set_root_composition_layer(&self, layer: &Layer) {
         unsafe {
             //layer.visual.EnableRedrawRegions();
-            self.composition_target
-                .SetRoot(layer.visual().clone())
-                .expect("SetRoot failed");
+            self.composition_target.SetRoot(layer.visual()).expect("SetRoot failed");
             Application::instance()
                 .backend
                 .composition_device

@@ -251,7 +251,7 @@ impl Application {
         };
 
         let command_completion_event = unsafe {
-            let event = CreateEventW(ptr::null(), false, false, None);
+            let event = CreateEventW(ptr::null(), false, false, None).unwrap();
             Win32Event::from_raw(event)
         };
 

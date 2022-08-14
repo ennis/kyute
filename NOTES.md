@@ -722,7 +722,7 @@ This event is solely handled by WidgetPods. Before sending a pointer event, send
 # Definitive behavior for pointer events
 - PointerMove:
   - deliver to root
-  - WidgetPods do hit-test and stop propagation if outside of the bounds
+  - WidgetPods do hit-test and stop propagation if outside the bounds
 
 # Accessing inner widgets
 FIXME: it can be difficult to access the inner widget when it is buried under several modifiers

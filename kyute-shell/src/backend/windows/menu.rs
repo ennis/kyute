@@ -27,7 +27,7 @@ impl Menu {
     pub fn new() -> Menu {
         let hmenu = unsafe {
             // SAFETY: no particular requirements
-            CreateMenu()
+            CreateMenu().unwrap()
         };
         Menu { hmenu, accels: vec![] }
     }
@@ -36,7 +36,7 @@ impl Menu {
     pub fn new_popup() -> Menu {
         let hmenu = unsafe {
             // SAFETY: no particular requirements
-            CreatePopupMenu()
+            CreatePopupMenu().unwrap()
         };
         Menu { hmenu, accels: vec![] }
     }

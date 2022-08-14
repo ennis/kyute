@@ -11,7 +11,7 @@ use crate::{
 use kyute_common::{Color, Data, Point, PointI, Rect, RectI, Size, SizeI, Transform};
 use std::{cell::RefCell, ffi::c_void, mem, mem::MaybeUninit, ops::Range, ptr, sync::Arc};
 use windows::{
-    core::{implement, IUnknown, Interface, ToImpl, PCWSTR},
+    core::{implement, AsImpl, IUnknown, Interface, PCWSTR},
     Win32::{
         Foundation::{BOOL, ERROR_INSUFFICIENT_BUFFER, RECT},
         Graphics::DirectWrite::{
@@ -276,7 +276,7 @@ impl Paragraph {
             }
             .into();
             self.layout
-                .Draw(ptr::null(), dwrite_renderer, origin.x as f32, origin.y as f32)?
+                .Draw(ptr::null(), &dwrite_renderer, origin.x as f32, origin.y as f32)?
         };
 
         Ok(())
@@ -347,7 +347,7 @@ impl GlyphRunAnalysis {
             let mut blend_clear_type_level = 0.0f32;
             self.analysis
                 .GetAlphaBlendParams(
-                    rendering_params,
+                    &rendering_params,
                     &mut blend_gamma,
                     &mut blend_enhanced_contrast,
                     &mut blend_clear_type_level,
@@ -494,7 +494,7 @@ impl IDWriteTextRenderer_Impl for DWriteRendererProxy {
                 // SAFETY: the only drawing effect passed here is an instance of DWriteRendererProxy.
                 // TODO erase this disgrace once `implement(IUnknown)` works.
                 let whatever: IDWriteNumberSubstitution = client_drawing_effect.cast().unwrap();
-                let drawing_effects: &mut GlyphRunDrawingEffectsWrapper = ToImpl::to_impl(&whatever);
+                let drawing_effects: &GlyphRunDrawingEffectsWrapper = AsImpl::as_impl(&whatever);
                 // SAFETY: drawing effect lives as long as the draw call
                 (&mut *self.renderer).draw_glyph_run(&glyph_run, &drawing_effects.0);
             } else {
@@ -603,7 +603,7 @@ impl Paragraph {
             let layout: IDWriteTextLayout = dwrite_factory
                 .CreateTextLayout(
                     &text_wide,
-                    format,
+                    &format,
                     layout_box_size.width as f32,
                     layout_box_size.height as f32,
                 )
@@ -665,7 +665,9 @@ impl Paragraph {
 
                 if let Some(color) = color {
                     let effect: IUnknown = GlyphRunDrawingEffectsWrapper(GlyphRunDrawingEffects { color }).into();
-                    layout.SetDrawingEffect(effect, range).expect("SetDrawingEffect failed");
+                    layout
+                        .SetDrawingEffect(&effect, range)
+                        .expect("SetDrawingEffect failed");
                 }
             }
 

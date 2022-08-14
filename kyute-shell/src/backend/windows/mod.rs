@@ -1,5 +1,6 @@
 pub mod animation;
 mod application;
+mod clipboard;
 pub mod drawing;
 mod error;
 mod event;

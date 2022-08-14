@@ -139,7 +139,7 @@ pub struct TableViewParams<'a, Id> {
     /// Root-level rows.
     pub rows: Vec<TableRow<Id>>,
 
-    /// Length of the hierachical ident.
+    /// Length of the hierarchical indent.
     pub row_indent: Length,
 
     /// Whether the columns are resizable by the user.

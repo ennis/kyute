@@ -8,6 +8,7 @@ extern crate tracing;
 pub mod animation;
 pub mod application;
 mod backend;
+mod clipboard;
 pub mod drawing;
 mod error;
 mod menu;
@@ -15,6 +16,7 @@ mod shortcut;
 pub mod text;
 pub mod window;
 
+pub use clipboard::TypedData;
 pub use error::{Error, Result};
 pub use kyute_common::PointI;
 pub use menu::Menu;

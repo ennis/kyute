@@ -23,7 +23,7 @@ parking_lot = "0.12.0"
 #graal = { git = "https://github.com/ennis/graal.git", rev = "0b13c41bed0e33b5b30bddf1af24b04fdaac9054" }
 graal = { path = "../../graal/graal"  }
 kyute-common = { path = "../kyute-common" }
-windows = { version = "0.34.0", features = [
+windows = { version = "0.39.0", features = [
     "implement",
     "Win32_Graphics_Direct2D",
     "Win32_Foundation",

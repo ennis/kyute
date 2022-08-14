@@ -29,6 +29,7 @@ mod popup;
 mod scroll_area;
 //mod selectable;
 mod checkbox;
+mod drag_drop;
 mod drawable;
 mod font_size;
 pub mod form;
@@ -79,6 +80,7 @@ pub use table::{ColumnHeaders, TableRow, TableSelection, TableView, TableViewPar
 pub use text::Text;
 pub use text_edit::{BaseTextEdit, TextEdit, TextField};
 //pub use text_input::{StepperTextInput, TextInput};
+pub use drag_drop::DropTarget;
 pub use group_box::GroupBox;
 pub use overlay::{Overlay, ZOrder};
 pub use placeholder::Placeholder;
@@ -103,6 +105,7 @@ use crate::{
     Color, EnvKey, EnvValue, Environment, Event, EventCtx, Geometry, LayoutCtx, LayoutParams, Length,
     LengthOrPercentage, UnitExt, Widget, WidgetId,
 };
+use kyute_shell::TypedData;
 use std::{
     convert::TryInto,
     fmt,
@@ -571,6 +574,15 @@ pub trait WidgetExt: Widget + Sized + 'static {
             theme::Theme::Light => Modified(EnvironmentOverlay::new(theme::light_theme()), self),
             theme::Theme::Dark => Modified(EnvironmentOverlay::new(theme::dark_theme()), self),
         }
+    }
+
+    #[must_use]
+    #[composable]
+    fn on_drop<F>(self, f: F) -> DropTarget<Self>
+    where
+        F: FnOnce(&TypedData),
+    {
+        DropTarget::new(self).on_drop(f)
     }
 }
 
