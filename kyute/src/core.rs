@@ -11,7 +11,8 @@ use crate::{
         winit::{event_loop::EventLoopWindowTarget, window::WindowId},
     },
     widget::WidgetExt,
-    EnvKey, Environment, Event, Geometry, InternalEvent, LayoutParams, Point, PointI, Rect, Transform,
+    EnvKey, Environment, Event, Geometry, InternalEvent, LayoutParams, Point, PointI, PointerEvent, PointerEventKind,
+    Rect, Transform,
 };
 use kyute::window::WindowState;
 use kyute_shell::{animation::Layer, application::Application, winit};
@@ -169,7 +170,7 @@ fn hit_test_helper(
 fn do_event<W: Widget + ?Sized>(
     parent_ctx: &mut EventCtx,
     widget: &W,
-    _widget_id: Option<WidgetId>,
+    widget_id: Option<WidgetId>,
     event: &mut Event,
     transform: &Transform,
     env: &Environment,
@@ -207,25 +208,69 @@ fn do_event<W: Widget + ?Sized>(
         event_loop: parent_ctx.event_loop.as_deref(),
         window_state: parent_ctx.window_state.as_deref_mut(),
         window_transform,
-        id: widget.widget_id(),
+        id: widget_id,
         handled: false,
         relayout: false,
+        hot: parent_ctx.hot,
+        hit_test_pass: true, // hit-test passes by default, widgets that do a hit-test set this to false
         paint_damage: PaintDamage::None,
         focus_change: None,
     };
+
+    // finally, transform the event to widget-local coordinates and pass it to the widget
     event.with_local_coordinates(transform, |event| {
         widget.event(&mut target_ctx, event, env);
     });
 
-    // merge the results of event delivery to the parent EventCtx
     let handled = target_ctx.handled;
     let relayout = target_ctx.relayout;
     let paint_damage = target_ctx.paint_damage;
     let focus_change = target_ctx.focus_change;
+    let hit_test_pass = target_ctx.hit_test_pass;
+    let mut hot = target_ctx.hot;
 
+    // if it is an event that may affect the current hover & hot states...
+    let event_affects_hover = match event {
+        Event::Pointer(PointerEvent { kind, .. })
+            if *kind == PointerEventKind::PointerUp
+                || *kind == PointerEventKind::PointerDown
+                || *kind == PointerEventKind::PointerMove =>
+        {
+            true
+        }
+        _ => false,
+    };
+
+    if event_affects_hover {
+        // depending on the result of the hit-test, update the hot & hovered widgets of the parent window:
+        // - add or remove the widget ID to the hovered widget set
+        // - update the current hot widget (topmost hovered widget)
+        //
+        // If the widget has no ID, then it does not receive hover events, so it doesn't need to appear in the hover set.
+        if let Some(id) = widget_id {
+            if let Some(ref mut window_state) = parent_ctx.window_state {
+                if hit_test_pass {
+                    window_state.hovered.insert(id);
+                    // set ourselves as the hot widget, if no one has done so yet
+                    // (EventCtx::hot acts as a flag to see if any other widget has already had a successful hit-test)
+                    if hot.is_none() {
+                        hot = Some(id);
+                        window_state.focus_state.hot = Some(id);
+                    }
+                } else {
+                    // remove the widget from the hover set
+                    window_state.hovered.remove(&id);
+                }
+            }
+        }
+    }
+
+    // merge the results of event delivery to the parent EventCtx
     parent_ctx.relayout |= relayout;
     parent_ctx.handled |= handled;
     parent_ctx.paint_damage.merge_up(paint_damage);
+    parent_ctx.hot = hot;
+    //parent_ctx.hit_test_pass = hit_test_pass;
     if let Some(focus_change) = focus_change {
         parent_ctx.focus_change = Some(focus_change);
     }
@@ -292,9 +337,12 @@ pub struct EventCtx<'a> {
     pub(crate) window_transform: Transform,
     pub(crate) id: Option<WidgetId>,
 
-    // event result
+    // event result propagated upwards
     pub(crate) handled: bool,
     pub(crate) relayout: bool,
+    pub(crate) hit_test_pass: bool,
+    // first widget that passed the hit-test
+    pub(crate) hot: Option<WidgetId>,
     pub(crate) paint_damage: PaintDamage,
     pub(crate) focus_change: Option<FocusChange>,
 }
@@ -315,6 +363,8 @@ pub(crate) fn send_root_event(
         id: widget.widget_id(),
         handled: false,
         relayout: false,
+        hit_test_pass: true,
+        hot: None,
         paint_damage: PaintDamage::None,
         focus_change: None,
     };
@@ -342,6 +392,8 @@ pub(crate) fn send_event_with_parent_window<W: Widget + ?Sized>(
         id: ctx.id,
         handled: false,
         relayout: false,
+        hit_test_pass: true,
+        hot: None,
         paint_damage: PaintDamage::None,
         focus_change: None,
     };
@@ -364,6 +416,8 @@ pub(crate) fn send_utility_event<W: Widget + ?Sized>(widget: &W, event: &mut Eve
         id: widget.widget_id(),
         handled: false,
         relayout: false,
+        hit_test_pass: true,
+        hot: None,
         paint_damage: PaintDamage::None,
         focus_change: None,
     };
@@ -554,6 +608,7 @@ impl<'a> EventCtx<'a> {
     ) {
         let _span = trace_span!("default_route_event", target = ?widget.widget_id(), target_dbg_name = ?widget.debug_name(), event = ?event).entered();
 
+        // fetch the target widget ID once and for all
         let id = widget.widget_id();
 
         match *event {
@@ -643,18 +698,17 @@ impl<'a> EventCtx<'a> {
                 do_event(self, widget, id, event, transform, env)
             }
 
-            /*////////////////////////////////////////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////
             // Non-propagating pointer events
-            Event::Pointer(PointerEvent { kind, .. })
-                if kind == PointerEventKind::PointerOver
-                    || kind == PointerEventKind::PointerOut
-                    || kind == PointerEventKind::PointerEnter
-                    || kind == PointerEventKind::PointerExit =>
-            {
-                // A widget may choose to not handle those messages, and forward it to its children.
-                // However,
+
+            // Some pointer events are intended for a specific target widget, identified by ID.
+            // Check that we are propagating to a widget that has the same ID.
+            // Otherwise, do not propagate the event.
+            Event::Pointer(PointerEvent {
+                target: Some(target), ..
+            }) if Some(target) != id => {
                 return;
-            }*/
+            }
 
             ////////////////////////////////////////////////////////////////////////////////////////
             // Regular event flow
@@ -853,6 +907,18 @@ impl<T: Widget + ?Sized> Widget for Arc<T> {
     }
 }
 
+pub struct WidgetIdDebug(Option<WidgetId>);
+impl fmt::Debug for WidgetIdDebug {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            None => write!(f, "(anonymous)"),
+            Some(id) => {
+                write!(f, "{:?}", id)
+            }
+        }
+    }
+}
+
 /// ID of a node in the tree.
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(transparent)]
@@ -866,6 +932,11 @@ impl WidgetId {
     #[composable]
     pub fn here() -> WidgetId {
         WidgetId(cache::current_call_id())
+    }
+
+    /// Returns a debug proxy for an `Option<Widget>` (more compact than the default impl for `Option<WidgetId>`).
+    pub fn dbg_option(id: Option<WidgetId>) -> WidgetIdDebug {
+        WidgetIdDebug(id)
     }
 }
 

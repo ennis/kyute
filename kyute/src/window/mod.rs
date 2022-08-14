@@ -114,7 +114,7 @@ impl WindowState {
     ///
     /// Returns the event that should be propagated to the content widget as a result of the window event.
     fn process_window_event(&mut self, window_event: &winit::event::WindowEvent) -> Option<Event<'static>> {
-        let _span = trace_span!("process_window_event").entered();
+        //let _span = trace_span!("process_window_event").entered();
 
         let _window = self
             .window
@@ -215,6 +215,7 @@ impl WindowState {
                 pointer_state.position = logical_position;
                 Some(Event::Pointer(PointerEvent {
                     kind: PointerEventKind::PointerMove,
+                    target: None,
                     position: logical_position,
                     window_position: logical_position,
                     modifiers: self.inputs.modifiers,
@@ -241,6 +242,7 @@ impl WindowState {
                 let pointer_state = self.inputs.pointers.entry(*device_id).or_default();
                 let pointer = PointerEvent {
                     kind: PointerEventKind::PointerMove, // TODO don't care?
+                    target: None,
                     position: pointer_state.position,
                     window_position: pointer_state.position,
                     modifiers: self.inputs.modifiers,
@@ -338,6 +340,7 @@ impl WindowState {
                         winit::event::ElementState::Pressed => PointerEventKind::PointerDown,
                         winit::event::ElementState::Released => PointerEventKind::PointerUp,
                     },
+                    target: None,
                     position: pointer_state.position,
                     window_position: pointer_state.position,
                     modifiers: self.inputs.modifiers,
@@ -396,9 +399,30 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
         self.send_event(&mut event)
     }
 
-    fn send_routed_pointer_event(&mut self, target: WidgetId, event: PointerEvent) -> EventResult {
-        let mut event = Event::Internal(InternalEvent::RoutePointerEvent { target, event });
-        self.send_event(&mut event)
+    /// Sends a "targeting pointer event" to a widget.
+    ///
+    /// They are pointer events that are intended for one widget only.
+    /// Unlike other pointer events, they *do not* propagate to descendants on a successful hit-test.
+    ///
+    /// This is used for sending `Pointer{Out,Over,Enter,Exit}` events.
+    fn send_targeting_pointer_event(&mut self, device_id: DeviceId, target: WidgetId, event_kind: PointerEventKind) {
+        // synthesize a pointer event
+        let event = self.state.inputs.pointers.get(&device_id).map(|state| PointerEvent {
+            kind: event_kind,
+            target: Some(target),
+            position: state.position,
+            window_position: state.position,
+            modifiers: self.state.inputs.modifiers,
+            buttons: state.buttons,
+            pointer_id: device_id,
+            button: None,
+            repeat_count: 0,
+        });
+        if let Some(event) = event {
+            let mut event = Event::Internal(InternalEvent::RoutePointerEvent { target, event });
+            // NOTE: the result of synthetic pointer events are ignores
+            self.send_event(&mut event);
+        }
     }
 
     fn propagate_input_event(&mut self, mut event: Event) {
@@ -423,6 +447,7 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
 
                 // FIXME: wheel event propagation is broken
                 //pointer_device_id = Some(pointer_event.pointer_id);
+
                 // Pointer and wheel events are delivered to the node that is currently grabbing the pointer.
                 // If nothing is grabbing the pointer, the pointer event is delivered to a widget
                 // that passes the hit-test
@@ -463,23 +488,11 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
                     if old_hot != new_hot {
                         trace!("Old hot: {:?}, new hot: {:?}", old_hot, new_hot);
                         if let Some(old_and_busted) = old_hot {
-                            self.send_routed_pointer_event(
-                                old_and_busted,
-                                self.state
-                                    .inputs
-                                    .synthetic_pointer_event(pointer_id, PointerEventKind::PointerOut, None)
-                                    .unwrap(),
-                            );
+                            self.send_targeting_pointer_event(pointer_id, old_and_busted, PointerEventKind::PointerOut);
                         }
 
                         if let Some(new_hotness) = new_hot {
-                            self.send_routed_pointer_event(
-                                new_hotness,
-                                self.state
-                                    .inputs
-                                    .synthetic_pointer_event(pointer_id, PointerEventKind::PointerOver, None)
-                                    .unwrap(),
-                            );
+                            self.send_targeting_pointer_event(pointer_id, new_hotness, PointerEventKind::PointerOver);
                         }
                     }
 
@@ -489,22 +502,10 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
                     }
 
                     for old_and_busted in old_hovered.difference(&new_hovered) {
-                        self.send_routed_pointer_event(
-                            *old_and_busted,
-                            self.state
-                                .inputs
-                                .synthetic_pointer_event(pointer_id, PointerEventKind::PointerExit, None)
-                                .unwrap(),
-                        );
+                        self.send_targeting_pointer_event(pointer_id, *old_and_busted, PointerEventKind::PointerExit);
                     }
                     for new_hotness in new_hovered.difference(&old_hovered) {
-                        self.send_routed_pointer_event(
-                            *new_hotness,
-                            self.state
-                                .inputs
-                                .synthetic_pointer_event(pointer_id, PointerEventKind::PointerEnter, None)
-                                .unwrap(),
-                        );
+                        self.send_targeting_pointer_event(pointer_id, *new_hotness, PointerEventKind::PointerEnter);
                     }
 
                     self.state.hovered = new_hovered;
@@ -755,7 +756,7 @@ impl Widget for Window {
         if let Some(ref mut window) = wstate.window {
             // --- update layout ---
             {
-                let _span = trace_span!("Window relayout").entered();
+                //let _span = trace_span!("Window relayout").entered();
                 let scale_factor = window.scale_factor();
                 let size = window.logical_inner_size();
                 let mut layout_ctx = LayoutCtx::new(scale_factor);
@@ -772,7 +773,7 @@ impl Widget for Window {
             }
 
             {
-                let _span = trace_span!("Window composition layers update").entered();
+                // let _span = trace_span!("Window composition layers update").entered();
                 // --- update composition layers ---
                 let repainted = self.content.repaint_layer(&mut wstate.skia_recording_context);
                 if repainted {

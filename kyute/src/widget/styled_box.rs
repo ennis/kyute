@@ -13,6 +13,8 @@ use std::{
 };
 
 pub struct StyledBox<Inner> {
+    // we need an ID because we track pointer hover events
+    id: WidgetId,
     style: Style,
     computed: LayoutCache<style::ComputedStyle>,
     inner: WidgetPod<Inner>,
@@ -23,6 +25,7 @@ impl<Inner: Widget + 'static> StyledBox<Inner> {
     #[composable]
     pub fn new(inner: Inner, style: impl TryInto<Style>) -> Self {
         StyledBox {
+            id: WidgetId::here(),
             style: style.try_into().unwrap_or_else(|_| {
                 warn!("Failed to parse style");
                 Style::default()
@@ -58,11 +61,11 @@ impl<Inner> DerefMut for StyledBox<Inner> {
 
 impl<Inner: Widget + 'static> Widget for StyledBox<Inner> {
     fn widget_id(&self) -> Option<WidgetId> {
-        self.inner.widget_id()
+        Some(self.id)
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Geometry {
-        let _span = trace_span!("StyledBox layout", widget_id = ?self.widget_id_dbg()).entered();
+        let _span = trace_span!("StyledBox layout", widget_id = ?WidgetId::dbg_option(self.widget_id())).entered();
 
         let mut widget_state = params.widget_state;
         widget_state.set(WidgetState::HOVER, self.hovered.get());

@@ -343,7 +343,7 @@ pub struct PaintCtx<'a> {
     pub scale_factor: f64,
     pub bounds: Rect,
     pub clip_bounds: Rect,
-    pub visual_state: WidgetState,
+    pub(crate) debug: bool,
 }
 
 impl<'a> fmt::Debug for PaintCtx<'a> {
@@ -372,7 +372,7 @@ impl<'a> PaintCtx<'a> {
             scale_factor,
             bounds,
             clip_bounds: bounds,
-            visual_state: Default::default(),
+            debug: true,
         }
     }
 
@@ -384,6 +384,11 @@ impl<'a> PaintCtx<'a> {
     /// Returns the parent layer.
     pub fn parent_layer(&self) -> &'a Layer {
         self.parent_layer
+    }
+
+    /// Enable visual debugging information
+    pub fn set_debug(&mut self, enabled: bool) {
+        self.debug = enabled;
     }
 
     /*/// Overrides the current visual state flags and calls the provided closure.

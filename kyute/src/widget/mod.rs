@@ -29,6 +29,7 @@ mod popup;
 mod scroll_area;
 //mod selectable;
 mod checkbox;
+mod drawable;
 mod font_size;
 pub mod form;
 mod group_box;
@@ -51,6 +52,7 @@ pub use button::Button;
 pub use canvas::{Canvas, Viewport};
 pub use checkbox::{Checkbox, CheckboxField};
 pub use clickable::Clickable;
+pub use drawable::Drawable;
 //pub use color_picker::{ColorPaletteItem, ColorPicker, ColorPickerMode, ColorPickerParams, HsvColorSquare};
 //pub use constrained::ConstrainedBox;
 pub use drop_down::DropDown;
@@ -275,18 +277,6 @@ impl Modifier for EnvironmentOverlay {
 // WidgetExt
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct WidgetIdDebug(Option<WidgetId>);
-impl fmt::Debug for WidgetIdDebug {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.0 {
-            None => write!(f, "(anonymous)"),
-            Some(id) => {
-                write!(f, "{:?}", id)
-            }
-        }
-    }
-}
-
 pub type Above<A: Widget, B: Widget> = impl Widget;
 pub type Below<A: Widget, B: Widget> = impl Widget;
 pub type RightOf<A: Widget, B: Widget> = impl Widget;
@@ -294,11 +284,6 @@ pub type LeftOf<A: Widget, B: Widget> = impl Widget;
 
 /// Extension methods on widgets.
 pub trait WidgetExt: Widget + Sized + 'static {
-    /// Returns a debug proxy for this widget's id (more compact than the default impl for `Option<WidgetId>`).
-    fn widget_id_dbg(&self) -> WidgetIdDebug {
-        WidgetIdDebug(self.widget_id())
-    }
-
     /// Adds a border around the widget.
     #[must_use]
     fn border(self, width: impl Into<Length>, shape: impl Into<style::Shape>) -> Border<Self> {
@@ -386,32 +371,6 @@ pub trait WidgetExt: Widget + Sized + 'static {
     fn fix_height(self, height: impl Into<Length>) -> Modified<FixedHeight, Self> {
         Modified(FixedHeight(height.into()), self)
     }
-
-    /*/// Wraps the widget in a `ConstrainedBox` that constrains the width of the widget.
-    #[must_use]
-    fn fix_width(self, width: impl Into<Length>) -> ConstrainedBox<Self> {
-        let width = width.into();
-        ConstrainedBox::new(self).min_width(width).max_width(width)
-    }
-
-    /// Wraps the widget in a `ConstrainedBox` that constrains the height of the widget.
-    #[must_use]
-    fn fix_height(self, height: impl Into<Length>) -> ConstrainedBox<Self> {
-        let height = height.into();
-        ConstrainedBox::new(self).min_height(height).max_height(height)
-    }
-
-    /// Wraps the widget in a `ConstrainedBox` that constrains the size of the widget.
-    #[must_use]
-    fn fix_size(self, width: impl Into<Length>, height: impl Into<Length>) -> ConstrainedBox<Self> {
-        let width = width.into();
-        let height = height.into();
-        ConstrainedBox::new(self)
-            .min_width(width)
-            .max_width(width)
-            .min_height(height)
-            .max_height(height)
-    }*/
 
     /// Wraps the widget in a `ConstrainedBox` that fills the available space in the parent widget.
     #[must_use]

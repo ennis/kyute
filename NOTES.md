@@ -921,6 +921,7 @@ SVG spec too big. Alternatives:
 * SVG native
 * Haiku Vector Icon Format
 * TinyVG
+* Android vector drawables
 
 Possible path forward: SVG native importer to `VectorImage` type (styles & paths).
 roxmltree for the base SVG.
@@ -929,6 +930,16 @@ But how to generative SVG native?
 -> svgomg
 Just parse a SVG subset (minisvg) without css and stuff
 
+In code: a fun and compact way of drawing dynamic icons, gauges, progress bars, etc.
+
+-> minimal parametric vector drawing language that can reference variables from the environment
+
+* rect
+* path
+* arc
+* transform
+* replicate
+* randomize
 
 # TODO: a simple layout to place two elements relative to each other, simpler than grid
 
@@ -962,6 +973,52 @@ A': it is overwritten by the layout. However, instead of being interpreted as a 
     it's interpreted as a position relative to a line separating the A & B (horizontal for .above/.below, vertical for .right/.left).
 E.g. with .above/.below: HorizontalAlignment::Relative(0.0) aligns the top edge of A to the separating line.
 In a way it's similar to positioning within a containing box, except that the containing box is now a degenerate horizontal or vertical line (and doesn't contain the widgets at all). 
+
+
+# Dynamic vector drawables
+
+```rust
+
+// access variables in env, but no conditionals
+// variants (filled, not filled, etc)
+
+// A vector drawing, with configurable variants.
+// Variants are like "features" that can be enabled or not.
+//
+// Examples of features:
+// - dark mode
+// - 
+// 
+// Inside, drawing is represented as a series of operations, predicated on enabled variants
+// Additionally, there are variables (floats & colors) that can be overriden.
+
+
+const GAUGE: VectorDrawable = VectorDrawable {
+    variants: &[
+        Variant { n: "dark" },
+        Variant { n: "light" },
+    ],
+    scalars: &[
+      "gauge-value"
+    ],
+    colors: &[
+        "gauge-color"
+    ],
+    paints: &[
+        Paint::Color(Color::Ref(0))
+    ],
+    shapes: &[
+        // paths go here
+        Shape::Arc { .. },
+        Shape::Path { .. },
+    ],
+    ops: &[
+        Op::Fill { v: Some(VARIANT_DARK), s: 0, p: 1 }, 
+        Op::Fill { v: None, s: 0, p: 0 }
+    ]
+};
+
+```
 
 
 # Writing modes, block flow directions, grids, etc.

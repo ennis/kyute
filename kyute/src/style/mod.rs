@@ -13,6 +13,7 @@ mod image;
 mod length;
 mod predicate;
 mod shape;
+//mod svg;
 mod utils;
 
 use crate::{css::parse_from_str, drawing::Paint, style::predicate::parse_optional_predicate_block};

@@ -1,9 +1,11 @@
 use crate::{
     cache,
     core::{DebugNode, LayerPaintCtx, PaintDamage},
+    drawing::ToSkia,
     widget::prelude::*,
     Bloom, InternalEvent, LayoutParams, PointerEventKind, SizeI, WidgetFilter,
 };
+use kyute_common::{Color, RectExt};
 use kyute_shell::animation::Layer;
 use skia_safe as sk;
 use std::{
@@ -449,6 +451,8 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                         self.content.debug_name(),
                         position
                     );
+                    // the default value of the flag is true (hit-test is successful by default), so inhibit.
+                    *hit = false;
                     return;
                 } else {
                     // update position for descendants
@@ -460,66 +464,46 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                 }*/
             }
 
-            // pointer events undergo hit-testing, with some exceptions:
-            // - pointer out events are exempt from hit-test: if the pointer leaves
-            // the parent widget, we also want the child elements to know that.
-            // - if the widget is a pointer-grabbing widget, don't hit test
-            Event::Pointer(p) => {
-                let exempt_from_hit_test = p.kind == PointerEventKind::PointerOut
-                    || (self.id.is_some() && parent_ctx.pointer_capturing_widget() == self.id);
+            _ => {}
+        }
+
+        // continue with default routing behavior
+        // hit-testing is done in the main `event` method so that `default_route_event` can do hover processing
+        parent_ctx.default_route_event(self, event, &self.transform.get(), self.cached_layout.get(), env);
+    }
+
+    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        match event {
+            Event::Pointer(p)
+                if p.kind == PointerEventKind::PointerUp
+                    || p.kind == PointerEventKind::PointerDown
+                    || p.kind == PointerEventKind::PointerMove =>
+            {
+                // pointer input events undergo hit-testing, with some exceptions: if the widget is a pointer-grabbing widget, don't hit test
+                let exempt_from_hit_test = self.id.is_some() && ctx.pointer_capturing_widget() == self.id;
 
                 if !exempt_from_hit_test {
-                    let local_pointer_pos = self.transform.get().inverse().unwrap().transform_point(p.position);
-
                     if !self
                         .cached_layout
                         .get()
                         .expect("pointer event received before layout")
                         .measurements
                         .local_bounds()
-                        .contains(local_pointer_pos)
+                        .contains(p.position)
                     {
                         trace!(
-                            "do_event: pointer event FAIL @ {:?}{:?}",
+                            "WidgetPod: pointer event FAIL @ {:?}{:?}",
                             self.content.debug_name(),
                             p.position,
                         );
-
-                        if let Some(ref mut window_state) = parent_ctx.window_state {
-                            // remove ourselves from the hover set
-                            if let Some(id) = self.id {
-                                window_state.hovered.remove(&id);
-                            }
-                        }
+                        ctx.hit_test_pass = false;
                         return;
-                    }
-
-                    // since this widget passed the hit-test, it is now the hot widget
-                    // FIXME this is ugly, maybe add a function to EventCtx
-                    // FIXME and also more complicated than that, because there can be multiple hot
-                    // widgets (for example, if the pointer hovers over two stacked widgets)
-                    // => also need pointer enter, pointer exit
-                    if let Some(ref mut window_state) = parent_ctx.window_state {
-                        if let Some(id) = self.id {
-                            window_state.hovered.insert(id);
-                            // set ourselves as the hot widget
-                            // note that this might be overriden by descendant widgets under this WidgetPod.
-                            // since we do so before propagating, the deepest widget passing the hit test
-                            // will be the new hotness
-                            window_state.focus_state.hot = Some(id);
-                        }
                     }
                 }
             }
-
             _ => {}
         }
 
-        // continue with default routing behavior
-        parent_ctx.default_route_event(self, event, &self.transform.get(), self.cached_layout.get(), env);
-    }
-
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
         self.content.route_event(ctx, event, env);
 
         // handle event result
@@ -625,6 +609,23 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
                     |ctx| self.content.paint(ctx),
                 )
             }
+        }
+
+        if ctx.debug {
+            // print widget ID in the top-right corner
+            let mut font = sk::Font::default();
+            font.set_size(9.0);
+            let mut paint = sk::Paint::new(Color::from_hex("#FFFF00").to_skia(), None);
+            paint.set_style(sk::PaintStyle::Fill);
+            paint.set_blend_mode(sk::BlendMode::SrcOver);
+
+            ctx.surface.canvas().draw_str_align(
+                format!("{:?}", WidgetId::dbg_option(self.widget_id())),
+                (layout.measurements.local_bounds().top_right() + Offset::new(0.0, 9.0)).to_skia(),
+                &font,
+                &paint,
+                sk::utils::text_utils::Align::Right,
+            );
         }
     }
 

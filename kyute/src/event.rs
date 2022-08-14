@@ -103,6 +103,7 @@ pub enum PointerEventKind {
     PointerDown,
     PointerUp,
     PointerMove,
+    // FIXME: those should probably go in Event: they are not really input events and they are not hit-tested like the rest of pointer events
     PointerOver,
     PointerOut,
     PointerEnter,
@@ -113,6 +114,8 @@ pub enum PointerEventKind {
 #[derive(Copy, Clone, PartialEq)]
 pub struct PointerEvent {
     pub kind: PointerEventKind,
+    /// The widget for which this event is intended. Can be `None` if the target is not known, and determined on the fly by hit-testing.
+    pub target: Option<WidgetId>,
     /// Position in device-independent (logical) pixels, relative to the visual node that the event
     /// is delivered to.
     pub position: Point,
@@ -154,8 +157,14 @@ impl fmt::Debug for PointerEvent {
         };
         write!(
             f,
-            "{} @ {:?} mods={:?} btns={:?} wp={:?} id={:?}",
-            name, self.position, self.modifiers, self.buttons, self.window_position, self.pointer_id
+            "{} @ {:?} t={:?} mods={:?} btns={:?} wp={:?} id={:?}",
+            name,
+            self.position,
+            WidgetId::dbg_option(self.target),
+            self.modifiers,
+            self.buttons,
+            self.window_position,
+            self.pointer_id
         )?;
         write!(f, "]")?;
         Ok(())
@@ -338,11 +347,13 @@ impl InputState {
     pub fn synthetic_pointer_event(
         &self,
         device_id: DeviceId,
+        target: Option<WidgetId>,
         kind: PointerEventKind,
         button: Option<PointerButton>,
     ) -> Option<PointerEvent> {
         self.pointers.get(&device_id).map(|state| PointerEvent {
             kind,
+            target,
             position: state.position,
             window_position: state.position,
             modifiers: self.modifiers,

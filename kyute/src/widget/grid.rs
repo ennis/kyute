@@ -1433,7 +1433,7 @@ impl Widget for Grid {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
-        let _span = trace_span!("grid layout", widget_id = ?self.widget_id_dbg()).entered();
+        let _span = trace_span!("grid layout", widget_id = ?WidgetId::dbg_option(self.widget_id())).entered();
 
         // TODO the actual direction of rows and columns depends on the writing mode
         // When (or if) we support other writing modes, rewrite this. Layout is complicated!
@@ -1522,8 +1522,16 @@ impl Widget for Grid {
                 subconstraints.min.height = 0.0;
 
                 let child_layout = item.widget.layout(ctx, &subconstraints, env);
-                trace!("[{:?}] constraints: {:?}", item.widget.widget_id_dbg(), subconstraints);
-                trace!("[{:?}] layout: {:?}", item.widget.widget_id_dbg(), child_layout);
+                trace!(
+                    "[{:?}] constraints: {:?}",
+                    WidgetId::dbg_option(item.widget.widget_id()),
+                    subconstraints
+                );
+                trace!(
+                    "[{:?}] layout: {:?}",
+                    WidgetId::dbg_option(item.widget.widget_id()),
+                    child_layout
+                );
 
                 child_layouts.push((Size::new(w, h), child_layout));
 
@@ -1552,7 +1560,11 @@ impl Widget for Grid {
                 let offset = (cell_pos + content_pos).round_to_pixel(ctx.scale_factor);
 
                 // TODO baselines...
-                trace!("[{:?}] offset: {:?}", item.widget.widget_id_dbg(), offset);
+                trace!(
+                    "[{:?}] offset: {:?}",
+                    WidgetId::dbg_option(item.widget.widget_id()),
+                    offset
+                );
                 item.widget.set_offset(offset);
             }
         }

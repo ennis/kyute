@@ -1,29 +1,48 @@
 //! Checkboxes.
 use crate::{
-    widget::{form, prelude::*, Clickable, Label, Null, StyledBox, Text},
-    Font,
+    drawing::ToSkia,
+    text::FormattedText,
+    theme,
+    widget::{form, prelude::*, Clickable, Drawable, Label, Null, StyledBox, Text},
+    Color, Font,
 };
-use kyute_common::Color;
-use kyute_shell::text::FormattedText;
+use skia_safe as sk;
 
 type CheckboxInner = impl Widget;
 
-fn checkbox_inner(state: bool) -> CheckboxInner {
-    // TODO crude, replace with a cached WidgetPod
-    let text = if state {
-        Text::new("✓").color(Color::from_hex("#161616"))
-    } else {
-        Text::new("")
-    };
-
-    text.font_size(14.dip()).style(
+fn checkbox_inner(checked: bool) -> CheckboxInner {
+    Drawable::new(Size::new(18.0, 18.0), None, move |ctx, state, env| {
+        // TODO: a better drawing API, or something to author "parametric vector graphics", because writing skia code by hand is miserable
+        if checked {
+            let path = sk::PathBuilder::new()
+                .move_to((2.5, 13.0))
+                .line_to((9.0, 18.0))
+                .line_to((18.0, 4.0))
+                .detach();
+            //let dark_mode = env.get(&theme::DARK_MODE).unwrap_or(false);
+            let color = Color::from_hex("#FFFFFF");
+            let mut paint = sk::Paint::new(color.to_skia(), None);
+            paint.set_anti_alias(true);
+            paint.set_stroke_miter(1.5);
+            paint.set_stroke_cap(sk::PaintCap::Square);
+            paint.set_stroke_join(sk::PaintJoin::Miter);
+            paint.set_style(sk::PaintStyle::Stroke);
+            paint.set_stroke_width(4.0);
+            ctx.surface.canvas().clear(Color::from_hex("#00A7FF").to_skia());
+            ctx.surface.canvas().save();
+            ctx.surface.canvas().scale((0.8, 0.8));
+            ctx.surface.canvas().draw_path(&path, &paint);
+            ctx.surface.canvas().restore();
+        }
+    })
+    .style(
         r#"
-width: 14px;
-height: 14px;
-background: rgb(255 255 255);
+background: $text-background-color;
 border-radius: 5px;
-border: solid 1px rgb(180 180 180);
-box-shadow: 0px 1px 3px -1px rgb(180 180 180);
+[!$dark-mode] border: solid 1px rgb(180 180 180);
+[!$dark-mode] box-shadow: 0px 1px 3px -1px rgb(180 180 180);
+[$dark-mode] border: solid 1px rgb(49 49 49);
+[$dark-mode] box-shadow: 0px 1px 2px -1px rgb(49 49 49);
             "#,
     )
 }
