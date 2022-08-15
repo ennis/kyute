@@ -11,6 +11,7 @@ mod backend;
 mod clipboard;
 pub mod drawing;
 mod error;
+pub mod input;
 mod menu;
 mod shortcut;
 pub mod text;

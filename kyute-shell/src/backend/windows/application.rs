@@ -1,4 +1,5 @@
-use crate::backend::windows::event::Win32Event;
+use crate::backend::windows::{event::Win32Event, util::ToWide, window};
+use graal::vk::LPCWSTR;
 use parking_lot::Mutex;
 use std::{
     ffi::{c_void, OsString},
@@ -9,6 +10,7 @@ use threadbound::ThreadBound;
 use windows::{
     core::Interface,
     Win32::{
+        Foundation::HINSTANCE,
         Graphics::{
             Direct3D::D3D_FEATURE_LEVEL_12_0,
             Direct3D12::{
@@ -18,13 +20,19 @@ use windows::{
             DirectComposition::{DCompositionCreateDevice3, IDCompositionDesktopDevice, IDCompositionDeviceDebug},
             DirectWrite::{DWriteCreateFactory, IDWriteFactory, DWRITE_FACTORY_TYPE_SHARED},
             Dxgi::{CreateDXGIFactory2, IDXGIFactory3, DXGI_CREATE_FACTORY_DEBUG},
+            Gdi::HBRUSH,
             Imaging::{CLSID_WICImagingFactory2, D2D::IWICImagingFactory2},
         },
         System::{
             Com::{CoCreateInstance, CoInitialize, CLSCTX_INPROC_SERVER},
             Threading::{CreateEventW, WaitForSingleObject},
         },
-        UI::Input::KeyboardAndMouse::GetDoubleClickTime,
+        UI::{
+            Input::KeyboardAndMouse::GetDoubleClickTime,
+            WindowsAndMessaging::{
+                LoadIconW, RegisterClassW, CS_CLASSDC, HCURSOR, IDI_APPLICATION, WNDCLASSW, WNDCLASS_STYLES, WNDPROC,
+            },
+        },
     },
 };
 
@@ -89,6 +97,8 @@ sync_com_ptr_wrapper! { D3D12Fence(ID3D12Fence) }
 //sync_com_ptr_wrapper! { D2D1Factory1(ID2D1Factory1) }
 //sync_com_ptr_wrapper! { D2D1Device(ID2D1Device) }
 //send_com_ptr_wrapper! { D2D1DeviceContext(ID2D1DeviceContext) }
+
+pub(crate) const CLASS_NAME: &str = "kyuuuuute";
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Application (win32 backend)
@@ -196,44 +206,6 @@ impl Application {
             DWriteFactory(dwrite)
         };
 
-        /*let d2d_factory = unsafe {
-            let mut result: Option<ID2D1Factory1> = None;
-            let d2d = D2D1CreateFactory(
-                D2D1_FACTORY_TYPE_MULTI_THREADED,
-                &ID2D1Factory1::IID,
-                &D2D1_FACTORY_OPTIONS {
-                    debugLevel: D2D1_DEBUG_LEVEL_WARNING,
-                },
-                &mut result as *mut _ as *mut *mut _,
-            )
-            .map(|()| result.unwrap())?;
-            D2D1Factory1(d2d)
-        };*/
-
-        // ---------- Create the D2D Device and Context ----------
-        /*let d2d_device = unsafe {
-            let dxgi_device = d3d11_device.cast::<IDXGIDevice>().unwrap();
-            let device = d2d_factory.CreateDevice(&dxgi_device).unwrap();
-            D2D1Device(device)
-        };*/
-
-        /*let d2d_device_context = unsafe {
-            D2D1DeviceContext(
-                d2d_device
-                    .0
-                    .CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)
-                    .unwrap(),
-            )
-        };*/
-
-        /*// ---------- Create the Windows Imaging Component (WIC) factory ----------
-        let wic_factory = unsafe {
-            CoInitialize(ptr::null_mut()).unwrap();
-            let wic: IWICImagingFactory2 = CoCreateInstance(&CLSID_WICImagingFactory2, None, CLSCTX_INPROC_SERVER)
-                .expect("CoCreateInstance(CLSID_WICImagingFactory2) failed");
-            WICImagingFactory2(wic)
-        };*/
-
         // --------- Compositor -----------
         let composition_device = unsafe {
             let mut composition_device: Option<IDCompositionDesktopDevice> = None;
@@ -254,6 +226,27 @@ impl Application {
             let event = CreateEventW(ptr::null(), false, false, None).unwrap();
             Win32Event::from_raw(event)
         };
+
+        // --------- Window class -----------
+        //
+        let class_name = CLASS_NAME.to_wide();
+        let icon = unsafe { LoadIconW(0 as HINSTANCE, IDI_APPLICATION) };
+        let wndclass = WNDCLASSW {
+            style: WNDCLASS_STYLES::default(),
+            lpfnWndProc: Some(window::win_proc_dispatch),
+            cbClsExtra: 0,
+            cbWndExtra: 0,
+            hInstance: HINSTANCE::default(),
+            hIcon: icon,
+            hCursor: HCURSOR::default(),
+            hbrBackground: HBRUSH::default(),
+            lpszMenuName: ptr::null(),
+            lpszClassName: class_name.as_ptr(),
+        };
+        let class_atom = unsafe { RegisterClassW(&wndclass) };
+        if class_atom == 0 {
+            panic!("Error registering class");
+        }
 
         Application {
             d3d12_device,
