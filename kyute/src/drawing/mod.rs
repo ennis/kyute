@@ -10,8 +10,9 @@ mod image;
 mod paint;
 mod path;
 mod svg_path;
+pub mod vector_icon;
 
-use crate::application::AppCtx;
+use crate::{application::AppCtx, style::VectorIcon};
 pub use border::{Border, BorderStyle};
 pub use box_shadow::BoxShadow;
 pub use image::{Image, ImageCache, IMAGE_CACHE};
@@ -453,6 +454,8 @@ pub trait PaintCtxExt {
     fn draw_box_shadow(&mut self, shape: &Shape, box_shadow: &BoxShadow);
     fn draw_border(&mut self, shape: &Shape, border: &Border);
     fn fill_shape(&mut self, shape: &Shape, paint: &Paint);
+    /// Draws a vector image
+    fn draw_vector_icon(&mut self, icon: &VectorIcon, options: &vector_icon::DrawOptions);
 }
 
 impl<'a> PaintCtxExt for PaintCtx<'a> {
@@ -466,5 +469,9 @@ impl<'a> PaintCtxExt for PaintCtx<'a> {
 
     fn fill_shape(&mut self, shape: &Shape, paint: &Paint) {
         shape.fill(self, paint);
+    }
+
+    fn draw_vector_icon(&mut self, icon: &VectorIcon, options: &vector_icon::DrawOptions) {
+        icon.draw(self, options)
     }
 }

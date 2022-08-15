@@ -1023,3 +1023,21 @@ const GAUGE: VectorDrawable = VectorDrawable {
 
 # Writing modes, block flow directions, grids, etc.
 Out of scope for UIs?
+
+
+
+# Ideas/requirements for a data model
+
+Requirements:
+- no serialization code by hand except for tricky cases
+- serialize to whatever
+- ordered collections, works well with UI
+- undo/redo
+- objects cheap to copy 
+
+Design:
+- difficult to access objects directly; instead, functions (in the GUI) receive a `ModelObject<T>`. Which is like a smart pointer around an object of the data model.
+- underlying structure is abstracted
+- ModelObjects are value types: they can be cloned, and compared
+- However, ModelObjects represent not a free standing value, but a value in a document.
+- 

@@ -1,6 +1,8 @@
 use kyute::{application, graal, widget::prelude::*, Window};
 use kyute_shell::{animation::Layer, winit::window::WindowBuilder};
+use std::path::Path;
 
+/// Loads an image into a
 fn load_image(
     device: &graal::Device,
     frame: &mut graal::Frame<()>,
@@ -307,7 +309,7 @@ impl Widget for NativeLayerWidget {
 
 #[composable]
 fn ui_root() -> impl Widget {
-    Window::new(WindowBuilder::new().with_title("Tree view"), tree_test(), None)
+    Window::new(WindowBuilder::new().with_title("3D view"), tree_test(), None)
 }
 
 fn main() {
@@ -322,6 +324,5 @@ fn main() {
     )
     .expect("set up the subscriber");*/
     let mut env = Environment::new();
-    env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
     application::run_with_env(ui_root, env);
 }

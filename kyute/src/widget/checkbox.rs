@@ -1,18 +1,36 @@
 //! Checkboxes.
 use crate::{
-    drawing::ToSkia,
+    drawing::{PaintCtxExt, ToSkia},
+    style::VectorIcon,
     text::FormattedText,
     theme,
     widget::{form, prelude::*, Clickable, Drawable, Label, Null, StyledBox, Text},
     Color, Font,
 };
+use once_cell::sync::Lazy;
 use skia_safe as sk;
 
 type CheckboxInner = impl Widget;
 
+static CHECKBOX_VG: Lazy<VectorIcon> = Lazy::new(|| {
+    VectorIcon::load(
+        r##"
+<svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" xml:space="preserve" fill-rule="evenodd" clip-rule="evenodd" stroke-miterlimit="1.5">
+  <g id="darkmode" transform="matrix(1,0,0,1,-0.25,-2)">
+    <path d="M2.5 13 9 18l9-14" fill="none" stroke="#000" stroke-width="4.07"/>
+  </g>
+</svg>
+"##,
+    ).unwrap()
+});
+
 fn checkbox_inner(checked: bool) -> CheckboxInner {
     Drawable::new(Size::new(18.0, 18.0), None, move |ctx, state, env| {
-        // TODO: a better drawing API, or something to author "parametric vector graphics", because writing skia code by hand is miserable
+        if checked {
+            ctx.draw_vector_icon(&*CHECKBOX_VG, &Default::default())
+        }
+
+        /*// TODO: a better drawing API, or something to author "parametric vector graphics", because writing skia code by hand is miserable
         if checked {
             let path = sk::PathBuilder::new()
                 .move_to((2.5, 13.0))
@@ -33,7 +51,7 @@ fn checkbox_inner(checked: bool) -> CheckboxInner {
             ctx.surface.canvas().scale((0.8, 0.8));
             ctx.surface.canvas().draw_path(&path, &paint);
             ctx.surface.canvas().restore();
-        }
+        }*/
     })
     .style(
         r#"
