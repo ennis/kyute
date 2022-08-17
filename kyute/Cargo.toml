@@ -42,6 +42,7 @@ tracing-subscriber = { version = "0.3.10", features = ["fmt", "env-filter"] }
 tracing-tracy = "0.8.0"
 rand = "0.8.4"
 tracing-tree = "0.2.1"
+openimageio = { path = "../../openimageio-rs" }
 
 [build-dependencies]
 string_cache_codegen = "0.5.2"

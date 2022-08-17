@@ -1,5 +1,11 @@
-use kyute::{application, graal, widget::prelude::*, Window};
-use kyute_shell::{animation::Layer, winit::window::WindowBuilder};
+use crate::graal::vk;
+use kyute::{
+    application, graal,
+    widget::{prelude::*, Retained, RetainedWidget},
+    Window,
+};
+use kyute_common::SizeI;
+use kyute_shell::{animation::Layer, application::Application, winit::window::WindowBuilder};
 use std::path::Path;
 
 /// Loads an image into a
@@ -9,7 +15,7 @@ fn load_image(
     path: &Path,
     usage: graal::vk::ImageUsageFlags,
     mipmaps: bool,
-) -> (graal::ImageId, u32, u32) {
+) -> (graal::ImageInfo, u32, u32) {
     use openimageio::{ImageInput, TypeDesc};
 
     let image_input = ImageInput::open(path).expect("could not open image file");
@@ -51,13 +57,13 @@ fn load_image(
     let mip_levels = graal::get_mip_level_count(width, height);
 
     // create the texture
-    let ImageInfo {
+    let graal::ImageInfo {
         handle: image_handle,
         id: image_id,
     } = device.create_image(
         path.to_str().unwrap(),
-        MemoryLocation::GpuOnly,
-        &ImageResourceCreateInfo {
+        graal::MemoryLocation::GpuOnly,
+        &graal::ImageResourceCreateInfo {
             image_type: vk::ImageType::TYPE_2D,
             usage: usage | vk::ImageUsageFlags::TRANSFER_DST,
             format: vk_format,
@@ -78,8 +84,8 @@ fn load_image(
     // create a staging buffer
     let staging_buffer = device.create_buffer(
         "staging",
-        MemoryLocation::CpuToGpu,
-        &BufferResourceCreateInfo {
+        graal::MemoryLocation::CpuToGpu,
+        &graal::BufferResourceCreateInfo {
             usage: vk::BufferUsageFlags::TRANSFER_SRC,
             byte_size,
             map_on_create: true,
@@ -146,170 +152,168 @@ fn load_image(
     });
     pass.finish();
     device.destroy_buffer(staging_buffer.id);
-    (image_id, width, height)
+    (
+        graal::ImageInfo {
+            handle: image_handle,
+            id: image_id,
+        },
+        width,
+        height,
+    )
 }
 
-pub struct NativeLayerWidget {}
+pub struct NativeLayerWidget {
+    image: graal::ImageInfo,
+    image_size: SizeI,
+}
 
-impl Widget for NativeLayerWidget {
-    fn widget_id(&self) -> Option<WidgetId> {
-        todo!()
+impl Drop for NativeLayerWidget {
+    fn drop(&mut self) {
+        let gpu_device = Application::instance().gpu_device();
+        gpu_device.destroy_image(self.image.id);
     }
+}
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) -> Measurements {
-        todo!()
-    }
+impl NativeLayerWidget {
+    /// Renders the current view.
+    fn render(&mut self, layer: &Layer, scale_factor: f64) {
+        let mut gpu_context = Application::instance().lock_gpu_context();
+        let gpu_device = Application::instance().gpu_device();
+        let layer_surface = layer.acquire_surface();
+        let layer_image = layer_surface.image_info();
+        let mut frame = gpu_context.start_frame(graal::FrameCreateInfo::default());
 
-    fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        todo!()
-    }
+        let mut pass = frame.start_graphics_pass("blit to screen");
+        pass.add_image_dependency(
+            self.image.id,
+            vk::AccessFlags::TRANSFER_READ,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        );
+        pass.add_image_dependency(
+            layer_image.id,
+            vk::AccessFlags::TRANSFER_WRITE,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        );
+        let blit_w = self.image_size.width.min(layer.size().width);
+        let blit_h = self.image_size.height.min(layer.size().height);
 
-    fn paint(&self, ctx: &mut PaintCtx) {
-        todo!()
-    }
+        pass.set_record_callback(move |context, _, command_buffer| {
+            let dst_image_handle = layer_image.handle;
+            let src_image_handle = self.image.handle;
 
-    fn layer_paint(&self, ctx: &mut kyute::LayerPaintCtx, layer: &Layer, scale_factor: f64) {
-        fn main() {
-            tracing_subscriber::fmt()
-                .with_target(false)
-                .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-                .with_span_events(tracing_subscriber::fmt::format::FmtSpan::ACTIVE)
-                .init();
-
-            let event_loop = EventLoop::new();
-            let window = WindowBuilder::new().build(&event_loop).unwrap();
-
-            let surface = graal::surface::get_vulkan_surface(window.raw_window_handle());
-
-            let (device, mut context) = unsafe { graal::create_device_and_context(Some(surface)) };
-            let mut swapchain = unsafe { Swapchain::new(&device, surface, window.inner_size().into()) };
-            let mut swapchain_size = window.inner_size().into();
-
-            event_loop.run(move |event, _, control_flow| {
-                *control_flow = ControlFlow::Poll;
-                match event {
-                    Event::WindowEvent { window_id, event } => match event {
-                        WindowEvent::CloseRequested => {
-                            println!("The close button was pressed; stopping");
-                            *control_flow = ControlFlow::Exit
-                        }
-                        WindowEvent::Resized(size) => unsafe {
-                            swapchain_size = size.into();
-                            swapchain.resize(&device, swapchain_size);
-                        },
-                        _ => {}
+            let regions = &[vk::ImageBlit {
+                src_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                src_offsets: [
+                    vk::Offset3D { x: 0, y: 0, z: 0 },
+                    vk::Offset3D {
+                        x: blit_w as i32,
+                        y: blit_h as i32,
+                        z: 1,
                     },
-                    Event::MainEventsCleared => {
-                        window.request_redraw();
-                    }
-                    Event::RedrawRequested(_) => {
-                        let swapchain_image =
-                            unsafe { swapchain.acquire_next_image(&device, context.create_semaphore()) };
+                ],
+                dst_subresource: vk::ImageSubresourceLayers {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                dst_offsets: [
+                    vk::Offset3D { x: 0, y: 0, z: 0 },
+                    vk::Offset3D {
+                        x: blit_w as i32,
+                        y: blit_h as i32,
+                        z: 1,
+                    },
+                ],
+            }];
 
-                        let swapchain_image = match swapchain_image {
-                            Ok(image) => image,
-                            Err(err) => {
-                                eprintln!("vkAcquireNextImage failed: {}", err);
-                                return;
-                            }
-                        };
+            unsafe {
+                context.vulkan_device().cmd_blit_image(
+                    command_buffer,
+                    src_image_handle,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    dst_image_handle,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    regions,
+                    vk::Filter::NEAREST,
+                );
+            }
+        });
+        pass.finish();
+        frame.finish(&mut ());
+    }
+}
 
-                        let mut frame = context.start_frame(FrameCreateInfo {
-                            collect_debug_info: true,
-                            happens_after: Default::default(),
-                        });
+impl RetainedWidget for NativeLayerWidget {
+    type Args = ();
 
-                        let (file_image_id, file_image_width, file_image_height) = load_image(
-                            &device,
-                            &mut frame,
-                            "data/haniyasushin_keiki.jpg".as_ref(),
-                            vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::SAMPLED,
-                            false,
-                        );
+    fn new(args: &Self::Args) -> Self {
+        // load the image
+        let mut gpu_context = Application::instance().lock_gpu_context();
+        let gpu_device = Application::instance().gpu_device();
+        let mut frame = gpu_context.start_frame(graal::FrameCreateInfo::default());
 
-                        let mut pass = frame.start_graphics_pass("blit to screen");
+        let (file_image_info, file_image_width, file_image_height) = load_image(
+            &gpu_device,
+            &mut frame,
+            "data/haniyasushin_keiki.jpg".as_ref(),
+            vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::SAMPLED,
+            false,
+        );
+        frame.finish(&mut ());
 
-                        pass.add_image_dependency(
-                            file_image_id,
-                            vk::AccessFlags::TRANSFER_READ,
-                            vk::PipelineStageFlags::TRANSFER,
-                            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                        );
-                        pass.add_image_dependency(
-                            swapchain_image.image_info.id,
-                            vk::AccessFlags::TRANSFER_WRITE,
-                            vk::PipelineStageFlags::TRANSFER,
-                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                        );
-
-                        let blit_w = file_image_width.min(swapchain_size.0);
-                        let blit_h = file_image_height.min(swapchain_size.1);
-
-                        pass.set_record_callback(move |context, _, command_buffer| {
-                            let dst_image_handle = context.device().image_handle(swapchain_image.image_info.id);
-                            let src_image_handle = context.device().image_handle(file_image_id);
-
-                            let regions = &[vk::ImageBlit {
-                                src_subresource: vk::ImageSubresourceLayers {
-                                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                                    mip_level: 0,
-                                    base_array_layer: 0,
-                                    layer_count: 1,
-                                },
-                                src_offsets: [
-                                    vk::Offset3D { x: 0, y: 0, z: 0 },
-                                    vk::Offset3D {
-                                        x: blit_w as i32,
-                                        y: blit_h as i32,
-                                        z: 1,
-                                    },
-                                ],
-                                dst_subresource: vk::ImageSubresourceLayers {
-                                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                                    mip_level: 0,
-                                    base_array_layer: 0,
-                                    layer_count: 1,
-                                },
-                                dst_offsets: [
-                                    vk::Offset3D { x: 0, y: 0, z: 0 },
-                                    vk::Offset3D {
-                                        x: blit_w as i32,
-                                        y: blit_h as i32,
-                                        z: 1,
-                                    },
-                                ],
-                            }];
-
-                            unsafe {
-                                context.vulkan_device().cmd_blit_image(
-                                    command_buffer,
-                                    src_image_handle,
-                                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                                    dst_image_handle,
-                                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                                    regions,
-                                    vk::Filter::NEAREST,
-                                );
-                            }
-                        });
-                        pass.finish();
-                        frame.present("P12", &swapchain_image);
-                        frame.finish(&mut ());
-                        device.destroy_image(file_image_id);
-                        device.destroy_image(swapchain_image.image_info.id);
-                    }
-                    _ => (),
-                }
-            });
+        NativeLayerWidget {
+            image: file_image_info,
+            image_size: SizeI::new(file_image_width as i32, file_image_height as i32),
         }
+    }
+
+    fn update(&mut self, args: &Self::Args) {
+        // nothing
+    }
+
+    fn widget_id(&self) -> Option<WidgetId> {
+        None
+    }
+
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Geometry {
+        Geometry {
+            x_align: Alignment::CENTER,
+            y_align: Alignment::CENTER,
+            padding_left: 0.0,
+            padding_top: 0.0,
+            padding_right: 0.0,
+            padding_bottom: 0.0,
+            measurements: Measurements::new(params.max),
+        }
+    }
+
+    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
+        // nothing to do
+    }
+
+    fn paint(&mut self, ctx: &mut PaintCtx) {
+        // nothing to do (all done in layer_paint)
+    }
+
+    fn layer_paint(&mut self, ctx: &mut kyute::LayerPaintCtx, layer: &Layer, scale_factor: f64) {
+        self.render(layer, scale_factor)
     }
 }
 
 #[composable]
 fn ui_root() -> impl Widget {
-    Window::new(WindowBuilder::new().with_title("3D view"), tree_test(), None)
+    let window_contents = Retained::<NativeLayerWidget>::new(&());
+    Window::new(WindowBuilder::new().with_title("3D view"), window_contents, None)
 }
 
 fn main() {

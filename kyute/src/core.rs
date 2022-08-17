@@ -722,7 +722,7 @@ impl<'a> EventCtx<'a> {
 /// See [`Widget::debug_node`].
 #[derive(Clone, Debug)]
 pub struct DebugNode {
-    content: Option<String>,
+    pub content: Option<String>,
 }
 
 impl Default for DebugNode {
