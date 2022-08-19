@@ -18,7 +18,7 @@ pub struct Label {
 impl Label {
     /// Creates a new text label.
     #[composable]
-    pub fn new(text: impl Into<String> + Data) -> Label {
+    pub fn new(text: impl Into<String>) -> Label {
         let text = text.into();
         Label {
             text: Text::new(text),
