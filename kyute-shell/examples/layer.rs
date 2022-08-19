@@ -54,7 +54,7 @@ unsafe fn create_skia_vulkan_backend_context(device: &graal::Device) -> sk::gpu:
 fn main() {
     let _ = Application::instance();
 
-    let event_loop = EventLoop::new();
+    //let event_loop = EventLoop::new();
     let window = Window::new(&event_loop, WindowBuilder::new(), None).unwrap();
 
     let comp_surface = CompositionSurface::new(SizeI::new(512, 512));

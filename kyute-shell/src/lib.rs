@@ -23,7 +23,5 @@ pub use kyute_common::PointI;
 pub use menu::Menu;
 pub use shortcut::{Shortcut, ShortcutKey};
 
-// Re-export winit for WindowBuilder and stuff
-pub use winit;
 // Re-export graal
 pub use graal;

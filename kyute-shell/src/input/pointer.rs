@@ -1,6 +1,7 @@
 use crate::input::keyboard::Modifiers;
 use bitflags::bitflags;
 use kyute_common::Point;
+use std::fmt;
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -11,30 +12,75 @@ pub enum PointerType {
     Other,
 }
 
-bitflags! {
-    #[derive(Default)]
-    pub struct PointerButtons: u32 {
-        const LEFT = 0x01;
-        const MIDDLE = 0x2;
-        const RIGHT = 0x4;
-        const X1 = 0x8;
-        const X2 = 0x10;
-        const ERASER = 0x20;
+/// Represents a pointer button.
+// TODO why u no bitflags?
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct PointerButton(pub u16);
+
+impl PointerButton {
+    pub const LEFT: PointerButton = PointerButton(0); // Or touch/pen contact
+    pub const MIDDLE: PointerButton = PointerButton(1);
+    pub const RIGHT: PointerButton = PointerButton(2); // Or pen barrel
+    pub const X1: PointerButton = PointerButton(3);
+    pub const X2: PointerButton = PointerButton(4);
+}
+
+/// The state of the mouse buttons.
+// TODO why u no bitflags?
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+pub struct PointerButtons(pub u32);
+
+impl PointerButtons {
+    pub const ALL: PointerButtons = PointerButtons(0xFFFFFFFF);
+
+    pub fn new() -> PointerButtons {
+        PointerButtons(0)
+    }
+
+    pub fn with(self, button: PointerButton) -> Self {
+        PointerButtons(self.0 | (1u32 << button.0 as u32))
+    }
+
+    /// Checks if the specified mouse button is pressed.
+    pub fn test(self, button: PointerButton) -> bool {
+        self.0 & (1u32 << button.0 as u32) != 0
+    }
+    pub fn set(&mut self, button: PointerButton) {
+        self.0 |= 1u32 << button.0 as u32;
+    }
+    pub fn reset(&mut self, button: PointerButton) {
+        self.0 &= !(1u32 << button.0 as u32);
+    }
+    pub fn intersects(&self, buttons: PointerButtons) -> bool {
+        (self.0 & buttons.0) != 0
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl fmt::Debug for PointerButtons {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{ {:08b} }}", self.0)?;
+        Ok(())
+    }
+}
+
+impl Default for PointerButtons {
+    fn default() -> Self {
+        PointerButtons::new()
     }
 }
 
 /// Pointer ID.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct PointerId(u64);
+pub struct PointerId(pub(crate) u64);
 
 /// Modeled after [W3C's PointerEvent](https://www.w3.org/TR/pointerevents3/#pointerevent-interface)
 #[derive(Copy, Clone, PartialEq)]
 pub struct PointerInputEvent {
-    /// Position in device-independent (logical) pixels, relative to the visual node that the event
-    /// is delivered to.
-    pub position: Point,
     /// Window position.
-    pub window_position: Point,
+    pub position: Point,
     /// State of the keyboard modifiers when this event was emitted.
     pub modifiers: Modifiers,
     /// The state of the mouse buttons when this event was emitted.
@@ -55,4 +101,19 @@ pub struct PointerInputEvent {
     pub twist: i32,
     pub pointer_type: PointerType,
     pub primary: bool,
+}
+
+impl fmt::Debug for PointerInputEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "[pos={:?} mods={:?} btns={:?} id={:?}",
+            self.position, self.modifiers, self.buttons, self.pointer_id
+        )?;
+        if let Some(btn) = self.button {
+            write!(f, "btn={:?}", btn)?;
+        }
+        write!(f, "]")?;
+        Ok(())
+    }
 }

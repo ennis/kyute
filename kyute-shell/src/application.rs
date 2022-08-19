@@ -70,4 +70,9 @@ impl Application {
     pub fn lock_gpu_context(&self) -> MutexGuard<graal::Context> {
         self.gpu_context.lock().unwrap()
     }
+
+    /// Enters the main event loop.
+    pub fn run(&self) {
+        self.backend.run();
+    }
 }

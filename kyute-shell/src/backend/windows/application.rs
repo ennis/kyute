@@ -3,14 +3,14 @@ use graal::vk::LPCWSTR;
 use parking_lot::Mutex;
 use std::{
     ffi::{c_void, OsString},
-    ptr,
+    mem, ptr,
     time::Duration,
 };
 use threadbound::ThreadBound;
 use windows::{
-    core::Interface,
+    core::{Interface, PCWSTR},
     Win32::{
-        Foundation::HINSTANCE,
+        Foundation::{HINSTANCE, HWND},
         Graphics::{
             Direct3D::D3D_FEATURE_LEVEL_12_0,
             Direct3D12::{
@@ -28,9 +28,10 @@ use windows::{
             Threading::{CreateEventW, WaitForSingleObject},
         },
         UI::{
-            Input::KeyboardAndMouse::GetDoubleClickTime,
+            Input::{KeyboardAndMouse::GetDoubleClickTime, Pointer::EnableMouseInPointer},
             WindowsAndMessaging::{
-                LoadIconW, RegisterClassW, CS_CLASSDC, HCURSOR, IDI_APPLICATION, WNDCLASSW, WNDCLASS_STYLES, WNDPROC,
+                DispatchMessageW, GetMessageW, LoadIconW, PeekMessageW, RegisterClassW, TranslateMessage, CS_CLASSDC,
+                HCURSOR, IDI_APPLICATION, MSG, PM_NOREMOVE, WM_TIMER, WNDCLASSW, WNDCLASS_STYLES, WNDPROC,
             },
         },
     },
@@ -230,7 +231,7 @@ impl Application {
         // --------- Window class -----------
         //
         let class_name = CLASS_NAME.to_wide();
-        let icon = unsafe { LoadIconW(0 as HINSTANCE, IDI_APPLICATION) };
+        let icon = unsafe { LoadIconW(HINSTANCE::default(), IDI_APPLICATION).unwrap() };
         let wndclass = WNDCLASSW {
             style: WNDCLASS_STYLES::default(),
             lpfnWndProc: Some(window::win_proc_dispatch),
@@ -240,12 +241,16 @@ impl Application {
             hIcon: icon,
             hCursor: HCURSOR::default(),
             hbrBackground: HBRUSH::default(),
-            lpszMenuName: ptr::null(),
-            lpszClassName: class_name.as_ptr(),
+            lpszMenuName: PCWSTR::null(),
+            lpszClassName: PCWSTR(class_name.as_ptr()),
         };
         let class_atom = unsafe { RegisterClassW(&wndclass) };
         if class_atom == 0 {
             panic!("Error registering class");
+        }
+
+        unsafe {
+            EnableMouseInPointer(true);
         }
 
         Application {
@@ -284,6 +289,44 @@ impl Application {
         unsafe {
             let ms = GetDoubleClickTime();
             Duration::from_millis(ms as u64)
+        }
+    }
+
+    /// Enters the main event loop.
+    pub fn run(&self) {
+        // Code adapted from the druid-shell crate.
+        // See license info in the repository root.
+        //
+        // https://github.com/linebender/druid/blob/ffcbc49920f051bf6757c8bfaf71e4b934e02ecd/druid-shell/src/backend/windows/application.rs#L122
+        unsafe {
+            // Handle windows messages.
+            //
+            // NOTE: Code here will not run when we aren't in charge of the message loop. That
+            // will include when moving or resizing the window, and when showing modal dialogs.
+            loop {
+                let mut msg = mem::MaybeUninit::uninit();
+
+                // Timer messages have a low priority and tend to get delayed. Peeking for them
+                // helps for some reason; see
+                // https://devblogs.microsoft.com/oldnewthing/20191108-00/?p=103080
+                PeekMessageW(msg.as_mut_ptr(), HWND::default(), WM_TIMER, WM_TIMER, PM_NOREMOVE);
+
+                let res = GetMessageW(msg.as_mut_ptr(), HWND::default(), 0, 0).0;
+                if res <= 0 {
+                    if res == -1 {
+                        let last_err = windows::core::Error::from_win32();
+                        error!("GetMessageW failed: {}", last_err);
+                    }
+                    break;
+                }
+                let mut msg: MSG = msg.assume_init();
+                //let accels = accels::find_accels(GetAncestor(msg.hwnd, GA_ROOT));
+                //let translated = accels.map_or(false, |it| TranslateAcceleratorW(msg.hwnd, it.handle(), &mut msg) != 0);
+                //if !translated {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+                //}
+            }
         }
     }
 }

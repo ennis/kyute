@@ -6,21 +6,25 @@ use crate::{
         Layer, Menu, PlatformError,
     },
     error::Error,
+    input::pointer::{PointerButton, PointerButtons, PointerId, PointerInputEvent, PointerType},
     window::{WindowHandler, WindowLevel},
 };
-use kyute_common::{imbl::HashSet, Point, PointI, Size, SizeI};
+use keyboard_types::Modifiers;
+use kyute_common::{Point, PointI, Size, SizeI};
 use once_cell::sync::Lazy;
 use raw_window_handle::HasRawWindowHandle;
 use std::{
     borrow::BorrowMut,
     cell::{Cell, RefCell},
+    collections::{HashMap, HashSet},
     ffi::c_void,
     mem, ptr,
     rc::{Rc, Weak},
+    sync::Arc,
 };
 use threadbound::ThreadBound;
 use windows::{
-    core::implement,
+    core::{implement, PCWSTR},
     Win32::{
         Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, POINT, POINTL, WPARAM},
         Graphics::{Direct2D::Common::D2D1_COLOR_F, DirectComposition::IDCompositionTarget, Gdi::ClientToScreen},
@@ -28,12 +32,18 @@ use windows::{
             Com::IDataObject,
             Ole::{IDropTarget, IDropTarget_Impl, RegisterDragDrop, RevokeDragDrop},
         },
-        UI::WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, DestroyMenu, DrawMenuBar, GetWindowLongPtrW, SetMenu, SetWindowLongPtrW,
-            TrackPopupMenu, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, HMENU, TPM_LEFTALIGN, WINDOW_EX_STYLE,
-            WM_CREATE, WM_NCDESTROY, WM_POINTERDOWN, WM_POINTERENTER, WM_POINTERLEAVE, WM_POINTERUP, WM_POINTERUPDATE,
-            WS_CHILD, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_MAXIMIZEBOX,
-            WS_MINIMIZEBOX, WS_OVERLAPPED, WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+        UI::{
+            Input::Pointer::EnableMouseInPointer,
+            WindowsAndMessaging::{
+                CreateWindowExW, DefWindowProcW, DestroyMenu, DrawMenuBar, GetWindowLongPtrW, SetMenu,
+                SetWindowLongPtrW, ShowWindow, TrackPopupMenu, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, HMENU,
+                POINTER_MESSAGE_FLAG_FIFTHBUTTON, POINTER_MESSAGE_FLAG_FIRSTBUTTON, POINTER_MESSAGE_FLAG_FOURTHBUTTON,
+                POINTER_MESSAGE_FLAG_SECONDBUTTON, POINTER_MESSAGE_FLAG_THIRDBUTTON, SW_SHOWDEFAULT, TPM_LEFTALIGN,
+                WINDOW_EX_STYLE, WM_CREATE, WM_NCDESTROY, WM_POINTERDOWN, WM_POINTERENTER, WM_POINTERLEAVE,
+                WM_POINTERUP, WM_POINTERUPDATE, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
+                WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_OVERLAPPEDWINDOW,
+                WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+            },
         },
     },
 };
@@ -94,12 +104,22 @@ pub(crate) struct WindowHandle {
     state: Weak<WindowState>,
 }
 
+/// Pointer input state.
+#[derive(Copy, Clone, Default)]
+struct PointerInputState {
+    buttons: PointerButtons,
+    position: Point,
+}
+
 // Most of the field are interior mutability because they are set *after* the window is created,
 // because the pointer to WindowState is passed to CreateWindow
 struct WindowState {
     hwnd: Cell<HWND>,
     menu: Cell<Option<HMENU>>,
     composition_target: RefCell<Option<IDCompositionTarget>>,
+    pointer_input_state: RefCell<HashMap<PointerId, PointerInputState>>,
+    modifiers_state: Cell<Modifiers>,
+    handler: Arc<dyn WindowHandler>,
 }
 
 impl WindowState {
@@ -114,11 +134,66 @@ impl WindowState {
         //
         match umsg {
             WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP => {
-                let pointer_id = wparam & 0xFFFF;
-                let pointer_flags = wparam & 0xFFFF0000 >> 16;
-                let x = (lparam & 0xFFFF) as u16 as i16 as i32;
-                let y = (lparam & 0xFFFF0000 >> 16) as u16 as i16 as i32;
-                LRESULT(0)
+                let mut ptr_states = self.pointer_input_state.borrow_mut();
+                let pointer_id = PointerId((wparam.0 & 0xFFFF) as u64);
+                let ptr_state = ptr_states.entry(pointer_id).or_insert_with(PointerInputState::default);
+
+                let pointer_flags = (wparam.0 as u32 & 0xFFFF0000) >> 16;
+
+                let mut buttons = PointerButtons::new();
+                if pointer_flags & POINTER_MESSAGE_FLAG_FIRSTBUTTON != 0 {
+                    buttons.set(PointerButton::LEFT);
+                }
+                if pointer_flags & POINTER_MESSAGE_FLAG_SECONDBUTTON != 0 {
+                    buttons.set(PointerButton::RIGHT);
+                }
+                if pointer_flags & POINTER_MESSAGE_FLAG_THIRDBUTTON != 0 {
+                    buttons.set(PointerButton::MIDDLE);
+                }
+                if pointer_flags & POINTER_MESSAGE_FLAG_FOURTHBUTTON != 0 {
+                    buttons.set(PointerButton::X1);
+                }
+                if pointer_flags & POINTER_MESSAGE_FLAG_FIFTHBUTTON != 0 {
+                    buttons.set(PointerButton::X2);
+                }
+
+                let x = ((lparam.0 as u32) & 0xFFFF) as u16 as i16 as i32;
+                let y = (((lparam.0 as u32) & 0xFFFF0000) >> 16) as u16 as i16 as i32;
+                let position = Point::new(x as f64, y as f64);
+                let modifiers = self.modifiers_state.get();
+
+                eprintln!(
+                    "{}: pos={:?} btns={:?} flags={:016b}",
+                    match umsg {
+                        WM_POINTERDOWN => "WM_POINTERDOWN",
+                        WM_POINTERUPDATE => "WM_POINTERUPDATE",
+                        WM_POINTERUP => "WM_POINTERUP",
+                        _ => unreachable!(),
+                    },
+                    position,
+                    buttons,
+                    pointer_flags
+                );
+
+                let event = PointerInputEvent {
+                    pointer_id,
+                    button: None,
+                    repeat_count: 0,
+                    contact_width: 0.0,
+                    contact_height: 0.0,
+                    pressure: 0.0,
+                    tangential_pressure: 0.0,
+                    tilt_x: 0,
+                    tilt_y: 0,
+                    twist: 0,
+                    pointer_type: PointerType::Mouse,
+                    position,
+                    modifiers,
+                    buttons: Default::default(),
+                    primary: false,
+                };
+
+                DefWindowProcW(hwnd, umsg, wparam, lparam)
             }
             _ => DefWindowProcW(hwnd, umsg, wparam, lparam),
         }
@@ -129,7 +204,7 @@ impl WindowState {
 // wndproc
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Window map
+/*// Window map
 static WINDOWS: Lazy<ThreadBound<RefCell<HashSet<HWND>>>> =
     Lazy::new(|| ThreadBound::new(RefCell::new(HashSet::default())));
 
@@ -149,11 +224,11 @@ fn is_registered_window(hwnd: HWND) -> bool {
     // check if this is a registered window
     let mut windows = WINDOWS.get_ref().unwrap().borrow();
     windows.contains(&hwnd)
-}
+}*/
 
 pub(crate) unsafe extern "system" fn win_proc_dispatch(
     hwnd: HWND,
-    u_msg: UINT,
+    u_msg: u32,
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
@@ -165,8 +240,9 @@ pub(crate) unsafe extern "system" fn win_proc_dispatch(
 
     // On WM_CREATE, stash the pointer to the WindowState object in the window userdata.
     // This points to an `Rc<WindowState>` object.
-    if msg == WM_CREATE {
-        let create_struct = &*(l_param as *const CREATESTRUCTW);
+    if u_msg == WM_CREATE {
+        eprintln!("WM_CREATE");
+        let create_struct = &*(l_param.0 as *const CREATESTRUCTW);
         let window_ptr = create_struct.lpCreateParams;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, window_ptr as isize);
     }
@@ -175,12 +251,12 @@ pub(crate) unsafe extern "system" fn win_proc_dispatch(
     let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const WindowState;
 
     if window_ptr.is_null() {
-        DefWindowProcW(hwnd, msg, w_param, l_param)
+        DefWindowProcW(hwnd, u_msg, w_param, l_param)
     } else {
         let result = (*window_ptr).window_proc(hwnd, u_msg, w_param, l_param);
         // We leaked the Rc<WindowState> object when we transferred it to the window userdata,
         // so it's our responsibility to free it when the window is being destroyed.
-        if msg == WM_NCDESTROY && !window_ptr.is_null() {
+        if u_msg == WM_NCDESTROY && !window_ptr.is_null() {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
             drop(Rc::from_raw(window_ptr));
         }
@@ -192,7 +268,7 @@ pub(crate) unsafe extern "system" fn win_proc_dispatch(
 // WindowBuilder
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub(crate) struct WindowBuilder<'a> {
+pub(crate) struct WindowBuilder {
     title: String,
     position: Option<Point>,
     size: Option<SizeI>,
@@ -203,11 +279,26 @@ pub(crate) struct WindowBuilder<'a> {
 }
 
 impl WindowBuilder {
-    pub fn build<Handler, Init>(self, init: Init) -> Result<WindowHandle, PlatformError>
-    where
-        Init: FnOnce(crate::window::WindowHandle) -> Handler,
-        Handler: WindowHandler,
-    {
+    pub fn new() -> WindowBuilder {
+        WindowBuilder {
+            title: "".to_string(),
+            position: None,
+            size: None,
+            parent: None,
+            level: WindowLevel::Normal,
+            show_titlebar: true,
+            resizeable: true,
+        }
+    }
+
+    pub fn set_title(&mut self, title: String) {
+        self.title = title;
+    }
+
+    pub fn build(self, handler: Arc<dyn WindowHandler>) -> Result<WindowHandle, PlatformError> {
+        // ensure that the window class is registered
+        Application::instance();
+
         unsafe {
             let class_name = CLASS_NAME.to_wide();
 
@@ -256,7 +347,7 @@ impl WindowBuilder {
                 }
             }
 
-            if !self.resizable {
+            if !self.resizeable {
                 dw_style &= !(WS_THICKFRAME | WS_MAXIMIZEBOX);
             }
 
@@ -270,14 +361,14 @@ impl WindowBuilder {
                 hwnd: Default::default(),
                 menu: Default::default(),
                 composition_target: RefCell::new(None),
+                pointer_input_state: RefCell::new(Default::default()),
+                modifiers_state: Cell::new(Default::default()),
+                handler,
             });
 
             let handle = WindowHandle {
                 state: Rc::downgrade(&window_state),
             };
-
-            // create window handler now that we have a handle
-            let handler = init(crate::window::WindowHandle(handle.clone()));
 
             let hwnd_parent = match self.parent {
                 Some(parent) => parent.hwnd(),
@@ -286,8 +377,8 @@ impl WindowBuilder {
 
             let hwnd = CreateWindowExW(
                 dw_ex_style,
-                class_name.as_ptr(),
-                self.title.to_wide().as_ptr(),
+                PCWSTR(class_name.as_ptr()),
+                PCWSTR(self.title.to_wide().as_ptr()),
                 dw_style,
                 pos_x,
                 pos_y,
@@ -303,6 +394,15 @@ impl WindowBuilder {
                 return Err(windows::core::Error::from_win32().into());
             }
 
+            // install our IDropTarget handler
+            let drop_target: IDropTarget = DropTarget {}.into();
+            RevokeDragDrop(hwnd);
+            if let Err(e) = RegisterDragDrop(hwnd, &drop_target) {
+                warn!("RegisterDragDrop failed: {}", e);
+            }
+
+            ShowWindow(hwnd, SW_SHOWDEFAULT);
+
             Ok(handle)
         }
     }
@@ -312,83 +412,96 @@ impl WindowBuilder {
 // Window
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Encapsulates a Win32 window and associated resources for drawing to it.
+/*/// Encapsulates a Win32 window and associated resources for drawing to it.
 pub struct Window {
     window: winit::window::Window,
     hwnd: HWND,
     hinstance: HINSTANCE,
     menu: Option<HMENU>,
     composition_target: IDCompositionTarget,
-}
+}*/
 
-impl Window {
-    /// Returns the underlying winit [`Window`].
-    ///
-    /// [`Window`]: winit::Window
-    pub fn window(&self) -> &winit::window::Window {
-        &self.window
-    }
-
-    /// Returns the underlying winit [`WindowId`].
-    /// Equivalent to calling `self.window().id()`.
-    ///
-    /// [`WindowId`]: winit::WindowId
-    pub fn id(&self) -> WindowId {
-        self.window.id()
+impl WindowHandle {
+    fn hwnd(&self) -> HWND {
+        if let Some(state) = self.state.upgrade() {
+            state.hwnd.get()
+        } else {
+            error!("window was closed");
+            HWND::default()
+        }
     }
 
     /// Sets this window's main menu bar.
-    pub fn set_menu(&mut self, new_menu: Option<Menu>) {
-        unsafe {
-            // SAFETY: TODO
-            if let Some(current_menu) = self.menu.take() {
-                SetMenu(self.hwnd, None);
-                DestroyMenu(current_menu);
+    pub fn set_menu(&mut self, new_menu: Option<Menu>) -> Result<(), Error> {
+        if let Some(state) = self.state.upgrade() {
+            unsafe {
+                // SAFETY: TODO
+                if let Some(current_menu) = state.menu.take() {
+                    SetMenu(state.hwnd.get(), None);
+                    DestroyMenu(current_menu);
+                }
+                if let Some(menu) = new_menu {
+                    let hmenu = menu.into_hmenu();
+                    SetMenu(state.hwnd.get(), hmenu);
+                    state.menu.set(Some(hmenu));
+                }
             }
-            if let Some(menu) = new_menu {
-                let hmenu = menu.into_hmenu();
-                SetMenu(self.hwnd, hmenu);
-                self.menu = Some(hmenu);
-            }
+            Ok(())
+        } else {
+            Err(Error::WindowClosed)
         }
     }
 
     /// Shows a context menu at the specified pixel location.
-    pub fn show_context_menu(&self, menu: Menu, at: PointI) {
-        unsafe {
-            let hmenu = menu.into_hmenu();
-            /*let scale_factor = self.window.scale_factor();
-            let x = at.x * scale_factor;
-            let y = at.y * scale_factor;*/
-            let mut point = POINT { x: at.x, y: at.y };
-            ClientToScreen(self.hwnd, &mut point);
-            if TrackPopupMenu(hmenu, TPM_LEFTALIGN, point.x, point.y, 0, self.hwnd, ptr::null()) == false {
-                tracing::warn!("failed to track popup menu");
+    pub fn show_context_menu(&self, menu: Menu, at: PointI) -> Result<(), Error> {
+        if let Some(state) = self.state.upgrade() {
+            unsafe {
+                let hmenu = menu.into_hmenu();
+                /*let scale_factor = self.window.scale_factor();
+                let x = at.x * scale_factor;
+                let y = at.y * scale_factor;*/
+                let mut point = POINT { x: at.x, y: at.y };
+                let hwnd = state.hwnd.get();
+                ClientToScreen(hwnd, &mut point);
+                if TrackPopupMenu(hmenu, TPM_LEFTALIGN, point.x, point.y, 0, hwnd, ptr::null()) == false {
+                    tracing::warn!("TrackPopupMenu failed");
+                }
             }
+            Ok(())
+        } else {
+            Err(Error::WindowClosed)
         }
     }
 
     /// Sets the root composition layer.
-    pub fn set_root_composition_layer(&self, layer: &Layer) {
-        unsafe {
-            //layer.visual.EnableRedrawRegions();
-            self.composition_target.SetRoot(layer.visual()).expect("SetRoot failed");
-            Application::instance()
-                .backend
-                .composition_device
-                .get_ref()
-                .unwrap()
-                .Commit()
-                .expect("Commit failed");
-            //DrawMenuBar(self.hwnd);
+    pub fn set_root_composition_layer(&self, layer: &Layer) -> Result<(), Error> {
+        if let Some(state) = self.state.upgrade() {
+            let composition_target = state.composition_target.borrow();
+            if let Some(composition_target) = composition_target.as_ref() {
+                unsafe {
+                    composition_target.SetRoot(layer.visual()).expect("SetRoot failed");
+                    Application::instance()
+                        .backend
+                        .composition_device
+                        .get_ref()
+                        .unwrap()
+                        .Commit()
+                        .expect("Commit failed");
+                }
+            }
+            Ok(())
+        } else {
+            Err(Error::WindowClosed)
         }
     }
 
     pub fn scale_factor(&self) -> f64 {
-        self.window.scale_factor()
+        // TODO
+        warn!("unimplemented: scale_factor");
+        1.0
     }
 
-    /// Returns the logical size of the window's _client area_ in DIPs.
+    /*/// Returns the logical size of the window's _client area_ in DIPs.
     pub fn logical_inner_size(&self) -> Size {
         let (w, h): (f64, f64) = self
             .window
@@ -402,86 +515,10 @@ impl Window {
     pub fn physical_inner_size(&self) -> SizeI {
         let winit::dpi::PhysicalSize { width, height } = self.window.inner_size();
         SizeI::new(width as i32, height as i32)
-    }
+    }*/
 
-    /// Sets the current cursor icon.
+    /*/// Sets the current cursor icon.
     pub fn set_cursor_icon(&mut self, cursor_icon: CursorIcon) {
-        self.window.set_cursor_icon(cursor_icon)
-    }
-
-    /// Creates a new window from the options given in the provided [`WindowBuilder`].
-    ///
-    /// To create the window with an OpenGL context, `with_gl` should be `true`.
-    ///
-    /// [`WindowBuilder`]: winit::WindowBuilder
-    pub fn new<T>(
-        event_loop: &EventLoopWindowTarget<T>,
-        mut builder: WindowBuilder,
-        parent_window: Option<&Window>,
-    ) -> Result<Window, Error> {
-        let app = Application::instance();
-
-        if let Some(parent_window) = parent_window {
-            builder = builder.with_parent_window(parent_window.hwnd.0 as *mut _);
-        }
-        builder = builder.with_no_redirection_bitmap(true);
-        let window = builder
-            .build(event_loop)
-            .map_err(|e| Error::Platform(PlatformError::Winit(e)))?;
-        let hinstance = HINSTANCE(window.hinstance() as isize);
-        let hwnd = HWND(window.hwnd() as isize);
-
-        // create composition target
-        let composition_device = app
-            .backend
-            .composition_device
-            .get_ref()
-            .expect("could not acquire composition device outside of main thread");
-        let composition_target = unsafe {
-            composition_device
-                .CreateTargetForHwnd(hwnd, false)
-                .expect("CreateTargetForHwnd failed")
-        };
-
-        // create a swap chain for the window
-        //let device = app.gpu_device();
-        //let surface = graal::surface::get_vulkan_surface(window.raw_window_handle());
-        //let swapchain_size = window.inner_size().into();
-        // ensure that the surface can be drawn to with the device that we created. must be called to
-        // avoid validation errors.
-        //unsafe {
-        //    assert!(device.is_compatible_for_presentation(surface));
-        //}
-        //let swap_chain = unsafe { device.create_swapchain(surface, swapchain_size) };
-
-        // Register this window as a drop target.
-        let drop_target: IDropTarget = DropTarget {}.into();
-        unsafe {
-            // winit installs its own IDropTarget handler, remove it.
-            RevokeDragDrop(hwnd);
-            RegisterDragDrop(hwnd, &drop_target).expect("RegisterDragDrop failed");
-        }
-
-        let pw = Window {
-            window,
-            hwnd,
-            hinstance,
-            // TODO menu initializer
-            menu: None,
-            composition_target,
-        };
-
-        Ok(pw)
-    }
-}
-
-impl WindowHandle {
-    fn hwnd(&self) -> HWND {
-        if let Some(state) = self.state.upgrade() {
-            state.hwnd.get()
-        } else {
-            error!("window was closed");
-            HWND::default()
-        }
-    }
+        //self.window.set_cursor_icon(cursor_icon)
+    }*/
 }
