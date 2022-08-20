@@ -19,3 +19,13 @@ where
         self.as_ref().encode_wide().chain(Some(0)).collect()
     }
 }
+
+//--------------------------------------------------------------------------------------------------
+#[inline]
+pub fn loword(l: u32) -> u16 {
+    (l & 0xffff) as u16
+}
+#[inline]
+pub fn hiword(l: u32) -> u16 {
+    ((l >> 16) & 0xffff) as u16
+}

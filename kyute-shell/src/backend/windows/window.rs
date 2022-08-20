@@ -33,14 +33,15 @@ use windows::{
             Ole::{IDropTarget, IDropTarget_Impl, RegisterDragDrop, RevokeDragDrop},
         },
         UI::{
+            HiDpi::GetDpiForWindow,
             Input::Pointer::EnableMouseInPointer,
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, DestroyMenu, DrawMenuBar, GetWindowLongPtrW, SetMenu,
                 SetWindowLongPtrW, ShowWindow, TrackPopupMenu, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, HMENU,
                 POINTER_MESSAGE_FLAG_FIFTHBUTTON, POINTER_MESSAGE_FLAG_FIRSTBUTTON, POINTER_MESSAGE_FLAG_FOURTHBUTTON,
                 POINTER_MESSAGE_FLAG_SECONDBUTTON, POINTER_MESSAGE_FLAG_THIRDBUTTON, SW_SHOWDEFAULT, TPM_LEFTALIGN,
-                WINDOW_EX_STYLE, WM_CREATE, WM_NCDESTROY, WM_POINTERDOWN, WM_POINTERENTER, WM_POINTERLEAVE,
-                WM_POINTERUP, WM_POINTERUPDATE, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
+                WINDOW_EX_STYLE, WM_CREATE, WM_DPICHANGED, WM_NCDESTROY, WM_POINTERDOWN, WM_POINTERENTER,
+                WM_POINTERLEAVE, WM_POINTERUP, WM_POINTERUPDATE, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
                 WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_OVERLAPPEDWINDOW,
                 WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
             },
@@ -111,7 +112,7 @@ struct PointerInputState {
     position: Point,
 }
 
-// Most of the field are interior mutability because they are set *after* the window is created,
+// Most of the fields are interior mutable because they are set *after* the window is created,
 // because the pointer to WindowState is passed to CreateWindow
 struct WindowState {
     hwnd: Cell<HWND>,
@@ -133,6 +134,12 @@ impl WindowState {
 
         //
         match umsg {
+            WM_DPICHANGED => {
+                let dpi = (wparam.0 & 0xFFFF) as f64;
+                let scale_factor = dpi / 96.0;
+                self.handler.scale_factor_changed(scale_factor);
+                LRESULT(0)
+            }
             WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP => {
                 let mut ptr_states = self.pointer_input_state.borrow_mut();
                 let pointer_id = PointerId((wparam.0 & 0xFFFF) as u64);
@@ -162,7 +169,7 @@ impl WindowState {
                 let position = Point::new(x as f64, y as f64);
                 let modifiers = self.modifiers_state.get();
 
-                eprintln!(
+                trace!(
                     "{}: pos={:?} btns={:?} flags={:016b}",
                     match umsg {
                         WM_POINTERDOWN => "WM_POINTERDOWN",
@@ -431,8 +438,18 @@ impl WindowHandle {
         }
     }
 
+    pub fn get_scale_factor(&self) -> f64 {
+        if let Some(state) = self.state.upgrade() {
+            let dpi = unsafe { GetDpiForWindow(state.hwnd.get()) };
+            (dpi as f64) / 96.0
+        } else {
+            error!("window was closed");
+            1.0
+        }
+    }
+
     /// Sets this window's main menu bar.
-    pub fn set_menu(&mut self, new_menu: Option<Menu>) -> Result<(), Error> {
+    pub fn set_menu(&self, new_menu: Option<Menu>) -> Result<(), Error> {
         if let Some(state) = self.state.upgrade() {
             unsafe {
                 // SAFETY: TODO
