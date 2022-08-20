@@ -10,8 +10,8 @@ use crate::{
     region::Region,
     style::WidgetState,
     widget::{Menu, WidgetPod},
-    Data, Environment, Event, EventCtx, Geometry, InternalEvent, LayoutCtx, LayoutParams, Point, Size, Widget,
-    WidgetId,
+    Data, Environment, Event, EventCtx, Geometry, InternalEvent, LayoutCtx, LayoutParams, Measurements, Point,
+    RoundToPixel, Size, Widget, WidgetId,
 };
 use keyboard_types::{KeyState, Modifiers};
 use kyute_shell::{
@@ -760,7 +760,8 @@ impl Widget for Window {
                 let scale_factor = window.scale_factor();
                 let size = window.logical_inner_size();
                 let mut layout_ctx = LayoutCtx::new(scale_factor);
-                self.content.layout(
+
+                let content_geometry = self.content.layout(
                     &mut layout_ctx,
                     &LayoutParams {
                         widget_state: WidgetState::default(),
@@ -770,6 +771,12 @@ impl Widget for Window {
                     },
                     env,
                 );
+
+                // position the content box
+                let content_offset = content_geometry
+                    .place_into(&Measurements::new(size))
+                    .round_to_pixel(scale_factor);
+                self.content.set_offset(content_offset);
             }
 
             {

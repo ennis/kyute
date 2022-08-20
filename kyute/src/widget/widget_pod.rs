@@ -509,13 +509,11 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         // handle event result
         if ctx.relayout {
             // a child widget (or ourselves) requested a relayout during event handling;
-            // clear the cached layout, if any.
-            //
-            // Don't clear the cached layout because we may need it to handle additional pointer events
-            // that are delivered before a relayout can be done.
+            // invalidate the cached layout, if any. However, don't clear the cached layout just yet,
+            // because we may need it to handle additional pointer events that are delivered before a relayout can be done.
             // For example, it's possible for a child widget to receive a PointerOver event,
             // which causes it to request a relayout, and _at the same time_, a PointerEnter event,
-            // which still needs to be delivered properly.
+            // which needs the cached layout in order to be delivered properly.
 
             //eprintln!("inner: {:?}, relayout requested", self.content.debug_name());
             self.layout_invalid.set(true);

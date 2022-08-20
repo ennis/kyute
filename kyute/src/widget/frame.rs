@@ -41,20 +41,18 @@ impl<W: Widget + 'static> Widget for Frame<W> {
         let mut sub = *constraints;
         sub.max.width = constraints.max.width.min(width);
         sub.max.height = constraints.max.height.min(height);
-        sub.min.width = constraints.min.width.max(width);
-        sub.min.height = constraints.min.height.max(height);
 
         if ctx.speculative {
             return Geometry::new(Size::new(width, height));
         }
 
-        // measure child
-        let sublayout = self.inner.layout(ctx, &sub, env);
+        // measure content
+        let content_geometry = self.inner.layout(ctx, &sub, env);
 
         // position the content box
         // TODO baseline
         let size = sub.max;
-        let content_offset = sublayout
+        let content_offset = content_geometry
             .place_into(&Measurements::new(size))
             .round_to_pixel(ctx.scale_factor);
         self.inner.set_offset(content_offset);
