@@ -593,12 +593,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fixedbitset"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45e780567ed7abc415d12fd464571d265eb4a5710ddc97cdb1a31a4c35bb479d"
-
-[[package]]
 name = "flate2"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -723,12 +717,11 @@ dependencies = [
  "anyhow",
  "ash",
  "bitflags",
- "fixedbitset",
  "gpu-allocator",
  "graal-spirv",
  "lazy_static",
  "once_cell",
- "raw-window-handle",
+ "raw-window-handle 0.5.0",
  "serde_json",
  "shaderc",
  "slotmap",
@@ -977,7 +970,7 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "parking_lot 0.12.0",
- "raw-window-handle",
+ "raw-window-handle 0.4.2",
  "serde",
  "skia-safe",
  "thiserror",
@@ -1606,6 +1599,15 @@ name = "raw-window-handle"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fba75eee94a9d5273a68c9e1e105d9cffe1ef700532325788389e5a83e2522b7"
+dependencies = [
+ "cty",
+]
+
+[[package]]
+name = "raw-window-handle"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed7e3d950b66e19e0c372f3fa3fbbcf85b1746b571f74e0c2af6042a5c93420a"
 dependencies = [
  "cty",
 ]
@@ -2711,7 +2713,7 @@ dependencies = [
  "objc",
  "parking_lot 0.11.2",
  "percent-encoding",
- "raw-window-handle",
+ "raw-window-handle 0.4.2",
  "smithay-client-toolkit",
  "wasm-bindgen",
  "wayland-client",

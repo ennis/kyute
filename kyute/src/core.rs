@@ -800,7 +800,7 @@ impl<'a> LayerPaintCtx<'a> {
         // flush the GPU frame
         let _span = trace_span!("Flush skia surface").entered();
         let mut gr_ctx = Application::instance().lock_gpu_context();
-        let mut frame = gr_ctx.start_frame(Default::default());
+        let mut frame = graal::Frame::new();
         let mut pass = frame.start_graphics_pass("UI render");
         // FIXME we just assume how it's going to be used by skia
         // register the access to the target image
@@ -812,11 +812,11 @@ impl<'a> LayerPaintCtx<'a> {
             graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         );
         // draw callback
-        pass.set_submit_callback(move |_cctx, _, _queue| {
+        pass.set_submit_callback(Box::new(move |_cctx, _, _queue| {
             surface.flush_and_submit();
-        });
+        }));
         pass.finish();
-        frame.finish(&mut ());
+        gr_ctx.submit_frame(&mut (), frame, &Default::default());
     }
 }
 
