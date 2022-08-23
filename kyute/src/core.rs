@@ -801,21 +801,20 @@ impl<'a> LayerPaintCtx<'a> {
         let _span = trace_span!("Flush skia surface").entered();
         let mut gr_ctx = Application::instance().lock_gpu_context();
         let mut frame = graal::Frame::new();
-        let mut pass = frame.start_graphics_pass("UI render");
-        // FIXME we just assume how it's going to be used by skia
-        // register the access to the target image
-        pass.add_image_dependency(
-            layer_surface.image_info().id,
-            graal::vk::AccessFlags::MEMORY_READ | graal::vk::AccessFlags::MEMORY_WRITE,
-            graal::vk::PipelineStageFlags::ALL_COMMANDS,
-            graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        );
-        // draw callback
-        pass.set_submit_callback(Box::new(move |_cctx, _, _queue| {
-            surface.flush_and_submit();
-        }));
-        pass.finish();
+        let pass = graal::PassBuilder::new()
+            .name("UI render")
+            .image_dependency(
+                // FIXME we just assume how it's going to be used by skia
+                layer_surface.image_info().id,
+                graal::vk::AccessFlags::MEMORY_READ | graal::vk::AccessFlags::MEMORY_WRITE,
+                graal::vk::PipelineStageFlags::ALL_COMMANDS,
+                graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            )
+            .submit_callback(Box::new(move |_cctx, _, _queue| {
+                surface.flush_and_submit();
+            }));
+        frame.add_pass(pass);
         gr_ctx.submit_frame(&mut (), frame, &Default::default());
     }
 }
