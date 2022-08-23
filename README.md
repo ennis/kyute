@@ -1,3 +1,5 @@
+<img align="right" width="128" height="128" src="data/logo_kyute2.png">
+
 Kyute GUI library
 ========================================
 
