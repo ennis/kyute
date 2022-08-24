@@ -2,7 +2,10 @@
 use crate::{
     application::Application,
     backend::{
-        windows::{application::CLASS_NAME, util::ToWide},
+        windows::{
+            application::CLASS_NAME,
+            util::{hiword, loword, ToWide},
+        },
         Layer, Menu, PlatformError,
     },
     error::Error,
@@ -40,10 +43,11 @@ use windows::{
                 SetWindowLongPtrW, ShowWindow, TrackPopupMenu, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, HMENU,
                 POINTER_MESSAGE_FLAG_FIFTHBUTTON, POINTER_MESSAGE_FLAG_FIRSTBUTTON, POINTER_MESSAGE_FLAG_FOURTHBUTTON,
                 POINTER_MESSAGE_FLAG_SECONDBUTTON, POINTER_MESSAGE_FLAG_THIRDBUTTON, SW_SHOWDEFAULT, TPM_LEFTALIGN,
-                WINDOW_EX_STYLE, WM_CREATE, WM_DPICHANGED, WM_NCDESTROY, WM_POINTERDOWN, WM_POINTERENTER,
-                WM_POINTERLEAVE, WM_POINTERUP, WM_POINTERUPDATE, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP,
-                WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_OVERLAPPEDWINDOW,
-                WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+                WINDOW_EX_STYLE, WM_CLOSE, WM_CREATE, WM_DPICHANGED, WM_KEYDOWN, WM_KEYUP, WM_NCDESTROY,
+                WM_POINTERDOWN, WM_POINTERENTER, WM_POINTERLEAVE, WM_POINTERUP, WM_POINTERUPDATE, WM_SIZE,
+                WM_SYSKEYDOWN, WM_SYSKEYUP, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
+                WS_EX_TOPMOST, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_OVERLAPPEDWINDOW, WS_POPUP,
+                WS_SYSMENU, WS_THICKFRAME,
             },
         },
     },
@@ -134,15 +138,26 @@ impl WindowState {
 
         //
         match umsg {
+            WM_CLOSE => {
+                self.handler.close_requested();
+                LRESULT(0)
+            }
+            WM_KEYDOWN | WM_SYSKEYDOWN => {}
+            WM_SIZE => {
+                let width = loword(lparam as u32);
+                let height = hiword(lparam as u32);
+                self.handler.resize(SizeI::new(width as i32, height as i32));
+                LRESULT(0)
+            }
             WM_DPICHANGED => {
-                let dpi = (wparam.0 & 0xFFFF) as f64;
+                let dpi = loword(wparam.0 as u32) as f64;
                 let scale_factor = dpi / 96.0;
                 self.handler.scale_factor_changed(scale_factor);
                 LRESULT(0)
             }
             WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP => {
                 let mut ptr_states = self.pointer_input_state.borrow_mut();
-                let pointer_id = PointerId((wparam.0 & 0xFFFF) as u64);
+                let pointer_id = PointerId(loword(wparam.0 as u32) as u64);
                 let ptr_state = ptr_states.entry(pointer_id).or_insert_with(PointerInputState::default);
 
                 let pointer_flags = (wparam.0 as u32 & 0xFFFF0000) >> 16;

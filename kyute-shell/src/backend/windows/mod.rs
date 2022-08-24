@@ -4,6 +4,7 @@ mod clipboard;
 pub mod drawing;
 mod error;
 mod event;
+mod keyboard;
 mod menu;
 pub mod text;
 mod util;
