@@ -1,10 +1,11 @@
 use crate::graal::vk;
 use kyute::{
     application, graal,
-    widget::{prelude::*, Retained, RetainedWidget},
+    style::Shape,
+    widget::{prelude::*, Button, Grid, Retained, RetainedWidget, Text},
     Window,
 };
-use kyute_common::SizeI;
+use kyute_common::{Color, SizeI};
 use kyute_shell::{animation::Layer, application::Application, winit::window::WindowBuilder};
 use std::path::Path;
 
@@ -109,49 +110,52 @@ fn load_image(
     let staging_buffer_handle = staging_buffer.handle;
 
     // === upload pass ===
-    let mut pass = frame.start_graphics_pass("image upload");
-    pass.add_image_dependency(
-        image_id,
-        vk::AccessFlags::TRANSFER_WRITE,
-        vk::PipelineStageFlags::TRANSFER,
-        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-    );
-    pass.add_buffer_dependency(
-        staging_buffer.id,
-        vk::AccessFlags::TRANSFER_READ,
-        vk::PipelineStageFlags::TRANSFER,
-    );
-    pass.set_record_callback(move |context, _, command_buffer| unsafe {
-        let device = context.vulkan_device();
-        let regions = &[vk::BufferImageCopy {
-            buffer_offset: 0,
-            buffer_row_length: width,
-            buffer_image_height: height,
-            image_subresource: vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 1,
-            },
-            image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
-            image_extent: vk::Extent3D {
-                width,
-                height,
-                depth: 1,
-            },
-        }];
+    let mut pass = frame.add_pass(
+        graal::PassBuilder::new()
+            .name("image upload")
+            .image_dependency(
+                image_id,
+                vk::AccessFlags::TRANSFER_WRITE,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            )
+            .buffer_dependency(
+                staging_buffer.id,
+                vk::AccessFlags::TRANSFER_READ,
+                vk::PipelineStageFlags::TRANSFER,
+            )
+            .record_callback(move |context, _, command_buffer| unsafe {
+                let device = context.vulkan_device();
+                let regions = &[vk::BufferImageCopy {
+                    buffer_offset: 0,
+                    buffer_row_length: width,
+                    buffer_image_height: height,
+                    image_subresource: vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
+                    image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                    image_extent: vk::Extent3D {
+                        width,
+                        height,
+                        depth: 1,
+                    },
+                }];
 
-        device.cmd_copy_buffer_to_image(
-            command_buffer,
-            staging_buffer_handle,
-            image_handle,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            regions,
-        );
-    });
-    pass.finish();
-    device.destroy_buffer(staging_buffer.id);
+                device.cmd_copy_buffer_to_image(
+                    command_buffer,
+                    staging_buffer_handle,
+                    image_handle,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    regions,
+                );
+            }),
+    );
+
+    frame.destroy_buffer(staging_buffer.id);
     (
         graal::ImageInfo {
             handle: image_handle,
@@ -181,75 +185,78 @@ impl NativeLayerWidget {
         let gpu_device = Application::instance().gpu_device();
         let layer_surface = layer.acquire_surface();
         let layer_image = layer_surface.image_info();
-        let mut frame = gpu_context.start_frame(graal::FrameCreateInfo::default());
 
-        let mut pass = frame.start_graphics_pass("blit to screen");
-        pass.add_image_dependency(
-            self.image.id,
-            vk::AccessFlags::TRANSFER_READ,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-        );
-        pass.add_image_dependency(
-            layer_image.id,
-            vk::AccessFlags::TRANSFER_WRITE,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        );
         let blit_w = self.image_size.width.min(layer.size().width);
         let blit_h = self.image_size.height.min(layer.size().height);
 
-        pass.set_record_callback(move |context, _, command_buffer| {
-            let dst_image_handle = layer_image.handle;
-            let src_image_handle = self.image.handle;
-
-            let regions = &[vk::ImageBlit {
-                src_subresource: vk::ImageSubresourceLayers {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    mip_level: 0,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                },
-                src_offsets: [
-                    vk::Offset3D { x: 0, y: 0, z: 0 },
-                    vk::Offset3D {
-                        x: blit_w as i32,
-                        y: blit_h as i32,
-                        z: 1,
-                    },
-                ],
-                dst_subresource: vk::ImageSubresourceLayers {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    mip_level: 0,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                },
-                dst_offsets: [
-                    vk::Offset3D { x: 0, y: 0, z: 0 },
-                    vk::Offset3D {
-                        x: blit_w as i32,
-                        y: blit_h as i32,
-                        z: 1,
-                    },
-                ],
-            }];
-
-            unsafe {
-                context.vulkan_device().cmd_blit_image(
-                    command_buffer,
-                    src_image_handle,
+        let mut frame = graal::Frame::new();
+        frame.add_pass(
+            graal::PassBuilder::new()
+                .name("blit to screen")
+                .image_dependency(
+                    self.image.id,
+                    vk::AccessFlags::TRANSFER_READ,
+                    vk::PipelineStageFlags::TRANSFER,
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                    dst_image_handle,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                )
+                .image_dependency(
+                    layer_image.id,
+                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::PipelineStageFlags::TRANSFER,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    regions,
-                    vk::Filter::NEAREST,
-                );
-            }
-        });
-        pass.finish();
-        frame.finish(&mut ());
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                )
+                .record_callback(move |context, _, command_buffer| {
+                    let dst_image_handle = layer_image.handle;
+                    let src_image_handle = self.image.handle;
+
+                    let regions = &[vk::ImageBlit {
+                        src_subresource: vk::ImageSubresourceLayers {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            mip_level: 0,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        },
+                        src_offsets: [
+                            vk::Offset3D { x: 0, y: 0, z: 0 },
+                            vk::Offset3D {
+                                x: blit_w as i32,
+                                y: blit_h as i32,
+                                z: 1,
+                            },
+                        ],
+                        dst_subresource: vk::ImageSubresourceLayers {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            mip_level: 0,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        },
+                        dst_offsets: [
+                            vk::Offset3D { x: 0, y: 0, z: 0 },
+                            vk::Offset3D {
+                                x: blit_w as i32,
+                                y: blit_h as i32,
+                                z: 1,
+                            },
+                        ],
+                    }];
+
+                    unsafe {
+                        context.vulkan_device().cmd_blit_image(
+                            command_buffer,
+                            src_image_handle,
+                            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                            dst_image_handle,
+                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                            regions,
+                            vk::Filter::NEAREST,
+                        );
+                    }
+                }),
+        );
+
+        gpu_context.submit_frame(&mut (), frame, &graal::SubmitInfo::default());
     }
 }
 
@@ -260,7 +267,7 @@ impl RetainedWidget for NativeLayerWidget {
         // load the image
         let mut gpu_context = Application::instance().lock_gpu_context();
         let gpu_device = Application::instance().gpu_device();
-        let mut frame = gpu_context.start_frame(graal::FrameCreateInfo::default());
+        let mut frame = graal::Frame::new();
 
         let (file_image_info, file_image_width, file_image_height) = load_image(
             &gpu_device,
@@ -269,7 +276,7 @@ impl RetainedWidget for NativeLayerWidget {
             vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::SAMPLED,
             false,
         );
-        frame.finish(&mut ());
+        gpu_context.submit_frame(&mut (), frame, &graal::SubmitInfo::default());
 
         NativeLayerWidget {
             image: file_image_info,
@@ -311,9 +318,19 @@ impl RetainedWidget for NativeLayerWidget {
 }
 
 #[composable]
+fn scaffold() -> impl Widget {
+    let mut grid = Grid::row(60.dip());
+    grid.insert(Text::new("Text overlay"));
+    grid.insert(Button::new("Click me"));
+    grid.set_column_gap(10.dip());
+    let grid_background = grid.background("#00FF0022");
+    let view_background = WidgetPod::with_native_layer(Retained::<NativeLayerWidget>::new(&()));
+    grid_background.above(view_background, Alignment::START)
+}
+
+#[composable]
 fn ui_root() -> impl Widget {
-    let window_contents = Retained::<NativeLayerWidget>::new(&());
-    Window::new(WindowBuilder::new().with_title("3D view"), window_contents, None)
+    Window::new(WindowBuilder::new().with_title("3D view"), scaffold(), None)
 }
 
 fn main() {

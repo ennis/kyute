@@ -832,7 +832,7 @@ fn exit() {
 pub fn scoped<R>(index: impl Hash, f: impl FnOnce() -> R) -> R {
     let mut hasher = DefaultHasher::new();
     index.hash(&mut hasher);
-    // FIXME this broken mess
+    // FIXME Hash implementations do not guarantee reasonable uniqueness
     enter(hasher.finish() as usize);
     let r = f();
     exit();

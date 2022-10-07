@@ -64,21 +64,12 @@ impl ScrollArea {
         let thumb_pos = content_pos * content_to_thumb;
         let content_max = content_height - viewport_height;
 
-        trace!(
-            "viewport_height={}, content_height={}, content_to_thumb={}, thumb_pos={}, content_max={}, thumb_size={}",
-            viewport_height,
-            content_height,
-            content_to_thumb,
-            thumb_pos,
-            content_max,
-            thumb_size
-        );
+        trace!("viewport_height={viewport_height}, content_height={content_height}, content_to_thumb={content_to_thumb}, thumb_pos={thumb_pos}, content_max={content_max}, thumb_size={thumb_size}");
 
         //.box_style(Style::new().radius(2.dip()).background(Color::from_hex("#FF7F31"))),
-        let scroll_thumb = DragController::new(Null.fix_width(5.0).fix_height(thumb_size))
-            .on_started(|| tmp_pos = content_pos)
-            .on_delta(|offset| {
-                content_pos = tmp_pos + offset.y / content_to_thumb;
+        let scroll_thumb = DragController::new(content_pos, Null.fix_width(5.0).fix_height(thumb_size))
+            .on_delta(|start_pos, offset| {
+                content_pos = start_pos + offset.y / content_to_thumb;
             })
             .style("border-radius: 2px; background: #FF7F31;");
 

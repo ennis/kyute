@@ -29,6 +29,7 @@ mod popup;
 mod scroll_area;
 //mod selectable;
 mod checkbox;
+mod debug;
 mod drag_drop;
 mod drawable;
 mod font_size;
@@ -41,7 +42,7 @@ mod shape;
 mod stateful;
 mod stepper;
 mod styled_box;
-mod table;
+pub mod table;
 mod text_input;
 mod thumb;
 mod titled_pane;
@@ -54,6 +55,7 @@ pub use button::Button;
 pub use canvas::{Canvas, Viewport};
 pub use checkbox::{Checkbox, CheckboxField};
 pub use clickable::Clickable;
+pub use debug::{Debug, DebugFlags, DebugName};
 pub use drawable::Drawable;
 //pub use color_picker::{ColorPaletteItem, ColorPicker, ColorPickerMode, ColorPickerParams, HsvColorSquare};
 //pub use constrained::ConstrainedBox;
@@ -77,7 +79,7 @@ pub use scroll_area::ScrollArea;
 pub use slider::SliderBase;
 pub use stepper::Stepper;
 pub use styled_box::StyledBox;
-pub use table::{ColumnHeaders, TableRow, TableSelection, TableView, TableViewParams};
+pub use table::{TableSelection, TableView, TableViewParams};
 pub use text::Text;
 pub use text_edit::{BaseTextEdit, TextEdit, TextField};
 //pub use text_input::{StepperTextInput, TextInput};
@@ -305,6 +307,18 @@ pub trait WidgetExt: Widget + Sized + 'static {
         )
     }
 
+    /// Assigns a debug name to a widget.
+    #[must_use]
+    fn debug_name(self, name: impl Into<String>) -> DebugName<Self> {
+        DebugName::new(self, name.into())
+    }
+
+    /// Wraps this widget in a debugging wrapper.
+    #[must_use]
+    fn debug(self, flags: DebugFlags) -> Debug<Self> {
+        Debug::new(self, flags)
+    }
+
     /// Wraps this widget in a type that implements WidgetWrapper.
     #[must_use]
     fn wrap(self) -> Modified<(), Self> {
@@ -313,12 +327,31 @@ pub trait WidgetExt: Widget + Sized + 'static {
 
     /// Sets the background paint of the widget.
     #[must_use]
-    fn background(self, image: impl TryInto<style::Image>, shape: impl Into<style::Shape>) -> Overlay<Self, Shape> {
+    fn background(self, image: impl TryInto<style::Image>) -> Overlay<Self, Shape> {
         let image = image.try_into().unwrap_or_else(|_| {
             warn!("invalid CSS image value");
             style::Image::default()
         });
-        Overlay::new(self, Shape::new(shape.into(), image), ZOrder::Below)
+        Overlay::new(self, Shape::new(style::Shape::rectangle(), image), ZOrder::Below)
+    }
+
+    /// Sets the background paint of the widget.
+    #[must_use]
+    fn rounded_background(self, image: impl TryInto<style::Image>, radius: impl Into<Length>) -> Overlay<Self, Shape> {
+        let image = image.try_into().unwrap_or_else(|_| {
+            warn!("invalid CSS image value");
+            style::Image::default()
+        });
+        Overlay::new(
+            self,
+            Shape::new(
+                style::Shape::RoundedRect {
+                    radii: [radius.into(); 4],
+                },
+                image,
+            ),
+            ZOrder::Below,
+        )
     }
 
     /// Sets the minimum width of the widget.

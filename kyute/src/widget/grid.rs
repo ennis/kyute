@@ -3,7 +3,9 @@ use crate::{
     cache,
     core::DebugNode,
     css::parse_from_str,
+    drawing,
     drawing::{Paint, PaintCtxExt, Shape, ToSkia},
+    style,
     widget::prelude::*,
     Color, Data, EnvKey, Length, RoundToPixel, State, WidgetId,
 };
@@ -154,8 +156,8 @@ fn size_across(axis: Axis, size: Size) -> f64 {
 /// List of tracks.
 #[derive(Clone, Debug, Default)]
 pub struct TrackList {
-    sizes: Vec<TrackSize>,
-    line_names: Vec<(usize, String)>,
+    pub sizes: Vec<TrackSize>,
+    pub line_names: Vec<(usize, String)>,
 }
 
 fn grid_line_names<'i>(input: &mut Parser<'i, '_>) -> Result<Vec<String>, ParseError<'i, ()>> {
@@ -618,10 +620,12 @@ impl DefiniteArea {
 
 impl Area {
     fn resolve(&self, grid: &Grid) -> DefiniteArea {
-        let (row, row_span) = self.row.resolve(&grid.template.rows.line_names, grid.row_count() + 1);
+        let (row, row_span) = self
+            .row
+            .resolve(&grid.template.rows.line_names, grid.template_row_count() + 1);
         let (column, column_span) = self
             .column
-            .resolve(&grid.template.columns.line_names, grid.column_count() + 1);
+            .resolve(&grid.template.columns.line_names, grid.template_column_count() + 1);
 
         DefiniteArea {
             row,
@@ -849,22 +853,31 @@ struct ComputeTrackSizeResult {
     size: f64,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-struct GridLayout {
+#[derive(Clone, Debug, Default)]
+struct Computed {
     row_layout: Vec<GridTrackLayout>,
     column_layout: Vec<GridTrackLayout>,
-    row_gap: f64,
-    column_gap: f64,
     width: f64,
     height: f64,
     show_grid_lines: bool,
+    style: ComputedStyle,
 }
 
-impl Data for GridLayout {
+#[derive(Clone, Debug, Default)]
+struct ComputedStyle {
+    row_gap: f64,
+    column_gap: f64,
+    row_background: drawing::Paint,
+    alternate_row_background: drawing::Paint,
+    row_gap_background: drawing::Paint,
+    column_gap_background: drawing::Paint,
+}
+
+/*impl Data for Computed {
     fn same(&self, other: &Self) -> bool {
         self == other
     }
-}
+}*/
 
 /// Visual style of a grid layout container.
 #[derive(Clone, Debug, Default)]
@@ -874,13 +887,13 @@ pub struct GridStyle {
     //pub align_items: AlignItems,
     //pub justify_items: JustifyItems,
     /// Row background.
-    pub row_background: Paint,
+    pub row_background: style::Image,
     /// Alternate row background.
-    pub alternate_row_background: Paint,
+    pub alternate_row_background: style::Image,
     /// Row gap background.
-    pub row_gap_background: Paint,
+    pub row_gap_background: style::Image,
     /// Column gap background.
-    pub column_gap_background: Paint,
+    pub column_gap_background: style::Image,
 }
 
 /// Grid layout container.
@@ -901,7 +914,8 @@ pub struct Grid {
     auto_flow_dir: FlowDirection,
     align_items: AlignItems,
     justify_items: JustifyItems,
-    calculated_layout: State<Arc<GridLayout>>,
+    /// Computed layout & style values.
+    computed: State<Arc<Computed>>,
     cached_child_filter: Cell<Option<Bloom<WidgetId>>>,
 }
 
@@ -928,7 +942,7 @@ impl Grid {
             justify_items: JustifyItems::Start,
             auto_flow_dir: FlowDirection::Row,
             style: Arc::new(GridStyle::default()),
-            calculated_layout: cache::state(|| Default::default()),
+            computed: cache::state(|| Default::default()),
             cached_child_filter: Cell::new(None),
         }
     }
@@ -957,12 +971,12 @@ impl Grid {
     }
 
     /// Returns the number of columns in the grid template.
-    pub fn column_count(&self) -> usize {
+    pub fn template_column_count(&self) -> usize {
         self.template.columns.sizes.len()
     }
 
     /// Returns the number of rows in the grid template.
-    pub fn row_count(&self) -> usize {
+    pub fn template_row_count(&self) -> usize {
         self.template.rows.sizes.len()
     }
 
@@ -972,6 +986,8 @@ impl Grid {
     }
 
     /// Place an item at the specified location into the grid.
+    ///
+    /// Does not affect the current insertion cursor.
     pub fn place(&mut self, area: impl Into<Area>, z_order: i32, widget: Arc<WidgetPod>) {
         let mut area = area.into().resolve(self);
         if area.is_null() {
@@ -1038,19 +1054,19 @@ impl Grid {
         self.justify_items = justify_items;
     }
 
-    pub fn set_row_background(&mut self, row_background: impl Into<Paint>) {
+    pub fn set_row_background(&mut self, row_background: impl Into<style::Image>) {
         Arc::make_mut(&mut self.style).row_background = row_background.into();
     }
 
-    pub fn set_alternate_row_background(&mut self, alternate_row_background: impl Into<Paint>) {
+    pub fn set_alternate_row_background(&mut self, alternate_row_background: impl Into<style::Image>) {
         Arc::make_mut(&mut self.style).alternate_row_background = alternate_row_background.into();
     }
 
-    pub fn set_row_gap_background(&mut self, bg: impl Into<Paint>) {
+    pub fn set_row_gap_background(&mut self, bg: impl Into<style::Image>) {
         Arc::make_mut(&mut self.style).row_gap_background = bg.into();
     }
 
-    pub fn set_column_gap_background(&mut self, bg: impl Into<Paint>) {
+    pub fn set_column_gap_background(&mut self, bg: impl Into<style::Image>) {
         Arc::make_mut(&mut self.style).column_gap_background = bg.into();
     }
 }
@@ -1439,12 +1455,15 @@ impl Widget for Grid {
         // When (or if) we support other writing modes, rewrite this. Layout is complicated!
 
         // first, place items in the grid (i.e. resolve their grid areas into "definite areas")
-
         let (row_count, column_count) = self.position_items();
 
-        // compute gap sizes
+        // resolve styles
         let column_gap = self.style.column_gap.compute(constraints, env);
         let row_gap = self.style.row_gap.compute(constraints, env);
+        let row_background = self.style.row_background.compute_paint(env);
+        let alternate_row_background = self.style.alternate_row_background.compute_paint(env);
+        let row_gap_background = self.style.row_gap_background.compute_paint(env);
+        let column_gap_background = self.style.column_gap_background.compute_paint(env);
 
         // first measure the width of the columns
         let ComputeTrackSizeResult {
@@ -1496,7 +1515,7 @@ impl Widget for Grid {
 
         // maximum vertical baselines for each column of the grid (x-offset to the row's starting x-coordinate)
         // TODO implement vertical baselines & vertical baseline alignment
-        let mut vertical_baselines: Vec<f64> = vec![0.0; column_layout.len()];
+        //let mut vertical_baselines: Vec<f64> = vec![0.0; column_layout.len()];
 
         //trace!("=== START LAYOUT ===");
 
@@ -1571,11 +1590,17 @@ impl Widget for Grid {
         // trace!("=== END LAYOUT ===");
 
         // ------ update cache ------
-        self.calculated_layout.set(Arc::new(GridLayout {
+        self.computed.set(Arc::new(Computed {
             row_layout,
             column_layout,
-            row_gap,
-            column_gap,
+            style: ComputedStyle {
+                row_gap,
+                column_gap,
+                row_background,
+                alternate_row_background,
+                row_gap_background,
+                column_gap_background,
+            },
             width,
             height,
             show_grid_lines: env.get(&SHOW_GRID_LAYOUT_LINES).unwrap_or_default(),
@@ -1603,18 +1628,19 @@ impl Widget for Grid {
         let height = ctx.bounds.size.height;
         let width = ctx.bounds.size.width;
 
-        let layout = self.calculated_layout.get();
-        let row_layout = &layout.row_layout;
-        let column_layout = &layout.column_layout;
+        let computed = self.computed.get();
+        let row_layout = &computed.row_layout;
+        let column_layout = &computed.column_layout;
 
         // draw row backgrounds
-        if !self.style.row_background.is_transparent() && !self.style.alternate_row_background.is_transparent() {
+        if !computed.style.row_background.is_transparent() && !computed.style.alternate_row_background.is_transparent()
+        {
             for (i, row) in row_layout.iter().enumerate() {
                 // TODO start index
                 let bg = if i % 2 == 0 {
-                    self.style.row_background.clone()
+                    computed.style.row_background.clone()
                 } else {
-                    self.style.alternate_row_background.clone()
+                    computed.style.alternate_row_background.clone()
                 };
                 ctx.fill_shape(
                     &Shape::from(Rect::new(Point::new(0.0, row.pos), Size::new(width, row.size))),
@@ -1624,26 +1650,26 @@ impl Widget for Grid {
         }
 
         // draw gap backgrounds
-        if !self.style.row_gap_background.is_transparent() {
+        if !computed.style.row_gap_background.is_transparent() {
             // draw only inner gaps
             for row in row_layout.iter().skip(1) {
                 ctx.fill_shape(
                     &Shape::from(Rect::new(
-                        Point::new(0.0, row.pos - layout.row_gap),
-                        Size::new(width, layout.row_gap),
+                        Point::new(0.0, row.pos - computed.style.row_gap),
+                        Size::new(width, computed.style.row_gap),
                     )),
-                    &self.style.row_gap_background,
+                    &computed.style.row_gap_background,
                 );
             }
         }
-        if !self.style.column_gap_background.is_transparent() {
+        if !computed.style.column_gap_background.is_transparent() {
             for column in column_layout.iter().skip(1) {
                 ctx.fill_shape(
                     &Shape::from(Rect::new(
-                        Point::new(column.pos - layout.column_gap, 0.0),
-                        Size::new(layout.column_gap, height),
+                        Point::new(column.pos - computed.style.column_gap, 0.0),
+                        Size::new(computed.style.column_gap, height),
                     )),
-                    &self.style.column_gap_background,
+                    &computed.style.column_gap_background,
                 );
             }
         }
@@ -1654,7 +1680,7 @@ impl Widget for Grid {
         }
 
         // draw debug grid lines
-        if layout.show_grid_lines {
+        if computed.show_grid_lines {
             let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
             for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width - 1.0)) {
                 ctx.surface.canvas().draw_line(
@@ -1674,6 +1700,10 @@ impl Widget for Grid {
     }
 
     fn debug_node(&self) -> DebugNode {
-        DebugNode::new(format!("{} by {} grid", self.row_count(), self.column_count()))
+        DebugNode::new(format!(
+            "{} by {} grid",
+            self.template_row_count(),
+            self.template_column_count()
+        ))
     }
 }

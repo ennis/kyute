@@ -1,7 +1,8 @@
 use crate::{
+    cache,
     event::{PointerButton, PointerButtons, PointerEventKind},
     widget::prelude::*,
-    Signal,
+    Signal, State,
 };
 
 /// Widget that provides feedback on the pointer position and status when the pointer is over it.
@@ -128,18 +129,26 @@ impl<Content: Widget + 'static> Widget for Thumb<Content> {
     }
 }
 
-pub struct DragController<Content> {
+// alternate design for the dragcontroller:
+//
+// - being_drag(start_value)
+// - dragging(impl FnOnce(start_value, offset))
+
+pub struct DragController<T, Content> {
     content: Thumb<Content>,
     started: bool,
     delta: Option<Offset>,
     completed: bool,
+    start_value: T,
 }
 
-impl<Content: Widget + 'static> DragController<Content> {
+impl<T: Clone + 'static, Content: Widget + 'static> DragController<T, Content> {
     #[composable]
-    pub fn new(content: Content) -> DragController<Content> {
+    pub fn new(value: T, content: Content) -> DragController<T, Content> {
         #[state]
         let mut anchor: Option<(Point, Transform)> = None;
+
+        let mut start_value = cache::state(|| value.clone());
 
         let mut delta = None;
         let mut started = false;
@@ -150,6 +159,7 @@ impl<Content: Widget + 'static> DragController<Content> {
         if let Some(p) = thumb.pointer_down() {
             anchor = Some(p);
             started = true;
+            start_value.set_without_invalidation(value);
         }
 
         if let Some(p) = thumb.pointer_moved() {
@@ -164,6 +174,7 @@ impl<Content: Widget + 'static> DragController<Content> {
         }
 
         DragController {
+            start_value: start_value.get(),
             content: thumb,
             started,
             delta,
@@ -186,8 +197,10 @@ impl<Content: Widget + 'static> DragController<Content> {
         self.delta
     }
 
-    pub fn on_delta(self, f: impl FnOnce(Offset)) -> Self {
-        self.delta.map(f);
+    pub fn on_delta(self, f: impl FnOnce(T, Offset)) -> Self {
+        if let Some(delta) = self.delta {
+            f(self.start_value.clone(), delta)
+        }
         self
     }
 
@@ -211,7 +224,7 @@ impl<Content: Widget + 'static> DragController<Content> {
     }
 }
 
-impl<Content: Widget + 'static> Widget for DragController<Content> {
+impl<T, Content: Widget + 'static> Widget for DragController<T, Content> {
     fn widget_id(&self) -> Option<WidgetId> {
         self.content.widget_id()
     }

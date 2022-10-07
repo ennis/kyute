@@ -17,7 +17,9 @@ use windows::{
             Direct3D12::ID3D12Resource,
             DirectComposition::{IDCompositionVisual2, IDCompositionVisual3},
             Dxgi::{
-                Common::{DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC},
+                Common::{
+                    DXGI_ALPHA_MODE_IGNORE, DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC,
+                },
                 IDXGISwapChain3, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_DISCARD,
                 DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT,
             },
@@ -159,7 +161,7 @@ impl CompositionSwapChain {
             BufferCount: 2,
             Scaling: DXGI_SCALING_STRETCH,
             SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
-            AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
+            AlphaMode: DXGI_ALPHA_MODE_IGNORE,
             Flags: 0,
         };
         let swap_chain: IDXGISwapChain3 = unsafe {

@@ -1,5 +1,5 @@
 //! Description of paints.
-use crate::{css::parse_from_str, drawing, style, style::color::css_color, Color, Environment, UnitExt};
+use crate::{css::parse_from_str, drawing, style, style::color::css_color, Color, EnvKey, Environment, UnitExt};
 use cssparser::{ParseError, Parser, Token};
 use kyute_common::Angle;
 use std::{convert::TryFrom, f32::consts::PI};
@@ -69,6 +69,12 @@ impl Image {
 impl From<Color> for Image {
     fn from(color: Color) -> Self {
         Image::Color(style::Color::Value(color))
+    }
+}
+
+impl From<EnvKey<Color>> for Image {
+    fn from(color: EnvKey<Color>) -> Self {
+        Image::Color(style::Color::Env(color.atom()))
     }
 }
 

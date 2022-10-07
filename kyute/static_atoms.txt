@@ -4,6 +4,9 @@ default-font
 dark-mode
 window-background-color
 text-background-color
+content-background-color
+alternate-content-background-color
+
 
 kyute.asset-loader
 kyute.image-cache

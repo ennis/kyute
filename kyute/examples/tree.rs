@@ -4,7 +4,7 @@ use kyute::{
     style::Style,
     theme,
     widget::{
-        grid::GridTemplate, Button, ColumnHeaders, Flex, Grid, Image, Label, Null, Popup, ScrollArea, TableRow,
+        grid::GridTemplate, table, table::TableViewStyle, Button, Flex, Grid, Image, Label, Null, Popup, ScrollArea,
         TableSelection, TableView, TableViewParams, Text, TextEdit, TitledPane, WidgetExt, WidgetPod,
     },
     Alignment, AssetId, BoxConstraints, Color, EnvKey, Environment, Length, Orientation, SideOffsets, Size, UnitExt,
@@ -13,6 +13,7 @@ use kyute::{
 use kyute_common::{Atom, Data};
 use std::{convert::TryFrom, sync::Arc};
 use tracing::trace;
+use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[composable(cached)]
 fn cell(text: impl Into<String> + Data) -> impl Widget {
@@ -45,41 +46,44 @@ fn tree_test() -> impl Widget {
     #[state]
     let mut selection = TableSelection::default();
 
-    let mut root = TableRow::new(Atom::from("root"), cell("root"));
+    let col_name = table::Column::new(cell("Name")).outline().resizable(200.0);
+    let col_description = table::Column::new(cell("Description")).resizable(400.0);
+
+    let mut root_row = table::Row::new(Atom::from("root")).expanded(true);
+    root_row.push_cell(&col_name, cell("root"));
     //#[composable(scope)]
     for i in 0..5 {
-        let id = Atom::from(format!("n.{}", i));
-        let mut n1 = TableRow::new(id, cell(format!("Node {}", i)));
-        n1.add_cell(1, cell("Level 1 container of nodes"));
+        let id = Atom::from(format!("n.{i}"));
+        let mut n1 = table::Row::new(id);
+        n1.push_cell(&col_name, cell(format!("Node {i}")));
+        n1.push_cell(&col_description, cell("Level 1 node"));
 
         //#[composable(scope)]
         for j in 0..5 {
-            let id = Atom::from(format!("n.{}.{}", i, j));
-            let mut n2 = TableRow::new(id, cell(format!("Node {}.{}", i, j)));
-            n2.add_cell(1, cell("Level 2 container of nodes"));
+            let id = Atom::from(format!("n.{i}.{j}"));
+            let mut n2 = table::Row::new(id);
+            n2.push_cell(&col_name, cell(format!("Node {i}.{j}")));
+            n2.push_cell(&col_description, cell("Level 2 node"));
 
             //#[composable(scope)]
             for k in 0..5 {
-                let id = Atom::from(format!("n.{}.{}.{}", i, j, k));
-                let mut n3 = TableRow::new(id, cell(format!("Node {}.{}.{}", i, j, k)));
-                n3.add_cell(1, cell("Leaf node. Doesn't contain anything."));
+                let id = Atom::from(format!("n.{i}.{j}.{k}"));
+                let mut n3 = table::Row::new(id);
+                n3.push_cell(&col_name, cell(format!("Node {i}.{j}.{k}")));
+                n3.push_cell(&col_description, cell("Leaf node"));
                 n2.add_row(n3);
             }
+
             n1.add_row(n2);
         }
-        root.add_row(n1);
+        root_row.add_row(n1);
     }
 
-    let params = TableViewParams {
-        selection: Some(&mut selection),
-        template: GridTemplate::try_from("20px / 200px 1fr").unwrap_or_default(),
-        column_headers: Some(ColumnHeaders::new().add(cell("Name")).add(cell("Description"))),
-        main_column: 0,
-        rows: vec![root],
-        row_indent: 20.dip(),
-        resizeable_columns: true,
-        reorderable_rows: false,
-        reorderable_columns: false,
+    let mut params = TableViewParams::default().column(col_name).column(col_description);
+    params.selection = Some(&mut selection);
+    params.rows.push(root_row);
+    params.style = TableViewStyle {
+        indentation: 20.dip(),
         background: theme::palette::GREY_800.into(),
         alternate_background: theme::palette::GREY_700.into(),
         row_separator_width: 1.px(),
@@ -100,17 +104,13 @@ fn ui_root() -> impl Widget {
 }
 
 fn main() {
-    tracing_subscriber::fmt()
-        .compact()
-        .with_target(false)
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-    /*use tracing_subscriber::layer::SubscriberExt;
-    tracing::subscriber::set_global_default(
-        tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new().with_stackdepth(0)),
-    )
-    .expect("set up the subscriber");*/
+    let subscriber = tracing_subscriber::Registry::default().with(
+        tracing_tree::HierarchicalLayer::new(4)
+            .with_bracketed_fields(true)
+            .with_filter(tracing_subscriber::EnvFilter::from_default_env()),
+    );
+    tracing::subscriber::set_global_default(subscriber).unwrap();
     let mut env = Environment::new();
-    env.set(kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
+    //env.set(&kyute::widget::grid::SHOW_GRID_LAYOUT_LINES, true);
     application::run_with_env(ui_root, env);
 }

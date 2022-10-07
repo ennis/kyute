@@ -20,6 +20,9 @@ impl<T> EnvKey<T> {
     pub fn name(&self) -> &str {
         &*self.key
     }
+    pub fn atom(&self) -> Atom {
+        self.key.clone()
+    }
 }
 
 impl<T> Clone for EnvKey<T> {

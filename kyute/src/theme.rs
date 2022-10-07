@@ -21,6 +21,8 @@ pub const DEFAULT_FONT: EnvKey<Font> = theme_key!("default-font");
 pub const DARK_MODE: EnvKey<bool> = theme_key!("dark-mode");
 pub const WINDOW_BACKGROUND_COLOR: EnvKey<Color> = theme_key!("window-background-color");
 pub const TEXT_BACKGROUND_COLOR: EnvKey<Color> = theme_key!("text-background-color");
+pub const CONTENT_BACKGROUND_COLOR: EnvKey<Color> = theme_key!("content-background-color");
+pub const ALTERNATE_CONTENT_BACKGROUND_COLOR: EnvKey<Color> = theme_key!("alternate-content-background-color");
 
 pub mod palette {
     use crate::Color;
@@ -298,6 +300,8 @@ static DARK_THEME: Lazy<Environment> = Lazy::new(|| {
     env.set(&TEXT_COLOR, Color::from_hex("#c8c8c8"));
     env.set(&WINDOW_BACKGROUND_COLOR, Color::from_hex("#515151"));
     env.set(&TEXT_BACKGROUND_COLOR, Color::from_hex("#1e1e1e"));
+    env.set(&CONTENT_BACKGROUND_COLOR, Color::from_hex("#212121"));
+    env.set(&ALTERNATE_CONTENT_BACKGROUND_COLOR, Color::from_hex("#424242"));
     env
 });
 
@@ -307,6 +311,8 @@ static LIGHT_THEME: Lazy<Environment> = Lazy::new(|| {
     env.set(&TEXT_COLOR, Color::from_hex("#272727"));
     env.set(&WINDOW_BACKGROUND_COLOR, Color::from_hex("#f2f2f2"));
     env.set(&TEXT_BACKGROUND_COLOR, Color::from_hex("#ffffff"));
+    env.set(&CONTENT_BACKGROUND_COLOR, Color::from_hex("#212121"));
+    env.set(&ALTERNATE_CONTENT_BACKGROUND_COLOR, Color::from_hex("#424242"));
     env
 });
 

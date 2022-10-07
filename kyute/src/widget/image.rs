@@ -30,6 +30,8 @@ impl<Placeholder: Widget> ImageContents<Placeholder> {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Scaling {
+    /// No scaling is applied.
+    None,
     Contain,
     Cover,
 }
@@ -135,27 +137,33 @@ impl<Placeholder: Widget> Widget for Image<Placeholder> {
                 let size_i = image.size();
                 let size = Size::new(size_i.width as f64, size_i.height as f64) / ctx.scale_factor;
 
-                let image_aspect_ratio = size.width / size.height;
-                let aspect_ratio = constraints.max.width / constraints.max.height;
+                // layout behavior:
+                // -
 
-                let scaled_size = match (
-                    self.scaling,
-                    /* space is wider than the image */ aspect_ratio > image_aspect_ratio,
-                ) {
-                    (Scaling::Contain, true) | (Scaling::Cover, false) => {
+                // aspect ratio of the loaded image
+                let image_aspect_ratio = size.width / size.height;
+                // aspect ratio of the available space, may be infinite or zero
+                // FIXME: NaN if constraints both infinite
+                let available_space_aspect_ratio = constraints.max.width / constraints.max.height;
+
+                let image_wider_than_available_space = image_aspect_ratio > available_space_aspect_ratio;
+
+                let scaled_size = match (self.scaling, image_wider_than_available_space) {
+                    (Scaling::Contain, false) | (Scaling::Cover, true) => {
                         if constraints.max.height.is_finite() {
                             Size::new(constraints.max.height * image_aspect_ratio, constraints.max.height)
                         } else {
                             size
                         }
                     }
-                    _ => {
+                    (Scaling::Contain, true) | (Scaling::Cover, false) => {
                         if constraints.max.width.is_finite() {
                             Size::new(constraints.max.width, constraints.max.width / image_aspect_ratio)
                         } else {
                             size
                         }
                     }
+                    (Scaling::None, _) => size,
                 };
 
                 Geometry::new(scaled_size)

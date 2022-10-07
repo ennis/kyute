@@ -811,9 +811,9 @@ impl<'a> LayerPaintCtx<'a> {
                 graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                 graal::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             )
-            .submit_callback(Box::new(move |_cctx, _, _queue| {
+            .submit_callback(move |_cctx, _, _queue| {
                 surface.flush_and_submit();
-            }));
+            });
         frame.add_pass(pass);
         gr_ctx.submit_frame(&mut (), frame, &Default::default());
     }
