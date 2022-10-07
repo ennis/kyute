@@ -29,6 +29,7 @@ mod popup;
 mod scroll_area;
 //mod selectable;
 mod checkbox;
+mod cursor;
 mod debug;
 mod drag_drop;
 mod drawable;
@@ -104,12 +105,13 @@ use crate::{
     widget::{
         align::{HorizontalAlignment, VerticalAlignment},
         constrained::{Fill, FixedHeight, FixedWidth, MaxHeight, MaxWidth, MinHeight, MinWidth},
+        cursor::CursorIcon,
         font_size::FontSize,
     },
     Color, EnvKey, EnvValue, Environment, Event, EventCtx, Geometry, LayoutCtx, LayoutParams, Length,
     LengthOrPercentage, UnitExt, Widget, WidgetId,
 };
-use kyute_shell::TypedData;
+use kyute_shell::{winit, TypedData};
 use std::{
     convert::TryInto,
     fmt,
@@ -305,6 +307,12 @@ pub trait WidgetExt: Widget + Sized + 'static {
             shape.into(),
             self,
         )
+    }
+
+    /// Changes the cursor icon when the mouse hovers the inner widget.
+    #[must_use]
+    fn cursor_icon(self, icon: winit::window::CursorIcon) -> CursorIcon<Self> {
+        CursorIcon::new(self, icon)
     }
 
     /// Assigns a debug name to a widget.

@@ -15,6 +15,7 @@ use crate::{
     Data, Length, State, UnitExt,
 };
 use kyute_common::imbl;
+use kyute_shell::winit;
 use std::{convert::TryFrom, hash::Hash, sync::Arc};
 
 /// Represents a set of selected table rows.
@@ -449,20 +450,18 @@ impl TableView {
                     (left_column_size, right_column_size),
                     Placeholder
                         .frame(4.dip(), 50.dip())
+                        .left(-2.dip())
+                        .cursor_icon(winit::window::CursorIcon::ColResize)
                         .debug(DebugFlags::DUMP_GEOMETRY | DebugFlags::DUMP_CONSTRAINTS),
                 )
                 .on_delta(|(left, right), offset| {
                     trace!("column resize drag offset={offset:?}");
-                    {
-                        left_column.current_size.as_mut().unwrap().set(left + offset.x);
-                    }
-                    {
-                        right_column
-                            .current_size
-                            .as_mut()
-                            .unwrap()
-                            .set((right - offset.x).max(0.0));
-                    }
+                    left_column.current_size.as_mut().unwrap().set(left + offset.x);
+                    right_column
+                        .current_size
+                        .as_mut()
+                        .unwrap()
+                        .set((right - offset.x).max(0.0));
                 })
                 .debug_name("table resize handle");
 
