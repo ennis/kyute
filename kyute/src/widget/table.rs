@@ -16,7 +16,7 @@ use crate::{
 };
 use kyute_common::imbl;
 use kyute_shell::winit;
-use std::{convert::TryFrom, hash::Hash, sync::Arc};
+use std::{cmp, convert::TryFrom, hash::Hash, sync::Arc};
 
 /// Represents a set of selected table rows.
 #[derive(Default, Clone, Data)]
@@ -40,7 +40,41 @@ impl<Id: Clone + Hash + Eq> TableSelection<Id> {
     }
 }
 
-/// A row of a TableView.
+/// Data model trait for the contents of a table column.
+pub trait ColumnModel<Row> {
+    fn cell(&self, row: &Row) -> Arc<WidgetPod>;
+}
+
+pub trait Identifiable {
+    /// The row identity type
+    type Id: Clone + Eq + PartialEq + Ord + PartialOrd + Hash;
+
+    fn id(&self) -> Self::Id;
+}
+
+impl<'a, T: Identifiable> Identifiable for &'a T {
+    type Id = T::Id;
+
+    fn id(&self) -> Self::Id {
+        (*self).id()
+    }
+}
+
+pub trait Collection<Item: Identifiable> {
+    /// The number of items in the collection.
+    fn len(&self) -> usize;
+
+    /// Fetches a row at the specified index.
+    fn row(&self, index: usize) -> Item;
+
+    /// Returns the number of child items.
+    fn child_count(&self, parent: &Item) -> usize;
+
+    /// Fetches the nth child of a row.
+    fn child(&self, parent: &Item, index: usize) -> Item;
+}
+
+/*/// A row of a TableView.
 ///
 /// See `TableViewParams::rows`
 #[derive(Clone)]
@@ -119,12 +153,13 @@ impl<Id> Row<Id> {
     pub fn add_row(&mut self, child: Row<Id>) {
         self.children.push(child);
     }
-}
+}*/
 
 /// A column with a clickable header.
-pub struct Column {
+pub struct Column<'a, Row> {
     /// The contents of the column header, made clickable. Usually a text element.
     inner: Clickable<Arc<WidgetPod>>,
+    delegate: &'a dyn Fn(&Row) -> Arc<WidgetPod>,
     /// Requested size of the column.
     size: TrackSize,
     /// Current size of the column. `None` if the column is not resizable.
@@ -132,20 +167,24 @@ pub struct Column {
     /// Whether this is the outline column.
     outline: bool,
     moved: Signal<()>,
+    clicked: Signal<()>,
 }
 
-impl Column {
+impl<'a, Row> Column<'a, Row> {
     /// Creates a new column with a fixed size.
     #[composable]
-    pub fn new(header: impl Widget + 'static) -> Column {
+    pub fn new(header: impl Widget + 'static, delegate: &'a dyn Fn(&Row) -> Arc<WidgetPod>) -> Column<'a, Row> {
         let inner: Clickable<Arc<WidgetPod>> = Clickable::new(header.arc_pod());
         let moved = Signal::new();
+        let clicked = Signal::new();
         Column {
             inner,
             size: TrackSize::new(TrackBreadth::Auto),
             current_size: None,
             outline: false,
             moved,
+            delegate,
+            clicked,
         }
     }
 
@@ -172,8 +211,17 @@ impl Column {
         self
     }
 
+    /// Invokes the provided closure when the column has been moved.
     pub fn on_move(self, f: impl FnOnce()) -> Self {
         if self.moved.signalled() {
+            f()
+        }
+        self
+    }
+
+    /// Invokes the provided closure when the column header has been clicked.
+    pub fn on_click_header(self, f: impl FnOnce()) -> Self {
+        if self.clicked.signalled() {
             f()
         }
         self
@@ -243,17 +291,17 @@ impl Default for TableViewStyle {
 }
 
 /// Builder helper for a TableView widget.
-pub struct TableViewParams<'a, Id> {
+pub struct TableViewParams<'a, Item>
+where
+    Item: Identifiable,
+{
     /// Reference to the current table selection.
     ///
     /// If None, selection is disabled.
-    pub selection: Option<&'a mut TableSelection<Id>>,
+    pub selection: Option<&'a mut TableSelection<Item::Id>>,
 
     /// Column headers.
-    pub columns: Vec<Column>,
-
-    /// Root-level rows.
-    pub rows: Vec<Row<Id>>,
+    pub columns: Vec<Column<'a, Item>>,
 
     pub show_expand_buttons: bool,
 
@@ -274,12 +322,11 @@ pub struct TableViewParams<'a, Id> {
     pub style: TableViewStyle,
 }
 
-impl<'a, Id> Default for TableViewParams<'a, Id> {
+impl<'a, Item: Identifiable> Default for TableViewParams<'a, Item> {
     fn default() -> Self {
         TableViewParams {
             selection: None,
             columns: vec![],
-            rows: vec![],
             show_expand_buttons: true,
             resizeable_columns: false,
             reorderable_rows: false,
@@ -289,9 +336,9 @@ impl<'a, Id> Default for TableViewParams<'a, Id> {
     }
 }
 
-impl<'a, Id> TableViewParams<'a, Id> {
+impl<'a, Item: Identifiable> TableViewParams<'a, Item> {
     /// Adds a table column.
-    pub fn column(mut self, column: Column) -> Self {
+    pub fn column(mut self, column: Column<'a, Item>) -> Self {
         self.columns.push(column);
         self
     }
@@ -303,6 +350,15 @@ impl<'a, Id> TableViewParams<'a, Id> {
     }
 }
 
+// Tables: collection models VS procedural?
+//
+// Collection models:
+// - fetch items & cells on-demand
+// - callbacks
+//
+// Procedural:
+// - user creates all rows by hand, places all widgets manually
+
 pub struct TableView {
     grid: Grid,
 }
@@ -310,7 +366,7 @@ pub struct TableView {
 impl TableView {
     /// Creates a new tree grid.
     #[composable]
-    pub fn new<Id: Hash + Eq + Clone>(mut params: TableViewParams<Id>) -> TableView {
+    pub fn new<Item: Identifiable>(mut params: TableViewParams<Item>, collection: impl Collection<Item>) -> TableView {
         // create the main grid
 
         // TODO identify columns by name
@@ -351,13 +407,21 @@ impl TableView {
                 .arc_pod();
 
             // fill the visit stack with the initial rows
-            let mut visit: Vec<_> = params.rows.into_iter().map(|row| (0usize, row)).rev().collect();
+            //let mut visit: Vec<_> = params.rows.into_iter().map(|row| (0usize, row)).rev().collect();
+
+            let mut visit = Vec::new();
+            for row_index in (0..collection.len()).rev() {
+                visit.push((0usize, collection.row(row_index)));
+            }
 
             // depth-order traversal of the row hierarchy
             while let Some((indent_level, row)) = visit.pop() {
+                let id = row.id();
+
+                cache::enter(&id);
                 // row selection highlight
                 if let Some(selection) = params.selection.as_mut() {
-                    if selection.contains(&row.id) {
+                    if selection.contains(&id) {
                         // draw a filled rect with the selection style that spans the whole row
 
                         // .box_style(params.selected_style.clone())
@@ -371,37 +435,31 @@ impl TableView {
                             .grid_area((i, ..)),
                     );*/
                 }
+                cache::exit();
+
+                // state that remembers whether the row is expanded or not
+                let expanded_state = cache::state(|| false);
+                let expanded = expanded_state.get();
 
                 // add row cells to the grid
-                for (column_id, cell_widget) in row.cells.iter() {
-                    // find column index by widget ID
-                    let column_index = params
-                        .columns
-                        .iter()
-                        .position(|col| col.inner.widget_id() == Some(*column_id));
-                    if column_index.is_none() {
-                        warn!("TableView: invalid column ID for row cell");
-                        continue;
-                    }
-                    let column_index = column_index.unwrap();
+                for (column_index, column) in params.columns.iter().enumerate() {
+                    cache::enter((id.clone(), column_index));
+                    let cell_widget = (column.delegate)(&row);
+                    let child_count = collection.child_count(&row);
 
-                    let is_outline_column = params.columns[column_index].outline;
-
-                    if is_outline_column {
+                    if column.outline {
                         // it's an outline column, apply indent level
-
-                        if params.show_expand_buttons && !row.children.is_empty() {
+                        if params.show_expand_buttons && child_count != 0 {
                             // showing the expand buttons & the column has children
+
                             // FIXME: cache::scoped ugliness
-                            let expand_button = cache::scoped(&row.id, || {
-                                Clickable::new(if row.expanded {
-                                    chevron_expanded.clone()
-                                } else {
-                                    chevron_collapsed.clone()
-                                })
-                                .on_click(|| {
-                                    row.expanded_changed.signal(!row.expanded);
-                                })
+                            let expand_button = Clickable::new(if expanded {
+                                chevron_expanded.clone()
+                            } else {
+                                chevron_collapsed.clone()
+                            })
+                            .on_click(|| {
+                                expanded_state.set(!expanded);
                             });
 
                             grid.insert(
@@ -424,11 +482,15 @@ impl TableView {
                     } else {
                         grid.insert(cell_widget.clone().grid_area((row_index, column_index)));
                     }
+                    cache::exit();
                 }
 
                 // visit child rows if the row is expanded
-                if row.expanded {
-                    visit.extend(row.children.into_iter().map(|n| (indent_level + 1, n)).rev());
+                if expanded || !params.show_expand_buttons {
+                    let child_count = collection.child_count(&row);
+                    for child_index in (0..child_count).rev() {
+                        visit.push((indent_level + 1, collection.child(&row, child_index)));
+                    }
                 }
                 row_index += 1;
             }

@@ -760,7 +760,7 @@ impl Cache {
                 }
 
                 // run the function
-                enter(0);
+                enter_index(0);
                 result = function();
                 exit();
 
@@ -817,23 +817,29 @@ pub fn revision() -> usize {
 
 /// Must be called inside `Cache::run`.
 #[track_caller]
-fn enter(index: usize) {
+pub fn enter(index: impl Hash) {
+    let mut hasher = DefaultHasher::new();
+    index.hash(&mut hasher);
+    // FIXME Hash implementations do not guarantee reasonable uniqueness
+    enter_index(hasher.finish() as usize);
+}
+
+/// Must be called inside `Cache::run`.
+#[track_caller]
+fn enter_index(index: usize) {
     let location = Location::caller();
     with_cache_cx(move |cx| cx.writer.enter_scope(location, index));
 }
 
 /// Must be called inside `Cache::run`.
-fn exit() {
+pub fn exit() {
     with_cache_cx(move |cx| cx.writer.exit_scope());
 }
 
 /// Must be called inside `Cache::run`.
 #[track_caller]
 pub fn scoped<R>(index: impl Hash, f: impl FnOnce() -> R) -> R {
-    let mut hasher = DefaultHasher::new();
-    index.hash(&mut hasher);
-    // FIXME Hash implementations do not guarantee reasonable uniqueness
-    enter(hasher.finish() as usize);
+    enter(index);
     let r = f();
     exit();
     r
@@ -879,6 +885,7 @@ fn state_inner<T: 'static, Init: FnOnce() -> T>(init: Init) -> CacheEntryInsertR
 }
 
 /// TODO document
+/// TODO rename to `remember` (global function kyute::remember?)
 #[track_caller]
 pub fn state<T: 'static, Init: FnOnce() -> T>(init: Init) -> State<T> {
     state_inner(init).key

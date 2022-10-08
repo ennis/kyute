@@ -595,6 +595,15 @@ pub trait WidgetExt: Widget + Sized + 'static {
         Arc::new(WidgetPod::new(self))
     }
 
+    /// Wraps this widget in an `Arc<WidgetPod>` and erases the widget type.
+    ///
+    /// The resulting `WidgetPod` is not backed by a surface or layer.
+    #[must_use]
+    #[composable]
+    fn arc_dyn_pod(self) -> Arc<WidgetPod> {
+        Arc::new(WidgetPod::new(self))
+    }
+
     /// Applies the dark theme on the child widgets.
     #[must_use]
     #[composable]
