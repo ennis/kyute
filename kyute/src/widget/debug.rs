@@ -67,7 +67,7 @@ impl<W: Widget> Widget for Debug<W> {
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &LayoutParams, env: &Environment) -> Geometry {
-        let debug_name = self.debug_name();
+        let debug_name = self.inner.debug_name();
         if self.flags.contains(DebugFlags::DUMP_CONSTRAINTS) {
             eprintln!("[{debug_name}] constraints: {constraints:?}");
         }
@@ -79,7 +79,7 @@ impl<W: Widget> Widget for Debug<W> {
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        let debug_name = self.debug_name();
+        let debug_name = self.inner.debug_name();
         if self.flags.contains(DebugFlags::DUMP_EVENTS) {
             eprintln!("[{debug_name}] event: {event:?}");
         }

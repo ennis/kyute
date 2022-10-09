@@ -77,7 +77,14 @@ impl Window {
     /// Sets the root composition layer.
     pub fn set_root_composition_layer(&self, layer: &Layer) {
         unsafe {
-            //layer.visual.EnableRedrawRegions();
+            //layer.visual().EnableRedrawRegions();
+            /*let heat = D2D1_COLOR_F {
+                r: 255.0,
+                g: 255.0,
+                b: 255.0,
+                a: 255.0,
+            };*/
+            //layer.visual().EnableHeatMap(&heat);
             self.composition_target.SetRoot(layer.visual()).expect("SetRoot failed");
             Application::instance()
                 .backend

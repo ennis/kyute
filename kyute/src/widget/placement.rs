@@ -93,8 +93,8 @@ where
     }
 
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment) {
-        self.a.event(ctx, event, env);
-        self.b.event(ctx, event, env);
+        self.a.route_event(ctx, event, env);
+        self.b.route_event(ctx, event, env);
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {

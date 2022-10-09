@@ -181,11 +181,11 @@ impl<Inner: Widget + 'static> Widget for Clickable<Inner> {
                     ctx.request_relayout();
                 }
                 PointerEventKind::PointerOver => {
-                    eprintln!("clickable PointerOver");
+                    //eprintln!("clickable PointerOver");
                     self.hovered.signal(true);
                 }
                 PointerEventKind::PointerOut => {
-                    eprintln!("clickable PointerOut");
+                    //eprintln!("clickable PointerOut");
                     self.hovered.signal(false);
                 }
                 _ => {}

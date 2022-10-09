@@ -13,6 +13,7 @@ const GROUP_BOX_STYLE: &str = r#"
 
 type GroupBoxInner<T: Widget + 'static> = impl Widget;
 
+#[composable]
 fn group_box_inner<Content: Widget + 'static>(
     label: impl Into<FormattedText>,
     content: Content,
@@ -30,6 +31,7 @@ pub struct GroupBox<Content: Widget + 'static> {
 }
 
 impl<Content: Widget + 'static> GroupBox<Content> {
+    #[composable]
     pub fn new(label: impl Into<FormattedText>, content: Content) -> GroupBox<Content> {
         GroupBox {
             inner: group_box_inner(label, content),

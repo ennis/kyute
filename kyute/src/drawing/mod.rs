@@ -373,7 +373,7 @@ impl<'a> PaintCtx<'a> {
             scale_factor,
             bounds,
             clip_bounds: bounds,
-            debug: true,
+            debug: false,
         }
     }
 

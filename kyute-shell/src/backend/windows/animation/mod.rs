@@ -20,8 +20,9 @@ use windows::{
                 Common::{
                     DXGI_ALPHA_MODE_IGNORE, DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC,
                 },
-                IDXGISwapChain3, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_DISCARD,
-                DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT,
+                IDXGISwapChain3, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
+                DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_DISCARD,
+                DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT, DXGI_USAGE_SHARED,
             },
         },
         System::SystemServices::GENERIC_ALL,
@@ -44,14 +45,50 @@ struct CompositionSwapChain {
     size: SizeI,
 }
 
-impl Drop for CompositionSwapChain {
-    fn drop(&mut self) {
-        // release the buffers
-        self.release_interop();
-    }
-}
-
 impl CompositionSwapChain {
+    /// Creates a new composition surface with the given size.
+    fn new(size: SizeI) -> CompositionSwapChain {
+        let app = Application::instance();
+
+        let width = size.width as u32;
+        let height = size.height as u32;
+
+        assert_ne!(width, 0, "composition surface cannot be zero-sized");
+        assert_ne!(height, 0, "composition surface cannot be zero-sized");
+
+        // --- create swap chain ---
+        let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
+            Width: width,
+            Height: height,
+            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+            Stereo: false.into(),
+            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+            BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
+            BufferCount: 2,
+            Scaling: DXGI_SCALING_STRETCH,
+            SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
+            AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
+            Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
+        };
+        let swap_chain: IDXGISwapChain3 = unsafe {
+            app.backend
+                .dxgi_factory
+                .0
+                .CreateSwapChainForComposition(&app.backend.d3d12_command_queue.0, &swap_chain_desc, None)
+                .expect("CreateSwapChainForComposition failed")
+                .cast::<IDXGISwapChain3>()
+                .unwrap()
+        };
+
+        let mut swap_chain = CompositionSwapChain {
+            swap_chain,
+            interop_images: Vec::new(),
+            size,
+        };
+        swap_chain.create_interop();
+        swap_chain
+    }
+
     /// Creates imported vulkan images for the swap chain buffers.
     fn create_interop(&mut self) {
         assert!(self.interop_images.is_empty());
@@ -140,49 +177,6 @@ impl CompositionSwapChain {
         self.interop_images.clear();
     }
 
-    /// Creates a new composition surface with the given size.
-    fn new(size: SizeI) -> CompositionSwapChain {
-        let app = Application::instance();
-
-        let width = size.width as u32;
-        let height = size.height as u32;
-
-        assert_ne!(width, 0, "composition surface cannot be zero-sized");
-        assert_ne!(height, 0, "composition surface cannot be zero-sized");
-
-        // --- create swap chain ---
-        let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
-            Width: width,
-            Height: height,
-            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
-            Stereo: false.into(),
-            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
-            BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-            BufferCount: 2,
-            Scaling: DXGI_SCALING_STRETCH,
-            SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
-            AlphaMode: DXGI_ALPHA_MODE_IGNORE,
-            Flags: 0,
-        };
-        let swap_chain: IDXGISwapChain3 = unsafe {
-            app.backend
-                .dxgi_factory
-                .0
-                .CreateSwapChainForComposition(&app.backend.d3d12_command_queue.0, &swap_chain_desc, None)
-                .expect("CreateSwapChainForComposition failed")
-                .cast::<IDXGISwapChain3>()
-                .unwrap()
-        };
-
-        let mut swap_chain = CompositionSwapChain {
-            swap_chain,
-            interop_images: Vec::new(),
-            size,
-        };
-        swap_chain.create_interop();
-        swap_chain
-    }
-
     /// Resizes the surface.
     fn set_size(&mut self, new_size: SizeI) {
         if new_size == self.size {
@@ -198,11 +192,18 @@ impl CompositionSwapChain {
                     new_size.width as u32,
                     new_size.height as u32,
                     DXGI_FORMAT_R8G8B8A8_UNORM,
-                    0,
+                    DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
                 )
                 .expect("IDXGISwapChain::ResizeBuffers failed");
         }
         self.create_interop();
+    }
+}
+
+impl Drop for CompositionSwapChain {
+    fn drop(&mut self) {
+        // release the buffers
+        self.release_interop();
     }
 }
 
@@ -228,10 +229,13 @@ impl Surface {
 
 impl Drop for Surface {
     fn drop(&mut self) {
+        // FIXME The swap chain is presented when this surface object is dropped. We may want to have a more explicit method for that.
+
+        // FIXME there are artifacts; not sure where they come from, try to use a "staging" image instead of directly sharing the swapchain buffers
         unsafe {
             let _span = trace_span!("composition_surface_present").entered();
             trace!("surface present");
-            self.swap_chain.Present(0, 0).ok().expect("Present failed");
+            self.swap_chain.Present(1, 0).ok().expect("Present failed");
             self.layer.surface_acquired.set(false);
         }
     }
