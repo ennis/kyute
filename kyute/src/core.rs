@@ -766,7 +766,7 @@ impl<'a> LayerPaintCtx<'a> {
             alloc: Default::default(),
             tiling: sk::gpu::vk::ImageTiling::OPTIMAL,
             layout: sk::gpu::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            format: sk::gpu::vk::Format::R8G8B8A8_UNORM, // TODO
+            format: sk::gpu::vk::Format::R16G16B16A16_SFLOAT, // TODO
             image_usage_flags: skia_image_usage_flags.as_raw(),
             sample_count: 1,
             level_count: 1,
@@ -784,8 +784,8 @@ impl<'a> LayerPaintCtx<'a> {
             self.skia_gpu_context,
             &render_target,
             sk::gpu::SurfaceOrigin::TopLeft,
-            sk::ColorType::RGBA8888, // TODO
-            sk::ColorSpace::new_srgb(),
+            sk::ColorType::RGBAF16, // TODO
+            sk::ColorSpace::new_srgb_linear(),
             Some(&sk::SurfaceProps::new(Default::default(), sk::PixelGeometry::RGBH)),
         )
         .unwrap();

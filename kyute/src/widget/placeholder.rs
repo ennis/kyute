@@ -24,7 +24,7 @@ impl Widget for Placeholder {
         use skia_safe as sk;
 
         let canvas = ctx.surface.canvas();
-        let mut paint = skia_safe::Paint::new(Color::from_hex("#3fb1fc").to_skia(), None);
+        let mut paint = skia_safe::Paint::new(Color::from_hex("#3fb1fc").to_skia(), &sk::ColorSpace::new_srgb());
         paint.set_anti_alias(true);
         paint.set_stroke(false);
         paint.set_alpha(128);
@@ -32,7 +32,7 @@ impl Widget for Placeholder {
 
         paint.set_stroke(true);
         paint.set_alpha(255);
-        paint.set_stroke_width(1.0);
+        paint.set_stroke_width(10.0);
         canvas.draw_line(
             ctx.bounds.top_left().to_skia(),
             ctx.bounds.bottom_right().to_skia(),

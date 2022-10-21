@@ -19,14 +19,17 @@ use windows::{
         Graphics::{
             Direct3D12::{
                 ID3D12CommandList, ID3D12Fence, ID3D12GraphicsCommandList, ID3D12Resource,
-                D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_FENCE_FLAG_SHARED, D3D12_RESOURCE_BARRIER,
-                D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_FLAG_NONE, D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-                D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_TRANSITION_BARRIER,
+                D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_FENCE_FLAG_SHARED,
+                D3D12_RESOURCE_BARRIER, D3D12_RESOURCE_BARRIER_0, D3D12_RESOURCE_BARRIER_FLAG_NONE,
+                D3D12_RESOURCE_BARRIER_TYPE_TRANSITION, D3D12_RESOURCE_STATE_PRESENT,
+                D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_TRANSITION_BARRIER,
             },
             DirectComposition::{IDCompositionVisual2, IDCompositionVisual3},
             Dxgi::{
                 Common::{
-                    DXGI_ALPHA_MODE_IGNORE, DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SAMPLE_DESC,
+                    DXGI_ALPHA_MODE_IGNORE, DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_R10G10B10A2_UNORM,
+                    DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+                    DXGI_SAMPLE_DESC,
                 },
                 IDXGISwapChain3, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
                 DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_DISCARD,
@@ -80,14 +83,14 @@ impl CompositionSwapChain {
         let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
             Width: width,
             Height: height,
-            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+            Format: DXGI_FORMAT_R16G16B16A16_FLOAT,
             Stereo: false.into(),
             SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
             BufferCount: 2,
             Scaling: DXGI_SCALING_STRETCH,
             SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
-            AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
+            AlphaMode: DXGI_ALPHA_MODE_IGNORE,
             Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
         };
         let swap_chain: IDXGISwapChain3 = unsafe {
@@ -121,12 +124,12 @@ impl CompositionSwapChain {
             // --- wrap swap chain buffers as vulkan images ---
             for i in 0..2 {
                 // obtain the ID3D12Resource of each swap chain buffer and create a shared handle for them
-                let dx_buffer: ID3D12Resource = self
+                let swap_chain_buffer: ID3D12Resource = self
                     .swap_chain
                     .GetBuffer::<ID3D12Resource>(i)
                     .expect("GetBuffer failed");
                 let shared_handle = d3d12_device
-                    .CreateSharedHandle(&dx_buffer, ptr::null(), GENERIC_ALL, None)
+                    .CreateSharedHandle(&swap_chain_buffer, ptr::null(), GENERIC_ALL, None)
                     .expect("CreateSharedHandle failed");
 
                 // create a vulkan image with memory imported from the shared handle
@@ -137,7 +140,7 @@ impl CompositionSwapChain {
                         usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
                             | vk::ImageUsageFlags::TRANSFER_DST
                             | graal::vk::ImageUsageFlags::TRANSFER_SRC,
-                        format: vk::Format::R8G8B8A8_UNORM,
+                        format: vk::Format::R16G16B16A16_SFLOAT,
                         extent: vk::Extent3D {
                             width: self.size.width as u32,
                             height: self.size.height as u32,
@@ -168,7 +171,8 @@ impl CompositionSwapChain {
                         None,
                     )
                     .unwrap();
-                // FIXME manually drop shit, see https://github.com/microsoft/windows-rs/issues/1410
+
+                /*// FIXME manually drop shit, see https://github.com/microsoft/windows-rs/issues/1410
                 let mut barrier = [D3D12_RESOURCE_BARRIER {
                     Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
                     Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
@@ -182,8 +186,9 @@ impl CompositionSwapChain {
                     },
                 }];
                 command_list.ResourceBarrier(&barrier);
-                ManuallyDrop::drop(&mut barrier[0].Anonymous.Transition);
+                ManuallyDrop::drop(&mut barrier[0].Anonymous.Transition);*/
 
+                command_list.DiscardResource(&swap_chain_buffer, ptr::null());
                 command_list.Close();
 
                 let interop_image = InteropImage {
@@ -231,7 +236,7 @@ impl CompositionSwapChain {
                     2,
                     new_size.width as u32,
                     new_size.height as u32,
-                    DXGI_FORMAT_R8G8B8A8_UNORM,
+                    DXGI_FORMAT_R16G16B16A16_FLOAT,
                     DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
                 )
                 .expect("IDXGISwapChain::ResizeBuffers failed");

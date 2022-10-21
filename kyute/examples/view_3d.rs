@@ -34,8 +34,8 @@ fn load_image(
     let (vk_format, bpp) = match (format_typedesc, nchannels) {
         (TypeDesc::U8, 1) => (vk::Format::R8_UNORM, 1usize),
         (TypeDesc::U8, 2) => (vk::Format::R8G8_UNORM, 2usize),
-        (TypeDesc::U8, 3) => (vk::Format::R8G8B8A8_UNORM, 4usize), // RGB8 not very well supported
-        (TypeDesc::U8, 4) => (vk::Format::R8G8B8A8_UNORM, 4usize),
+        (TypeDesc::U8, 3) => (vk::Format::R8G8B8A8_SRGB, 4usize), // RGB8 not very well supported
+        (TypeDesc::U8, 4) => (vk::Format::R8G8B8A8_SRGB, 4usize),
         (TypeDesc::U16, 1) => (vk::Format::R16_UNORM, 2usize),
         (TypeDesc::U16, 2) => (vk::Format::R16G16_UNORM, 4usize),
         (TypeDesc::U16, 3) => (vk::Format::R16G16B16A16_UNORM, 8usize),
@@ -181,10 +181,10 @@ impl Drop for NativeLayerWidget {
 impl NativeLayerWidget {
     /// Renders the current view.
     fn render(&mut self, layer: &Layer, scale_factor: f64) {
-        let mut gpu_context = Application::instance().lock_gpu_context();
-        let gpu_device = Application::instance().gpu_device();
         let layer_surface = layer.acquire_surface();
         let layer_image = layer_surface.image_info();
+        let mut gpu_context = Application::instance().lock_gpu_context();
+        let gpu_device = Application::instance().gpu_device();
 
         let blit_w = self.image_size.width.min(layer.size().width);
         let blit_h = self.image_size.height.min(layer.size().height);
