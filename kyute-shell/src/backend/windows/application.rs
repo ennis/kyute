@@ -12,8 +12,9 @@ use windows::{
         Graphics::{
             Direct3D::D3D_FEATURE_LEVEL_12_0,
             Direct3D12::{
-                D3D12CreateDevice, D3D12GetDebugInterface, ID3D12CommandQueue, ID3D12Debug, ID3D12Device, ID3D12Fence,
-                D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_FENCE_FLAG_NONE,
+                D3D12CreateDevice, D3D12GetDebugInterface, ID3D12CommandAllocator, ID3D12CommandQueue, ID3D12Debug,
+                ID3D12Device, ID3D12Fence, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
+                D3D12_FENCE_FLAG_NONE,
             },
             DirectComposition::{DCompositionCreateDevice3, IDCompositionDesktopDevice, IDCompositionDeviceDebug},
             DirectWrite::{DWriteCreateFactory, IDWriteFactory, DWRITE_FACTORY_TYPE_SHARED},
@@ -97,6 +98,7 @@ sync_com_ptr_wrapper! { D3D12Fence(ID3D12Fence) }
 pub(crate) struct Application {
     pub(crate) d3d12_device: D3D12Device,              // thread safe
     pub(crate) d3d12_command_queue: D3D12CommandQueue, // thread safe
+    pub(crate) d3d12_command_allocator: ThreadBound<ID3D12CommandAllocator>,
     pub(crate) command_completion_fence: D3D12Fence,
     pub(crate) command_completion_event: Win32Event,
     pub(crate) command_completion_fence_value: Mutex<u64>,
@@ -250,6 +252,14 @@ impl Application {
             ThreadBound::new(composition_device)
         };
 
+        let d3d12_command_allocator = unsafe {
+            let command_allocator = d3d12_device
+                .0
+                .CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)
+                .unwrap();
+            ThreadBound::new(command_allocator)
+        };
+
         let command_completion_event = unsafe {
             let event = CreateEventW(ptr::null(), false, false, None).unwrap();
             Win32Event::from_raw(event)
@@ -265,6 +275,7 @@ impl Application {
             dwrite_factory,
             //wic_factory,
             composition_device,
+            d3d12_command_allocator,
         }
     }
 
