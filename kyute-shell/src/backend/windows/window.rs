@@ -6,10 +6,15 @@ use crate::{
 };
 use kyute_common::{PointI, Size, SizeI};
 use raw_window_handle::HasRawWindowHandle;
-use std::ptr;
+use std::{ffi::c_void, mem, ptr};
 use windows::Win32::{
-    Foundation::{HINSTANCE, HWND, POINT},
-    Graphics::{Direct2D::Common::D2D1_COLOR_F, DirectComposition::IDCompositionTarget, Gdi::ClientToScreen},
+    Foundation::{BOOL, HINSTANCE, HWND, POINT},
+    Graphics::{
+        Direct2D::Common::D2D1_COLOR_F,
+        DirectComposition::IDCompositionTarget,
+        Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWINDOWATTRIBUTE},
+        Gdi::ClientToScreen,
+    },
     UI::WindowsAndMessaging::{DestroyMenu, DrawMenuBar, SetMenu, TrackPopupMenu, HMENU, TPM_LEFTALIGN},
 };
 use winit::{
@@ -74,17 +79,30 @@ impl Window {
         }
     }
 
+    pub fn composition_commit(&self) {
+        unsafe {
+            Application::instance()
+                .backend
+                .composition_device
+                .get_ref()
+                .unwrap()
+                .Commit()
+                .expect("Commit failed");
+        }
+    }
+
     /// Sets the root composition layer.
     pub fn set_root_composition_layer(&self, layer: &Layer) {
         unsafe {
+            eprintln!("set_root_composition_layer");
             //layer.visual().EnableRedrawRegions();
             /*let heat = D2D1_COLOR_F {
                 r: 255.0,
                 g: 255.0,
-                b: 255.0,
+                b: 0.0,
                 a: 255.0,
-            };*/
-            //layer.visual().EnableHeatMap(&heat);
+            };
+            layer.visual().EnableHeatMap(&heat);*/
             self.composition_target.SetRoot(layer.visual()).expect("SetRoot failed");
             Application::instance()
                 .backend
@@ -155,6 +173,26 @@ impl Window {
                 .CreateTargetForHwnd(hwnd, false)
                 .expect("CreateTargetForHwnd failed")
         };
+
+        // enable mica effect
+        #[cfg(feature = "mica")]
+        unsafe {
+            info!("using mica backdrop");
+            let system_backdrop_type: u32 = 2; // DWMSBT_MAINWINDOW
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWINDOWATTRIBUTE(38),
+                &system_backdrop_type as *const _ as *const c_void,
+                4,
+            );
+
+            /*DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                &BOOL::from(true) as *const _ as *const c_void,
+                4,
+            );*/
+        }
 
         // create a swap chain for the window
         //let device = app.gpu_device();

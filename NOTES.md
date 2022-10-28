@@ -1040,4 +1040,15 @@ Design:
 - underlying structure is abstracted
 - ModelObjects are value types: they can be cloned, and compared
 - However, ModelObjects represent not a free standing value, but a value in a document.
-- 
+
+
+
+# Next steps:
+* Fix premult alpha on composited surfaces
+* rework Layer API
+  * remove `animation` module in kyute-shell (we won't be using that for animation)
+  * layers (and their swap chains) will be owned by specific widgets
+  * widgets paint to their swap chains when they want (usually during paint, but maybe as a result of a timer event)
+    * widgets signal a native layer update by setting a flag in the EventCtx or PaintCtx
+  * widgets register their native drawing layers during 
+  * layers are registered to the parent window during `paint` (`paint_ctx.register_layer(transform, layer)`)

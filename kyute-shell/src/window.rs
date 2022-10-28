@@ -37,6 +37,10 @@ impl Window {
         self.0.show_context_menu(menu.into_inner(), at);
     }
 
+    pub fn composition_commit(&self) {
+        self.0.composition_commit()
+    }
+
     /// Sets the root composition layer.
     pub fn set_root_composition_layer(&self, layer: &Layer) {
         self.0.set_root_composition_layer(&layer.0);

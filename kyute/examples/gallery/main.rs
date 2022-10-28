@@ -13,7 +13,7 @@ use kyute::{
     Alignment, Color, Data, Environment, Length, UnitExt, Widget, Window,
 };
 use kyute_shell::{
-    text::{FontStyle, FormattedText},
+    text::{FontStyle, FormattedText, FormattedTextExt},
     winit::window::WindowBuilder,
 };
 use std::sync::Arc;
@@ -39,7 +39,7 @@ impl Scaffold {
         sidebar: impl Widget + 'static,
         content: impl Widget + 'static,
     ) -> Scaffold {
-        let mut grid = Grid::with_template("80px 2px 1fr / 300px 2px 1fr");
+        let mut grid = Grid::with_template("60px 2px 1fr / 180px 2px 1fr");
         // separators
         grid.insert(
             Null.fill()
@@ -62,11 +62,12 @@ impl Scaffold {
                 .grid_column(1),
         );
 
-        grid.insert(toolbar.grid_area((0, 1)));
+        grid.insert(toolbar.grid_area((0, 2)));
         grid.insert(sidebar.grid_area((0..1, 0)));
         grid.insert(content.grid_area((2, 2)));
         Scaffold {
-            grid: grid.style("background: $window-background-color;"),
+            //grid: grid.style("background: $window-background-color;")
+            grid: grid.style("background: rgb(0 0 0 / 0)"),
         }
     }
 }
@@ -133,30 +134,34 @@ fn root_view() -> impl Widget + Clone {
     items.insert(Checkbox::new(dark_mode).on_toggled(|v| dark_mode = v));
 
     // content pane
-    let showcase = match selected {
-        GalleryWidget::Home => gallery_showcase_unimplemented("Home"),
-        GalleryWidget::FormattedText => gallery_showcase_unimplemented("Formatted text"),
-        GalleryWidget::Buttons => gallery_showcase_unimplemented("Buttons"),
-        GalleryWidget::Steppers => stepper::showcase(),
-        GalleryWidget::Forms => forms::showcase(),
-        GalleryWidget::GroupBox => group_box::showcase(),
-        GalleryWidget::DropDown => gallery_showcase_unimplemented("Drop-downs"),
-        GalleryWidget::ContextMenu => gallery_showcase_unimplemented("Context menus"),
-        GalleryWidget::Grids => gallery_showcase_unimplemented("Grids"),
-        GalleryWidget::TextInput => gallery_showcase_unimplemented("Text input"),
-        GalleryWidget::TitledPanes => gallery_showcase_unimplemented("Titled panes"),
-        GalleryWidget::TreeView => table::showcase(),
-        GalleryWidget::Checkboxes => checkbox::showcase(),
+    let (title, showcase) = match selected {
+        GalleryWidget::Home => ("Home", gallery_showcase_unimplemented("Home")),
+        GalleryWidget::FormattedText => ("FormattedText", gallery_showcase_unimplemented("Formatted text")),
+        GalleryWidget::Buttons => ("Buttons", gallery_showcase_unimplemented("Buttons")),
+        GalleryWidget::Steppers => ("Steppers", stepper::showcase()),
+        GalleryWidget::Forms => ("Forms", forms::showcase()),
+        GalleryWidget::GroupBox => ("GroupBox", group_box::showcase()),
+        GalleryWidget::DropDown => ("DropDown", gallery_showcase_unimplemented("Drop-downs")),
+        GalleryWidget::ContextMenu => ("ContextMenu", gallery_showcase_unimplemented("Context menus")),
+        GalleryWidget::Grids => ("Grids", gallery_showcase_unimplemented("Grids")),
+        GalleryWidget::TextInput => ("TextInput", gallery_showcase_unimplemented("Text input")),
+        GalleryWidget::TitledPanes => ("TitledPanes", gallery_showcase_unimplemented("Titled panes")),
+        GalleryWidget::TreeView => ("TreeView", table::showcase()),
+        GalleryWidget::Checkboxes => ("Checkboxes", checkbox::showcase()),
     };
 
-    Scaffold::new(Null, items.padding(8.dip()), showcase)
-        .fill()
-        .theme(if dark_mode {
-            theme::Theme::Dark
-        } else {
-            theme::Theme::Light
-        })
-        .arc_pod()
+    Scaffold::new(
+        Text::new(title.font_size(30.0).font_style(FontStyle::Italic)).padding(8.dip()),
+        items.padding(8.dip()),
+        showcase,
+    )
+    .fill()
+    .theme(if dark_mode {
+        theme::Theme::Dark
+    } else {
+        theme::Theme::Light
+    })
+    .arc_pod()
 }
 
 #[composable(cached)]

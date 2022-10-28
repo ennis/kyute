@@ -71,6 +71,7 @@ struct CompositionSwapChain {
 impl CompositionSwapChain {
     /// Creates a new composition surface with the given size.
     fn new(size: SizeI) -> CompositionSwapChain {
+        eprintln!("new composition swap chain");
         let app = Application::instance();
 
         let width = size.width as u32;
@@ -90,7 +91,7 @@ impl CompositionSwapChain {
             BufferCount: 2,
             Scaling: DXGI_SCALING_STRETCH,
             SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
-            AlphaMode: DXGI_ALPHA_MODE_IGNORE,
+            AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
             Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
         };
         let swap_chain: IDXGISwapChain3 = unsafe {

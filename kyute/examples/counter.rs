@@ -6,7 +6,7 @@ use kyute::{
     },
     style,
     text::{FontWeight, FormattedText},
-    widget::{grid::GridLayoutExt, BaseTextEdit, Button, Grid, Text, TextEdit, WidgetExt},
+    widget::{grid::GridLayoutExt, BaseTextEdit, Button, Grid, Null, Text, TextEdit, WidgetExt},
     Alignment, Color, UnitExt, Widget, Window,
 };
 use kyute_shell::text::FormattedTextExt;
@@ -62,7 +62,7 @@ fn counter_demo() -> impl Widget {
 
     grid.centered()
         .frame(100.percent(), 100.percent())
-        .background("rgb(71 71 71)", style::Shape::rectangle())
+        //.background("rgb(71 71 71)")
         .text_color(Color::from_rgb_u8(200, 200, 200))
 }
 

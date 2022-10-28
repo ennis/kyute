@@ -45,6 +45,7 @@ windows = { version = "0.39.0", features = [
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_DirectWrite",
     "Win32_Security",
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_DirectComposition",
     "Win32_Graphics_Imaging",
     "Win32_Graphics_Imaging_D2D"] }
@@ -53,4 +54,5 @@ serde = { version = "1.0", optional = true }
 threadbound = "0.1.2"
 
 [features]
+mica = []
 serializing = ["serde"]

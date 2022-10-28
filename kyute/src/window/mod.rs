@@ -729,6 +729,8 @@ impl Widget for Window {
                     // register it to the AppCtx, necessary so that the event loop can route window events to this widget
                     ctx.register_window(window.id());
 
+                    window.set_root_composition_layer(self.content.layer().unwrap());
+
                     // update window state
                     wstate.scale_factor = window.scale_factor();
                     wstate.window = Some(window);
@@ -779,12 +781,18 @@ impl Widget for Window {
                 self.content.set_offset(content_offset);
             }
 
+            static mut FIRST_PAINT: bool = true;
+
             {
                 // let _span = trace_span!("Window composition layers update").entered();
                 // --- update composition layers ---
                 let repainted = self.content.repaint_layer(&mut wstate.skia_recording_context);
                 if repainted {
-                    window.set_root_composition_layer(self.content.layer().unwrap());
+                    unsafe {
+                        window.composition_commit();
+                        //window.set_root_composition_layer(self.content.layer().unwrap());
+                        //FIRST_PAINT = false;
+                    }
                 }
             }
         }
