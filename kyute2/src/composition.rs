@@ -114,6 +114,17 @@ impl ColorType {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+struct CompositorInner {
+    backend: backend::composition::Compositor,
+    layers: SlotMap<LayerID, LayerInfo>,
+    tree: SecondaryMap<LayerID, TreeInfo>,
+    transforms: SecondaryMap<LayerID, TransformInfo>,
+    containers: SecondaryMap<LayerID, ContainerInfo>,
+    effects: SecondaryMap<LayerID, EffectInfo>,
+    surfaces: SecondaryMap<LayerID, SurfaceInfo>,
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// A connection to the system compositor.
 pub struct Compositor {
@@ -233,6 +244,13 @@ impl Compositor {
                 }
             }
         }
+    }
+
+    /// Waits for the specified surface to be ready for presentation.
+    ///
+    /// TODO explain
+    pub fn wait_for_surface(&mut self, surface: LayerID) {
+        self.backend.wait_for_surface(surface)
     }
 
     /// Creates a skia drawing context to paint on the specified surface layer.

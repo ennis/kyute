@@ -1221,5 +1221,73 @@ Example: insert 5 elements at position 5
 
 Example: replace the whole list
 
+# Compositor API
 
-# Graal: 
+Annoying to do this every time:
+```
+let app = Application::global();
+let mut compositor = app.compositor();
+compositor.do_thing_with_layer_or_surface(layer_id.unwrap());
+```
+
+Alternatives:
+
+A: Surfaces / layers are refcounted, non-thread-safe objects:
+```
+// no need to access the compositor
+let layer = Layer::new()?;
+surface_layer.do_stuff()?;
+layer.add_child(other_layer)?;
+surface_layer.acquire_drawing_surface()?;
+surface_layer.release_drawing_surface(surf)?;
+```
+
+Internally, store `Rc<Compositor>` + layer ID.
+`Compositor` is clonable, but not Sync. IDs can still be sent across threads.
+
+# Async rendering & presentation
+
+Input/main task: receives and propagates input events to the element tree, which in turn may request repaints
+Render task: a loop, synced with presentation:
+```rust
+fn render_task() {
+   loop {
+        // sync with presentation
+        wait_for_presentation();
+        // receive last 
+        let request = rx.recv();
+   }
+}
+```
+
+
+Events by time:
+
+- Input event #1
+  - Propagate to element tree
+  - If the event resulted in dirty regions, immediately synchronize with presentation, and schedule idle task UI_UPDATE
+- Input event #2
+- ...
+- Input event #n
+When the input event queue is clear:
+Idle task: UI_UPDATE
+ - evaluate widget tree by calling the UI function
+ - apply to element tree
+ - if repaint needed: invalidate dirty region and schedule REPAINT
+
+(may process additional input events here)
+
+Idle task: SYNC_WITH_PRESENTATION
+ - sync with presentation
+ - schedule UI_UPDATE
+
+(process additional input events...)
+
+Idle task: UI_UPDATE
+- evaluate widget tree by calling the UI function
+- apply to element tree
+- repaint the element tree if needed
+
+Doesn't work with glazier: schedule_idle puts the work on the message queue immediately
+
+**Fact**: wait_for_presentation cannot run in the same thread as the UI handler, because otherwise it would block unrelated windows.

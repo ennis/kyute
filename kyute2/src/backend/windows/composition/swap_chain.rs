@@ -365,7 +365,7 @@ impl CompositionSwapChain {
         };
         let swap_chain: IDXGISwapChain3 = unsafe {
             dxgi_factory
-                .CreateSwapChainForComposition(&command_queue, &swap_chain_desc, None)
+                .CreateSwapChainForComposition(command_queue, &swap_chain_desc, None)
                 .expect("CreateSwapChainForComposition failed")
                 .cast::<IDXGISwapChain3>()
                 .unwrap()

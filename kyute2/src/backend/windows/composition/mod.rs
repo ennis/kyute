@@ -1,23 +1,19 @@
 //! Windows compositor implementation details
-mod swap_chain;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use crate::{
     backend,
     backend::windows::event::Win32Event,
     composition::{ColorType, LayerID},
-    Application,
+    Application, Size,
 };
 use glazier::raw_window_handle::RawWindowHandle;
-use kurbo::Size;
 use skia_safe as sk;
 use slotmap::SecondaryMap;
 use windows::{
     core::ComInterface,
     Foundation::Numerics::Vector2,
     Win32::{
-        Foundation::HWND,
+        Foundation::{CloseHandle, HANDLE, HWND},
         Graphics::{
             Direct3D12::{ID3D12CommandQueue, ID3D12Device, ID3D12Fence, ID3D12Resource, D3D12_FENCE_FLAG_NONE},
             Dxgi::{
@@ -35,23 +31,12 @@ use windows::{
     UI::Composition::{Compositor as WinCompositor, ContainerVisual, Desktop::DesktopWindowTarget, Visual},
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Compositor impl
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-impl CompositionSwapChain {
-    /// Acquires a buffer for presentation.
-    pub(crate) fn acquire_image(&mut self) -> ID3D12Resource {
-        unsafe {}
-    }
-}
+//mod swap_chain;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Windows drawable surface backend
 pub(crate) struct DrawableSurface {
-    #[cfg(feature = "vulkan")]
-    vk_image: graal::ImageInfo,
     surface: sk::Surface,
 }
 
@@ -61,10 +46,26 @@ impl DrawableSurface {
     }
 }
 
+struct SwapChain {
+    inner: IDXGISwapChain3,
+    frame_latency_waitable: HANDLE,
+}
+
+impl Drop for SwapChain {
+    fn drop(&mut self) {
+        if !self.frame_latency_waitable.is_invalid() {
+            unsafe {
+                CloseHandle(self.frame_latency_waitable);
+            }
+        }
+    }
+}
+
 /// A windows compositor native layer (a `Visual`).
 struct NativeLayer {
     visual: Visual,
-    swap_chain: Option<IDXGISwapChain3>,
+    size: Size,
+    swap_chain: Option<SwapChain>,
     window_target: Option<DesktopWindowTarget>,
 }
 
@@ -94,7 +95,7 @@ impl Compositor {
         let command_queue = app_backend.d3d12_command_queue.0.clone();
 
         let command_completion_fence = unsafe {
-            d3d12_device
+            device
                 .CreateFence::<ID3D12Fence>(0, D3D12_FENCE_FLAG_NONE)
                 .expect("CreateFence failed")
         };
@@ -116,23 +117,6 @@ impl Compositor {
         }
     }
 
-    /// Waits for submitted GPU commands to complete.
-    fn wait_for_gpu_command_completion(&mut self) {
-        unsafe {
-            let mut fence_value = self.completion_fence_value;
-            *fence_value += 1;
-            self.command_queue
-                .Signal(&self.completion_fence, *fence_value)
-                .expect("ID3D12CommandQueue::Signal failed");
-            if self.completion_fence.GetCompletedValue() < *fence_value {
-                self.completion_fence
-                    .SetEventOnCompletion(*fence_value, self.completion_event.handle())
-                    .expect("SetEventOnCompletion failed");
-                WaitForSingleObject(self.completion_event.handle(), 0xFFFFFFFF);
-            }
-        }
-    }
-
     /// Creates a container layer.
     pub(crate) fn create_container_layer(&mut self, id: LayerID) {
         let container = self
@@ -143,6 +127,7 @@ impl Compositor {
             id,
             NativeLayer {
                 visual: container.cast().unwrap(),
+                size: Size::ZERO,
                 swap_chain: None,
                 window_target: None,
             },
@@ -173,10 +158,16 @@ impl Compositor {
         };
         let swap_chain: IDXGISwapChain3 = unsafe {
             self.dxgi_factory
-                .CreateSwapChainForComposition(&command_queue, &swap_chain_desc, None)
+                .CreateSwapChainForComposition(&self.command_queue, &swap_chain_desc, None)
                 .expect("CreateSwapChainForComposition failed")
                 .cast::<IDXGISwapChain3>()
                 .unwrap()
+        };
+        let frame_latency_waitable = unsafe { swap_chain.GetFrameLatencyWaitableObject() };
+
+        let swap_chain = SwapChain {
+            inner: swap_chain,
+            frame_latency_waitable,
         };
 
         // Create the composition surface representing the swap chain in the compositor
@@ -184,7 +175,7 @@ impl Compositor {
             self.compositor
                 .cast::<ICompositorInterop>()
                 .unwrap()
-                .CreateCompositionSurfaceForSwapChain(&swap_chain)
+                .CreateCompositionSurfaceForSwapChain(&swap_chain.inner)
                 .expect("could not create composition surface for swap chain")
         };
 
@@ -193,27 +184,45 @@ impl Compositor {
         let brush = self.compositor.CreateSurfaceBrush().unwrap();
         brush.SetSurface(&surface).unwrap();
         visual.SetBrush(&brush).unwrap();
-        let size = Vector2::new(size.width as f32, size.height as f32);
-        visual.SetSize(size).unwrap();
+        let new_size = Vector2::new(size.width as f32, size.height as f32);
+        visual.SetSize(new_size).unwrap();
 
         self.visuals.insert(
             id,
             NativeLayer {
                 visual: visual.cast().unwrap(),
+                size,
                 swap_chain: Some(swap_chain),
                 window_target: None,
             },
         );
     }
 
+    /// Waits for submitted GPU commands to complete.
+    fn wait_for_gpu_command_completion(&mut self) {
+        unsafe {
+            let mut fence_value = &mut self.completion_fence_value;
+            *fence_value += 1;
+            self.command_queue
+                .Signal(&self.completion_fence, *fence_value)
+                .expect("ID3D12CommandQueue::Signal failed");
+            if self.completion_fence.GetCompletedValue() < *fence_value {
+                self.completion_fence
+                    .SetEventOnCompletion(*fence_value, self.completion_event.handle())
+                    .expect("SetEventOnCompletion failed");
+                WaitForSingleObject(self.completion_event.handle(), 0xFFFFFFFF);
+            }
+        }
+    }
+
     /// Resizes a surface layer.
     pub(crate) fn set_surface_layer_size(&mut self, id: LayerID, size: Size) {
         let layer = &mut self.visuals[id];
-        let current_size = layer.visual.Size().unwrap();
         // skip if same size
-        if current_size.X as f64 == size.width && current_size.Y as f64 == size.height {
+        if layer.size == size {
             return;
         }
+
         let width = size.width as u32;
         let height = size.height as u32;
         // avoid resizing to zero width
@@ -221,10 +230,16 @@ impl Compositor {
             return;
         }
 
-        if let Some(ref mut swap_chain) = layer.swap_chain {
+        if layer.swap_chain.is_some() {
+            self.wait_for_gpu_command_completion();
+        }
+
+        let layer = &mut self.visuals[id];
+        if let Some(ref swap_chain) = layer.swap_chain {
             unsafe {
                 // SAFETY: basic FFI call
                 swap_chain
+                    .inner
                     .ResizeBuffers(
                         2,
                         width,
@@ -236,8 +251,29 @@ impl Compositor {
             }
         }
 
-        let new_size = Vector2::new(size.width as f32, size.height as f32);
-        layer.visual.SetSize(new_size).unwrap();
+        layer.size = size;
+        layer
+            .visual
+            .SetSize(Vector2::new(size.width as f32, size.height as f32))
+            .unwrap();
+    }
+
+    /// Waits for the specified surface to be ready for presentation.
+    ///
+    /// TODO explain
+    pub(crate) fn wait_for_surface(&mut self, surface: LayerID) {
+        let layer = &mut self.visuals[surface];
+        let swap_chain = layer.swap_chain.as_mut().expect("layer should be a surface layer");
+
+        // if the swapchain has a mechanism for syncing with presentation, use it,
+        // otherwise do nothing.
+        if !swap_chain.frame_latency_waitable.is_invalid() {
+            unsafe {
+                WaitForSingleObject(swap_chain.frame_latency_waitable, 1000)
+                    .to_hresult()
+                    .unwrap();
+            }
+        }
     }
 
     /// Binds a composition layer to a window.
@@ -312,42 +348,14 @@ impl Compositor {
 
     /// Creates a skia drawing context for the specified surface layer.
     pub(crate) fn acquire_drawing_surface(&mut self, surface_layer: LayerID) -> DrawableSurface {
-        let swap_chain = self.visuals[surface_layer]
-            .swap_chain
-            .as_mut()
-            .expect("layer should be a surface layer");
+        let layer = &mut self.visuals[surface_layer];
+        let swap_chain = layer.swap_chain.as_mut().expect("layer should be a surface layer");
 
-        #[cfg(feature = "vulkan")]
-        unsafe {
-            let app = Application::global();
-            let image = swap_chain.acquire_image_vk();
-            //eprintln!("acquire image {:p}", image.handle);
-            // SAFETY: TODO
-            // ¯\_(ツ)_/¯
-            let surface = app.drawing().create_surface_for_vulkan_image(
-                image,
-                graal::vk::Format::R16G16B16A16_SFLOAT,
-                swap_chain.size,
-                sk::gpu::SurfaceOrigin::TopLeft,
-                sk::ColorType::RGBAF16,
-                sk::ColorSpace::new_srgb_linear(),
-                Some(sk::SurfaceProps::new(
-                    sk::SurfacePropsFlags::default(),
-                    sk::PixelGeometry::RGBH,
-                )),
-            );
-
-            DrawableSurface {
-                vk_image: image,
-                surface,
-            }
-        }
-
-        #[cfg(feature = "d3d")]
         unsafe {
             // acquire next image from swap chain
-            let index = swap_chain.GetCurrentBackBufferIndex();
+            let index = swap_chain.inner.GetCurrentBackBufferIndex();
             let swap_chain_buffer = swap_chain
+                .inner
                 .GetBuffer::<ID3D12Resource>(index)
                 .expect("failed to retrieve swap chain buffer");
 
@@ -355,7 +363,7 @@ impl Compositor {
             let surface = app.drawing().create_surface_for_texture(
                 swap_chain_buffer,
                 DXGI_FORMAT_R16G16B16A16_FLOAT,
-                swap_chain.size,
+                layer.size,
                 sk::gpu::SurfaceOrigin::TopLeft,
                 sk::ColorType::RGBAF16,
                 sk::ColorSpace::new_srgb_linear(),
@@ -374,18 +382,12 @@ impl Compositor {
             .as_mut()
             .expect("layer should be a surface layer");
 
-        #[cfg(feature = "d3d")]
         unsafe {
             //let app = Application::global();
             //let app_backend = app.backend();
-            //surface.surface.flush_and_submit();
-            swap_chain.Present(1, 0).unwrap();
+            surface.surface.flush_and_submit();
+            swap_chain.inner.Present(1, 0).unwrap();
         }
-
-        /*#[cfg(not(feature = "vulkan"))]
-        {
-            unimplemented!("release_drawing_surface")
-        }*/
     }
 }
 

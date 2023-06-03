@@ -2,23 +2,24 @@ use glazier::{
     kurbo::Size, raw_window_handle::HasRawWindowHandle, AppHandler, Cursor, FileDialogToken, FileInfo, IdleToken,
     KeyEvent, PointerEvent, Region, Scalable, TimerToken, WinHandler, WindowHandle,
 };
+use kurbo::Point;
 use kyute2::{composition, composition::ColorType, Application};
 use skia_safe as sk;
 use std::{
     any::Any,
     time::{Duration, Instant},
 };
+use tracing::trace_span;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 const WIDTH: usize = 2048;
 const HEIGHT: usize = 1536;
 
+const UI_UPDATE: IdleToken = IdleToken::new(0);
+
 fn main() {
-    tracing_subscriber::fmt()
-        .compact()
-        .with_target(false)
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()))
+        .expect("set up the subscriber");
 
     let app = Application::new();
 
@@ -29,7 +30,17 @@ fn main() {
         .build()
         .unwrap();
 
-    window.get_idle_handle().unwrap();
+    // frame latency situation:
+    // - get monitor refresh rate
+    // - estimate render time (CPU+GPU) in multiples of the monitor refresh rate (blank interval)
+    // - call SetMaximumFrameLatency on the swap chain with the estimated render time as calculated above
+    // - when an input event is received, wait on the swap chain (on the frame latency waitable object)
+    //      - or possibly, start a timer that will be signalled when the swap chain is ready
+    // - process all input events (either after the swap chain is ready, or concurrently)
+    // - after (or when wait for swapchain is finished), start a render
+    //      /!\ it is crucial that the timer event take priority over any input UI event, otherwise we'll miss the deadline
+    //          alternatively, do rendering in a separate thread that wakes when an input event arrives
+    //
 
     window.show();
     app.run(None);
@@ -38,10 +49,12 @@ fn main() {
 struct WindowState {
     handle: WindowHandle,
     size: Size,
+    pos: Point,
     counter: u64,
     main_layer: Option<composition::LayerID>,
     last_render_time: Instant,
     num_frames: u64,
+    synced_with_presentation: bool,
 }
 
 impl WindowState {
@@ -53,30 +66,41 @@ impl WindowState {
             main_layer: None,
             last_render_time: Instant::now(),
             num_frames: 0,
+            pos: Default::default(),
+            synced_with_presentation: false,
         }
     }
 
-    fn schedule_render(&self) {
+    fn schedule_render(&mut self) {
+        if !self.synced_with_presentation {
+            let _span = trace_span!("PRESENT_SYNC").entered();
+            let layer = self.main_layer.unwrap();
+            let app = Application::global();
+            let mut compositor = app.compositor();
+            compositor.wait_for_surface(layer);
+            self.synced_with_presentation = true;
+        }
         self.handle.invalidate();
     }
 
     fn render(&mut self) {
+        let _span = trace_span!("RENDER").entered();
         let layer = self.main_layer.unwrap();
         let app = Application::global();
         let mut compositor = app.compositor();
         let surf = compositor.acquire_drawing_surface(layer);
         let mut sk_surf = surf.surface();
         let canvas = sk_surf.canvas();
-        //canvas.clear(sk::Color4f::new(0.9, 0.9, 0.9, 1.0));
+        canvas.clear(sk::Color4f::new(0.9, 0.9, 0.9, 1.0));
 
         let mut paint = sk::Paint::new(sk::Color4f::new(0.1, 0.4, 1.0, 1.0), None);
         //paint.set_stroke(true);
         paint.set_anti_alias(true);
         paint.set_stroke_width(10.0);
         paint.set_style(sk::PaintStyle::Stroke);
-        //canvas.clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
-        let pos = self.size / 2.0;
-        //canvas.draw_circle((pos.width as f32, pos.height as f32), 100.0, &paint);
+        canvas.clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
+        let pos = self.pos;
+        canvas.draw_circle((pos.x as f32, pos.y as f32), 100.0, &paint);
 
         compositor.release_drawing_surface(layer, surf);
         let now = Instant::now();
@@ -94,17 +118,20 @@ impl WinHandler for WindowState {
     fn connect(&mut self, handle: &WindowHandle) {
         self.handle = handle.clone();
 
-        let app = Application::global();
-        let size = handle.get_size();
-        let raw_window_handle = handle.raw_window_handle();
-        let mut compositor = app.compositor();
-        let layer_id = compositor.create_surface_layer(size, ColorType::RGBAF16);
+        {
+            let app = Application::global();
+            let size = handle.get_size();
+            let raw_window_handle = handle.raw_window_handle();
+            let mut compositor = app.compositor();
+            let layer_id = compositor.create_surface_layer(size, ColorType::RGBAF16);
 
-        unsafe {
-            compositor.bind_layer(layer_id, raw_window_handle);
+            unsafe {
+                compositor.bind_layer(layer_id, raw_window_handle);
+            }
+
+            self.main_layer = Some(layer_id);
         }
 
-        self.main_layer = Some(layer_id);
         self.schedule_render();
     }
 
@@ -115,7 +142,10 @@ impl WinHandler for WindowState {
     fn prepare_paint(&mut self) {}
 
     fn paint(&mut self, _: &Region) {
+        let _span = trace_span!("UI_UPDATE").entered();
+        self.synced_with_presentation = false;
         self.render();
+        //self.render();
         //self.schedule_render();
     }
 
@@ -130,29 +160,35 @@ impl WinHandler for WindowState {
     }
 
     fn key_down(&mut self, event: KeyEvent) -> bool {
-        println!("keydown: {event:?}");
+        let _span = trace_span!("event: keydown").entered();
+        self.schedule_render();
         false
     }
 
     fn key_up(&mut self, event: KeyEvent) {
-        println!("keyup: {event:?}");
+        //println!("keyup: {event:?}");
     }
 
     fn wheel(&mut self, event: &PointerEvent) {
         println!("wheel {event:?}");
     }
 
-    fn pointer_move(&mut self, _event: &PointerEvent) {
+    fn pointer_move(&mut self, event: &PointerEvent) {
+        let _span = trace_span!("event: pointer move").entered();
         self.handle.set_cursor(&Cursor::Arrow);
+        self.pos = event.pos;
         //println!("pointer_move {event:?}");
+        self.schedule_render();
     }
 
     fn pointer_down(&mut self, event: &PointerEvent) {
-        println!("pointer_down {event:?}");
+        let _span = trace_span!("event: pointer down").entered();
+        self.schedule_render();
     }
 
     fn pointer_up(&mut self, event: &PointerEvent) {
-        println!("pointer_up {event:?}");
+        let _span = trace_span!("event: pointer up").entered();
+        self.schedule_render();
     }
 
     fn timer(&mut self, id: TimerToken) {
@@ -180,7 +216,16 @@ impl WinHandler for WindowState {
         glazier::Application::global().quit()
     }
 
-    fn idle(&mut self, _: IdleToken) {}
+    fn idle(&mut self, idle_token: IdleToken) {
+        match idle_token {
+            UI_UPDATE => {
+                let _span = trace_span!("UI_UPDATE").entered();
+                self.synced_with_presentation = false;
+                self.render();
+            }
+            _ => {}
+        }
+    }
 
     fn as_any(&mut self) -> &mut dyn Any {
         self
