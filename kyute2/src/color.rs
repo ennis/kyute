@@ -1,18 +1,8 @@
-use crate::Data;
-use palette::{convert::FromColorUnclamped, Shade};
+//! Color type
+use palette::convert::FromColorUnclamped;
 use std::{error::Error, fmt, marker::PhantomData};
 
-/// Color spec, non-linear srgb.
-#[derive(Copy, Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Color(pub palette::Srgba);
-
-impl Data for Color {
-    fn same(&self, other: &Self) -> bool {
-        self.eq(other)
-    }
-}
-
+/// Error emitted when parsing a hex color value.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ColorParseError;
 
@@ -23,6 +13,17 @@ impl fmt::Display for ColorParseError {
 }
 
 impl Error for ColorParseError {}
+
+/// A color value in non-linear sRGB.
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Color(pub palette::Srgba);
+
+/*impl Data for Color {
+    fn same(&self, other: &Self) -> bool {
+        self.eq(other)
+    }
+}*/
 
 // taken from druid
 const fn nibble_from_ascii(b: u8) -> Result<u8, ColorParseError> {
@@ -91,7 +92,7 @@ impl Color {
         )))
     }
 
-    /// Replaces alpha value.
+    /// Replaces the alpha value of this color.
     pub const fn with_alpha(self, alpha: f32) -> Color {
         Color(palette::Srgba {
             color: self.0.color,
@@ -104,6 +105,7 @@ impl Color {
         Color::new((red as f32) / 255.0, (green as f32) / 255.0, (blue as f32) / 255.0, 1.0)
     }
 
+    /// TODO documentation
     pub const fn to_rgba_u8(&self) -> (u8, u8, u8, u8) {
         (
             (self.0.color.red * 255.0) as u8,
@@ -113,6 +115,7 @@ impl Color {
         )
     }
 
+    /// TODO documentation
     pub const fn to_rgba(&self) -> (f32, f32, f32, f32) {
         (self.0.color.red, self.0.color.green, self.0.color.blue, self.0.alpha)
     }
@@ -127,7 +130,7 @@ impl Color {
         )
     }
 
-    /// TODO documentation
+    /*/// TODO documentation
     pub fn lighten(&self, amount: f32) -> Color {
         Color(Shade::lighten(&self.0.into_linear(), amount).into_encoding())
     }
@@ -135,8 +138,9 @@ impl Color {
     /// TODO documentation
     pub fn darken(&self, amount: f32) -> Color {
         Color(Shade::darken(&self.0.into_linear(), amount).into_encoding())
-    }
+    }*/
 
+    /// TODO documentation
     pub fn to_hex(&self) -> String {
         match self.to_rgba_u8() {
             (r, g, b, 255) => {

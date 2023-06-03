@@ -13,8 +13,6 @@
 // limitations under the License.
 
 //! Traits for handling value types.
-
-use crate::{Offset, Point, Rect, SideOffsets, Size, Transform};
 use std::{ptr, rc::Rc, sync::Arc};
 
 pub trait Data: Clone + 'static {
@@ -74,13 +72,6 @@ impl_data_simple!(std::net::SocketAddrV6);
 impl_data_simple!(std::net::IpAddr);
 impl_data_simple!(std::net::SocketAddr);
 impl_data_simple!(std::ops::RangeFull);
-//impl_data_simple!(Color);
-impl_data_simple!(SideOffsets);
-impl_data_simple!(Rect);
-impl_data_simple!(Size);
-impl_data_simple!(Point);
-impl_data_simple!(Offset);
-impl_data_simple!(Transform);
 
 //TODO: remove me!?
 impl_data_simple!(String);

@@ -59,7 +59,6 @@ pub enum FieldIdent {
 pub struct Field<Attrs> {
     pub ident: FieldIdent,
     pub ty: syn::Type,
-
     pub attrs: Attrs,
 }
 

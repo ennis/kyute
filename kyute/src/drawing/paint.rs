@@ -152,7 +152,7 @@ impl Paint {
 
                 let shader = sk::Shader::linear_gradient(
                     (a, b),
-                    GradientShaderColors::ColorsInSpace(&colors, sk::ColorSpace::new_srgb()),
+                    GradientShaderColors::ColorsInSpace(&colors, Some(sk::ColorSpace::new_srgb())),
                     &positions[..],
                     sk::TileMode::Clamp,
                     None,

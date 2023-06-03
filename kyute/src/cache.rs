@@ -67,6 +67,8 @@ impl DepNode {
             self.causes.lock().push((cause.0, cause.1.to_string()));
         }
 
+        eprintln!("num dependents={}", dependents.len());
+
         for d in dependents.iter() {
             #[cfg(debug_assertions)]
             d.invalidate(cause);
@@ -779,6 +781,10 @@ impl Cache {
             self.inner = Some(inner);
             result
         })
+    }
+
+    pub fn dump(&self) {
+        self.inner.as_ref().unwrap().dump(0)
     }
 }
 

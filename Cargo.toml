@@ -1,6 +1,10 @@
 [workspace]
+resolver = "2"
 members = [
-    "kyute",                 # user interface library - widgets and application architecture
+    #"kyute",                 # user interface library - widgets and application architecture
+    "kyute2",                # user interface library - widgets and application architecture
+    "kyute-compose",         # user interface library - function composition cache
+    "kyute-compose/macros",  # user interface library - function composition cache - proc macros
     "kyute-common",          # user interface library - common types
     "kyute-common/macros",   # user interface library - common types - proc macros
     "kyute/macros",          # user interface library - widgets and application architecture - proc macros

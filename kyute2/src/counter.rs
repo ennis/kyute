@@ -1,3 +1,4 @@
+//! Atomic counters
 use std::{
     num::NonZeroU64,
     sync::atomic::{AtomicU64, Ordering},

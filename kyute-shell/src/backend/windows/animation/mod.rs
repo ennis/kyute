@@ -159,11 +159,7 @@ impl CompositionSwapChain {
                     None,
                 );
 
-                // initial command list
-
-                // initial sync - D3D12 signal
-                //let command_queue = &app.backend.d3d12_command_queue;
-                // dummy rendering
+                // Create the command list for
                 let command_list: ID3D12GraphicsCommandList = d3d12_device
                     .CreateCommandList(
                         0,

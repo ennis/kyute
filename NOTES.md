@@ -1052,3 +1052,174 @@ Design:
     * widgets signal a native layer update by setting a flag in the EventCtx or PaintCtx
   * widgets register their native drawing layers during 
   * layers are registered to the parent window during `paint` (`paint_ctx.register_layer(transform, layer)`)
+
+
+# Cache cell
+
+* Constant size - 24 bytes (enough for a f32x4 color value + TypeId)
+* Store inline if size is small
+* Otherwise, uses a box
+* Cloneable
+
+
+# Support for MacOS?
+
+There are several configurations:
+- Windows, Linux: skia with vulkan device (via graal, or something else)
+- MacOS: skia with metal device
+
+# Native compositor layers
+
+On windows, they are backed by swapchains. But this seems inefficient since they will allocate 2~3 times the memory
+(for each buffer in the swap chain) for something that is not supposed to change a lot.
+
+-> do not use swap chains for static content, use them only for 3D/video overlays
+
+1. Create Compositor
+2. Create CompositionGraphicsDevice from ID2D1Device/ID3D11Device (`ICompositorInterop::CreateGraphicsDevice`)
+3. Create CompositionGraphicsSurface (`CompositionGraphicsDevice::CreateDrawingSurface`)
+    * I assume this calls the underlying ID2D1Device/ID3D11Device passed earlier
+4. Cast CompositionGraphicsSurface to ICompositionSurface
+5. Set as the surface of a CreateSurfaceBrush
+
+The CompositionGraphicsSurface surface created by CompositionGraphicsDevice are not shareable with other APIs, so don't bother.
+
+
+Ideally, would like to draw directly on IDCompositionSurface, but how?
+* Not possible with DX12 devices (Compositor doesn't support DX12)
+* Should be possible with D3D11, but Windows.UI.Composition / CompositionGraphicsDevice doesn't support D3D11?
+
+=> Don't bother, it creates a swap chain under the hood (call BeginDraw multiple times and you see that it flips between two different resources with the DXGI_USAGE_BACK_BUFFER flag)
+
+Conclusion:
+* static elements (e.g. text): render and cache to texture
+* dynamic elements (gauges, button hover, etc.): re-render with small damage region
+* scrollable regions: composition layer
+* video, 3D: composition layer
+* static content with dynamic transform: composition layer
+
+
+
+# Skia stuff
+
+- create from native compositor surface
+   - different code paths for macos and vulkan (linux/vulkan or win32/vulkan)
+- compositor surface interface
+  - does nothing by default, but there are specific interfaces for macOS or win32/vulkan
+  - vulkan interface for compositor surface:
+    - acquire_image, present_and_release_image()
+
+|         | macOS           | Win32/Vulkan         |   |
+|---------|-----------------|----------------------|---|
+| Image   | CAMetalDrawable | graal::Image         |   |
+| Surface | CAMetalLayer    | CompositionSwapChain |   |
+|         |                 |                      |   |
+
+```rust
+pub trait VulkanCompositionSurface {
+    fn acquire_image(&self) -> graal::ImageInfo;
+    unsafe fn present_and_release_image(&self, image: graal::ImageInfo, dirty_rect: Rect);
+}
+```
+
+Note:
+Skia supports D3D12, so instead of trying to shoehorn vulkan, use the D3D12 backend of skia. 
+graal/vulkan becomes optional on windows, no need for complicated interop.
+3D can still use vulkan via raw composition layers
+
+See also: [Possible Deprecation / Removal of D3D Backend](https://groups.google.com/g/skia-discuss/c/WY7yzRjGGFA)
+
+
+# Data structure for the retained widget tree
+
+"container-owns":
+(+) straightforward regarding ownership
+(-) event delivery is complicated:
+    - need participation of widgets for event delivery
+    - need to maintain a bloom filter to avoid unnecessary traversals
+
+ID-tree:
+(+) event delivery is simpler, can directly address any widget
+(-) forced type erasure
+(-) can't easily borrow mutably multiple widgets at the same time (e.g. a parent and one of its children): deal-breaker for calculations that tend to access both (e.g. layout)
+
+Possible way forward, as suggested on xilem zulip: container-owns synchronized with a side tree containing the widget hierarchy 
+
+
+# Issue: UI diff evaluation is in the same thread as the UI handler
+
+In other words: UI blocked when the UI diff is being calculated.
+
+Q: Is that an issue?
+A: It's easy to accidentally perform a costly operation in the UI eval function. If UI eval is done in another thread (the "application thread") by default,
+   it would not block the event handlers.
+
+Q: what about layout? should it be done in another thread as well?
+A: would need to duplicate the element tree
+
+Advantages:
+* Doesn't block the UI by default
+
+Problems:
+* Signals would be emitted from the UI thread and received in the application thread, requiring Arc<CacheVar>
+* Can't access `Application::global()`
+  * no compositor
+  * no GPU backend
+  * no drawing
+
+## What does "blocking the UI" mean?
+
+User clicks/drags something and doesn't see any feedback / cannot interact with anything else.
+This means that a long computation is preventing input events from being processed.
+
+In that sense, the evaluation of the UI diff *cannot* be expensive. Whether it's calculated in the same thread or another, 
+it will look the same to the user (except if we do UI updates directly on the element tree, without re-evaluating the widget tree).
+
+Conclusion: it makes no sense to move the UI diff evaluation outside the UI thread.
+
+# Multiple windows
+
+## Option A
+UI closure per-window.
+App object retains a list of open windows (Idle handles), holds the app state in a refcell.
+When the app state changes (either compare with the prev state or increment rev index), signal all windows to redraw their UI.
+Windows hold a shared ref to the app state, borrow_mut and re-run the UI closure with it.
+
+## Option B
+UI closure for the whole app.
+App logic runs in a separate thread. Inside the UI closure, send diffs to the windows via channels.
+
+## Option C
+UI closure for the whole app.
+App logic runs in the UI thread.
+App logic run after each window event.
+App logic sets diffs via `Rc<RefCell<>>` in WinHandler.
+
+# List diffs 
+List of insertion/removals/modifications. Each widget has an optional ID to identify it in the list. 
+ID produced from location in the call trace.
+
+Each element linked to a widget by its call ID. Element containers hold a `Vec<Box<dyn Element>>`, each elem node stores ID + inner element.
+Specialized function that performs reconciliation of widgets onto a `Vec<Box<dyn Element>>`.
+Elements know their ID, returned with `Element::id`.
+
+List patches: sequence of tokens:
+- Start: anchor at the start of the sequence
+- Modify(T): modify current element
+- Advance(N): skip N elements
+- Find(ID): go to element with specified ID
+- Remove: remove current element
+- Skip: skip to end
+- End: end sequence
+
+Example: insert 5 elements at position 5
+- Start
+- Advance(5)
+- Insert (x5)
+- Skip
+- End
+
+Example: replace the whole list
+
+
+# Graal: 

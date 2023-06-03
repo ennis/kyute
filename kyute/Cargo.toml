@@ -9,7 +9,7 @@ kyute-macros = { path="macros" }
 kyute-shell = { path="../kyute-shell", features = ["serializing", "mica"] }
 kyute-common = { path="../kyute-common", features = ["serializing", "imbl"] }
 svgtypes = "0.8.0"  # SVG path parser and path segment definitions
-skia-safe = { version = "0.49.0", features = ["vulkan"] }
+skia-safe = { version = "0.62.0", features = ["vulkan"] }
 tracing = { version = "0.1.32", features = ["attributes"] }
 euclid = "0.22"
 keyboard-types = "0.6"
@@ -29,7 +29,6 @@ threadbound = "0.1.2"
 lazy_static = "1.4.0"
 parking_lot = "0.12.0"
 syn = { version = "1.0", features = ["parsing"] }
-nom = "7"
 cssparser = "0.29"
 similar = "2.1.0"
 once_cell = "1.12"

@@ -123,6 +123,8 @@ fn update_ui<W: Widget + 'static>(
         // ensures that all widgets have received the `Initialize` event.
     };
 
+    app_ctx.cache.dump();
+
     // send the initialize event
     {
         let _span = trace_span!("UI initialize event").entered();
