@@ -4,7 +4,7 @@ use crate::{
     backend,
     backend::windows::event::Win32Event,
     composition::{ColorType, LayerID},
-    Application, Size,
+    AppGlobals, Size,
 };
 use glazier::raw_window_handle::RawWindowHandle;
 use skia_safe as sk;
@@ -17,7 +17,10 @@ use windows::{
         Graphics::{
             Direct3D12::{ID3D12CommandQueue, ID3D12Device, ID3D12Fence, ID3D12Resource, D3D12_FENCE_FLAG_NONE},
             Dxgi::{
-                Common::{DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_SAMPLE_DESC},
+                Common::{
+                    DXGI_ALPHA_MODE_IGNORE, DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                    DXGI_SAMPLE_DESC,
+                },
                 IDXGIFactory3, IDXGISwapChain3, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
                 DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_DISCARD,
                 DXGI_USAGE_RENDER_TARGET_OUTPUT,
@@ -34,6 +37,8 @@ use windows::{
 //mod swap_chain;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+const SWAP_CHAIN_BUFFER_COUNT: u32 = 2;
 
 /// Windows drawable surface backend
 pub(crate) struct DrawableSurface {
@@ -150,10 +155,10 @@ impl Compositor {
             Stereo: false.into(),
             SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
-            BufferCount: 2,
+            BufferCount: SWAP_CHAIN_BUFFER_COUNT,
             Scaling: DXGI_SCALING_STRETCH,
             SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
-            AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
+            AlphaMode: DXGI_ALPHA_MODE_IGNORE,
             Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
         };
         let swap_chain: IDXGISwapChain3 = unsafe {
@@ -163,7 +168,10 @@ impl Compositor {
                 .cast::<IDXGISwapChain3>()
                 .unwrap()
         };
-        let frame_latency_waitable = unsafe { swap_chain.GetFrameLatencyWaitableObject() };
+        let frame_latency_waitable = unsafe {
+            swap_chain.SetMaximumFrameLatency(1).unwrap();
+            swap_chain.GetFrameLatencyWaitableObject()
+        };
 
         let swap_chain = SwapChain {
             inner: swap_chain,
@@ -241,7 +249,7 @@ impl Compositor {
                 swap_chain
                     .inner
                     .ResizeBuffers(
-                        2,
+                        SWAP_CHAIN_BUFFER_COUNT,
                         width,
                         height,
                         DXGI_FORMAT_R16G16B16A16_FLOAT,
@@ -359,8 +367,8 @@ impl Compositor {
                 .GetBuffer::<ID3D12Resource>(index)
                 .expect("failed to retrieve swap chain buffer");
 
-            let app = Application::global();
-            let surface = app.drawing().create_surface_for_texture(
+            let app = AppGlobals::get();
+            let surface = app.drawing.create_surface_for_texture(
                 swap_chain_buffer,
                 DXGI_FORMAT_R16G16B16A16_FLOAT,
                 layer.size,
@@ -383,8 +391,6 @@ impl Compositor {
             .expect("layer should be a surface layer");
 
         unsafe {
-            //let app = Application::global();
-            //let app_backend = app.backend();
             surface.surface.flush_and_submit();
             swap_chain.inner.Present(1, 0).unwrap();
         }

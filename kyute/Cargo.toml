@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 kyute-macros = { path="macros" }
 kyute-shell = { path="../kyute-shell", features = ["serializing", "mica"] }
-kyute-common = { path="../kyute-common", features = ["serializing", "imbl"] }
+kyute-common = { path="../kyute-common" }
 svgtypes = "0.8.0"  # SVG path parser and path segment definitions
 skia-safe = { version = "0.62.0", features = ["vulkan"] }
 tracing = { version = "0.1.32", features = ["attributes"] }

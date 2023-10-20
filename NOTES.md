@@ -1291,3 +1291,480 @@ Idle task: UI_UPDATE
 Doesn't work with glazier: schedule_idle puts the work on the message queue immediately
 
 **Fact**: wait_for_presentation cannot run in the same thread as the UI handler, because otherwise it would block unrelated windows.
+-> it's becoming clear that rendering should be done in a separate thread
+
+# New event routing
+
+Goals: require minimum cooperation from the widget/element implementation
+
+Locate widgets using "ID paths" (slices of Widget IDs).
+
+Two things:
+- `event()`: receive an event destined to this widget
+- `route_event()`: propagate an event to a child widget, event not meant for us specifically
+
+Example: propagating an event through a VBox:
+- `VBox::route_event()` is called
+- VBox calls `Event::next_target(&mut self) -> WidgetID` to get the widget ID that should receive the event
+- if ID is the vbox:
+  - `VBox::event()`
+- otherwise lookup the ID in a map of some sort
+  - if ID not found that's an error (inconsistent tree)
+- call `child.route_event(event)`
+
+Propagating an event through a ElementNode:
+- transform pointer events
+- child.route_event
+
+Default implementation of route_event:
+- if next_event() return None, event is for us
+- otherwise: error, widget should have a route_event implementation
+
+```rust 
+fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &Event) {
+    if let Some(target) = ctx.next_target() {
+        let Some(target) = self.child_by_id(target) else {
+          warn!("inconsistent tree");
+          return;
+        };
+        target.route_event(ctx, event);
+    }
+  
+    ctx.default_route_event(self, event);
+}
+```
+
+Rule: every container widget should have a route_event implementation.
+
+## Pointer event propagation:
+These events have no target, except when the mouse is captured by a widget.
+
+Should hit-testing be done as part of the event propagation? or should there be a separate hit-testing tree?
+-> not a separate tree, but a separate Element method to get the list of widgets under a position
+
+`Element::hit_test(&self, ctx: &mut HitTestCtx, position: Point) -> bool`
+Q: does the element know its geometry?
+A: yes, although wrappers can defer to their content widget
+
+Q: what about elements that share the same ID but have different constraints? (e.g. Frames)
+A: hit-test propagated to inner element
+
+```rust 
+fn hit_test(&self, ctx: &mut HitTestCtx, position: Point) {
+    self.bounds.contains(position)
+}
+```
+
+Summary:
+* hit-test returns one or more targets
+* event is sent to those targets, and bubbles up
+  * 
+
+
+
+Should hit-test be manually recursive?
+
+`event` called for events that target the widget itself.
+`route_event` called for events that should be routed to children.
+
+Problem: broadcast events
+
+Q: which events are broadcast in old kyute?
+A: Some pointer events (because hit-test is done at the same time as propagation), UpdateChildFilter, dump_tree
+
+Propagating "events", or "requests" in a larger sense:
+1. Use events
+2. Use events, and convert them into method calls when arriving at target
+3. Use methods, implementation responsible for propagating to children
+4. Use a generic visitor mechanism
+
+In flutter:
+- Hit-test: implementors must propagate to children
+- Painting: implementors must propagate to children
+- Layout: implementors must propagate to children
+
+## Layout caching
+ElementNodes can cache their layouts, and store a dirty flag for relayouts.
+
+
+
+# Layout v2
+More incrementality.
+
+Events affecting the layout of a widget:
+- structure of children changed (ChangeFlags::STRUCTURE)
+- size of children changed (ChangeFlags::SIZE)
+- positioning (alignment) of children changed (ChangeFlags::POSITIONING)
+- parent constraints changed 
+
+These may affect 
+- only the size but not the positioning of children (rare?) 
+- only the positioning, but not the size of children
+- only the size of this widget, but not it's positioning, or its children
+- only the positioning, but not it's size, or its children
+
+4 separate components of layout:
+- self size
+- self positioning
+- child offsets
+- child geometry
+
+In order:
+1. compute child constraints (CONSTRAINTS, SIZE_DIRTY) -> CHILD_CONSTRAINTS
+2. layout_children (CHILD_CONSTRAINTS) -> CHILD_GEOMETRY
+3. compute_geometry (CONSTRAINTS, SIZE_DIRTY, CHILD_GEOMETRY) -> GEOMETRY
+
+compute_geometry may not depend on CHILD_GEOMETRY
+
+DirtyFlags:
+- CONSTRAINTS: parent constraints have changed
+~~- CHILD_CONSTRAINTS: child constraints have changed~~
+- CHILD_GEOMETRY: child geometry may have changed
+- CHILD_POSITIONS: child positions may have changed
+- GEOMETRY: geometry may have changed
+- PAINT: visual may have changed
+
+Dirty flags are updated on events & on constraint change
+
+E.g. for `Frame`:
+
+```rust 
+fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &LayoutParams) {
+    if self.layout.constraints != constraints {
+      self.layout_flags |= LayoutFlags::CONSTRAINTS | LayoutFlags::CHILD_GEOMETRY | LayoutFlags::CHILD_POSITIONS;
+    }
+}
+
+fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
+  // ... propagate event ...
+  if ctx.change_flags.intersects(ChangeFlags::SIZE) {
+    // size of child item has changed
+    self.layout_flags |= LayoutFlags::CHILD_GEOMETRY | LayoutFlags::CHILD_POSITIONS;
+  } 
+  if ctx.change_flags.intersects(ChangeFlags::POSITIONING) {
+    // only the positioning has changed, not its size given the same constraints
+    self.layout_flags |= LayoutFlags::CHILD_POSITIONS;
+  }
+  // child geometry changes do not affect the geometry of this frame
+  ctx.change_flags.remove(ChangeFlags::GEOMETRY);
+  
+}
+```
+
+## Dirty flags
+
+Proposal: a method to propagate dirty flags upwards, automatically called as a result of `Widget::event` and `TreeCtx::update`.
+
+```rust
+impl TreeCtx {
+  pub fn update(&mut self, element: &mut E, widget: W) where W: Widget<Element=E>, E: Element {
+    let change_flags = widget.update(&mut element);
+    element.propagate_flags(change_flags)
+  }
+}
+
+impl EventCtx {
+  pub fn event(&mut self, child: &mut E, event: &E) where E: Element {
+    child.event(e);
+    element.propagate_flags(change_flags);
+  }
+}
+```
+
+
+## Length resolution
+
+Issue: lengths can be relative to the current font size or the parent element size. 
+When updating the element tree, even if the relative length does not change, the layout might still change
+-> resolve everything in layout() for now, pass parent font size in LayoutParams
+
+## Hit-testing contract
+
+Q: What should a widget do in `hit_test`?
+Q1  Should it return one hit? 
+Q2  Should it return multiple hits ordered by Z-index?
+Q3  Is it responsible for calling hit_test on the hit child elements? 
+Q4  Should we hit-test children that are out of parent bounds?
+Q5  Should elements report a hit on transparent parts?
+
+A: hit testing should return all intersected elements (if requested)
+There is demand For hit-testing outside parent bounds, see https://github.com/flutter/flutter/issues/75747. 
+DOM events: hit-testing outside parent bounds by default.
+For transparent parts: depends on the widget.
+
+How to implement hit-testing outside parent bounds?
+1. a separate data structure holding visual nodes
+2. ID buffer (need separate rendering step, meh)
+3. elements compute the union of the bounds of all children
+
+(3) seems the most promising. However, it's costly, so need caching.
+
+Elements are responsible for their own hit-test, so they must remember their geometry.
+That means that every element other than simple wrappers will have a `geometry` field.
+
+FIXME: bounds & paint bounds shouldn't be in Geometry
+Example: ElementNode, with a non-zero transform. What is the returned `bounding_rect`?
+Currently, it's the bounding rect of the content, *without the transform*, so the bounding rect in the content local coordinates.
+It should be bounds in the ElementNode local coordinate system.
+
+
+## Caching layout results
+
+Stuff to cache:
+- layout parameters, to determine if they have changed
+- geometry, to reuse if the widget has determined that it hasn't changed
+- total bounds (self + descendants)
+
+Idea: include descendant bounds in geometry.
+
+## Idea: attached properties?
+Same as WPF, QML, and flutter [ParentData](https://api.flutter.dev/flutter/rendering/ParentData-class.html). Used to store layout info for the parent into the child.
+
+## Idea: `ElementNode` shouldn't be an `Element`.
+The parent element should be responsible for applying transforms when propagating events, hit-testing, painting...
+
+
+## why alignment & padding should be treated differently than other layout parameters?
+Such as grid positions, or docking status, or explicit offsets?
+
+TODO: is it possible to design an extensible mechanism for a child to specify layout properties for a parent?
+I.e. decouple positioning info from actual geometry.
+
+```
+fn test() -> impl Widget {
+    button()       // Button
+    .align(...)    // ???<Button, Alignment>    
+    .grid_column() // ???<???<Button, Alignment>, GridLayoutInfo>
+    .grid_row()    // ???<???<Button, Alignment>, GridLayoutInfo>
+}
+```
+
+Trait-based solution?
+E.g. for grid containers: `fn add(impl (Widget + HasGridLayoutProperties))`.
+Issue: implementing `GridLayoutProperties` for every widget. Need specialization?
+
+Associated types?
+
+Type erasure?
+Return a `dyn Any`, and downcast.
+
+
+## Layout modifiers
+
+Independent of the container (creates a sub-element):
+- padding
+- fixed width/height
+- alignment? could work, but what about relative positioning?
+    - would be a separate widget
+
+Dependent on the container:
+- alignment (flex/grid/frame)
+- grid position (grid)
+- flex factor (flex)
+- dock index (dock)
+
+Mixed:
+- left/top/right/bottom: padding + alignment
+
+Issue: overhead of transforms
+e.g. padding + alignment would create two TransformNodes
+=> Just create a widget that does both at the same time (e.g. frame)
+
+
+## Text
+- Use swash.
+- should be a global font database, initialized from system fonts.
+
+## Lengths
+Is it possible to resolve them early? Like during widget update?
+Need to know three things: 
+- parent font size: OK
+- scale factor: could be OK
+- container size: obviously not known until layout
+
+Reasonably, for font sizes, we'd like em-sizes and dips/pixels
+
+More generally, early value resolutions would be easier to handle. 
+Ideally we would like to resolve before widgets are created, otherwise we need two versions of some data structures.
+For example, we'd need two TextSpan types: one for the user with properties specified in `Length`s, the other for the 
+element tree with values resolved to `f64` DIP sizes => that would be **super annoying** (citation needed: maybe it would be reasonable)
+
+
+However, we lose the pretty syntax to specify the font size for a whole widget subtree:
+```
+widget.align(...).font_size(...)  // sets font size for Align<Widget<...>>
+```
+
+And instead we need to work with closures and a thread-local environment:
+
+```rust
+fn test() -> impl Widget {
+  with_environment(theme::FONT_SIZE, 16.0, || {
+    ...
+  })
+}
+```
+
+Alternatively, we may use macros:
+```rust
+fn test() -> impl Widget {
+  environment! {
+     theme::FONT_SIZE=16.0, disabled=self.disabled => Align::new(Widget::new(..))
+  }
+}
+```
+
+Or alter the current model even more, threading the context explicitly
+
+```rust
+#[composable]
+fn my_widget(cx: &Context, state: &Stuff) -> impl Widget {
+  // ...
+}
+```
+
+Some widgets need a context, but not all.
+E.g. `Button::new(label)` should be just that, and not `Button::new(cx, label)`. 
+The tree is a "tree of closures" taking a context parameter.
+The tree is then evaluated, passing a "Context" parameter. It's only at this stage that the signals, events and other retained state are accessible.
+
+```rust
+fn my_widget(cx: &Context, data: &Data) -> impl Widget {
+  //...
+}
+
+fn framed<'a>(cx: &Context, data: &'a Data) -> impl Widget + 'a {
+  // issue: borrowing of data
+  let button = Frame::new(200, 200, |cx| my_widget(cx, data)).clickable(cx);
+  // issue: mutating data
+  if button.clicked() {
+  }
+  // alternate design:
+  Frame::new(200, 200, |cx| my_widget(cx, data)).clickable(|cx,data| {
+    // do something with data? but then I'd need a mutable borrow of data, and I can't do that since my_widget already borrows it
+    // this means that Widgets should now have an additional "data" type parameter
+    // and then this basically becomes xilem
+  });
+  
+  // It will need to be written this way however, for list views with incremental updates (can't render incremental list views with a for loop)
+}
+```
+
+Issue with incremental updates? Consider:
+
+1. a list widget sees that one element has been added to the list, and generates an incremental update to the element tree
+2. however, at the same time, a signal has been triggered for another element of the list (e.g. a button has been clicked inside a list entry)
+3. how does the list widget know which widget to recompute?
+
+=> the cache system expects widget-producing functions to be called everytime (they may be skipped if they are cached). But the incremental list widget
+only calls the widget function for newly added/removed entries
+
+Conclusion: the incremental list widget *needs* to call the child closure for every child
+-> Not a big deal, since most children can be skipped, and the final diff on the element tree won't be large
+
+Can we do without calling the child item closure?
+The problem is that the child closure serves two purposes: creating/updating the item, 
+and reacting to events. If a list item receives an event, then the item closure must be called,
+and the item rebuilt.
+
+```rust
+
+fn list(child_item: impl FnMut(Item) -> Widget) {
+  for (id,item) in items {
+    // enter scope and 
+    cx.scoped(id, |dirty| {
+        if dirty || diff.contains(id) {
+          // re-evaluate
+          let widget = child_item(item);
+          
+          true
+        } else {
+          // skip subtree
+          false
+        }
+    });
+  }
+}
+
+```
+
+```
+
+// input parameters
+// state parameters [1]
+// reactive closure parameters [2]
+// (one of [1] or [2] but not both, they define the "state" type of the widget)
+// contents 
+
+ItemView(data: &Item) [data: &mut Item] {   // params between square brackets become visible to all things in square brackets (the "reactive" part) 
+  Text(data.title)
+  TextEdit(data.title) [on_text_changed: |new_text| {
+    data.title = new_text;
+  }]
+}
+
+TextEdit(text: &str) {
+  Text(text)
+  InternalTextEdit(text) [on_text_changed: on_text_changed]
+}
+
+MainView(data: &AppData) [data: &mut AppData] {
+  VStack {
+    ItemView(data.first_item) [data.first_item]     // two-way binding
+    ItemView(data.second_item) [data.second_item]
+  }
+}
+
+```
+
+## Incremental lists:
+
+```
+MainView(data: &AppData) {
+  VStack {
+    for item in data.items() {    // items() returns a special kind of iterator able to provide a diff
+      ItemView(item) [item]       // FIXME: how do I pass a mut ref to an item here? I'd need another iterator
+    }
+  }
+}
+```
+
+## Mutations?
+Pass something in the square brackets, but it can't be the same data as the input parameters.
+I.e. we can't refer to input parameter data in reactive parts => this is annoying, can't get an ID to the data at all.
+
+Alternatively: don't pass a mut ref to the data, but instead pass a "mutation" object for the data model.
+Alternatively: capture input parameter data by value?
+-> possible, but extremely annoying if data is not Copy. 
+Explanation: at the location where the reactive closure is defined, it can see and capture stuff from input parameters (`&Data`).
+The reactive closure cannot borrow from the input data, since it would lock the data for modification, and it would be impossible
+to pass a `&mut Data` to the reactive closure.
+So, the challenge here is to capture everything by value. And if the stuff to capture in `Data` is not `Copy` then
+it's very annoying: we need to `.clone()` the data *outside* the closure and capture the clone. 
+
+
+Q: you get a reference to data to build the UI, but then how to modify that data at the same time? (the "reactive" part).
+
+Other issues:
+- receiving events when the view is skipped
+- for memoization, previous state not available until update, need to defer view creation at update time, which would need a borrow
+
+## In search of a good layout system
+
+CSS grid, but with an editor.
+Must be fast; avoid speculative layout passes.
+Issue: auto-sizing columns: need the maximum size of the contents.
+
+Avoid allocations
+
+Can it be incremental?
+
+
+## Pass scale factor & font size in environment?
+No need to resolve lengths anymore.
+
+Issue with scale factor: scale factor changes will need a (full) recomposition
+Issue with font size: every container that has a custom font size will need to open an environment scope, can't "push" child items into the container
+
+Alternative: remove em-sizes?
+QML, WPF don't have them.

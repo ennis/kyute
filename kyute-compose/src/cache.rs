@@ -25,7 +25,7 @@ pub struct CacheVar<T: ?Sized = dyn Any> {
     dirty: AtomicBool,
     waker: Waker,
     //call_id: CallId,
-    /// The dependent variables, if there are any.
+    /// Dependent CacheVars.
     dependents: RefCell<SmallVec<[Rc<CacheVar>; 4]>>,
     pub(crate) value: RefCell<T>,
 }

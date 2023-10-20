@@ -24,10 +24,13 @@ impl WidgetId {
         WidgetId(call_id)
     }
 
+    /// Derives a WidgetId from the current position in the call tree.
     #[composable]
     pub fn here() -> WidgetId {
         WidgetId(cache_cx::current_call_id())
     }
+
+    pub const ANONYMOUS: WidgetId = WidgetId(CallId::DUMMY);
 
     /// Returns a debug proxy for an `Option<Widget>` (more compact than the default impl for `Option<WidgetId>`).
     pub fn dbg_option(id: Option<WidgetId>) -> WidgetIdDebug {

@@ -4,8 +4,7 @@ mod event;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use crate::backend::windows::event::Win32Event;
-use std::{ffi::OsString, mem, sync::Mutex, time::Duration};
+use std::{ffi::OsString, mem, time::Duration};
 use threadbound::ThreadBound;
 use windows::{
     core::{ComInterface, IUnknown},
@@ -15,17 +14,13 @@ use windows::{
             Direct3D::D3D_FEATURE_LEVEL_12_0,
             Direct3D12::{
                 D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandQueue, ID3D12Device, ID3D12Fence,
-                D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_FENCE_FLAG_NONE,
+                D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
             },
             DirectWrite::{DWriteCreateFactory, IDWriteFactory, DWRITE_FACTORY_TYPE_SHARED},
-            Dxgi::{
-                CreateDXGIFactory2, IDXGIAdapter1, IDXGIFactory3, DXGI_ADAPTER_DESC1, DXGI_ADAPTER_FLAG_SOFTWARE,
-                DXGI_CREATE_FACTORY_DEBUG,
-            },
+            Dxgi::{CreateDXGIFactory2, IDXGIAdapter1, IDXGIFactory3, DXGI_ADAPTER_DESC1},
         },
         System::{
             Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
-            Threading::{CreateEventW, WaitForSingleObject},
             WinRT::{CreateDispatcherQueueController, DispatcherQueueOptions, DQTAT_COM_NONE, DQTYPE_THREAD_CURRENT},
         },
         UI::Input::KeyboardAndMouse::GetDoubleClickTime,

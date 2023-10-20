@@ -1,8 +1,7 @@
 //! Widget tree manipulation and traversal.
-use crate::{composable, context::TreeCtx, elem_node::ElementNode, environment::Environment, Element, WidgetId};
+use crate::{context::TreeCtx, environment::Environment, Element, WidgetId};
 use bitflags::bitflags;
-use slotmap::SlotMap;
-use tracing::warn;
+use std::any::TypeId;
 
 /*struct TreeNode {
     /// Parent node.
@@ -31,12 +30,35 @@ impl Tree {
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct ChangeFlags: u32 {
-        /// Any structural change (child added / removed). Implies layout and paint.
-        const STRUCTURE = 0b00000001;
-        /// Layout has changed and needs to be recalculated. Implies paint.
-        const LAYOUT = 0b00000010;
+        const NONE = 0;
+        /// Any structural change (child added / removed).
+        const STRUCTURE = (1 << 0);
+        /// The size of the element has changed.
+        const SIZE = (1 << 1);
+        /// The positioning information of the element has changed (alignment).
+        const POSITIONING = (1<<2);
+        /// Geometry has changed (SIZE | POSITIONING)
+        const GEOMETRY = Self::SIZE.bits() | Self::POSITIONING.bits();
         /// Element must be repainted.
-        const PAINT = 0b00000100;
+        const PAINT = (1<<3);
+
+        /// Child geometry may have changed.
+        const CHILD_GEOMETRY = (1<<4);
+
+        /// (Layout) constraints have changed.
+        const LAYOUT_CONSTRAINTS = (1<<5);
+        /// (Layout) child positions within the parent may have changed.
+        const LAYOUT_CHILD_POSITIONS = (1<<7);
+
+        /// The baseline of the element has changed.
+        const BASELINE_CHANGED = (1<<8);
+
+        // FIXME: the POSITIONING and SIZE flags are useless since if any of these changes we must call `layout`
+        // on the child anyway to retrieve the latest size or alignment.
+        // Technically, we could optimize the case where the child knows that only the positioning info has changed and not
+        // its size, so that the parent can
+
+        const ALL = 0xFFFF;
     }
 }
 
@@ -44,15 +66,29 @@ bitflags! {
 pub trait Widget {
     type Element: Element;
 
+    /// Returns this widget's ID, if it has one.
+    fn id(&self) -> WidgetId;
+
     /// Creates the associated widget node.
     fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element;
 
     /// Updates an existing widget node.
+    ///
+    /// # Return value
+    ///
+    /// A set of change flags:
+    /// - GEOMETRY: the geometry of the element might have changed
     fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, env: &Environment) -> ChangeFlags;
 }
 
 /// Type-erased widget.
 pub trait AnyWidget {
+    /// Returns this widget's ID, if it has one.
+    fn id(&self) -> WidgetId;
+
+    /// Returns the produced element type ID.
+    fn element_type_id(&self) -> TypeId;
+
     /// Creates the associated widget node.
     fn build(self: Box<Self>, cx: &mut TreeCtx, env: &Environment) -> Box<dyn Element>;
 
@@ -65,6 +101,14 @@ where
     W: Widget<Element = T>,
     T: Element,
 {
+    fn id(&self) -> WidgetId {
+        Widget::id(self)
+    }
+
+    fn element_type_id(&self) -> TypeId {
+        TypeId::of::<T>()
+    }
+
     fn build(self: Box<Self>, cx: &mut TreeCtx, env: &Environment) -> Box<dyn Element> {
         Box::new(Widget::build(*self, cx, env))
     }
@@ -83,6 +127,10 @@ where
 impl Widget for Box<dyn AnyWidget> {
     type Element = Box<dyn Element>;
 
+    fn id(&self) -> WidgetId {
+        AnyWidget::id(self)
+    }
+
     fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
         AnyWidget::build(self, cx, env)
     }
@@ -92,22 +140,20 @@ impl Widget for Box<dyn AnyWidget> {
     }
 }
 
-/// Container for a widget that gives it an identifier.
+/*/// Container for a widget.
 pub struct WidgetNode<T> {
-    id: WidgetId,
     content: T,
+    id: WidgetId,
 }
 
 impl<T> WidgetNode<T> {
-    /// Creates a new WidgetNode, assigning an ID derived from its position in the current call trace.
+    /// Creates a new WidgetNode.
     #[composable]
     pub fn new(content: T) -> WidgetNode<T> {
-        let id = WidgetId::here();
-        WidgetNode { id, content }
-    }
-
-    pub fn id(&self) -> WidgetId {
-        self.id
+        WidgetNode {
+            content,
+            id: WidgetId::here(),
+        }
     }
 }
 
@@ -116,10 +162,11 @@ impl<T: Widget> Widget for WidgetNode<T> {
     type Element = ElementNode<T::Element>;
 
     fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
-        ElementNode::new(self.id, self.content.build(cx, env))
+        ElementNode::new(self.content.build(cx, env))
     }
 
     fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, env: &Environment) -> ChangeFlags {
-        self.content.update(cx, &mut element.content, env)
+        element.update(cx, self, env)
     }
 }
+*/

@@ -2,7 +2,11 @@ use glazier::{
     kurbo::Size, raw_window_handle::HasRawWindowHandle, AppHandler, Cursor, FileDialogToken, FileInfo, IdleToken,
     KeyEvent, PointerEvent, Region, Scalable, TimerToken, WinHandler, WindowHandle,
 };
-use kyute2::{composable, widget::Null, AppHandle, AppLauncher, AppWindowBuilder, Application, Widget};
+use kyute2::{
+    composable,
+    widget::{Frame, Null},
+    AppHandle, AppLauncher, AppWindowBuilder, UnitExt, Widget,
+};
 use skia_safe as sk;
 use std::{
     any::Any,
@@ -14,7 +18,7 @@ use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 #[composable]
 fn main_window_contents() -> impl Widget {
-    Null
+    Frame::new(100.percent(), 100.percent(), Null)
 }
 
 /// This function is run whenever the UI of a window needs to be rebuilt,

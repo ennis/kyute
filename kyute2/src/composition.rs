@@ -3,6 +3,7 @@ use crate::{backend, Size};
 use glazier::raw_window_handle::RawWindowHandle;
 use skia_safe as sk;
 use slotmap::{SecondaryMap, SlotMap};
+use std::cell::RefCell;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -128,19 +129,13 @@ struct CompositorInner {
 
 /// A connection to the system compositor.
 pub struct Compositor {
-    backend: backend::composition::Compositor,
-    layers: SlotMap<LayerID, LayerInfo>,
-    tree: SecondaryMap<LayerID, TreeInfo>,
-    transforms: SecondaryMap<LayerID, TransformInfo>,
-    containers: SecondaryMap<LayerID, ContainerInfo>,
-    effects: SecondaryMap<LayerID, EffectInfo>,
-    surfaces: SecondaryMap<LayerID, SurfaceInfo>,
+    inner: RefCell<CompositorInner>,
 }
 
 impl Compositor {
     pub(crate) fn new(app_backend: &backend::AppBackend) -> Compositor {
         let backend = backend::composition::Compositor::new(app_backend);
-        Compositor {
+        let inner = CompositorInner {
             backend,
             layers: Default::default(),
             tree: Default::default(),
@@ -148,36 +143,41 @@ impl Compositor {
             containers: Default::default(),
             effects: Default::default(),
             surfaces: Default::default(),
+        };
+        Compositor {
+            inner: RefCell::new(inner),
         }
     }
 
     /// Creates a container layer.
-    pub fn create_container_layer(&mut self) -> LayerID {
-        let id = self.layers.insert(LayerInfo {});
-        self.containers.insert(id, ContainerInfo::default());
-        self.backend.create_container_layer(id);
+    pub fn create_container_layer(&self) -> LayerID {
+        let mut inner = self.inner.borrow_mut();
+        let id = inner.layers.insert(LayerInfo {});
+        inner.containers.insert(id, ContainerInfo::default());
+        inner.backend.create_container_layer(id);
         id
     }
 
     /// Inserts a layer into the composition tree.
-    pub fn insert_layer(&mut self, parent: LayerID, new_child: LayerID, reference: Option<LayerID>) {
+    pub fn insert_layer(&self, parent: LayerID, new_child: LayerID, reference: Option<LayerID>) {
+        let mut inner = self.inner.borrow_mut();
         assert!(
-            self.containers.contains_key(parent),
+            inner.containers.contains_key(parent),
             "parent should be a container layer"
         );
         if let Some(before) = reference {
             assert!(
-                self.tree.contains_key(before) && self.tree[before].parent == Some(parent),
+                inner.tree.contains_key(before) && inner.tree[before].parent == Some(parent),
                 "reference should be a child of parent"
             );
         }
 
         let new_prev_sibling = match reference {
-            Some(before) => self.tree[before].prev_sibling,
-            None => self.containers[parent].last_child,
+            Some(before) => inner.tree[before].prev_sibling,
+            None => inner.containers[parent].last_child,
         };
 
-        self.tree.insert(
+        inner.tree.insert(
             new_child,
             TreeInfo {
                 parent: Some(parent),
@@ -187,15 +187,15 @@ impl Compositor {
         );
 
         match reference {
-            Some(before) => self.tree[before].next_sibling = Some(new_child),
-            None => self.containers[parent].last_child = Some(new_child),
+            Some(before) => inner.tree[before].next_sibling = Some(new_child),
+            None => inner.containers[parent].last_child = Some(new_child),
         }
 
-        if self.tree[new_child].prev_sibling.is_none() {
-            self.containers[parent].first_child = Some(new_child)
+        if inner.tree[new_child].prev_sibling.is_none() {
+            inner.containers[parent].first_child = Some(new_child)
         }
 
-        self.backend.insert_layer(parent, new_child, reference);
+        inner.backend.insert_layer(parent, new_child, reference);
     }
 
     /// Creates a drawable surface layer.
@@ -206,41 +206,45 @@ impl Compositor {
     ///
     /// * size Size of the surface in pixels
     /// * format Pixel format
-    pub fn create_surface_layer(&mut self, size: Size, format: ColorType) -> LayerID {
-        let id = self.layers.insert(LayerInfo {});
-        self.surfaces.insert(id, SurfaceInfo {});
-        self.backend.create_surface_layer(id, size, format);
+    pub fn create_surface_layer(&self, size: Size, format: ColorType) -> LayerID {
+        let mut inner = self.inner.borrow_mut();
+        let id = inner.layers.insert(LayerInfo {});
+        inner.surfaces.insert(id, SurfaceInfo {});
+        inner.backend.create_surface_layer(id, size, format);
         id
     }
 
     /// Resizes a surface layer.
-    pub fn set_surface_layer_size(&mut self, layer: LayerID, size: Size) {
-        self.backend.set_surface_layer_size(layer, size);
+    pub fn set_surface_layer_size(&self, layer: LayerID, size: Size) {
+        let mut inner = self.inner.borrow_mut();
+        inner.backend.set_surface_layer_size(layer, size);
     }
 
     /// Binds a layer to a native window.
-    pub unsafe fn bind_layer(&mut self, layer: LayerID, window: RawWindowHandle) {
-        self.backend.bind_layer(layer, window);
+    pub unsafe fn bind_layer(&self, layer: LayerID, window: RawWindowHandle) {
+        let mut inner = self.inner.borrow_mut();
+        inner.backend.bind_layer(layer, window);
     }
 
     /// Removes a layer from the tree.
-    pub fn remove_layer(&mut self, old_child: LayerID) {
-        let old_tree = self
+    pub fn remove_layer(&self, old_child: LayerID) {
+        let mut inner = self.inner.borrow_mut();
+        let old_tree = inner
             .tree
             .remove(old_child)
             .expect("layer should be inserted in the composition tree");
         match old_tree.parent {
             None => {}
             Some(parent_layer) => {
-                self.backend.remove_layer(old_child, parent_layer);
+                inner.backend.remove_layer(old_child, parent_layer);
 
                 match old_tree.prev_sibling {
-                    None => self.containers[parent_layer].first_child = old_tree.next_sibling,
-                    Some(prev_sibling) => self.tree[prev_sibling].next_sibling = old_tree.next_sibling,
+                    None => inner.containers[parent_layer].first_child = old_tree.next_sibling,
+                    Some(prev_sibling) => inner.tree[prev_sibling].next_sibling = old_tree.next_sibling,
                 }
                 match old_tree.next_sibling {
-                    None => self.containers[parent_layer].last_child = old_tree.prev_sibling,
-                    Some(next_sibling) => self.tree[next_sibling].prev_sibling = old_tree.prev_sibling,
+                    None => inner.containers[parent_layer].last_child = old_tree.prev_sibling,
+                    Some(next_sibling) => inner.tree[next_sibling].prev_sibling = old_tree.prev_sibling,
                 }
             }
         }
@@ -249,30 +253,35 @@ impl Compositor {
     /// Waits for the specified surface to be ready for presentation.
     ///
     /// TODO explain
-    pub fn wait_for_surface(&mut self, surface: LayerID) {
-        self.backend.wait_for_surface(surface)
+    pub fn wait_for_surface(&self, surface: LayerID) {
+        let mut inner = self.inner.borrow_mut();
+        inner.backend.wait_for_surface(surface)
     }
 
     /// Creates a skia drawing context to paint on the specified surface layer.
     ///
     /// Only one drawing context can be active at a time.
-    pub fn acquire_drawing_surface(&mut self, surface_layer: LayerID) -> DrawableSurface {
+    pub fn acquire_drawing_surface(&self, surface_layer: LayerID) -> DrawableSurface {
+        let mut inner = self.inner.borrow_mut();
         DrawableSurface {
-            backend: self.backend.acquire_drawing_surface(surface_layer),
+            backend: inner.backend.acquire_drawing_surface(surface_layer),
         }
     }
 
     /// Releases the drawing surface for the specified surface layer.
-    pub fn release_drawing_surface(&mut self, surface_layer: LayerID, drawing_surface: DrawableSurface) {
-        self.backend
+    pub fn release_drawing_surface(&self, surface_layer: LayerID, drawing_surface: DrawableSurface) {
+        let mut inner = self.inner.borrow_mut();
+        inner
+            .backend
             .release_drawing_surface(surface_layer, drawing_surface.backend)
     }
 
     // Returns a platform-specific surface object that can be used to paint onto the surface layer.
     //pub fn get_native_surface(&mut self, surface_layer_id: LayerID) -> &backend::CompositionSurface {}
 
-    pub fn destroy_layer(&mut self, layer: LayerID) {
+    pub fn destroy_layer(&self, layer: LayerID) {
         //todo!()
-        self.backend.destroy_layer(layer);
+        let mut inner = self.inner.borrow_mut();
+        inner.backend.destroy_layer(layer);
     }
 }

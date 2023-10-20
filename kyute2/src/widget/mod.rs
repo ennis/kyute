@@ -1,11 +1,51 @@
 mod align;
 mod flex;
+mod frame;
+mod grid;
 mod label;
 mod null;
+mod relative;
 
-pub use align::{HorizontalAlignment, HorizontalAlignmentElement};
+use crate::Widget;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 pub use flex::{VBox, VBoxElement};
-pub use label::{Label, LabelElement};
+pub use frame::{Frame, FrameElement};
+pub use label::{Text, TextElement};
 pub use null::{Null, NullElement};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub trait HasLayoutProperties<T> {
+    type Widget: Widget;
+
+    fn into_widget(self) -> (Self::Widget, T);
+}
+
+pub struct Attached<W, T> {
+    pub widget: W,
+    pub props: T,
+}
+
+impl<W, T> HasLayoutProperties<T> for Attached<W, T>
+where
+    W: Widget,
+{
+    type Widget = W;
+
+    fn into_widget(self) -> (Self::Widget, T) {
+        (self.widget, self.props)
+    }
+}
+
+impl<W, T> HasLayoutProperties<T> for W
+where
+    W: Widget,
+    T: Default,
+{
+    type Widget = W;
+
+    fn into_widget(self) -> (Self::Widget, T) {
+        (self, T::default())
+    }
+}

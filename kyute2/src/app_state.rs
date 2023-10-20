@@ -1,11 +1,10 @@
-use crate::Application;
-use glazier::{IdleToken, WindowHandle};
+use crate::AppGlobals;
+use glazier::WindowHandle;
 use kyute_compose::Cache;
 use std::{
-    any::Any,
     cell::RefCell,
     rc::Rc,
-    sync::{atomic::AtomicBool, mpsc::Receiver, Arc, Mutex},
+    sync::{Arc, Mutex},
     task::{Wake, Waker},
 };
 use tracing::{trace, warn};
@@ -104,7 +103,7 @@ impl AppLauncher {
     }
 
     pub fn run(self) {
-        Application::new();
+        AppGlobals::new();
         let app = glazier::Application::global();
         let app_handle = app.get_handle().unwrap();
         let waker = Waker::from(Arc::new(AppWaker(Mutex::new(app_handle))));

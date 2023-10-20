@@ -1,4 +1,4 @@
-use crate::Atom;
+use crate::{theme::FONT_SIZE, Atom, Color, Length};
 use once_cell::sync::Lazy;
 use std::{
     any::Any,
@@ -90,6 +90,7 @@ macro_rules! impl_env_value {
 impl_env_value!(bool);
 impl_env_value!(f64);
 impl_env_value!(String);
+impl_env_value!(Color);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // EnvImpl

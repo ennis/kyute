@@ -1,6 +1,6 @@
 //! Types and functions used for layouting widgets.
-use crate::Size;
-use kurbo::{Insets, Vec2};
+use crate::{Length, LengthOrPercentage, Rect, Size};
+use kurbo::{Insets, Point, Vec2};
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -13,10 +13,10 @@ use std::{
 /// Layout constraints passed down to child widgets
 #[derive(Copy, Clone)]
 pub struct LayoutParams {
-    /// TODO
-    pub widget_state: (),
     /// Scale factor.
     pub scale_factor: f64,
+    /// Current font size
+    pub font_size: f64,
     /// Minimum allowed size.
     pub min: Size,
     /// Maximum allowed size (can be infinite).
@@ -26,8 +26,8 @@ pub struct LayoutParams {
 impl Default for LayoutParams {
     fn default() -> Self {
         LayoutParams {
-            widget_state: (),
             scale_factor: 1.0,
+            font_size: 16.0,
             min: Size::ZERO,
             max: Size::new(f64::INFINITY, f64::INFINITY),
         }
@@ -43,7 +43,7 @@ impl PartialEq for LayoutParams {
             && self.max.width.to_bits() == other.max.width.to_bits()
             && self.max.height.to_bits() == other.max.height.to_bits()
             && self.scale_factor.to_bits() == other.scale_factor.to_bits()
-            && self.widget_state == other.widget_state
+            && self.font_size == other.font_size
     }
 }
 
@@ -54,7 +54,7 @@ impl Hash for LayoutParams {
         self.min.height.to_bits().hash(state);
         self.max.width.to_bits().hash(state);
         self.max.height.to_bits().hash(state);
-        self.widget_state.hash(state);
+        self.font_size.to_bits().hash(state);
     }
 }
 
@@ -66,11 +66,19 @@ impl Hash for LayoutParams {
 
 impl fmt::Debug for LayoutParams {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "[{:?} => {:?} (x{:.1}), st={:?}]",
-            self.min, self.max, self.scale_factor, self.widget_state
-        )
+        if self.min.width == self.max.width {
+            write!(f, "[w={}, ", self.min.width)?;
+        } else {
+            write!(f, "[{}≤w≤{}, ", self.min.width, self.max.width)?;
+        }
+
+        if self.min.height == self.max.height {
+            write!(f, "h={} ", self.min.width)?;
+        } else {
+            write!(f, "{}≤h≤{} ", self.min.width, self.max.width)?;
+        }
+
+        write!(f, "@ {:.1}:1, em={}]", self.scale_factor, self.font_size)
     }
 }
 
@@ -113,22 +121,22 @@ impl LayoutParams {
         height.max(self.min.height).min(self.max.height)
     }
 
-    /*fn resolve_length(&self, length: Length, max_length: f64) -> f64 {
+    fn compute_length(&self, length: LengthOrPercentage, max_length: f64) -> f64 {
         match length {
-            Length::Px(px) => px / self.scale_factor,
-            Length::Dip(dip) => dip,
-            Length::Em(em) => em * self.parent_font_size,
-            Length::Proportional(x) => x * max_length,
+            LengthOrPercentage::Length(Length::Px(px)) => px / self.scale_factor,
+            LengthOrPercentage::Length(Length::Dip(dip)) => dip,
+            LengthOrPercentage::Length(Length::Em(em)) => em * self.font_size,
+            LengthOrPercentage::Percentage(x) => x * max_length,
         }
     }
 
-    pub fn resolve_width(&self, width: Length) -> f64 {
-        self.resolve_length(width, self.max.width)
+    pub fn compute_width(&self, width: LengthOrPercentage) -> f64 {
+        self.compute_length(width, self.max.width)
     }
 
-    pub fn resolve_height(&self, height: Length) -> f64 {
-        self.resolve_length(height, self.max.height)
-    }*/
+    pub fn compute_height(&self, height: LengthOrPercentage) -> f64 {
+        self.compute_length(height, self.max.height)
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -162,19 +170,32 @@ impl Default for Alignment {
 // Geometry
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Describes how some content should be positioned inside a containing block.
+/// Describes the size of an element and how it should be positioned inside a containing block.
+
+// FIXME: why alignment & padding should be treated differently than other layout parameters, such
+// as grid positions, or docking status, or explicit offsets?
+// TODO: is it possible to design an extensible mechanism for a child to specify layout properties for a parent?
+// I.e. decouple positioning info from actual geometry.
+
 #[derive(Copy, Clone, PartialEq)]
 pub struct Geometry {
-    /// X-axis alignment.
-    pub x_align: Alignment,
-    /// Y-axis alignment.
-    pub y_align: Alignment,
-    /// Padding
-    pub padding: Insets,
-    /// Content size.
-    pub content_size: Size,
-    /// Content baseline.
-    pub content_baseline: Option<f64>,
+    /// Element size.
+    ///
+    /// Note that descendants can overflow and fall outside of the bounds defined by `size`.
+    /// Use `bounding_rect` to get the size of the element and its descendants combined.
+    pub size: Size,
+
+    /// Element baseline.
+    pub baseline: Option<f64>,
+
+    /// Bounding box of the content and its descendants. This includes the union of the bounding rectangles of all descendants, if the element allows overflowing content.
+    pub bounding_rect: Rect,
+
+    /// Paint bounds.
+    ///
+    /// This is the region that is dirtied when the content and its descendants needs to be repainted.
+    /// It can be different from `bounding_rect` if the element has drawing effects that bleed outside of the bounds used for hit-testing (e.g. drop shadows).
+    pub paint_bounding_rect: Rect,
     // TODO maybe layout should also contain shape information? This is useful for e.g. borders, which need
     // the border radii. Also this way we'd be able to accumulate borders.
 }
@@ -184,19 +205,21 @@ impl fmt::Debug for Geometry {
         // [ width x height, baseline:{}, padding=(t r b l), align=(x, y) ]
 
         write!(f, "[")?;
-        write!(f, "{:?}", self.content_size)?;
+        write!(f, "{:?}", self.size)?;
 
-        if let Some(baseline) = self.content_baseline {
+        if let Some(baseline) = self.baseline {
             write!(f, ", baseline={}", baseline)?;
         }
-        if self.padding.x0 != 0.0 || self.padding.x1 != 0.0 || self.padding.y0 != 0.0 || self.padding.y1 != 0.0 {
+        /*if self.padding.x0 != 0.0 || self.padding.x1 != 0.0 || self.padding.y0 != 0.0 || self.padding.y1 != 0.0 {
             write!(
                 f,
                 ", padding=({} {} {} {})",
                 self.padding.x0, self.padding.y0, self.padding.x1, self.padding.y1,
             )?;
-        }
-        write!(f, ", align=({:?} {:?})", self.x_align, self.y_align)?;
+        }*/
+        //write!(f, ", align=({:?} {:?})", self.x_align, self.y_align)?;
+        write!(f, ", bounds={}", self.bounding_rect)?;
+        write!(f, ", paint_bounds={}", self.paint_bounding_rect)?;
         write!(f, "]")?;
         Ok(())
     }
@@ -209,51 +232,60 @@ impl From<Size> for Geometry {
 }
 
 impl Geometry {
-    /// Zero-sized geometry with no padding and no baseline.
+    /// Zero-sized geometry with no baseline.
     pub const ZERO: Geometry = Geometry::new(Size::ZERO);
 
-    pub const fn new(content_size: Size) -> Geometry {
+    pub const fn new(size: Size) -> Geometry {
         Geometry {
-            x_align: Alignment::START,
-            y_align: Alignment::START,
-            padding: Insets::ZERO,
-            content_size,
-            content_baseline: None,
+            size,
+            baseline: None,
+            bounding_rect: Rect {
+                x0: 0.0,
+                y0: 0.0,
+                x1: size.width,
+                y1: size.height,
+            },
+            paint_bounding_rect: Rect {
+                x0: 0.0,
+                y0: 0.0,
+                x1: size.width,
+                y1: size.height,
+            },
         }
     }
 
-    /// Returns the size of the padding box.
+    /*/// Returns the size of the padding box.
     ///
-    /// The padding box is the content box inflated by the padding.   
+    /// The padding box is the element box inflated by the padding.
     pub fn padding_box_size(&self) -> Size {
-        (self.content_size.to_rect() + self.padding).size()
+        (self.size.to_rect() + self.padding).size()
     }
 
     /// Baseline from the top of the padding box.
     pub fn padding_box_baseline(&self) -> Option<f64> {
-        self.content_baseline.map(|y| y + self.padding.y0)
-    }
+        self.baseline.map(|y| y + self.padding.y0)
+    }*/
 
-    /// Places the content inside a containing box with the given measurements.
+    /*/// Places the content inside a containing box with the given measurements.
     ///
     /// If this box' vertical alignment is `FirstBaseline` or `LastBaseline`,
     /// it will be aligned to the baseline of the containing box.
     ///
-    /// Returns the offset of the content box.
+    /// Returns the offset of the element box.
     pub fn place_into(&self, container_size: Size, container_baseline: Option<f64>) -> Vec2 {
         let pad = self.padding;
         //let bounds = container_size.to_rect() - pad;
 
         let x = match self.x_align {
-            Alignment::Relative(x) => pad.x0 + x * (container_size.width - pad.x0 - pad.x1 - self.content_size.width),
+            Alignment::Relative(x) => pad.x0 + x * (container_size.width - pad.x0 - pad.x1 - self.size.width),
             // TODO vertical baseline alignment
             _ => 0.0,
         };
         let y = match self.y_align {
-            Alignment::Relative(x) => pad.y0 + x * (container_size.height - pad.y0 - pad.y1 - self.content_size.height),
+            Alignment::Relative(x) => pad.y0 + x * (container_size.height - pad.y0 - pad.y1 - self.size.height),
             Alignment::FirstBaseline => {
                 // align this box baseline to the containing box baseline
-                let mut y = match (container_baseline, self.content_baseline) {
+                let mut y = match (container_baseline, self.baseline) {
                     (Some(container_baseline), Some(content_baseline)) => {
                         // containing-box-baseline == y-offset + self-baseline
                         container_baseline - content_baseline
@@ -275,7 +307,7 @@ impl Geometry {
         };
 
         Vec2::new(x, y)
-    }
+    }*/
 }
 
 impl Default for Geometry {

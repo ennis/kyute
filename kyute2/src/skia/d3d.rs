@@ -1,29 +1,25 @@
 //! Skia utilities for its direct 3D backend
-use crate::{backend::AppBackend, Application, Size};
+use crate::{backend::AppBackend, Size};
 use skia_safe as sk;
 use skia_safe::{
     gpu::{
         d3d::{
             cp, ID3D12CommandQueue as Sk_ID3D12CommandQueue, ID3D12Device as Sk_ID3D12Device,
             ID3D12Resource as Sk_ID3D12Resource, IDXGIAdapter1 as Sk_IDXGIAdapter1, TextureResourceInfo,
-            D3D12_RESOURCE_STATES,
         },
-        ContextOptions, Protected,
+        Protected,
     },
     ColorSpace, ColorType, SurfaceProps,
 };
-use std::{mem, sync::Arc};
+use std::{cell::RefCell, mem};
 use windows::{
     core::Interface,
-    Win32::Graphics::{
-        Direct3D12::{ID3D12Resource, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET},
-        Dxgi::Common::DXGI_FORMAT,
-    },
+    Win32::Graphics::{Direct3D12::ID3D12Resource, Dxgi::Common::DXGI_FORMAT},
 };
 
 pub(crate) struct DrawingBackend {
     pub(crate) backend_context: Option<sk::gpu::d3d::BackendContext>,
-    pub(crate) direct_context: Option<sk::gpu::DirectContext>,
+    pub(crate) direct_context: Option<RefCell<sk::gpu::DirectContext>>,
 }
 
 impl DrawingBackend {
@@ -54,7 +50,7 @@ impl DrawingBackend {
 
         DrawingBackend {
             backend_context: Some(backend_context),
-            direct_context: Some(direct_context),
+            direct_context: Some(RefCell::new(direct_context)),
         }
     }
 
@@ -69,7 +65,7 @@ impl DrawingBackend {
     ///
     /// TODO: other preconditions
     pub(crate) unsafe fn create_surface_for_texture(
-        &mut self,
+        &self,
         image: ID3D12Resource,
         format: DXGI_FORMAT,
         size: Size,
@@ -101,8 +97,9 @@ impl DrawingBackend {
 
         let backend_render_target =
             sk::gpu::BackendRenderTarget::new_d3d((size.width as i32, size.height as i32), &texture_resource_info);
+        let mut direct_context = self.direct_context.as_ref().unwrap().borrow_mut();
         let sk_surface = sk::Surface::from_backend_render_target(
-            self.direct_context.as_mut().unwrap(),
+            &mut *direct_context,
             &backend_render_target,
             surface_origin,
             color_type,

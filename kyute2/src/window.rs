@@ -1,12 +1,17 @@
 //! UI host windows
-
 use crate::{
-    app_state::AppHandle, composable, composition, composition::ColorType, widget::NullElement, AnyWidget, Application,
-    ChangeFlags, Element, Environment, Event, Geometry, LayoutCtx, LayoutParams, Rect, Size, TreeCtx, Widget, WidgetId,
+    app_state::AppHandle,
+    composable, composition,
+    composition::ColorType,
+    context::WidgetTree,
+    event::{InternalEvent::HitTest, PointerEvent},
+    widget::NullElement,
+    AnyWidget, AppGlobals, ChangeFlags, Element, Environment, Event, EventCtx, EventKind, HitTestResult, LayoutCtx,
+    LayoutParams, PaintCtx, Rect, RouteEventCtx, Size, TreeCtx, Widget, WidgetId,
 };
 use bitflags::Flags;
-use glazier::{raw_window_handle::HasRawWindowHandle, IdleHandle, IdleToken, PointerEvent, Region, WindowHandle};
-use kyute_compose::{cache_cx, Cache};
+use glazier::{raw_window_handle::HasRawWindowHandle, IdleHandle, IdleToken, Region, WindowHandle};
+use kyute_compose::cache_cx;
 use std::{any::Any, cell::RefCell, mem, rc::Rc};
 use tracing::{trace, warn};
 
@@ -53,6 +58,90 @@ impl WindowContentHandle {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Pointer events
+
+enum PointerEventKind {
+    PointerUp,
+    PointerDown,
+    PointerMove,
+}
+
+impl UiHostWindowHandler {
+    // FIXME: smallvec?
+    fn get_propagation_path(&mut self, mut target: WidgetId) -> Vec<WidgetId> {
+        let mut result = vec![target];
+        while let Some(parent) = self.widget_tree.get(&target) {
+            result.push(*parent);
+            target = *parent;
+        }
+        result.reverse();
+        result
+    }
+
+    fn send_event(&mut self, event: &mut Event) -> ChangeFlags {
+        let mut route_event_ctx = RouteEventCtx {
+            inner: EventCtx {
+                window: self.handle.clone().unwrap(),
+                window_state: &mut self.focus,
+                window_transform: Default::default(),
+                id: None,
+                change_flags: ChangeFlags::NONE,
+            },
+        };
+        let root = event.next_target().expect("route should have at least one element");
+        assert_eq!(root, self.root.id());
+        self.root.route_event(&mut route_event_ctx, event)
+    }
+
+    fn propagate_pointer_event(&mut self, kind: PointerEventKind, event: &glazier::PointerEvent) -> ChangeFlags {
+        let pe = PointerEvent::from_glazier(event);
+        let event_kind = match kind {
+            PointerEventKind::PointerUp => EventKind::PointerUp(pe),
+            PointerEventKind::PointerDown => EventKind::PointerDown(pe),
+            PointerEventKind::PointerMove => EventKind::PointerMove(pe),
+        };
+
+        let change_flags = if let Some(pointer_grab) = self.pointer_grab {
+            // Pointer events are delivered to the node that is currently grabbing the pointer
+            // if there's one.
+            let route = self.get_propagation_path(pointer_grab);
+            let mut event = Event {
+                route: &route[..],
+                kind: event_kind,
+            };
+            self.send_event(&mut event)
+        } else {
+            // If nothing is grabbing the pointer, the pointer event is delivered to a widget
+            // that passes the hit-test.
+            let mut htr = HitTestResult::new();
+            let hit = self.root.hit_test(&mut htr, event.pos);
+            if hit {
+                // send to "most specific" (deepest) hit in the stack
+                let target = *htr
+                    .hits
+                    .first()
+                    .expect("successful hit test result should contain at least one element");
+                let route = self.get_propagation_path(target);
+                trace!("hit-test @ {:?} route={:?}", event.pos, &route[..]);
+                let mut event = Event {
+                    route: &route[..],
+                    kind: event_kind,
+                };
+                self.send_event(&mut event)
+            } else {
+                // no grab, no hit, drop the pointer event
+                trace!("hit-test @ {:?} failed", event.pos);
+                ChangeFlags::NONE
+            }
+        };
+
+        change_flags
+
+        // TODO: follow-up events (focus update, hover update)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// UI host window handler
 struct UiHostWindowHandler {
@@ -62,8 +151,7 @@ struct UiHostWindowHandler {
     layer: Option<composition::LayerID>,
     /// Damage regions to be repainted.
     damage_regions: DamageRegions,
-    // The retained element tree
-    //elem_tree: Tree,
+    widget_tree: WidgetTree,
     /// Root of the UI element tree.
     root: Box<dyn Element>,
     idle_handle: Option<IdleHandle>,
@@ -76,6 +164,7 @@ struct UiHostWindowHandler {
     /// Run loop handle
     app_handle: AppHandle,
     focus: WindowFocusState,
+    pointer_grab: Option<WidgetId>,
 }
 
 impl UiHostWindowHandler {
@@ -84,22 +173,28 @@ impl UiHostWindowHandler {
             handle: None,
             layer: None,
             damage_regions: DamageRegions::default(),
+            widget_tree: Default::default(),
             root: Box::new(NullElement),
             idle_handle: None,
             content: WindowContentRef::default(),
             app_handle,
             focus: WindowFocusState {},
+            pointer_grab: None,
         }
     }
 
     fn update_element_tree(&mut self) {
-        let Some(content) = self.content.take() else { return };
+        let Some(content) = self.content.take() else {
+            warn!("update_element_tree: no content");
+            return
+        };
 
-        let mut tree_ctx = TreeCtx::new(self.app_handle.clone());
+        let mut tree_ctx = TreeCtx::new(self.app_handle.clone(), &mut self.widget_tree);
         // FIXME: this should come alongside the content
         let env = Environment::new();
         let mut change_flags = content.update(&mut tree_ctx, &mut self.root, &env);
-        if change_flags.contains(ChangeFlags::STRUCTURE | ChangeFlags::LAYOUT) {
+        trace!("update_element_tree: {:?}", change_flags);
+        if change_flags.intersects(ChangeFlags::STRUCTURE | ChangeFlags::GEOMETRY) {
             self.update_layout();
         }
     }
@@ -107,16 +202,32 @@ impl UiHostWindowHandler {
     fn update_layout(&mut self) {
         let handle = self.handle.clone().unwrap();
         let window_size = handle.get_size();
-        let window_scale = handle.get_scale();
+        let window_scale = handle.get_scale().unwrap();
         let mut ctx = LayoutCtx::new(handle.clone(), &mut self.focus);
         let layout_params = LayoutParams {
-            widget_state: (),
-            scale_factor: 1.0,
+            scale_factor: window_scale.x(), // assume x == y
+            font_size: 16.0,                // TODO default font size somewhere
             min: Size::ZERO,
             max: window_size,
         };
         let geometry = self.root.layout(&mut ctx, &layout_params);
+        trace!(
+            "update_layout window_size:{:?}, result geometry:{:?}",
+            window_size,
+            geometry
+        );
     }
+
+    /*fn schedule_render(&mut self) {
+        if !self.synced_with_presentation {
+            let _span = trace_span!("PRESENT_SYNC").entered();
+            let layer = self.main_layer.unwrap();
+            let app = AppGlobals::get();
+            app.compositor.wait_for_surface(layer);
+            self.synced_with_presentation = true;
+        }
+        self.handle.invalidate();
+    }*/
 }
 
 impl glazier::WinHandler for UiHostWindowHandler {
@@ -125,23 +236,24 @@ impl glazier::WinHandler for UiHostWindowHandler {
         self.handle = Some(handle.clone());
         self.idle_handle = Some(handle.get_idle_handle().unwrap());
         // create composition layer
-        let app = Application::global();
-        let mut compositor = app.compositor();
+        let app = AppGlobals::get();
         let size = handle.get_size();
-        let layer = compositor.create_surface_layer(size, ColorType::RGBAF16);
+        let layer = app.compositor.create_surface_layer(size, ColorType::RGBAF16);
         self.layer = Some(layer);
         // SAFETY: the raw window handle is valid
         unsafe {
-            compositor.bind_layer(layer, handle.raw_window_handle());
+            app.compositor.bind_layer(layer, handle.raw_window_handle());
+            app.compositor.wait_for_surface(layer);
         }
     }
 
     fn size(&mut self, size: Size) {
         trace!("UiHostWindowHandler::size({size})");
         // resize the layer
-        let app = Application::global();
-        let mut compositor = app.compositor();
-        compositor.set_surface_layer_size(self.layer.unwrap(), size);
+        let app = AppGlobals::get();
+        app.compositor.set_surface_layer_size(self.layer.unwrap(), size);
+        // relayout
+        self.update_layout();
     }
 
     fn prepare_paint(&mut self) {
@@ -154,30 +266,44 @@ impl glazier::WinHandler for UiHostWindowHandler {
 
     fn paint(&mut self, invalid: &Region) {
         trace!("UiHostWindowHandler::paint");
-        let app = Application::global();
-        let mut compositor = app.compositor();
-        let image = compositor.acquire_drawing_surface(self.layer.unwrap());
-        compositor.release_drawing_surface(self.layer.unwrap(), image);
+        let app = AppGlobals::get();
+        let layer = self.layer.unwrap();
         // acquire a drawing surface, then repaint, and swap invalid regions
+        let surface = app.compositor.acquire_drawing_surface(layer);
+
+        let mut paint_ctx = PaintCtx {
+            window: self.handle.clone().unwrap(),
+            window_state: &mut self.focus,
+            window_transform: Default::default(),
+            id: None,
+            surface,
+        };
+
+        self.root.paint(&mut paint_ctx);
+
+        // TODO paint
+        app.compositor.release_drawing_surface(layer, paint_ctx.surface);
+        // wait for the compositor to be ready to render another frame (this is to reduce latency)
+        app.compositor.wait_for_surface(layer);
     }
 
-    fn pointer_move(&mut self, event: &PointerEvent) {
+    fn pointer_move(&mut self, event: &glazier::PointerEvent) {
         trace!("UiHostWindowHandler::pointer_move");
-        let event = Event::PointerMove(event.clone());
+        self.propagate_pointer_event(PointerEventKind::PointerMove, event);
         // somehow schedule a recomp
         self.app_handle.schedule_update();
     }
 
-    fn pointer_down(&mut self, event: &PointerEvent) {
+    fn pointer_down(&mut self, event: &glazier::PointerEvent) {
         trace!("UiHostWindowHandler::pointer_down");
-        let event = Event::PointerDown(event.clone());
+        self.propagate_pointer_event(PointerEventKind::PointerDown, event);
         // FIXME: this might be called multiple times
         self.app_handle.schedule_update();
     }
 
-    fn pointer_up(&mut self, event: &PointerEvent) {
+    fn pointer_up(&mut self, event: &glazier::PointerEvent) {
         trace!("UiHostWindowHandler::pointer_up");
-        let event = Event::PointerUp(event.clone());
+        self.propagate_pointer_event(PointerEventKind::PointerUp, event);
         self.app_handle.schedule_update();
     }
 

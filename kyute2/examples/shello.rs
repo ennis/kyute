@@ -3,7 +3,7 @@ use glazier::{
     KeyEvent, PointerEvent, Region, Scalable, TimerToken, WinHandler, WindowHandle,
 };
 use kurbo::Point;
-use kyute2::{composition, composition::ColorType, Application};
+use kyute2::{composition, composition::ColorType, AppGlobals};
 use skia_safe as sk;
 use std::{
     any::Any,
@@ -21,7 +21,7 @@ fn main() {
     tracing::subscriber::set_global_default(tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()))
         .expect("set up the subscriber");
 
-    let app = Application::new();
+    let app = AppGlobals::new();
 
     let window = glazier::WindowBuilder::new(glazier::Application::global())
         .transparent(true)
@@ -43,7 +43,7 @@ fn main() {
     //
 
     window.show();
-    app.run(None);
+    glazier::Application::global().run(None);
 }
 
 struct WindowState {
@@ -72,37 +72,49 @@ impl WindowState {
     }
 
     fn schedule_render(&mut self) {
-        if !self.synced_with_presentation {
-            let _span = trace_span!("PRESENT_SYNC").entered();
-            let layer = self.main_layer.unwrap();
-            let app = Application::global();
-            let mut compositor = app.compositor();
-            compositor.wait_for_surface(layer);
-            self.synced_with_presentation = true;
-        }
         self.handle.invalidate();
     }
 
     fn render(&mut self) {
-        let _span = trace_span!("RENDER").entered();
         let layer = self.main_layer.unwrap();
-        let app = Application::global();
-        let mut compositor = app.compositor();
-        let surf = compositor.acquire_drawing_surface(layer);
-        let mut sk_surf = surf.surface();
-        let canvas = sk_surf.canvas();
-        canvas.clear(sk::Color4f::new(0.9, 0.9, 0.9, 1.0));
 
-        let mut paint = sk::Paint::new(sk::Color4f::new(0.1, 0.4, 1.0, 1.0), None);
-        //paint.set_stroke(true);
-        paint.set_anti_alias(true);
-        paint.set_stroke_width(10.0);
-        paint.set_style(sk::PaintStyle::Stroke);
-        canvas.clear(sk::Color4f::new(0.0, 0.0, 0.0, 0.0));
-        let pos = self.pos;
-        canvas.draw_circle((pos.x as f32, pos.y as f32), 100.0, &paint);
+        {
+            let _span = trace_span!("RENDER").entered();
+            let app = AppGlobals::get();
+            let surf = app.compositor.acquire_drawing_surface(layer);
+            let mut sk_surf = surf.surface();
+            let canvas = sk_surf.canvas();
+            canvas.clear(sk::Color4f::new(0.9, 0.9, 0.9, 1.0));
+            let mut paint = sk::Paint::new(sk::Color4f::new(0.1, 0.4, 1.0, 1.0), None);
+            //paint.set_stroke(true);
+            paint.set_anti_alias(true);
+            paint.set_stroke_width(10.0);
+            paint.set_style(sk::PaintStyle::Stroke);
+            canvas.clear(sk::Color4f::new(0.1, 0.1, 0.1, 1.0));
+            let pos = self.pos;
+            let x = pos.x as f32;
+            let y = pos.y as f32;
+            canvas.draw_circle((x, y), 100.0, &paint);
+            paint.set_anti_alias(true);
+            paint.set_stroke_width(1.0);
+            paint.set_style(sk::PaintStyle::Stroke);
+            canvas.draw_line((x + 0.5, y + 0.5 - 100.0), (x + 0.5, y + 0.5 + 100.0), &paint);
+            canvas.draw_line((x + 0.5 + 100.0, y + 0.5), (x + 0.5 - 100.0, y + 0.5), &paint);
+            app.compositor.release_drawing_surface(layer, surf);
+        }
 
-        compositor.release_drawing_surface(layer, surf);
+        // before processing any other events, wait for the compositor to be
+        // ready for another frame
+        {
+            let _span = trace_span!("WAIT_FOR_SURFACE").entered();
+            let app = AppGlobals::get();
+            app.compositor.wait_for_surface(layer);
+        }
+        {
+            let _span = trace_span!("SLEEP").entered();
+            spin_sleep::sleep(Duration::from_micros(3500));
+        }
+
         let now = Instant::now();
         let delta = now.duration_since(self.last_render_time);
         self.num_frames += 1;
@@ -119,17 +131,15 @@ impl WinHandler for WindowState {
         self.handle = handle.clone();
 
         {
-            let app = Application::global();
+            let app = AppGlobals::get();
             let size = handle.get_size();
             let raw_window_handle = handle.raw_window_handle();
-            let mut compositor = app.compositor();
-            let layer_id = compositor.create_surface_layer(size, ColorType::RGBAF16);
-
+            let layer_id = app.compositor.create_surface_layer(size, ColorType::RGBAF16);
             unsafe {
-                compositor.bind_layer(layer_id, raw_window_handle);
+                app.compositor.bind_layer(layer_id, raw_window_handle);
             }
-
             self.main_layer = Some(layer_id);
+            app.compositor.wait_for_surface(layer_id);
         }
 
         self.schedule_render();
@@ -142,7 +152,7 @@ impl WinHandler for WindowState {
     fn prepare_paint(&mut self) {}
 
     fn paint(&mut self, _: &Region) {
-        let _span = trace_span!("UI_UPDATE").entered();
+        let _span = trace_span!("PAINT").entered();
         self.synced_with_presentation = false;
         self.render();
         //self.render();
@@ -209,9 +219,8 @@ impl WinHandler for WindowState {
 
     fn destroy(&mut self) {
         if let Some(layer) = self.main_layer {
-            let app = Application::global();
-            let mut compositor = app.compositor();
-            compositor.destroy_layer(layer);
+            let app = AppGlobals::get();
+            app.compositor.destroy_layer(layer);
         }
         glazier::Application::global().quit()
     }

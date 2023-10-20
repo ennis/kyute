@@ -1,5 +1,5 @@
 use crate::CRATE;
-use proc_macro::{Diagnostic, Level, LineColumn};
+use proc_macro::{Diagnostic, Level};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
@@ -115,23 +115,13 @@ impl VisitMut for LiveLiteralsRewriter {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
         match expr {
             Expr::Lit(literal) => {
-                // wrap the literal in `tweak()`.
                 let literal = literal.clone();
                 let span = literal.span().unwrap().source();
                 let source_file = span.source_file().path().display().to_string();
-                let LineColumn {
-                    line: start_line,
-                    column: start_column,
-                } = span.start();
-                let LineColumn {
-                    line: end_line,
-                    column: end_column,
-                } = span.end();
-
-                let start_line = start_line as u32;
-                let start_column = start_column as u32;
-                let end_line = end_line as u32;
-                let end_column = end_column as u32;
+                let start_line = span.start().line() as u32;
+                let start_column = span.start().column() as u32;
+                let end_line = span.end().line() as u32;
+                let end_column = span.end().column() as u32;
 
                 let expr_call: ExprCall = syn::parse_quote! {
                     #CRATE::live_literal(#source_file, #start_line, #start_column, #end_line, #end_column, #literal)
