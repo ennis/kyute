@@ -1,23 +1,11 @@
 //! Length specification
-use std::{
-    fmt,
-    ops::{Mul, Neg},
-};
+use std::fmt;
 
-/// Length specification.
+/*/// A length in device-independent pixels.
 #[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
 #[cfg_attr(feature = "serializing", serde(tag = "unit", content = "value"))]
-pub enum Length {
-    /// Actual screen pixels (the actual physical size depends on the density of the screen).
-    #[cfg_attr(feature = "serializing", serde(rename = "px"))]
-    Px(f64),
-    /// Device-independent pixels (DIPs), close to 1/96th of an inch.
-    #[cfg_attr(feature = "serializing", serde(rename = "dip"))]
-    Dip(f64),
-    /// Length relative to the font size of the parent element.
-    Em(f64),
-}
+pub struct Length(pub f64);
 
 /// Parameters for resolving lengths to a length in dips.
 #[derive(Copy, Clone, Default)]
@@ -145,21 +133,21 @@ impl From<f64> for Length {
     fn from(v: f64) -> Self {
         Length::Dip(v)
     }
-}
+}*/
 
 #[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serializing", derive(serde::Deserialize))]
-/// A length or a percentage.
+/// Specifies a length, either in device-independent pixels or as a percentage of a reference length.
 pub enum LengthOrPercentage {
     /// Length.
-    Length(Length),
-    /// Percentage (normalized to the unit interval).
+    Px(f64),
+    /// Percentage of a reference length.
     Percentage(f64),
 }
 
 impl LengthOrPercentage {
-    /// A length of zero.
-    pub const ZERO: LengthOrPercentage = LengthOrPercentage::Length(Length::ZERO);
+    /// Zero length.
+    pub const ZERO: LengthOrPercentage = LengthOrPercentage::Px(0.0);
 }
 
 impl Default for LengthOrPercentage {
@@ -169,23 +157,11 @@ impl Default for LengthOrPercentage {
 }
 
 impl LengthOrPercentage {
-    /// Convert to dips, given a scale factor and a parent length for proportional length specifications.
-    pub fn to_dips(self, params: &LengthResolutionParams) -> f64 {
+    /// Converts this length to DIPs, using the specified reference size to resolve percentages.
+    pub fn resolve(self, reference: f64) -> f64 {
         match self {
-            LengthOrPercentage::Length(x) => x.to_dips(params),
-            LengthOrPercentage::Percentage(x) => x * params.container_size,
-        }
-    }
-
-    /// Resolves a percentage length to a concrete length.
-    ///
-    /// # Arguments
-    ///
-    /// * container_size parent container size in dips
-    pub fn to_length(self, container_size: f64) -> Length {
-        match self {
-            LengthOrPercentage::Length(length) => length,
-            LengthOrPercentage::Percentage(percent) => Length::Dip(percent * container_size),
+            LengthOrPercentage::Px(x) => x,
+            LengthOrPercentage::Percentage(x) => x * reference,
         }
     }
 }
@@ -193,15 +169,16 @@ impl LengthOrPercentage {
 impl fmt::Debug for LengthOrPercentage {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            LengthOrPercentage::Length(length) => fmt::Debug::fmt(length, f),
+            LengthOrPercentage::Px(px) => write!(f, "{}px", px * 100.0),
             LengthOrPercentage::Percentage(percentage) => write!(f, "{}%", percentage * 100.0),
         }
     }
 }
 
-impl From<Length> for LengthOrPercentage {
-    fn from(length: Length) -> Self {
-        LengthOrPercentage::Length(length)
+impl From<f64> for LengthOrPercentage {
+    /// Creates a `LengthOrPercentage` from a DIP size.
+    fn from(px: f64) -> Self {
+        LengthOrPercentage::Px(px)
     }
 }
 
@@ -296,62 +273,37 @@ pub const IN_TO_DIP: f64 = 96.0;
 /// Trait to interpret numeric values as units of measure.
 pub trait UnitExt {
     /// Interprets the value as a length in device-independent pixels (1/96 inch).
-    fn dip(self) -> Length;
-    /// Interprets the value as a length in inches.
-    fn inch(self) -> Length;
-    /// Interprets the value as a length in physical pixels.
-    fn px(self) -> Length;
-    /// Interprets the value as a length in points (1/72 in, 96/72 dip (4/3))
-    fn pt(self) -> Length;
-    /// Interprets the value as a length in ems.
-    fn em(self) -> Length;
-    /// Interprets the value as a length expressed as a percentage of the parent element's length.
-    ///
-    /// The precise definition of "parent element" depends on the context in which the length is used.
+    fn px(self) -> f64;
+
+    // Interprets the value as a length in inches.
+    //fn inch(self) -> f64;
+    // Interprets the value as a length in points (1/72 in, 96/72 dip (4/3))
+    //fn pt(self) -> f64;
+
+    /// Interprets the value as a percentage length.
     fn percent(self) -> LengthOrPercentage;
+
     /// Converts the specified value from degrees to radians. (i.e. `45.degrees()` will return `PI/4`).
     fn degrees(self) -> f64;
 }
 
 impl UnitExt for f32 {
-    fn dip(self) -> Length {
-        Length::Dip(self as f64)
+    fn px(self) -> f64 {
+        self as f64
     }
-    fn inch(self) -> Length {
-        Length::Dip((self as f64) * IN_TO_DIP)
-    }
-    fn px(self) -> Length {
-        Length::Px(self as f64)
-    }
-    fn pt(self) -> Length {
-        Length::Dip((self as f64) * PT_TO_DIP)
-    }
-    fn em(self) -> Length {
-        Length::Em(self as f64)
-    }
+
     fn percent(self) -> LengthOrPercentage {
         LengthOrPercentage::Percentage(self as f64 / 100.0)
     }
+
     fn degrees(self) -> f64 {
         self.to_radians() as f64
     }
 }
 
 impl UnitExt for f64 {
-    fn dip(self) -> Length {
-        Length::Dip(self)
-    }
-    fn inch(self) -> Length {
-        Length::Dip(self * IN_TO_DIP)
-    }
-    fn px(self) -> Length {
-        Length::Px(self)
-    }
-    fn pt(self) -> Length {
-        Length::Dip(self * PT_TO_DIP)
-    }
-    fn em(self) -> Length {
-        Length::Em(self)
+    fn px(self) -> f64 {
+        self
     }
     fn percent(self) -> LengthOrPercentage {
         LengthOrPercentage::Percentage(self / 100.0)
@@ -362,20 +314,8 @@ impl UnitExt for f64 {
 }
 
 impl UnitExt for i32 {
-    fn dip(self) -> Length {
-        Length::Dip(self as f64)
-    }
-    fn inch(self) -> Length {
-        Length::Dip((self as f64) * IN_TO_DIP)
-    }
-    fn px(self) -> Length {
-        Length::Px(self as f64)
-    }
-    fn pt(self) -> Length {
-        Length::Dip((self as f64) * PT_TO_DIP)
-    }
-    fn em(self) -> Length {
-        Length::Em(self as f64)
+    fn px(self) -> f64 {
+        self as f64
     }
     fn percent(self) -> LengthOrPercentage {
         LengthOrPercentage::Percentage(self as f64 / 100.0)
@@ -386,20 +326,8 @@ impl UnitExt for i32 {
 }
 
 impl UnitExt for u32 {
-    fn dip(self) -> Length {
-        Length::Dip(self as f64)
-    }
-    fn inch(self) -> Length {
-        Length::Dip((self as f64) * IN_TO_DIP)
-    }
-    fn px(self) -> Length {
-        Length::Px(self as f64)
-    }
-    fn pt(self) -> Length {
-        Length::Dip((self as f64) * PT_TO_DIP)
-    }
-    fn em(self) -> Length {
-        Length::Em(self as f64)
+    fn px(self) -> f64 {
+        self as f64
     }
     fn percent(self) -> LengthOrPercentage {
         LengthOrPercentage::Percentage(self as f64 / 100.0)

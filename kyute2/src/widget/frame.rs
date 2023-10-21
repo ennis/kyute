@@ -1,59 +1,13 @@
 //! Frame containers
 use crate::{
-    elem_node::TransformNode, widget::HasLayoutProperties, Alignment, ChangeFlags, Element, Environment, Event,
-    EventCtx, Geometry, HitTestResult, Insets, LayoutCtx, LayoutParams, Length, LengthOrPercentage, PaintCtx, Point,
-    Rect, RouteEventCtx, Size, TreeCtx, Vec2, Widget, WidgetId,
+    elem_node::TransformNode,
+    layout::place_into,
+    widget::{Axis, HasLayoutProperties},
+    Alignment, ChangeFlags, Element, Environment, Event, EventCtx, Geometry, HitTestResult, Insets, LayoutCtx,
+    LayoutParams, LengthOrPercentage, PaintCtx, Point, Rect, RouteEventCtx, Size, TreeCtx, Vec2, Widget, WidgetId,
 };
 use std::any::Any;
 use tracing::trace;
-
-/// Places the content inside a containing box with the given measurements.
-///
-/// If this box' vertical alignment is `FirstBaseline` or `LastBaseline`,
-/// it will be aligned to the baseline of the containing box.
-///
-/// Returns the offset of the element box.
-pub fn place_into(
-    size: Size,
-    baseline: Option<f64>,
-    container_size: Size,
-    container_baseline: Option<f64>,
-    x_align: Alignment,
-    y_align: Alignment,
-    pad: &Insets,
-) -> Vec2 {
-    let x = match x_align {
-        Alignment::Relative(x) => pad.x0 + x * (container_size.width - pad.x0 - pad.x1 - size.width),
-        // TODO vertical baseline alignment
-        _ => 0.0,
-    };
-    let y = match y_align {
-        Alignment::Relative(x) => pad.y0 + x * (container_size.height - pad.y0 - pad.y1 - size.height),
-        Alignment::FirstBaseline => {
-            // align this box baseline to the containing box baseline
-            let mut y = match (container_baseline, baseline) {
-                (Some(container_baseline), Some(content_baseline)) => {
-                    // containing-box-baseline == y-offset + self-baseline
-                    container_baseline - content_baseline
-                }
-                _ => {
-                    // the containing box or this box have no baseline
-                    0.0
-                }
-            };
-
-            // ensure sufficient padding, even if this means breaking the baseline alignment
-            if y < pad.y0 {
-                y = pad.y0;
-            }
-            y
-        }
-        // TODO last baseline alignment
-        _ => 0.0,
-    };
-
-    Vec2::new(x, y)
-}
 
 /// A container with a fixed width and height, into which an unique widget is placed.
 pub struct FrameElement<T> {
@@ -114,15 +68,15 @@ impl<T: Element + 'static> Element for FrameElement<T> {
         // If any lengths are specified as percentages, resolve them:
         // consider percentage lengths as relative to the maximum available space.
         // TODO emit warning if available space is infinite
-        let width = params.compute_width(self.width);
-        let height = params.compute_height(self.height);
-        let padding_left = params.compute_width(self.padding_left);
-        let padding_right = params.compute_width(self.padding_right);
-        let padding_top = params.compute_height(self.padding_top);
-        let padding_bottom = params.compute_height(self.padding_bottom);
+        let width = params.constrain_width(self.width.resolve(params.max.width));
+        let height = params.constrain_height(self.height.resolve(params.max.height));
+        let padding_left = self.padding_left.resolve(params.max.width);
+        let padding_right = self.padding_right.resolve(params.max.width);
+        let padding_top = self.padding_top.resolve(params.max.height);
+        let padding_bottom = self.padding_top.resolve(params.max.height);
 
         // Computed size of the frame: just apply constraints from the parent element.
-        let size = Size::new(width.min(params.max.width), height.min(params.max.height));
+        let size = Size::new(width, height);
 
         dbg!(size);
         dbg!(self.change_flags);
@@ -182,6 +136,23 @@ impl<T: Element + 'static> Element for FrameElement<T> {
         // we inherit the ID of the content so forward it
         let flags = self.content.route_event(ctx, event);
         self.update_change_flags(flags)
+    }
+
+    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
+        let size = match axis {
+            Axis::Horizontal => params.constrain_width(self.width.resolve(params.max.width)),
+            Axis::Vertical => params.constrain_height(self.height.resolve(params.max.height)),
+        };
+        if !size.is_finite() {
+            self.content.natural_size(axis, params)
+        } else {
+            size
+        }
+    }
+
+    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+        // TODO: welp, we'd need to take alignment and padding into account here
+        self.content.natural_baseline(params)
     }
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {

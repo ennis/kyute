@@ -1,5 +1,5 @@
 //! Types and functions used for layouting widgets.
-use crate::{Length, LengthOrPercentage, Rect, Size};
+use crate::{LengthOrPercentage, Rect, Size};
 use kurbo::{Insets, Point, Vec2};
 use std::{
     fmt,
@@ -15,8 +15,6 @@ use std::{
 pub struct LayoutParams {
     /// Scale factor.
     pub scale_factor: f64,
-    /// Current font size
-    pub font_size: f64,
     /// Minimum allowed size.
     pub min: Size,
     /// Maximum allowed size (can be infinite).
@@ -27,7 +25,6 @@ impl Default for LayoutParams {
     fn default() -> Self {
         LayoutParams {
             scale_factor: 1.0,
-            font_size: 16.0,
             min: Size::ZERO,
             max: Size::new(f64::INFINITY, f64::INFINITY),
         }
@@ -43,7 +40,7 @@ impl PartialEq for LayoutParams {
             && self.max.width.to_bits() == other.max.width.to_bits()
             && self.max.height.to_bits() == other.max.height.to_bits()
             && self.scale_factor.to_bits() == other.scale_factor.to_bits()
-            && self.font_size == other.font_size
+        //&& self.font_size == other.font_size
     }
 }
 
@@ -54,7 +51,7 @@ impl Hash for LayoutParams {
         self.min.height.to_bits().hash(state);
         self.max.width.to_bits().hash(state);
         self.max.height.to_bits().hash(state);
-        self.font_size.to_bits().hash(state);
+        //self.font_size.to_bits().hash(state);
     }
 }
 
@@ -78,7 +75,7 @@ impl fmt::Debug for LayoutParams {
             write!(f, "{}≤h≤{} ", self.min.width, self.max.width)?;
         }
 
-        write!(f, "@ {:.1}:1, em={}]", self.scale_factor, self.font_size)
+        write!(f, "@ {:.1}:1]", self.scale_factor)
     }
 }
 
@@ -123,9 +120,7 @@ impl LayoutParams {
 
     fn compute_length(&self, length: LengthOrPercentage, max_length: f64) -> f64 {
         match length {
-            LengthOrPercentage::Length(Length::Px(px)) => px / self.scale_factor,
-            LengthOrPercentage::Length(Length::Dip(dip)) => dip,
-            LengthOrPercentage::Length(Length::Em(em)) => em * self.font_size,
+            LengthOrPercentage::Px(px) => px,
             LengthOrPercentage::Percentage(x) => x * max_length,
         }
     }
@@ -196,8 +191,6 @@ pub struct Geometry {
     /// This is the region that is dirtied when the content and its descendants needs to be repainted.
     /// It can be different from `bounding_rect` if the element has drawing effects that bleed outside of the bounds used for hit-testing (e.g. drop shadows).
     pub paint_bounding_rect: Rect,
-    // TODO maybe layout should also contain shape information? This is useful for e.g. borders, which need
-    // the border radii. Also this way we'd be able to accumulate borders.
 }
 
 impl fmt::Debug for Geometry {
@@ -314,4 +307,52 @@ impl Default for Geometry {
     fn default() -> Self {
         Geometry::ZERO
     }
+}
+
+/// Places the content inside a containing box with the given measurements.
+///
+/// If this box' vertical alignment is `FirstBaseline` or `LastBaseline`,
+/// it will be aligned to the baseline of the containing box.
+///
+/// Returns the offset of the element box.
+pub fn place_into(
+    size: Size,
+    baseline: Option<f64>,
+    container_size: Size,
+    container_baseline: Option<f64>,
+    x_align: Alignment,
+    y_align: Alignment,
+    pad: &Insets,
+) -> Vec2 {
+    let x = match x_align {
+        Alignment::Relative(x) => pad.x0 + x * (container_size.width - pad.x0 - pad.x1 - size.width),
+        // TODO vertical baseline alignment
+        _ => 0.0,
+    };
+    let y = match y_align {
+        Alignment::Relative(x) => pad.y0 + x * (container_size.height - pad.y0 - pad.y1 - size.height),
+        Alignment::FirstBaseline => {
+            // align this box baseline to the containing box baseline
+            let mut y = match (container_baseline, baseline) {
+                (Some(container_baseline), Some(content_baseline)) => {
+                    // containing-box-baseline == y-offset + self-baseline
+                    container_baseline - content_baseline
+                }
+                _ => {
+                    // the containing box or this box have no baseline
+                    0.0
+                }
+            };
+
+            // ensure sufficient padding, even if this means breaking the baseline alignment
+            if y < pad.y0 {
+                y = pad.y0;
+            }
+            y
+        }
+        // TODO last baseline alignment
+        _ => 0.0,
+    };
+
+    Vec2::new(x, y)
 }

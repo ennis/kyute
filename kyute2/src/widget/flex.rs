@@ -1,56 +1,9 @@
 use crate::{
-    composable, elem_node::TransformNode, AnyWidget, ChangeFlags, Element, Environment, Event, EventCtx, Geometry,
-    HitTestResult, LayoutCtx, LayoutParams, PaintCtx, RouteEventCtx, TreeCtx, Widget, WidgetId,
+    composable, elem_node::TransformNode, widget::Axis, AnyWidget, ChangeFlags, Element, Environment, Event, EventCtx,
+    Geometry, HitTestResult, LayoutCtx, LayoutParams, PaintCtx, RouteEventCtx, TreeCtx, Widget, WidgetId,
 };
 use kurbo::Point;
 use std::any::Any;
-
-fn reconcile_elements(
-    cx: &mut TreeCtx,
-    widgets: Vec<Box<dyn AnyWidget>>,
-    elements: &mut Vec<TransformNode<Box<dyn Element>>>,
-    env: &Environment,
-) -> ChangeFlags {
-    let mut pos = 0;
-    let mut change_flags = ChangeFlags::empty();
-    for widget in widgets {
-        let id = Widget::id(&widget);
-        // find element matching ID and type
-        let element_type_id = widget.element_type_id();
-        let found = elements[pos..]
-            .iter_mut()
-            .position(|elem| elem.id() == id && Any::type_id(elem.content.as_any_mut()) == element_type_id);
-        if let Some(found) = found {
-            // rotate element in place
-            elements[pos..].rotate_left(found);
-            // and update it
-            change_flags |= elements[pos].update(cx, widget, env);
-            pos += 1;
-        } else {
-            // insert new item
-            elements.insert(pos, TransformNode::new(widget.build(cx, env)));
-
-            if id != WidgetId::ANONYMOUS {
-                cx.child_added(id);
-            }
-            change_flags |= ChangeFlags::STRUCTURE;
-        }
-    }
-
-    if pos < elements.len() {
-        // there are elements to be removed
-        for elem in &elements[pos..] {
-            let id = elem.id();
-            if id != WidgetId::ANONYMOUS {
-                cx.child_removed(id);
-            }
-        }
-        elements.truncate(pos);
-        change_flags |= ChangeFlags::STRUCTURE;
-    }
-
-    change_flags
-}
 
 pub struct VBox {
     id: WidgetId,
@@ -88,7 +41,8 @@ impl Widget for VBox {
     }
 
     fn update(self, cx: &mut TreeCtx, node: &mut Self::Element, env: &Environment) -> ChangeFlags {
-        reconcile_elements(cx, self.content, &mut node.content, env)
+        todo!()
+        //reconcile_elements(cx, self.content, &mut node.content, env)
     }
 }
 
@@ -123,6 +77,14 @@ impl Element for VBoxElement {
         } else {
             self.event(&mut ctx.inner, event)
         }
+    }
+
+    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
+        todo!()
+    }
+
+    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+        todo!()
     }
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {

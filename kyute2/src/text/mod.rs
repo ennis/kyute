@@ -1,26 +1,34 @@
-use crate::{Color, Length};
+use crate::Color;
 use skia_safe as sk;
+use skia_safe::{textlayout::FontCollection, FontMgr};
 use std::{
     cell::OnceCell,
     sync::{Arc, Mutex, OnceLock},
 };
 
 thread_local! {
-    static FONT_COLLECTION: OnceCell<sk::textlayout::FontCollection> = OnceCell::new();
+    static FONT_COLLECTION: OnceCell<FontCollection> = OnceCell::new();
 }
 
 /// Returns the FontCollection for the current thread.
 ///
 /// FontCollections (and other objects that reference them, e.g. Paragraph)
 /// are bound to the thread in which they were created.
-pub(crate) fn get_font_collection() -> sk::textlayout::FontCollection {
+pub(crate) fn get_font_collection() -> FontCollection {
     // Ideally I'd like to have only one font collection for all threads.
     // However, FontCollection isn't Send or Sync, and `Paragraphs` hold a reference to a FontCollection,
     // so, to be able to create Paragraphs from different threads, there must be one FontCollection
     // per thread.
     //
     // See also https://github.com/rust-skia/rust-skia/issues/537
-    FONT_COLLECTION.with(|fc| fc.get_or_init(|| sk::textlayout::FontCollection::new()).clone())
+    FONT_COLLECTION.with(|fc| {
+        fc.get_or_init(|| {
+            let mut font_collection = FontCollection::new();
+            font_collection.set_default_font_manager(FontMgr::new(), None);
+            font_collection
+        })
+        .clone()
+    })
 }
 
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
@@ -48,6 +56,14 @@ impl PartialEq for TextStyle {
 impl Eq for TextStyle {}
 
 impl TextStyle {
+    pub fn new() -> TextStyle {
+        TextStyle {
+            font_size: None,
+            font_families: None,
+            color: None,
+        }
+    }
+
     pub fn color(mut self, color: Color) -> TextStyle {
         self.color = Some(color);
         self
@@ -58,8 +74,8 @@ impl TextStyle {
         self
     }
 
-    pub fn font_family(mut self, font_family: String) -> TextStyle {
-        self.font_families = Some(vec![font_family]);
+    pub fn font_family(mut self, font_family: impl Into<String>) -> TextStyle {
+        self.font_families = Some(vec![font_family.into()]);
         self
     }
 
@@ -83,6 +99,7 @@ impl TextStyle {
     }
 }
 
+// TODO paragraphs
 #[derive(Clone)]
 pub struct TextSpan {
     pub text: String,
@@ -101,9 +118,9 @@ impl Default for TextSpan {
 }
 
 impl TextSpan {
-    pub fn new(text: String, style: Arc<TextStyle>) -> TextSpan {
+    pub fn new(text: impl Into<String>, style: Arc<TextStyle>) -> TextSpan {
         TextSpan {
-            text,
+            text: text.into(),
             style,
             children: vec![],
         }

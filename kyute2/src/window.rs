@@ -130,7 +130,7 @@ impl UiHostWindowHandler {
                 self.send_event(&mut event)
             } else {
                 // no grab, no hit, drop the pointer event
-                trace!("hit-test @ {:?} failed", event.pos);
+                //trace!("hit-test @ {:?} failed", event.pos);
                 ChangeFlags::NONE
             }
         };
@@ -186,7 +186,7 @@ impl UiHostWindowHandler {
     fn update_element_tree(&mut self) {
         let Some(content) = self.content.take() else {
             warn!("update_element_tree: no content");
-            return
+            return;
         };
 
         let mut tree_ctx = TreeCtx::new(self.app_handle.clone(), &mut self.widget_tree);
@@ -206,7 +206,6 @@ impl UiHostWindowHandler {
         let mut ctx = LayoutCtx::new(handle.clone(), &mut self.focus);
         let layout_params = LayoutParams {
             scale_factor: window_scale.x(), // assume x == y
-            font_size: 16.0,                // TODO default font size somewhere
             min: Size::ZERO,
             max: window_size,
         };
@@ -288,7 +287,7 @@ impl glazier::WinHandler for UiHostWindowHandler {
     }
 
     fn pointer_move(&mut self, event: &glazier::PointerEvent) {
-        trace!("UiHostWindowHandler::pointer_move");
+        //trace!("UiHostWindowHandler::pointer_move");
         self.propagate_pointer_event(PointerEventKind::PointerMove, event);
         // somehow schedule a recomp
         self.app_handle.schedule_update();

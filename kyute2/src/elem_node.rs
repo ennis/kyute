@@ -1,7 +1,7 @@
 //!
 use crate::{
-    Affine, ChangeFlags, Environment, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, LayoutParams, PaintCtx,
-    Point, Rect, RouteEventCtx, TreeCtx, Vec2, Widget, WidgetId,
+    widget::Axis, Affine, ChangeFlags, Environment, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, LayoutParams,
+    PaintCtx, Point, Rect, RouteEventCtx, TreeCtx, Vec2, Widget, WidgetId,
 };
 use std::any::Any;
 use tracing::warn;
@@ -26,6 +26,18 @@ pub trait Element: 'static {
         }
     }
 
+    /// Returns the _natural size_ of the element along the given axis.
+    ///
+    /// The _natural size_ of the element on an axis is the size it would take if the constraints
+    /// on that axis were unbounded.
+    ///
+    /// It should be finite.
+    // This is like druid's "compute_max_intrinsic", or flutter's getMaxIntrinsic{Width,Height}
+    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64;
+
+    /// Returns the _natural baseline_ of the element.
+    fn natural_baseline(&mut self, params: &LayoutParams) -> f64;
+
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool;
 
     /// Called to paint the widget.
@@ -49,6 +61,14 @@ impl Element for Box<dyn Element> {
 
     fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
         (&mut **self).route_event(ctx, event)
+    }
+
+    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
+        (&mut **self).natural_size(axis, params)
+    }
+
+    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+        (&mut **self).natural_baseline(params)
     }
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
@@ -150,6 +170,14 @@ impl<T: Element> Element for TransformNode<T> {
     /// Propagates an event to the content element, applying the transform.
     fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
         event.with_transform(&self.transform, |event| self.content.route_event(ctx, event))
+    }
+
+    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
+        self.content.natural_size(axis, params)
+    }
+
+    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+        self.content.natural_baseline(params)
     }
 
     /// Hit-tests the content element.

@@ -15,6 +15,7 @@ tracing = "0.1.37"
 graal = { path = "../../graal/graal" , optional = true }
 kyute-compose = { path = "../kyute-compose" }
 kyute-common = { path="../kyute-common" }
+kyute2-macros = { path="macros" }
 slotmap = "1.0.6"
 serde = { version = "1.0", features = ["derive"] }
 string_cache = "0.8.7"

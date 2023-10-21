@@ -5,10 +5,16 @@
 //!     * win32: enables vulkan interop for composition swap chains
 #![feature(const_fn_floating_point_arithmetic)]
 
+extern crate self as kyute2;
+
 // public modules
 pub mod composition;
 pub mod event;
+pub mod layout;
 pub mod platform;
+pub mod text;
+pub mod theme;
+pub mod utils;
 pub mod widget;
 
 // internal modules
@@ -23,12 +29,10 @@ mod counter;
 mod drawing;
 mod elem_node;
 mod environment;
-mod layout;
 mod length;
+mod reconcile;
 mod skia;
 mod style;
-mod text;
-mod theme;
 mod vec_diff;
 mod widget_id;
 mod widget_tree;
@@ -45,12 +49,14 @@ pub use elem_node::Element;
 pub use environment::{EnvKey, EnvValue, Environment};
 pub use event::{Event, EventKind};
 pub use layout::{Alignment, Geometry, LayoutParams};
-pub use length::{Length, LengthOrPercentage, UnitExt};
+pub use length::{LengthOrPercentage, UnitExt};
+pub use reconcile::reconcile_elements;
 pub use widget_id::WidgetId;
 pub use widget_tree::{AnyWidget, ChangeFlags, Widget};
 pub use window::AppWindowBuilder;
 
 // macro reexports
+pub use kyute2_macros::grid_template;
 pub use kyute_compose::{composable, Widget};
 
 // kurbo reexports

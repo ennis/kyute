@@ -1768,3 +1768,9 @@ Issue with font size: every container that has a custom font size will need to o
 
 Alternative: remove em-sizes?
 QML, WPF don't have them.
+
+Decision => em and physical pixel sizes removed for now. 
+
+## Expose a widget that renders a SKSL shader
+Good to prototype stuff.
+Allow passing uniforms to it. 

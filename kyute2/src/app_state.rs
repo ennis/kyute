@@ -36,7 +36,7 @@ impl AppHandler {
             let app_handle = AppHandle(app.get_handle().unwrap());
             app_state.cache.run(|| (app_state.logic)(app_handle.clone()));
         } else {
-            trace!("AppHandler: cache clean, app logic will be skipped");
+            //trace!("AppHandler: cache clean, app logic will be skipped");
         }
     }
 }

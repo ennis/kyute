@@ -36,6 +36,8 @@ bitflags! {
         /// The size of the element has changed.
         const SIZE = (1 << 1);
         /// The positioning information of the element has changed (alignment).
+        /// TODO remove this, layout doesn't contain positioning information anymore
+        #[deprecated]
         const POSITIONING = (1<<2);
         /// Geometry has changed (SIZE | POSITIONING)
         const GEOMETRY = Self::SIZE.bits() | Self::POSITIONING.bits();

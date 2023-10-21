@@ -1,7 +1,7 @@
 mod align;
 mod flex;
 mod frame;
-mod grid;
+pub mod grid;
 mod label;
 mod null;
 mod relative;
@@ -11,6 +11,7 @@ use crate::Widget;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 pub use flex::{VBox, VBoxElement};
 pub use frame::{Frame, FrameElement};
+pub use grid::{Grid, GridTemplate};
 pub use label::{Text, TextElement};
 pub use null::{Null, NullElement};
 
@@ -48,4 +49,11 @@ where
     fn into_widget(self) -> (Self::Widget, T) {
         (self, T::default())
     }
+}
+
+/// Axis.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum Axis {
+    Horizontal,
+    Vertical,
 }
