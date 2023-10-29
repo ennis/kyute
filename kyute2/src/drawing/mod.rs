@@ -1,6 +1,5 @@
 //! Drawing-related wrappers and helpers for use with skia.
 use crate::{Affine, Color, Point, Rect, Size, Vec2};
-use kurbo::{RoundedRect, RoundedRectRadii};
 use skia_safe as sk;
 use std::fmt;
 
@@ -23,6 +22,9 @@ pub use box_shadow::BoxShadow;
 pub use image::{Image, ImageCache};
 pub use paint::{ColorStop, LinearGradient, Paint, RepeatMode, UniformData};
 pub use path::Path;
+
+// re-export kurbo types
+pub use kurbo::{RoundedRect, RoundedRectRadii, Shape};
 
 /// Types that can be converted to their skia equivalent.
 pub trait ToSkia {

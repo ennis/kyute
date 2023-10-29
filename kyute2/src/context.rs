@@ -1,13 +1,13 @@
 use crate::{
-    app_state::AppHandle, composition::DrawableSurface, drawing::ToSkia, window::WindowFocusState, ChangeFlags,
-    Element, Environment, Event, Widget, WidgetId,
+    composition::DrawableSurface, drawing::ToSkia, window::WindowFocusState, ChangeFlags, Element, Environment, Event,
+    Geometry, LayoutParams, Widget, WidgetId,
 };
-use glazier::{Scale, WindowHandle};
 use kurbo::{Affine, Point};
 use kyute_compose::CallId;
 use skia_safe as sk;
-use std::collections::HashMap;
+use std::{any::Any, collections::HashMap};
 use tracing::warn;
+use winit::{event_loop::EventLoopWindowTarget, window::WindowId};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -15,17 +15,16 @@ use tracing::warn;
 pub type WidgetTree = HashMap<WidgetId, WidgetId>;
 
 pub struct TreeCtx<'a> {
-    pub(crate) app_handle: AppHandle,
+    //pub(crate) app_ctx: &'a mut AppCtx,
     pub(crate) tree: &'a mut WidgetTree,
     current_id: WidgetId,
 }
 
 impl<'a> TreeCtx<'a> {
-    pub(crate) fn new(app_handle: AppHandle, tree: &'a mut WidgetTree) -> TreeCtx {
+    pub(crate) fn new(tree: &'a mut WidgetTree) -> TreeCtx {
         TreeCtx {
-            app_handle,
             tree,
-            current_id: WidgetId::from_call_id(CallId::DUMMY),
+            current_id: WidgetId::ANONYMOUS,
         }
     }
 
@@ -51,12 +50,14 @@ impl<'a> TreeCtx<'a> {
 
     /// Call to signal that a child widget is being added.
     pub fn child_added(&mut self, id: WidgetId) {
-        let prev = self.tree.insert(id, self.current_id);
-        if let Some(prev) = prev {
-            warn!(
-                "child_added called with id {:?} already in the tree (old parent: {:?}, new parent: {:?})",
-                id, prev, self.current_id
-            );
+        if id != WidgetId::ANONYMOUS && self.current_id != WidgetId::ANONYMOUS {
+            let prev = self.tree.insert(id, self.current_id);
+            if let Some(prev) = prev {
+                warn!(
+                    "child_added called with id {:?} already in the tree (old parent: {:?}, new parent: {:?})",
+                    id, prev, self.current_id
+                );
+            }
         }
     }
 
@@ -75,6 +76,22 @@ impl<'a> TreeCtx<'a> {
             widget.build(self, env)
         }
     }
+
+    pub fn update<W: Widget>(&mut self, widget: W, element: &mut W::Element, env: &Environment) -> ChangeFlags {
+        let id = widget.id();
+        if id != self.current_id && id != WidgetId::ANONYMOUS {
+            // update child with different ID
+            self.child_added(id);
+            let last_id = self.current_id;
+            self.current_id = id;
+            let r = widget.update(self, element, env);
+            self.current_id = last_id;
+            r
+        } else {
+            // same inherited ID
+            widget.update(self, element, env)
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -82,10 +99,11 @@ impl<'a> TreeCtx<'a> {
 /// Event propagation context.
 pub struct EventCtx<'a> {
     /// Parent window handle.
-    pub(crate) window: WindowHandle,
+    pub(crate) window: &'a winit::window::Window,
 
     /// Focus state of the parent window.
-    pub(crate) window_state: &'a mut WindowFocusState,
+    pub(crate) focus: &'a mut Option<WidgetId>,
+    pub(crate) pointer_capture: &'a mut Option<WidgetId>,
 
     /// Transform from window area to the current element.
     pub(crate) window_transform: Affine,
@@ -96,11 +114,25 @@ pub struct EventCtx<'a> {
     pub change_flags: ChangeFlags,
 }
 
+impl<'a> EventCtx<'a> {
+    pub fn request_focus(&mut self, id: WidgetId) {
+        *self.focus = Some(id);
+    }
+
+    pub fn request_pointer_capture(&mut self, id: WidgetId) {
+        *self.pointer_capture = Some(id);
+    }
+
+    /*pub fn move_focus(&mut self) {
+
+    }*/
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Event passed to RouteEventCtx
 pub struct RouteEventCtx<'a> {
-    pub(crate) inner: EventCtx<'a>,
+    pub inner: EventCtx<'a>,
 }
 
 impl<'a> RouteEventCtx<'a> {
@@ -124,10 +156,10 @@ impl<'a> RouteEventCtx<'a> {
 /// Layout context.
 pub struct LayoutCtx<'a> {
     /// Parent window handle.
-    pub(crate) window: WindowHandle,
+    pub(crate) window: &'a winit::window::Window,
 
     /// Focus state of the parent window.
-    pub(crate) window_state: &'a mut WindowFocusState,
+    pub(crate) focus: Option<WidgetId>,
 
     /// Transform from window area to the current element.
     pub(crate) window_transform: Affine,
@@ -137,18 +169,18 @@ pub struct LayoutCtx<'a> {
 }
 
 impl<'a> LayoutCtx<'a> {
-    pub(crate) fn new(window: WindowHandle, window_state: &'a mut WindowFocusState) -> LayoutCtx {
+    pub(crate) fn new(window: &'a winit::window::Window, focus: Option<WidgetId>) -> LayoutCtx<'a> {
         LayoutCtx {
             window,
-            window_state,
+            focus,
             window_transform: Default::default(),
             id: None,
         }
     }
 
     /// Returns the scale factor of the parent window.
-    pub fn scale_factor(&self) -> Scale {
-        self.window.get_scale().unwrap()
+    pub fn scale_factor(&self) -> f64 {
+        self.window.scale_factor()
     }
 }
 
@@ -178,10 +210,10 @@ impl HitTestResult {
 /// Paint context.
 pub struct PaintCtx<'a> {
     /// Parent window handle.
-    pub(crate) window: WindowHandle,
+    pub(crate) window: &'a winit::window::Window,
 
     /// Focus state of the parent window.
-    pub(crate) window_state: &'a mut WindowFocusState,
+    pub(crate) focus: Option<WidgetId>,
 
     /// Transform from window area to the current element.
     pub(crate) window_transform: Affine,
@@ -198,15 +230,13 @@ impl<'a> PaintCtx<'a> {
     where
         F: FnOnce(&mut PaintCtx<'a>) -> R,
     {
-        let scale = self.window.get_scale().unwrap();
+        let scale = self.window.scale_factor() as sk::scalar;
         let prev_transform = self.window_transform;
         self.window_transform *= *transform;
         let mut surface = self.surface.surface();
         surface.canvas().save();
         surface.canvas().reset_matrix();
-        surface
-            .canvas()
-            .scale((scale.x() as sk::scalar, scale.y() as sk::scalar));
+        surface.canvas().scale((scale, scale));
         surface.canvas().concat(&self.window_transform.to_skia());
         // TODO clip
         let result = f(self);

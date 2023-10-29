@@ -1,7 +1,9 @@
-use crate::{theme::FONT_SIZE, Atom, Color};
+use crate::{composable, theme::FONT_SIZE, Atom, Color};
+use kyute_compose::cache_cx;
 use once_cell::sync::Lazy;
 use std::{
     any::Any,
+    cell::RefCell,
     collections::HashMap,
     fmt,
     hash::{Hash, Hasher},
@@ -229,6 +231,29 @@ impl Environment {
         }
         with
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// with
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Current environment
+thread_local! {
+    static ENVIRONMENT: RefCell<Environment> = RefCell::new(Environment::new());
+}
+
+//#[composable]
+pub fn with<R>(env: Environment, f: impl FnOnce() -> R) -> R {
+    let prev = ENVIRONMENT.with(move |e| e.replace_with(move |e| e.merged(env)));
+    // FIXME If there's a memoized function in f() that
+    // depends on the environment, it won't be invalidated if the environment changes,
+    // and that's a problem.
+    //
+    // Memoized functions that depend on the environment should thus also memoize the environment value.
+    // Or: memoized functions also memoize the environment => memoized functions are invalidated when the environment changes.
+    let result = f();
+    ENVIRONMENT.with(move |e| e.replace(prev));
+    result
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

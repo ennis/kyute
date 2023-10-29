@@ -63,19 +63,16 @@ impl Element for VBoxElement {
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        todo!()
-    }
-
-    fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
         if let Some(next_target) = event.next_target() {
             let child = self
                 .content
                 .iter_mut()
                 .find(|e| e.id() == next_target)
                 .expect("invalid child specified");
-            child.route_event(ctx, event)
+            child.event(ctx, event)
         } else {
-            self.event(&mut ctx.inner, event)
+            // Nothing
+            ChangeFlags::NONE
         }
     }
 

@@ -3,6 +3,43 @@ use crate::{context::TreeCtx, environment::Environment, Element, WidgetId};
 use bitflags::bitflags;
 use std::any::TypeId;
 
+mod align;
+mod background;
+pub mod button;
+pub mod clickable;
+mod flex;
+pub mod frame;
+pub mod grid;
+pub mod null;
+pub mod overlay;
+mod relative;
+pub mod shape;
+pub mod text;
+
+use crate::composable;
+use kurbo::Rect;
+
+/// Widget prelude.
+pub mod prelude {
+    pub use crate::{
+        composable, debug_util::DebugWriter, widget::Axis, ChangeFlags, Element, Environment, Event, EventCtx,
+        EventKind, Geometry, HitTestResult, LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx, Signal,
+        Size, State, TreeCtx, Widget, WidgetId,
+    };
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+use crate::{drawing::Paint, widget::overlay::ZOrder};
+
+pub use background::Background;
+pub use clickable::Clickable;
+pub use flex::{VBox, VBoxElement};
+pub use frame::Frame;
+pub use grid::{Grid, GridTemplate};
+pub use null::Null;
+pub use overlay::Overlay;
+pub use shape::Shape;
+pub use text::Text;
 /*struct TreeNode {
     /// Parent node.
     parent: Option<WidgetId>,
@@ -130,7 +167,7 @@ impl Widget for Box<dyn AnyWidget> {
     type Element = Box<dyn Element>;
 
     fn id(&self) -> WidgetId {
-        AnyWidget::id(self)
+        AnyWidget::id(&**self)
     }
 
     fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
@@ -172,3 +209,66 @@ impl<T: Widget> Widget for WidgetNode<T> {
     }
 }
 */
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+pub trait HasLayoutProperties<T> {
+    type Widget: Widget;
+
+    fn into_widget(self) -> (Self::Widget, T);
+}
+
+pub struct Attached<W, T> {
+    pub widget: W,
+    pub props: T,
+}
+
+impl<W, T> HasLayoutProperties<T> for Attached<W, T>
+where
+    W: Widget,
+{
+    type Widget = W;
+
+    fn into_widget(self) -> (Self::Widget, T) {
+        (self.widget, self.props)
+    }
+}
+
+impl<W, T> HasLayoutProperties<T> for W
+where
+    W: Widget,
+    T: Default,
+{
+    type Widget = W;
+
+    fn into_widget(self) -> (Self::Widget, T) {
+        (self, T::default())
+    }
+}
+*/
+
+/// Axis.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum Axis {
+    Horizontal,
+    Vertical,
+}
+
+/// Extension methods on widgets.
+pub trait WidgetExt: Widget + Sized + 'static {
+    /// Sets the background paint of the widget.
+    #[must_use]
+    #[composable]
+    fn background(self, paint: impl Into<Paint>) -> Overlay<Self, Background> {
+        Overlay::new(self, Background::new(paint.into()), ZOrder::Below)
+    }
+
+    #[must_use]
+    #[composable]
+    fn clickable(self) -> Clickable<Self> {
+        Clickable::new(self)
+    }
+}
+
+impl<W: Widget + 'static> WidgetExt for W {}

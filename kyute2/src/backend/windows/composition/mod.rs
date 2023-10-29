@@ -6,7 +6,7 @@ use crate::{
     composition::{ColorType, LayerID},
     AppGlobals, Size,
 };
-use glazier::raw_window_handle::RawWindowHandle;
+use raw_window_handle::RawWindowHandle;
 use skia_safe as sk;
 use slotmap::SecondaryMap;
 use windows::{
@@ -246,16 +246,19 @@ impl Compositor {
         if let Some(ref swap_chain) = layer.swap_chain {
             unsafe {
                 // SAFETY: basic FFI call
-                swap_chain
-                    .inner
-                    .ResizeBuffers(
-                        SWAP_CHAIN_BUFFER_COUNT,
-                        width,
-                        height,
-                        DXGI_FORMAT_R16G16B16A16_FLOAT,
-                        DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-                    )
-                    .expect("IDXGISwapChain::ResizeBuffers failed");
+                match swap_chain.inner.ResizeBuffers(
+                    SWAP_CHAIN_BUFFER_COUNT,
+                    width,
+                    height,
+                    DXGI_FORMAT_R16G16B16A16_FLOAT,
+                    DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
+                ) {
+                    Ok(_) => {}
+                    Err(hr) => {
+                        //let removed_reason = self.device.GetDeviceRemovedReason().unwrap_err();
+                        panic!("IDXGISwapChain::ResizeBuffers failed: {}", hr);
+                    }
+                }
             }
         }
 

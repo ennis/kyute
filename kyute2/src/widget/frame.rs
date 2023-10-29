@@ -1,10 +1,8 @@
 //! Frame containers
 use crate::{
-    elem_node::TransformNode,
-    layout::place_into,
-    widget::{Axis, HasLayoutProperties},
-    Alignment, ChangeFlags, Element, Environment, Event, EventCtx, Geometry, HitTestResult, Insets, LayoutCtx,
-    LayoutParams, LengthOrPercentage, PaintCtx, Point, Rect, RouteEventCtx, Size, TreeCtx, Vec2, Widget, WidgetId,
+    debug_util::DebugWriter, elem_node::TransformNode, layout::place_into, widget::Axis, Alignment, ChangeFlags,
+    Element, Environment, Event, EventCtx, Geometry, HitTestResult, Insets, LayoutCtx, LayoutParams,
+    LengthOrPercentage, PaintCtx, Point, Rect, RouteEventCtx, Size, TreeCtx, Vec2, Widget, WidgetId,
 };
 use std::any::Any;
 use tracing::trace;
@@ -78,9 +76,6 @@ impl<T: Element + 'static> Element for FrameElement<T> {
         // Computed size of the frame: just apply constraints from the parent element.
         let size = Size::new(width, height);
 
-        dbg!(size);
-        dbg!(self.change_flags);
-
         // Call layout on the content. This is only necessary if:
         // - the computed size of the frame has changed (because the constraints passed to the child change in turn)
         // - the scale factor has changed (this invalidates all layouts)
@@ -119,12 +114,12 @@ impl<T: Element + 'static> Element for FrameElement<T> {
         self.size = size;
         self.change_flags = ChangeFlags::empty();
         // TODO propagate baseline
-        dbg!(Geometry {
+        Geometry {
             size,
             baseline: None,
             bounding_rect: self.bounding_rect,
             paint_bounding_rect: self.paint_bounding_rect,
-        })
+        }
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
@@ -132,11 +127,11 @@ impl<T: Element + 'static> Element for FrameElement<T> {
         self.update_change_flags(flags)
     }
 
-    fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
+    /*fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
         // we inherit the ID of the content so forward it
         let flags = self.content.route_event(ctx, event);
         self.update_change_flags(flags)
-    }
+    }*/
 
     fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
         let size = match axis {
@@ -172,6 +167,23 @@ impl<T: Element + 'static> Element for FrameElement<T> {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn debug(&self, visitor: &mut DebugWriter) {
+        visitor.type_name("FrameElement");
+        visitor.property("width", self.width);
+        visitor.property("height", self.height);
+        visitor.property("x_align", self.x_align);
+        visitor.property("y_align", self.y_align);
+        visitor.property("padding_left", self.padding_left);
+        visitor.property("padding_right", self.padding_right);
+        visitor.property("padding_top", self.padding_top);
+        visitor.property("padding_bottom", self.padding_bottom);
+        visitor.property("scale_factor", self.scale_factor);
+        visitor.property("size", self.size);
+        visitor.property("bounding_rect", self.bounding_rect);
+        visitor.property("paint_bounding_rect", self.paint_bounding_rect);
+        visitor.child("content", &self.content);
     }
 }
 
@@ -213,7 +225,7 @@ impl<T: Widget> Widget for Frame<T> {
     }
 
     fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
-        let content = self.content.build(cx, env);
+        let content = cx.build(self.content, env);
         trace!("build Frame");
         FrameElement {
             content: TransformNode::new(content),

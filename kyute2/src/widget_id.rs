@@ -36,6 +36,14 @@ impl WidgetId {
     pub fn dbg_option(id: Option<WidgetId>) -> WidgetIdDebug {
         WidgetIdDebug(id)
     }
+
+    pub fn is_anonymous(self) -> bool {
+        self == Self::ANONYMOUS
+    }
+
+    pub fn to_u64(self) -> u64 {
+        self.0.to_u64()
+    }
 }
 
 impl fmt::Debug for WidgetId {

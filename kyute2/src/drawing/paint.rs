@@ -6,7 +6,8 @@ use crate::{
 use kurbo::Vec2;
 use skia_safe as sk;
 use skia_safe::gradient_shader::GradientShaderColors;
-use std::{ffi::c_void, fmt, mem};
+use std::{cell::OnceCell, ffi::c_void, fmt, mem, sync::OnceLock};
+use threadbound::ThreadBound;
 use tracing::warn;
 
 /// Image repeat mode.
@@ -16,8 +17,9 @@ pub enum RepeatMode {
     NoRepeat,
 }
 
+/// Data passed to uniforms.
 #[derive(Clone, Debug)]
-pub struct UniformData(pub(crate) sk::Data);
+pub struct UniformData(pub sk::Data);
 
 impl Data for UniformData {
     fn same(&self, other: &Self) -> bool {
@@ -27,7 +29,7 @@ impl Data for UniformData {
 
 #[macro_export]
 macro_rules! make_uniform_data {
-    ( [$effect:ident] $($name:ident : $typ:ty = $value:expr;)*) => {
+    ( [$effect:ident] $($name:ident : $typ:ty = $value:expr),*) => {
         unsafe {
             let total_size = $effect.uniform_size();
             let mut data: Vec<u8> = Vec::with_capacity(total_size);
@@ -59,6 +61,42 @@ macro_rules! make_uniform_data {
     };
 }
 
+#[macro_export]
+macro_rules! shader {
+    ($source:literal) => {{
+        thread_local! {
+            static SHADER: std::cell::OnceCell<$crate::skia::RuntimeEffect> = OnceCell::new();
+        }
+        SHADER.with(|cell| {
+            cell.get_or_init(|| {
+                $crate::skia::RuntimeEffect::make_for_shader($source, None).expect("failed to compile shader")
+            })
+            .clone()
+        })
+
+        /*static SHADER: std::sync::OnceLock<$crate::ThreadBound<$crate::skia::RuntimeEffect>> =
+            std::sync::OnceLock::new();
+        SHADER
+            .get_or_init(|| {
+                $crate::skia::RuntimeEffect::make_for_shader($source, None).expect("failed to compile shader")
+            })
+            .get_ref()
+            .expect("shader accessed from another thread")*/
+    }};
+}
+
+#[macro_export]
+macro_rules! shader_paint {
+    ($source:literal, $($name:ident : $typ:ty = $value:expr),*) => {
+        {
+            let shader = $crate::shader!($source).clone();
+            let uniforms = $crate::make_uniform_data!([shader] $($name : $typ = $value),*);
+            $crate::drawing::Paint::Shader { effect: shader, uniforms }
+        }
+    };
+}
+
+/*
 fn compare_runtime_effects(left: &sk::RuntimeEffect, right: &sk::RuntimeEffect) -> bool {
     // FIXME: skia_safe doesn't let us access the native pointer for some reason,
     // so force our way though
@@ -69,6 +107,7 @@ fn compare_runtime_effects(left: &sk::RuntimeEffect, right: &sk::RuntimeEffect) 
         ptr_a == ptr_b
     }
 }
+*/
 
 /// Paint.
 #[derive(Clone, Debug)]

@@ -1,4 +1,5 @@
 use crate::{
+    debug_util::DebugWriter,
     drawing::ToSkia,
     text::{get_font_collection, ChangeKind, TextSpan, TextStyle},
     widget::Axis,
@@ -169,29 +170,28 @@ impl Element for TextElement {
 
         self.paragraph.layout(dbg!(available_width) as sk::scalar);
         let w = self.paragraph.max_width() as f64;
-        let h = self.paragraph.height() as f64; // fuck you
-                                                //let h = available_height;
+        let h = self.paragraph.height() as f64;
         let alphabetic_baseline = self.paragraph.alphabetic_baseline();
         let unconstrained_size = Size::new(w, h);
         let size = params.constrain(unconstrained_size);
         self.relayout = false;
 
-        dbg!(self.paragraph.max_width());
-        dbg!(self.paragraph.max_intrinsic_width());
-        dbg!(self.paragraph.height());
-        dbg!(self.paragraph.alphabetic_baseline());
+        self.paragraph.max_width();
+        self.paragraph.max_intrinsic_width();
+        self.paragraph.height();
+        self.paragraph.alphabetic_baseline();
 
         // update cached values
         //self.available_width = available_width;
         //self.available_height = available_height;
         //self.scale_factor = params.scale_factor;
 
-        dbg!(Geometry {
+        Geometry {
             size,
             baseline: Some(alphabetic_baseline as f64),
             bounding_rect: size.to_rect(),
             paint_bounding_rect: size.to_rect(),
-        })
+        }
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
@@ -233,5 +233,11 @@ impl Element for TextElement {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn debug(&self, visitor: &mut DebugWriter) {
+        visitor.type_name("TextElement");
+        visitor.property("id", self.id());
+        visitor.str_property("text", &self.text.text);
     }
 }

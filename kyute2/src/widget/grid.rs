@@ -1,8 +1,8 @@
 //! Grid layout.
 //!
-
 use crate::{
     composable,
+    debug_util::DebugWriter,
     drawing::{Paint, ToSkia},
     elem_node::TransformNode,
     layout::place_into,
@@ -258,7 +258,7 @@ impl Widget for Grid {
             .content
             .into_iter()
             .map(|item| GridItemElement {
-                content: TransformNode::new(item.content.build(cx, env)),
+                content: TransformNode::new(cx.build(item.content, env)),
                 area: item.area,
                 x_align: Default::default(),
                 row_range: Default::default(),
@@ -478,22 +478,25 @@ impl Element for GridElement {
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        // We don't care about events
-        ChangeFlags::NONE
-    }
-
-    fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
-        if let Some(next_target) = event.next_target() {
+        // We don't care about events, but propagate if necessary
+        if let Some(target) = event.next_target() {
             let child = self
                 .content
                 .iter_mut()
-                .find(|e| e.content.id() == next_target)
+                .find(|e| e.content.id() == target)
                 .expect("invalid child specified");
-            child.content.route_event(ctx, event)
+            child.content.event(ctx, event)
+        } else {
+            ChangeFlags::NONE
+        }
+    }
+
+    /*fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
+        if let Some(next_target) = event.next_target() {
         } else {
             self.event(&mut ctx.inner, event)
         }
-    }
+    }*/
 
     fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
         // Not sure how to implement that more efficiently other than just recomputing the whole layout
@@ -510,6 +513,7 @@ impl Element for GridElement {
         for item in self.content.iter() {
             hit |= item.content.hit_test(ctx, position);
         }
+        trace!("grid hit test: {}", hit);
         hit
     }
 
@@ -553,6 +557,21 @@ impl Element for GridElement {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn debug(&self, visitor: &mut DebugWriter) {
+        visitor.type_name("GridElement");
+        visitor.property("flow", self.flow);
+        //visitor.property("template", self.template);
+        visitor.property("row_gap", self.row_gap);
+        visitor.property("column_gap", self.column_gap);
+        //visitor.property("row_background", self.row_background);
+        //visitor.property("alternate_row_background", self.alternate_row_background);
+        //visitor.property("row_gap_background", self.row_gap_background);
+        //visitor.property("column_gap_background", self.column_gap_background);
+        for item in self.content.iter() {
+            visitor.child("item", &item.content);
+        }
     }
 }
 

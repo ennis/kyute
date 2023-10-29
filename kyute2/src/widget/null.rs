@@ -1,6 +1,6 @@
 use crate::{
-    widget::Axis, ChangeFlags, Element, Environment, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, LayoutParams,
-    PaintCtx, RouteEventCtx, TreeCtx, Widget, WidgetId,
+    debug_util::DebugWriter, widget::Axis, ChangeFlags, Element, Environment, Event, EventCtx, Geometry, HitTestResult,
+    LayoutCtx, LayoutParams, PaintCtx, RouteEventCtx, TreeCtx, Widget, WidgetId,
 };
 use kurbo::Point;
 use std::any::Any;
@@ -45,10 +45,6 @@ impl Element for NullElement {
         ChangeFlags::NONE
     }
 
-    fn route_event(&mut self, ctx: &mut RouteEventCtx, _event: &mut Event) -> ChangeFlags {
-        ChangeFlags::NONE
-    }
-
     fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
         0.0
     }
@@ -65,5 +61,9 @@ impl Element for NullElement {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn debug(&self, w: &mut DebugWriter) {
+        w.type_name("NullElement")
     }
 }

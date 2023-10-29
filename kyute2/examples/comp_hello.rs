@@ -1,26 +1,53 @@
-use glazier::{
-    kurbo::Size, raw_window_handle::HasRawWindowHandle, AppHandler, Cursor, FileDialogToken, FileInfo, IdleToken,
-    KeyEvent, PointerEvent, Region, Scalable, TimerToken, WinHandler, WindowHandle,
-};
 use kyute2::{
-    composable,
+    composable, drawing, make_uniform_data, shader, shader_paint,
     text::{TextSpan, TextStyle},
     theme::palette,
-    widget::{grid::GridArea, Frame, Grid, Null, Text},
-    Alignment, AppHandle, AppLauncher, AppWindowBuilder, Color, UnitExt, Widget,
+    widget::{grid::GridArea, Background, Frame, Grid, Null, Text, WidgetExt},
+    Alignment, AppCtx, AppLauncher, AppWindowBuilder, Color, Environment, UnitExt, Widget,
 };
 use kyute2_macros::grid_template;
 use skia_safe as sk;
 use std::{
     any::Any,
+    cell::OnceCell,
     sync::Arc,
     time::{Duration, Instant},
 };
+use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 grid_template!(GRID: [START] 100px 1fr 1fr [END] / [TOP] 50px [BOTTOM] );
+
+#[composable]
+fn color_swatch() -> impl Widget {
+    let paint = shader_paint! {
+        r#"
+        layout(color) uniform float4 color;
+        layout(color) uniform float3 cbColor;
+        uniform int cbSize;
+        
+        float3 checkerboard(float2 fragcoord) {
+            float2 p = floor(fragcoord / float(cbSize));
+            return mix(float3(1.0), cbColor, mod(p.x + p.y, 2.0));
+        }
+        
+        float4 main(float2 fragcoord) {
+            float4 final = color;
+            if (cbSize > 0) {
+                final.rgb = mix(checkerboard(fragcoord), final.rgb, final.a);
+                final.a = 1.0;
+            }
+            return final;
+        }
+        "#,
+        color: [f32; 4] = [1.0, 0.0, 0.0, 0.5],
+        cbColor: [f32; 3] = [0.5, 0.5, 0.5],
+        cbSize: i32 = 5
+    };
+    Background::new(paint)
+}
 
 #[composable]
 fn main_window_contents() -> impl Widget {
@@ -44,17 +71,38 @@ fn main_window_contents() -> impl Widget {
         Text::new(text),
     );
 
+    let swatch = color_swatch().clickable();
+    if swatch.clicked() {
+        info!("swatch clicked");
+    }
+
+    grid.add(
+        GridArea {
+            row: Some(0),
+            column: Some(1),
+            row_span: 1,
+            column_span: 1,
+        },
+        Alignment::START,
+        Alignment::START,
+        swatch,
+    );
+
     Frame::new(100.percent(), 100.percent(), grid)
 }
 
 /// This function is run whenever the UI of a window needs to be rebuilt,
 /// or the application receives a message that it is interested in.
 #[composable]
-fn application(app_handle: AppHandle) {
+fn application(app_ctx: &mut AppCtx) {
     // build or rebuild the main window
-    AppWindowBuilder::new(main_window_contents())
+    let contents = main_window_contents();
+    let window_handle = AppWindowBuilder::new(contents)
         .title("Main window")
-        .build(app_handle);
+        .build(app_ctx, &Environment::default());
+    if window_handle.close_requested() {
+        app_ctx.quit();
+    }
 }
 
 fn main() {

@@ -108,6 +108,7 @@ impl<T: ?Sized> CacheVar<T> {
     }
 }
 
+/*
 impl<T: Data> CacheVar<T> {
     /// Updates the value contained in the cache variable.
     ///
@@ -123,14 +124,10 @@ impl<T: Data> CacheVar<T> {
             None
         }
     }
-}
+}*/
 
 impl<T: 'static> CacheVar<T> {
     /// Sets the value of this cache variable and returns the previous value.
-    ///
-    /// # Dependency
-    ///
-    /// If run inside a caching context, the parent variable becomes dependent on this one.
     pub fn replace(&self, new_value: T, invalidate: bool) -> T {
         let mut value = self.value.borrow_mut();
         let ret = mem::replace(&mut *value, new_value);
@@ -139,6 +136,14 @@ impl<T: 'static> CacheVar<T> {
             self.waker.wake_by_ref();
         }
         ret
+    }
+
+    pub fn update_with(&self, f: impl FnOnce(&mut T) -> bool) {
+        let mut value = self.value.borrow_mut();
+        if f(&mut *value) {
+            self.invalidate_dependents();
+            self.waker.wake_by_ref();
+        }
     }
 }
 

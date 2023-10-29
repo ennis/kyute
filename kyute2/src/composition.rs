@@ -1,6 +1,6 @@
 //! System compositor interface
 use crate::{backend, Size};
-use glazier::raw_window_handle::RawWindowHandle;
+use raw_window_handle::RawWindowHandle;
 use skia_safe as sk;
 use slotmap::{SecondaryMap, SlotMap};
 use std::cell::RefCell;
@@ -202,10 +202,12 @@ impl Compositor {
     ///
     /// Use `acquire_drawing_surface` to obtain a drawable surface with a Skia context from the layer.
     ///
-    /// # Argument
+    /// # Arguments
     ///
     /// * size Size of the surface in pixels
     /// * format Pixel format
+    ///
+    /// TODO: floating-point size doesn't make sense
     pub fn create_surface_layer(&self, size: Size, format: ColorType) -> LayerID {
         let mut inner = self.inner.borrow_mut();
         let id = inner.layers.insert(LayerInfo {});

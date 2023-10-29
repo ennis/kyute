@@ -1,9 +1,9 @@
 //!
 use crate::{
-    widget::Axis, Affine, ChangeFlags, Environment, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, LayoutParams,
-    PaintCtx, Point, Rect, RouteEventCtx, TreeCtx, Vec2, Widget, WidgetId,
+    debug_util::DebugWriter, widget::Axis, Affine, ChangeFlags, Environment, Event, EventCtx, Geometry, HitTestResult,
+    LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx, TreeCtx, Vec2, Widget, WidgetId,
 };
-use std::any::Any;
+use std::{any::Any, collections::hash_map::DefaultHasher, hash::Hasher, ptr};
 use tracing::warn;
 
 pub trait Element: 'static {
@@ -16,7 +16,7 @@ pub trait Element: 'static {
     /// Deliver an event to this element or one of its children.
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags;
 
-    /// Routes an event through this element, to a child element.
+    /*/// Routes an event through this element, to a child element.
     fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
         if let Some(_next_target) = event.next_target() {
             warn!("Default `route_event` implementation called but event has a next target. Implement `route_event` to route the event to child elements.");
@@ -24,7 +24,7 @@ pub trait Element: 'static {
         } else {
             self.event(&mut ctx.inner, event)
         }
-    }
+    }*/
 
     /// Returns the _natural size_ of the element along the given axis.
     ///
@@ -44,6 +44,9 @@ pub trait Element: 'static {
     fn paint(&mut self, ctx: &mut PaintCtx);
 
     fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    /// Implement to give a debug name to your widget. Used only for debugging.
+    fn debug(&self, w: &mut DebugWriter) {}
 }
 
 impl Element for Box<dyn Element> {
@@ -59,9 +62,9 @@ impl Element for Box<dyn Element> {
         (&mut **self).event(ctx, event)
     }
 
-    fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
+    /*fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
         (&mut **self).route_event(ctx, event)
-    }
+    }*/
 
     fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
         (&mut **self).natural_size(axis, params)
@@ -83,6 +86,10 @@ impl Element for Box<dyn Element> {
         self
     }
 
+    fn debug(&self, w: &mut DebugWriter) {
+        (&**self).debug(w)
+    }
+
     /*fn parent_data(&mut self) -> &mut dyn Any {
         (&mut **self).parent_data()
     }*/
@@ -94,6 +101,12 @@ impl Element for Box<dyn Element> {
 pub struct TransformNode<T: ?Sized = dyn Element> {
     /// Parent-to-local transform.
     pub transform: Affine,
+    // In debug mode, track the layout and final transform of the element,
+    #[cfg(debug_assertions)]
+    pub(crate) window_transform: Affine,
+    #[cfg(debug_assertions)]
+    pub(crate) geometry: Geometry,
+
     pub content: T,
 }
 
@@ -102,6 +115,10 @@ impl<T: Sized> TransformNode<T> {
         TransformNode {
             transform: Affine::IDENTITY,
             content,
+            #[cfg(debug_assertions)]
+            window_transform: Default::default(),
+            #[cfg(debug_assertions)]
+            geometry: Default::default(),
         }
     }
 }
@@ -155,22 +172,23 @@ impl<T: Element> Element for TransformNode<T> {
 
     /// Calls `layout` on the content element.
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
-        self.content.layout(ctx, params)
+        let result = self.content.layout(ctx, params);
+
+        #[cfg(debug_assertions)]
+        {
+            self.geometry = result;
+        }
+
+        result
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        // propagate down
-        let change = self.content.event(ctx, event);
-        /*if change.intersects(ChangeFlags::GEOMETRY) {
-            self.geometry = None;
-        }*/
-        change
+        event.with_transform(&self.transform, |event| self.content.event(ctx, event))
     }
 
-    /// Propagates an event to the content element, applying the transform.
+    /*/// Propagates an event to the content element, applying the transform.
     fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
-        event.with_transform(&self.transform, |event| self.content.route_event(ctx, event))
-    }
+    }*/
 
     fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
         self.content.natural_size(axis, params)
@@ -182,15 +200,33 @@ impl<T: Element> Element for TransformNode<T> {
 
     /// Hit-tests the content element.
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        let local_position = self.transform * position;
+        let local_position = self.transform.inverse() * position;
         self.content.hit_test(ctx, local_position)
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
+        #[cfg(debug_assertions)]
+        {
+            self.window_transform = ctx.window_transform;
+        }
+
         ctx.with_transform(&self.transform, |ctx| self.content.paint(ctx))
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn debug(&self, w: &mut DebugWriter) {
+        w.type_name("TransformNode");
+        w.property("transform", self.transform);
+
+        #[cfg(debug_assertions)]
+        {
+            w.property("window_transform", self.window_transform);
+            w.property("geometry", self.geometry);
+        }
+
+        w.child("content", &self.content);
     }
 }
