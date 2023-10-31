@@ -46,14 +46,26 @@ pub struct AppCtx<'a> {
 }
 
 impl<'a> AppCtx<'a> {
-    pub fn quit(&mut self) {
-        self.event_loop.exit();
-    }
-
     pub fn register_window(&mut self, window_id: WindowId, handler: Box<dyn WindowHandler>) {
         if self.app_state.windows.insert(window_id, handler).is_some() {
             panic!("window already registered");
         }
+    }
+
+    pub fn with_window_handler(
+        &mut self,
+        id: u64,
+        build: impl FnOnce(&mut Self) -> Box<dyn WindowHandler>,
+        update: impl FnOnce(&mut Self, &mut dyn WindowHandler),
+    ) {
+        //if self.app_state.windows.
+
+        let window_id = WindowId::from(id);
+        if self.app_state.windows.contains_key(&window_id) {
+            panic!("window already registered");
+        }
+        let handler = init(self);
+        self.app_state.windows.insert(window_id, handler);
     }
 
     pub fn window_handler(&mut self, window_id: WindowId) -> &mut dyn WindowHandler {
@@ -73,22 +85,31 @@ impl<'a> AppCtx<'a> {
 
 /// Holds the windows and the application logic.
 pub(crate) struct AppState {
-    pub(crate) windows: HashMap<WindowId, Box<dyn WindowHandler>>,
+    pub(crate) windows_by_id: HashMap<u64, WindowId>,
+    pub(crate) windows: HashMap<WindowId, Option<Box<dyn WindowHandler>>>,
 }
 
-fn run_ui(
-    app_state: &mut AppState,
-    cache: &mut Cache,
-    event_loop: &EventLoopWindowTarget<ExtEvent>,
-    logic: &mut Box<dyn FnMut(&mut AppCtx)>,
-    force: bool,
-) {
-    if cache.is_dirty() || force {
-        trace!("AppHandler: running app logic");
-        // build the appctx
-        let mut app_ctx = AppCtx { app_state, event_loop };
-        // invoke UI closure
-        cache.run(|| (logic)(&mut app_ctx));
+impl AppState {
+    pub fn register_window(&mut self, window_id: WindowId, handler: Box<dyn WindowHandler>) {
+        if self.windows.insert(window_id, handler).is_some() {
+            panic!("window already registered");
+        }
+    }
+
+    pub fn window_handler(&mut self, window_id: WindowId) -> &mut dyn WindowHandler {
+        &mut **self.windows.get_mut(&window_id).expect("window not registered")
+    }
+
+    pub fn close_window(&mut self, window_id: WindowId) {
+        self.windows.remove(&window_id);
+    }
+
+    fn run_ui(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>, logic: &mut Box<dyn FnMut(&mut AppCtx)>) {
+        let mut app_ctx = AppCtx {
+            app_state: self,
+            event_loop,
+        };
+        (logic)(&mut app_ctx);
     }
 }
 
@@ -146,15 +167,14 @@ impl AppLauncher {
         let mut debug_window = crate::debug_window::DebugWindow::new(&event_loop);
         AppGlobals::new();
 
-        let waker = Waker::from(Arc::new(AppWaker(Mutex::new(event_loop.create_proxy()))));
-        let mut cache = Cache::new(waker);
+        //let waker = Waker::from(Arc::new(AppWaker(Mutex::new(event_loop.create_proxy()))));
         let mut app_state = AppState {
             windows: HashMap::new(),
         };
         let mut ui_fn = self.ui_fn;
 
         // run UI at least once to create the initial windows
-        run_ui(&mut app_state, &mut cache, &event_loop, &mut ui_fn, true);
+        run_ui(&mut app_state, &event_loop, &mut ui_fn);
 
         let mut force_next_ui = false;
         // run the event loop
@@ -185,13 +205,7 @@ impl AppLauncher {
 
                         // Application update code.
                         // It can call `elwt.exit()` to exit the event loop, and request window repaints.
-                        run_ui(
-                            &mut app_state,
-                            &mut cache,
-                            elwt,
-                            &mut ui_fn,
-                            mem::take(&mut force_next_ui),
-                        );
+                        run_ui(&mut app_state, elwt, &mut ui_fn);
                     }
                     _ => (),
                 }

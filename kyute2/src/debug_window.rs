@@ -1,8 +1,9 @@
 use crate::{
     application::{AppState, ExtEvent},
+    context::ElementTree,
     debug_util::{debug_element_tree, DebugArena, DebugNode, ElementPtrId, PropertyValue, PropertyValueKind},
     window::{DebugOverlayData, UiHostWindowHandler},
-    Element, Geometry, PaintCtx, WidgetId,
+    Element, ElementId, Geometry, PaintCtx,
 };
 use egui::{
     collapsing_header::CollapsingState,
@@ -12,7 +13,6 @@ use egui::{
     Sense, SidePanel, Stroke, TextFormat, TextStyle, Ui, WidgetText,
 };
 use egui_json_tree::JsonTree;
-use egui_phosphor::fill::GRID_FOUR;
 use egui_wgpu::{wgpu, wgpu::TextureFormat};
 use egui_winit::winit::event::Event;
 use kurbo::Affine;
@@ -55,8 +55,8 @@ fn debug_element_layout(debug_root: &DebugNode, target: ElementPtrId) -> Option<
 struct DebugWindowState {
     selection: Option<ElementPtrId>,
     hover_selection: Option<ElementPtrId>,
-    focused: Option<WidgetId>,
-    pointer_grab: Option<WidgetId>,
+    focused: Option<ElementId>,
+    pointer_grab: Option<ElementId>,
     show_current_snapshot: bool,
     snapshot_index: usize,
 }
@@ -199,12 +199,26 @@ impl DebugWindowState {
         ui.data_mut(|data| data.insert_temp(id, expanded));
     }
 
-    fn element_tree_panel_contents(&mut self, ui: &mut Ui, debug_root: &DebugNode) {
+    fn element_tree_panel_contents(&mut self, ui: &mut Ui, debug_root: &DebugNode, elem_tree: &ElementTree) {
         self.hover_selection = None;
 
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
             self.draw_list_item(ui, debug_root, 0);
+        });
+
+        // element tree
+        CollapsingHeader::new("Element Tree").default_open(true).show(ui, |ui| {
+            Grid::new("element_tree").num_columns(2).striped(true).show(ui, |ui| {
+                ui.label("Child");
+                ui.label("Parent");
+                ui.end_row();
+                for (child, parent) in elem_tree.iter() {
+                    ui.label(format!("{:08X}", child.to_u64() >> 32));
+                    ui.label(format!("{:08X}", parent.to_u64() >> 32));
+                    ui.end_row();
+                }
+            });
         });
     }
 
@@ -268,10 +282,14 @@ impl DebugWindowState {
         let snapshots = get_debug_snapshots();
         let num_snapshots = snapshots.len();
 
-        let debug_root = if self.show_current_snapshot || num_snapshots == 0 {
-            debug_element_tree(&arena, "root", root)
+        let elem_tree_debug_root;
+        let elem_tree;
+        if self.show_current_snapshot || num_snapshots == 0 {
+            elem_tree_debug_root = debug_element_tree(&arena, "root", root);
+            elem_tree = handler.element_tree.clone();
         } else {
-            snapshots[self.snapshot_index].root
+            elem_tree_debug_root = snapshots[self.snapshot_index].root;
+            elem_tree = handler.element_tree.clone();
         };
 
         SidePanel::left("debug_panel")
@@ -294,12 +312,13 @@ impl DebugWindowState {
                             .suffix(format!(" / {}", max_snapshots)),
                     );
                 });
-                self.element_tree_panel_contents(ui, &debug_root);
+                self.element_tree_panel_contents(ui, &elem_tree_debug_root, &elem_tree);
 
                 // update debug overlay
                 if let Some(hover_selection) = self.hover_selection {
-                    if let Some(layout) = debug_element_layout(&debug_root, hover_selection) {
-                        let rect = layout.transform.transform_rect_bbox(layout.geometry.bounding_rect);
+                    if let Some(layout) = debug_element_layout(&elem_tree_debug_root, hover_selection) {
+                        let transform = layout.parent_transform * layout.transform;
+                        let rect = transform.transform_rect_bbox(layout.geometry.bounding_rect);
                         handler.set_debug_overlay(Some(DebugOverlayData {
                             debug_bounds: vec![rect],
                         }));
@@ -313,7 +332,7 @@ impl DebugWindowState {
             });
 
         CentralPanel::default().show(ctx, |ui| {
-            self.property_panel_contents(ui, &debug_root);
+            self.property_panel_contents(ui, &elem_tree_debug_root);
         });
     }
 

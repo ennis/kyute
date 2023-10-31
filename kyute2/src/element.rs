@@ -1,14 +1,18 @@
 //!
 use crate::{
-    debug_util::DebugWriter, widget::Axis, Affine, ChangeFlags, Environment, Event, EventCtx, Geometry, HitTestResult,
-    LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx, TreeCtx, Vec2, Widget, WidgetId,
+    debug_util::DebugWriter, widget::Axis, Affine, ChangeFlags, ElementId, Environment, Event, EventCtx, Geometry,
+    HitTestResult, LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx, TreeCtx, Vec2, Widget,
 };
-use std::{any::Any, collections::hash_map::DefaultHasher, hash::Hasher, ptr};
+use std::{any::Any, collections::hash_map::DefaultHasher, fmt, hash::Hasher, num::NonZeroU64, ptr};
 use tracing::warn;
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 pub trait Element: 'static {
-    /// Returns this element's ID.
-    fn id(&self) -> WidgetId;
+    /// Returns an ID that uniquely identifies this element in the UI tree.
+    ///
+    /// This is the ID passed to `Widget::build`.
+    fn id(&self) -> ElementId;
 
     /// Measures this widget and layouts the children of this widget.
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry;
@@ -50,7 +54,7 @@ pub trait Element: 'static {
 }
 
 impl Element for Box<dyn Element> {
-    fn id(&self) -> WidgetId {
+    fn id(&self) -> ElementId {
         (&**self).id()
     }
 
@@ -142,19 +146,19 @@ impl<T: ?Sized> TransformNode<T> {
     }
 
     ///
-    pub fn update<W>(&mut self, ctx: &mut TreeCtx, content_widget: W, env: &Environment) -> ChangeFlags
+    pub fn update<W>(&mut self, ctx: &mut TreeCtx, content_widget: W) -> ChangeFlags
     where
         T: Element,
         W: Widget<Element = T>,
     {
-        let change_flags = content_widget.update(ctx, &mut self.content, env);
+        let change_flags = content_widget.update(ctx, &mut self.content);
         change_flags
     }
 }
 
 impl<T: Element> Element for TransformNode<T> {
     /// Returns the ID of the content element.
-    fn id(&self) -> WidgetId {
+    fn id(&self) -> ElementId {
         self.content.id()
     }
 

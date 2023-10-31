@@ -5,13 +5,13 @@ use crate::{
     application::{AppCtx, WindowHandler},
     composable, composition,
     composition::ColorType,
-    context::WidgetTree,
+    context::ElementTree,
     debug_util::{debug_record_ui_snapshot, DebugEventData},
     drawing::ToSkia,
     event::{KeyboardEvent, PointerButton, PointerButtons, PointerEvent},
     widget::null::NullElement,
-    AnyWidget, AppGlobals, ChangeFlags, Color, Element, Environment, Event, EventCtx, EventKind, HitTestResult,
-    LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx, Size, TreeCtx, Widget, WidgetId,
+    AnyWidget, AppGlobals, ChangeFlags, Color, Element, ElementId, Environment, Event, EventCtx, EventKind,
+    HitTestResult, LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx, Size, TreeCtx, Widget,
 };
 use bitflags::Flags;
 use keyboard_types::KeyState;
@@ -25,10 +25,11 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use tracing::{trace, trace_span, warn};
+use tracing::{info, trace, trace_span, warn};
 use winit::{
     event::{DeviceId, ElementState, MouseButton, WindowEvent},
     keyboard::KeyLocation,
+    platform::windows::WindowBuilderExtWindows,
     window::{WindowBuilder, WindowId},
 };
 
@@ -98,9 +99,9 @@ enum PointerEventKind {
 
 impl UiHostWindowHandler {
     // FIXME: smallvec?
-    fn get_propagation_path(&mut self, mut target: WidgetId) -> Vec<WidgetId> {
+    fn get_propagation_path(&mut self, mut target: ElementId) -> Vec<ElementId> {
         let mut result = vec![target];
-        while let Some(parent) = self.widget_tree.get(&target) {
+        while let Some(parent) = self.element_tree.get(&target) {
             result.push(*parent);
             target = *parent;
         }
@@ -130,6 +131,7 @@ impl UiHostWindowHandler {
                 time,
                 self.window.id(),
                 &self.root,
+                self.element_tree.clone(),
                 vec![DebugEventData {
                     route: event.route.to_owned(),
                     kind: event.kind.clone(),
@@ -162,13 +164,14 @@ impl UiHostWindowHandler {
             let mut htr = HitTestResult::new();
             let hit = self.root.hit_test(&mut htr, position);
             if hit {
-                // send to "most specific" (deepest) hit in the stack
+                // send to "most specific" (deepest) hit in the stack that is not anonymous
                 let target = *htr
                     .hits
-                    .first()
+                    .iter()
+                    .find(|id| !id.is_anonymous())
                     .expect("successful hit test result should contain at least one element");
                 let route = self.get_propagation_path(target);
-                trace!("hit-test @ {:?} target={:?} route={:?}", position, target, &route[..]);
+                eprintln!("hit-test @ {:?} target={:?} route={:?}", position, target, &route[..]);
                 let mut event = Event::new(&route[..], event_kind);
                 self.send_event(&mut event, time)
             } else {
@@ -212,7 +215,7 @@ pub(crate) struct UiHostWindowHandler {
     layer: composition::LayerID,
     /// Damage regions to be repainted.
     damage_regions: DamageRegions,
-    widget_tree: WidgetTree,
+    pub(crate) element_tree: ElementTree,
     /// Root of the UI element tree.
     pub(crate) root: Box<dyn Element>,
     //idle_handle: Option<IdleHandle>,
@@ -224,8 +227,8 @@ pub(crate) struct UiHostWindowHandler {
     content: WindowContentRef,*/
     // Run loop handle
     //app_handle: AppHandle,
-    pub(crate) focus: Option<WidgetId>,
-    pub(crate) pointer_grab: Option<WidgetId>,
+    pub(crate) focus: Option<ElementId>,
+    pub(crate) pointer_grab: Option<ElementId>,
     input_state: InputState,
     last_click: Option<LastClick>,
     close_requested: bool,
@@ -239,7 +242,7 @@ impl UiHostWindowHandler {
             window,
             layer,
             damage_regions: DamageRegions::default(),
-            widget_tree: Default::default(),
+            element_tree: Default::default(),
             root: Box::new(NullElement),
             focus: None,
             pointer_grab: None,
@@ -255,12 +258,10 @@ impl UiHostWindowHandler {
         }
     }
 
-    fn update_content(&mut self, content: Box<dyn AnyWidget>) {
-        let mut tree_ctx = TreeCtx::new(&mut self.widget_tree);
+    fn update_content<T: Widget>(&mut self, content: T) {
+        let mut tree_ctx = TreeCtx::new(&mut self.element_tree);
 
-        // FIXME: this should come alongside the content
-        let env = Environment::new();
-        let mut change_flags = content.update(&mut tree_ctx, &mut self.root, &env);
+        let mut change_flags = content.update(&mut tree_ctx, &mut self.root);
         trace!("update_content: {:?}", change_flags);
         if change_flags.intersects(ChangeFlags::STRUCTURE | ChangeFlags::GEOMETRY) {
             self.update_layout();
@@ -608,12 +609,11 @@ impl WindowHandler for UiHostWindowHandler {
 pub struct AppWindowBuilder<T> {
     title: String,
     content: T,
-    id: State<Option<WindowId>>,
+    id: u64,
 }
 
 impl<T: Widget> AppWindowBuilder<T> {
-    #[composable]
-    pub fn new(content: T) -> AppWindowBuilder<T>
+    pub fn new(id: u64, content: T) -> AppWindowBuilder<T>
     where
         T: Widget,
     {
@@ -647,12 +647,13 @@ impl AppWindowHandle {
 }
 
 impl<T: Widget + 'static> AppWindowBuilder<T> {
-    pub fn build(self, cx: &mut AppCtx, env: &Environment) -> AppWindowHandle {
-        let id = self.id.get();
-        match id {
-            None => {
+    pub fn build(self, cx: &mut AppCtx) -> AppWindowHandle {
+        cx.with_window_handler(
+            self.id,
+            |cx| {
                 // create the window
                 let window = WindowBuilder::new()
+                    .with_no_redirection_bitmap(true)
                     .build(cx.event_loop)
                     .expect("failed to create window");
                 let size = window.inner_size();
@@ -676,30 +677,28 @@ impl<T: Widget + 'static> AppWindowBuilder<T> {
                 app.compositor.wait_for_surface(layer);
 
                 // update the content
-                // FIXME: avoid boxing here?
-                handler.update_content(Box::new(self.content));
+                handler.update_content(self.content);
                 cx.register_window(window_id, Box::new(handler));
                 self.id.set_without_invalidation(Some(window_id));
                 AppWindowHandle {
                     window_id,
                     close_requested: false,
                 }
-            }
-            Some(id) => {
-                let handler = cx
-                    .window_handler(id)
+            },
+            |cx, handler| {
+                let handler = handler
                     .as_any()
                     .downcast_mut::<UiHostWindowHandler>()
                     .expect("unexpected window type");
                 handler.window.set_title(&self.title);
-                handler.update_content(Box::new(self.content));
+                handler.update_content(self.content);
                 let close_requested = mem::take(&mut handler.close_requested);
                 AppWindowHandle {
                     window_id: id,
                     close_requested,
                 }
-            }
-        }
+            },
+        );
     }
 }
 

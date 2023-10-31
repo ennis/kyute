@@ -1774,3 +1774,125 @@ Decision => em and physical pixel sizes removed for now.
 ## Expose a widget that renders a SKSL shader
 Good to prototype stuff.
 Allow passing uniforms to it. 
+
+## Pain points
+- `event` vs `route_event`
+- widget tree tracking (`child_added`, `child_removed`) is error-prone, and completely non-functional right now
+  - it's necessary to build the event propagation path
+
+## Switch back to winit
+
+## Nuke winit
+
+## Nuke every crate related to windowing and vendor everything
+It's the only way to be sure.
+Somehow winit, raw_window_handle and others are getting worse every update. 
+
+
+## Event propagation?
+There's no bubbling right now, nor capture.
+It's difficult to predict what propagation should look like, so do something familiar to users, like https://www.w3.org/TR/uievents/#event-flow.
+We already can determine the propagation path through the widget tree, which gives us a list of widget IDs.
+Compared to the DOM, we have the additional complication that IDs can refer to multiple widgets, with the following restrictions:
+- two sibling widgets (sharing the same parent) cannot have the same ID (unless it's the ANONYMOUS id).
+- only widgets that have a direct parent-child relation can have the same ID, and only if the child is unique.
+  - i.e. a container widget cannot have the same ID as its parent.
+-> in short, the only case where two widgets can share the same IDs is with a widget that wraps one unique child widget.
+
+Implementing the capture phase:
+During the capture phase, the event is wrapped in the "Event::Propagate" wrapper. This wrapper holds the propagation path. If the widget wishes to capture the event, it can look inside this event and determine whether to continue propagation or stop it.
+
+Roughly, the event logic for a widget will be:
+
+```
+match event {
+  // handle events for this widget
+  ...
+}
+
+// propagate event if necessary
+if let Some(event) = event.next() {
+  let target = event.target();
+  // determine which child is the target and send the event
+  let child = ...;
+  ctx.propagate_event(child, event);
+}
+
+```
+
+
+## Environment values
+
+How to make a value depend on some environment value? How to check if the dependency should be recomputed?
+
+
+```
+// with_state(cx, init, F) where F: for<'a> FnOnce(cx, &'a mut State) -> Widget + 'a    // returns a widget that borrows 'a
+
+fn with_state(cx, init, f) {
+    let mut state = ???;
+    let widget = f(cx, &mut state);
+    // widget borrows state
+    widget.build(cx);   // build or update element tree and invoke callbacks
+    // state not borrowed anymore, so it's OK
+}
+
+// Not possible, but as an alternative, the state can "travel" via a context
+
+let (value, set_value) = cx.state(|| false);
+// set_value is a copyable token that identifies this particular state
+
+
+Stateful::new(cx, || WidgetState(false), |cx| {
+  
+  // issue: must have one type per state
+  
+  let mut state = WidgetState::get(cx);
+  // do something with state
+  
+  let inner = Stateful::new(cx, || WidgetState(false), |cx| {
+    let mut inner_state = WidgetState::get(cx);
+    // issue: how do I get the outer state?
+  });
+  
+  let button = Button::new(cx).on_click(|cx| {
+    WidgetState::set(cs, new_state);
+  });
+  
+  // update state
+  WidgetState::set(cx, new_state);
+
+});
+
+// cx is a stack of states (&mut refs directly)
+// find nearest state by type id, then set value 
+
+
+// top-level function:
+fn () -> impl Widget {
+}
+
+// Widget has build(cx) and update(cx)
+// 
+// build(cx) and update(cx) can push modifiable state on the context
+
+
+fn app_ui(app_state: &AppState) -> impl Widget {
+
+   Frame::new(50,50).clickable().on_click(|cx| {
+       // access app_state: we can't borrow from the closure above, but we can 
+       // get it (a reference to it) from cx
+       let app_state = AppState::get_mut(cx);
+       
+   });
+}
+
+fn main_ui() -> impl Widget {
+  Stateful::new(AppState::default, |cx| {
+    // closure invoked during `Widget::build` and `Widget::update`
+    let app_state = AppState::get(cx);  // returns ref to app_state; it borrows cx but that's OK since it's not used by app_ui
+    app_ui(app_state)
+  });
+}
+
+```

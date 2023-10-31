@@ -3,8 +3,8 @@ use crate::{
     drawing::ToSkia,
     text::{get_font_collection, ChangeKind, TextSpan, TextStyle},
     widget::Axis,
-    ChangeFlags, Element, Environment, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, LayoutParams, PaintCtx,
-    Point, RouteEventCtx, TreeCtx, Widget, WidgetId,
+    ChangeFlags, Element, ElementId, Environment, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, LayoutParams,
+    PaintCtx, Point, RouteEventCtx, TreeCtx, Widget,
 };
 use kurbo::Size;
 use skia_safe as sk;
@@ -27,11 +27,7 @@ impl Text {
 impl Widget for Text {
     type Element = TextElement;
 
-    fn id(&self) -> WidgetId {
-        WidgetId::ANONYMOUS
-    }
-
-    fn build(self, cx: &mut TreeCtx, _env: &Environment) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
         let text = self.text.unwrap_or_default();
         let paragraph = build_paragraph(&text);
         TextElement {
@@ -44,7 +40,7 @@ impl Widget for Text {
         }
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, _env: &Environment) -> ChangeFlags {
+    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         if let Some(text) = self.text {
             let change = text.compare_to(&element.text);
             match change {
@@ -138,8 +134,8 @@ impl TextElement {
 }
 
 impl Element for TextElement {
-    fn id(&self) -> WidgetId {
-        WidgetId::ANONYMOUS
+    fn id(&self) -> ElementId {
+        ElementId::ANONYMOUS
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {

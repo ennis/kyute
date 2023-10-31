@@ -1,8 +1,8 @@
 //! Frame containers
 use crate::{
-    debug_util::DebugWriter, elem_node::TransformNode, layout::place_into, widget::Axis, Alignment, ChangeFlags,
-    Element, Environment, Event, EventCtx, Geometry, HitTestResult, Insets, LayoutCtx, LayoutParams,
-    LengthOrPercentage, PaintCtx, Point, Rect, RouteEventCtx, Size, TreeCtx, Vec2, Widget, WidgetId,
+    debug_util::DebugWriter, element::TransformNode, layout::place_into, widget::Axis, Alignment, ChangeFlags, Element,
+    ElementId, Environment, Event, EventCtx, Geometry, HitTestResult, Insets, LayoutCtx, LayoutParams,
+    LengthOrPercentage, PaintCtx, Point, Rect, RouteEventCtx, Size, TreeCtx, Vec2, Widget,
 };
 use std::any::Any;
 use tracing::trace;
@@ -57,7 +57,7 @@ impl<T> FrameElement<T> {
 }
 
 impl<T: Element + 'static> Element for FrameElement<T> {
-    fn id(&self) -> WidgetId {
+    fn id(&self) -> ElementId {
         self.content.id()
     }
 
@@ -220,12 +220,8 @@ impl<T> Frame<T> {
 impl<T: Widget> Widget for Frame<T> {
     type Element = FrameElement<T::Element>;
 
-    fn id(&self) -> WidgetId {
-        self.content.id()
-    }
-
-    fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
-        let content = cx.build(self.content, env);
+    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
+        let content = cx.build(self.content);
         trace!("build Frame");
         FrameElement {
             content: TransformNode::new(content),
@@ -245,7 +241,7 @@ impl<T: Widget> Widget for Frame<T> {
         }
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, env: &Environment) -> ChangeFlags {
+    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         // update width/height
         if self.width != element.width || self.height != element.height {
             element.width = self.width;
@@ -273,7 +269,7 @@ impl<T: Widget> Widget for Frame<T> {
         }
 
         // update contents
-        let flags = element.content.update(cx, self.content, env);
+        let flags = element.content.update(cx, self.content);
         element.update_change_flags(flags)
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
-    debug_util::DebugWriter, widget::Axis, ChangeFlags, Element, Environment, Event, EventCtx, Geometry, HitTestResult,
-    LayoutCtx, LayoutParams, PaintCtx, RouteEventCtx, TreeCtx, Widget, WidgetId,
+    debug_util::DebugWriter, widget::Axis, ChangeFlags, Element, ElementId, Environment, Event, EventCtx, Geometry,
+    HitTestResult, LayoutCtx, LayoutParams, PaintCtx, RouteEventCtx, TreeCtx, Widget,
 };
 use kurbo::Point;
 use std::any::Any;
@@ -14,15 +14,11 @@ pub struct Null;
 impl Widget for Null {
     type Element = NullElement;
 
-    fn id(&self) -> WidgetId {
-        WidgetId::ANONYMOUS
-    }
-
-    fn build(self, _ctx: &mut TreeCtx, _env: &Environment) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
         NullElement
     }
 
-    fn update(self, _ctx: &mut TreeCtx, _node: &mut Self::Element, _env: &Environment) -> ChangeFlags {
+    fn update(self, _ctx: &mut TreeCtx, _node: &mut Self::Element) -> ChangeFlags {
         // nothing to update
         ChangeFlags::empty()
     }
@@ -33,8 +29,8 @@ impl Widget for Null {
 pub struct NullElement;
 
 impl Element for NullElement {
-    fn id(&self) -> WidgetId {
-        WidgetId::ANONYMOUS
+    fn id(&self) -> ElementId {
+        ElementId::ANONYMOUS
     }
 
     fn layout(&mut self, _ctx: &mut LayoutCtx, _params: &LayoutParams) -> Geometry {

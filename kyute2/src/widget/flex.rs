@@ -1,22 +1,17 @@
 use crate::{
-    composable, elem_node::TransformNode, widget::Axis, AnyWidget, ChangeFlags, Element, Environment, Event, EventCtx,
-    Geometry, HitTestResult, LayoutCtx, LayoutParams, PaintCtx, RouteEventCtx, TreeCtx, Widget, WidgetId,
+    composable, element::TransformNode, widget::Axis, AnyWidget, ChangeFlags, Element, ElementId, Environment, Event,
+    EventCtx, Geometry, HitTestResult, LayoutCtx, LayoutParams, PaintCtx, RouteEventCtx, TreeCtx, Widget,
 };
 use kurbo::Point;
 use std::any::Any;
 
 pub struct VBox {
-    id: WidgetId,
     content: Vec<Box<dyn AnyWidget>>,
 }
 
 impl VBox {
-    #[composable]
     pub fn new() -> VBox {
-        VBox {
-            id: WidgetId::here(),
-            content: vec![],
-        }
+        VBox { content: vec![] }
     }
 
     pub fn push(&mut self, widget: impl Widget + 'static) {
@@ -27,20 +22,16 @@ impl VBox {
 impl Widget for VBox {
     type Element = VBoxElement;
 
-    fn id(&self) -> WidgetId {
-        self.id
-    }
-
-    fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
         let content: Vec<_> = self
             .content
             .into_iter()
-            .map(|widget| TransformNode::new(widget.build(cx, env)))
+            .map(|widget| TransformNode::new(cx.build(widget)))
             .collect();
-        VBoxElement { id: self.id, content }
+        VBoxElement { id, content }
     }
 
-    fn update(self, cx: &mut TreeCtx, node: &mut Self::Element, env: &Environment) -> ChangeFlags {
+    fn update(self, cx: &mut TreeCtx, node: &mut Self::Element) -> ChangeFlags {
         todo!()
         //reconcile_elements(cx, self.content, &mut node.content, env)
     }
@@ -49,12 +40,12 @@ impl Widget for VBox {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct VBoxElement {
-    id: WidgetId,
+    id: ElementId,
     content: Vec<TransformNode<Box<dyn Element>>>,
 }
 
 impl Element for VBoxElement {
-    fn id(&self) -> WidgetId {
+    fn id(&self) -> ElementId {
         self.id
     }
 

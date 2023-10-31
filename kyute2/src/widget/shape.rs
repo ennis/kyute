@@ -40,23 +40,19 @@ impl<S> Shape<S> {
 impl<S: drawing::Shape + 'static> Widget for Shape<S> {
     type Element = Self; // no need for a separate type
 
-    fn id(&self) -> WidgetId {
-        WidgetId::ANONYMOUS
-    }
-
-    fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
         self
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, env: &Environment) -> ChangeFlags {
+    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         *element = self;
         ChangeFlags::GEOMETRY | ChangeFlags::PAINT
     }
 }
 
 impl<S: drawing::Shape + 'static> Element for Shape<S> {
-    fn id(&self) -> WidgetId {
-        WidgetId::ANONYMOUS
+    fn id(&self) -> ElementId {
+        ElementId::ANONYMOUS
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {

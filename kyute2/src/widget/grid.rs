@@ -4,12 +4,11 @@ use crate::{
     composable,
     debug_util::DebugWriter,
     drawing::{Paint, ToSkia},
-    elem_node::TransformNode,
+    element::TransformNode,
     layout::place_into,
-    reconcile_elements,
     widget::Axis,
-    Alignment, AnyWidget, ChangeFlags, Color, Element, Environment, Event, EventCtx, Geometry, HitTestResult,
-    LayoutCtx, LayoutParams, LengthOrPercentage, PaintCtx, RouteEventCtx, TreeCtx, Widget, WidgetId,
+    Alignment, AnyWidget, ChangeFlags, Color, Element, ElementId, Environment, Event, EventCtx, Geometry,
+    HitTestResult, LayoutCtx, LayoutParams, LengthOrPercentage, PaintCtx, RouteEventCtx, TreeCtx, Widget,
 };
 use kurbo::{Insets, Point, Size, Vec2};
 use kyute2_macros::grid_template;
@@ -203,7 +202,6 @@ struct GridItem {
 
 /// A widget that layouts its content on a grid.
 pub struct Grid {
-    id: WidgetId,
     flow: FlowDirection,
     content: Vec<GridItem>,
     template: GridTemplate,
@@ -219,10 +217,8 @@ impl Grid {
     /// Creates a new grid widget from the specified template.
     ///
     /// See `grid_template!`.
-    #[composable]
     pub fn from_template(template: &GridTemplate) -> Grid {
         Grid {
-            id: WidgetId::here(),
             flow: FlowDirection::Column,
             content: vec![],
             template: template.clone(),
@@ -249,16 +245,14 @@ impl Grid {
 impl Widget for Grid {
     type Element = GridElement;
 
-    fn id(&self) -> WidgetId {
-        self.id
-    }
-
-    fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
         let content: Vec<_> = self
             .content
             .into_iter()
-            .map(|item| GridItemElement {
-                content: TransformNode::new(cx.build(item.content, env)),
+            .enumerate()
+            .map(|(i, item)| GridItemElement {
+                // FIXME: ID shouldn't be derived from index
+                content: TransformNode::new(cx.build_with_id(&i, item.content)),
                 area: item.area,
                 x_align: Default::default(),
                 row_range: Default::default(),
@@ -269,7 +263,7 @@ impl Widget for Grid {
             .collect();
 
         GridElement {
-            id: self.id,
+            id,
             flow: self.flow,
             content,
             template: self.template,
@@ -285,7 +279,7 @@ impl Widget for Grid {
         }
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, env: &Environment) -> ChangeFlags {
+    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         let mut change_flags = ChangeFlags::empty();
 
         if self.template != element.template
@@ -310,7 +304,30 @@ impl Widget for Grid {
             change_flags |= ChangeFlags::PAINT;
         }
 
-        reconcile_elements(
+        let num_items = self.content.len();
+        let num_items_in_element = element.content.len();
+        for (i, item) in self.content.into_iter().enumerate() {
+            // TODO: match by item identity
+            if i < num_items_in_element {
+                change_flags |= cx.update_with_id(&i, item.content, &mut element.content[i].content.content);
+            } else {
+                let elem = GridItemElement {
+                    content: TransformNode::new(cx.build(item.content)),
+                    area: item.area,
+                    x_align: item.x_align,
+                    y_align: item.y_align,
+                    row_range: Default::default(),
+                    column_range: Default::default(),
+                    natural_baseline: 0.0,
+                };
+                element.content.push(elem);
+            }
+        }
+
+        element.content.truncate(num_items);
+        change_flags
+
+        /*reconcile_elements(
             cx,
             self.content,
             &mut element.content,
@@ -340,9 +357,7 @@ impl Widget for Grid {
 
                 change_flags
             },
-        );
-
-        change_flags
+        );*/
     }
 }
 
@@ -351,7 +366,7 @@ impl Widget for Grid {
 
 /// Grid layout element.
 pub struct GridElement {
-    id: WidgetId,
+    id: ElementId,
     flow: FlowDirection,
     /// Child elements.
     content: Vec<GridItemElement>,
@@ -372,12 +387,12 @@ pub struct GridElement {
 }
 
 impl Element for GridElement {
-    fn id(&self) -> WidgetId {
+    fn id(&self) -> ElementId {
         self.id
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
-        let _span = trace_span!("grid layout", widget_id = ?self.id).entered();
+        let _span = trace_span!("grid layout", id = ?self.id).entered();
 
         // TODO the actual direction of rows and columns depends on the writing mode
         // When (or if) we support other writing modes, rewrite this. Layout is complicated!

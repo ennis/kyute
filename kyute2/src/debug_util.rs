@@ -1,7 +1,6 @@
 //! Debugging utilities
 
-use crate::{ChangeFlags, Element, EventKind, Geometry};
-use kyute2::WidgetId;
+use crate::{context::ElementTree, ChangeFlags, Element, ElementId, EventKind, Geometry};
 use once_cell::sync::OnceCell;
 use serde_json as json;
 use std::{
@@ -123,7 +122,7 @@ pub struct DebugNode<'a> {
     pub name: &'a str,
     pub ty: &'a str,
     pub ptr_id: ElementPtrId,
-    pub id: WidgetId,
+    pub id: ElementId,
     pub properties: &'a [Property<'a>],
     pub children: &'a [DebugNode<'a>],
 }
@@ -144,7 +143,7 @@ impl<'a> DebugNode<'a> {
         self.children.iter().find_map(|c| c.find_by_ptr(ptr_id))
     }
 
-    pub fn find_by_id(&'a self, id: WidgetId) -> Option<&'a DebugNode<'a>> {
+    pub fn find_by_id(&'a self, id: ElementId) -> Option<&'a DebugNode<'a>> {
         if self.id == id {
             return Some(self);
         }
@@ -223,7 +222,7 @@ pub(crate) fn get_debug_snapshots() -> MutexGuard<'static, Vec<DebugSnapshot>> {
 /// Collected debug information for an event.
 pub struct DebugEventData {
     /// Calculated route.
-    pub route: Vec<WidgetId>,
+    pub route: Vec<ElementId>,
     /// Event kind.
     pub kind: EventKind,
     /// Change flags returned by the root element.
@@ -239,6 +238,8 @@ pub struct DebugSnapshot {
     pub root: DebugNode<'static>,
     /// All events that happened for this window since the last snapshot.
     pub event_data: Vec<DebugEventData>,
+    /// Widget tree
+    pub element_tree: ElementTree,
 }
 
 /// Records a snapshot of the element tree after propagating an event.
@@ -246,6 +247,7 @@ pub(crate) fn debug_record_ui_snapshot(
     time: Duration,
     window: WindowId,
     root: &dyn Element,
+    element_tree: ElementTree,
     event_data: Vec<DebugEventData>,
 ) {
     let _lock = DEBUG_ARENA_LOCK.lock().unwrap();
@@ -259,6 +261,7 @@ pub(crate) fn debug_record_ui_snapshot(
         window,
         root,
         event_data,
+        element_tree,
     });
 }
 

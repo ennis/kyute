@@ -79,7 +79,7 @@ impl fmt::Debug for CallNode {
     }
 }
 
-pub(crate) struct CallIdStack {
+pub struct CallIdStack {
     id_stack: Vec<NonZeroU64>,
     nodes: HashMap<CallId, Arc<CallNode>>,
     current_node: Option<Arc<CallNode>>,

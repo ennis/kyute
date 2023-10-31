@@ -1,7 +1,10 @@
 //! Widget tree manipulation and traversal.
-use crate::{context::TreeCtx, environment::Environment, Element, WidgetId};
+use crate::{
+    context::TreeCtx, environment::Environment, Element, ElementId, Event, EventCtx, Geometry, HitTestResult,
+    LayoutCtx, LayoutParams, PaintCtx,
+};
 use bitflags::bitflags;
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 
 mod align;
 mod background;
@@ -17,20 +20,21 @@ pub mod shape;
 pub mod text;
 
 use crate::composable;
-use kurbo::Rect;
+use kurbo::{Point, Rect};
 
 /// Widget prelude.
 pub mod prelude {
     pub use crate::{
-        composable, debug_util::DebugWriter, widget::Axis, ChangeFlags, Element, Environment, Event, EventCtx,
-        EventKind, Geometry, HitTestResult, LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx, Signal,
-        Size, State, TreeCtx, Widget, WidgetId,
+        composable, debug_util::DebugWriter, widget::Axis, ChangeFlags, Element, ElementId, Environment, Event,
+        EventCtx, EventKind, Geometry, HitTestResult, LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx,
+        Signal, Size, State, TreeCtx, Widget,
     };
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 use crate::{drawing::Paint, widget::overlay::ZOrder};
 
+use crate::debug_util::DebugWriter;
 pub use background::Background;
 pub use clickable::Clickable;
 pub use flex::{VBox, VBoxElement};
@@ -105,11 +109,11 @@ bitflags! {
 pub trait Widget {
     type Element: Element;
 
-    /// Returns this widget's ID, if it has one.
-    fn id(&self) -> WidgetId;
+    // Returns this widget's ID, if it has one.
+    //fn id(&self) -> WidgetId;
 
     /// Creates the associated widget node.
-    fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element;
+    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element;
 
     /// Updates an existing widget node.
     ///
@@ -117,22 +121,19 @@ pub trait Widget {
     ///
     /// A set of change flags:
     /// - GEOMETRY: the geometry of the element might have changed
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, env: &Environment) -> ChangeFlags;
+    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags;
 }
 
 /// Type-erased widget.
 pub trait AnyWidget {
-    /// Returns this widget's ID, if it has one.
-    fn id(&self) -> WidgetId;
-
     /// Returns the produced element type ID.
     fn element_type_id(&self) -> TypeId;
 
     /// Creates the associated widget node.
-    fn build(self: Box<Self>, cx: &mut TreeCtx, env: &Environment) -> Box<dyn Element>;
+    fn build(self: Box<Self>, cx: &mut TreeCtx, id: ElementId) -> Box<dyn Element>;
 
     /// Updates an existing widget node.
-    fn update(self: Box<Self>, cx: &mut TreeCtx, element: &mut Box<dyn Element>, env: &Environment) -> ChangeFlags;
+    fn update(self: Box<Self>, cx: &mut TreeCtx, element: &mut Box<dyn Element>) -> ChangeFlags;
 }
 
 impl<W, T> AnyWidget for W
@@ -140,24 +141,21 @@ where
     W: Widget<Element = T>,
     T: Element,
 {
-    fn id(&self) -> WidgetId {
-        Widget::id(self)
-    }
-
     fn element_type_id(&self) -> TypeId {
         TypeId::of::<T>()
     }
 
-    fn build(self: Box<Self>, cx: &mut TreeCtx, env: &Environment) -> Box<dyn Element> {
-        Box::new(Widget::build(*self, cx, env))
+    fn build(self: Box<Self>, cx: &mut TreeCtx, element_id: ElementId) -> Box<dyn Element> {
+        Box::new(Widget::build(*self, cx, element_id))
     }
 
-    fn update(self: Box<Self>, cx: &mut TreeCtx, element: &mut Box<dyn Element>, env: &Environment) -> ChangeFlags {
+    fn update(self: Box<Self>, cx: &mut TreeCtx, element: &mut Box<dyn Element>) -> ChangeFlags {
         if let Some(element) = element.as_any_mut().downcast_mut::<T>() {
-            Widget::update(*self, cx, element, env)
+            cx.update(*self, element)
         } else {
             // not the same type, discard and rebuild
-            *element = self.build(cx, env);
+            // FIXME ID change?
+            *element = Box::new(cx.build(*self));
             ChangeFlags::STRUCTURE
         }
     }
@@ -166,16 +164,12 @@ where
 impl Widget for Box<dyn AnyWidget> {
     type Element = Box<dyn Element>;
 
-    fn id(&self) -> WidgetId {
-        AnyWidget::id(&**self)
+    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
+        AnyWidget::build(self, cx, element_id)
     }
 
-    fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
-        AnyWidget::build(self, cx, env)
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, env: &Environment) -> ChangeFlags {
-        AnyWidget::update(self, cx, element, env)
+    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
+        AnyWidget::update(self, cx, element)
     }
 }
 
@@ -272,3 +266,89 @@ pub trait WidgetExt: Widget + Sized + 'static {
 }
 
 impl<W: Widget + 'static> WidgetExt for W {}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct StatefulElement<T, E> {
+    state: T,
+    inner: E,
+}
+
+pub struct Stateful<Init, F> {
+    init: Init,
+    inner: F,
+}
+
+impl<Init, F> Stateful<Init, F> {
+    pub fn new<T, W>(init: Init, inner: F) -> Stateful<Init, F>
+    where
+        Init: FnOnce() -> T,
+        F: FnOnce(&mut TreeCtx) -> W,
+        W: Widget,
+    {
+        Stateful { init, inner }
+    }
+}
+
+impl<Init, T, F, W> Widget for Stateful<Init, F>
+where
+    Init: FnOnce() -> T,
+    F: FnOnce(&mut TreeCtx) -> W,
+    W: Widget,
+    T: Any + Default,
+{
+    type Element = StatefulElement<T, W::Element>;
+
+    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
+        eprintln!("Stateful::build");
+        let mut state = (self.init)();
+        let inner = cx.with_state(&mut state, self.inner);
+        let inner = cx.build(inner);
+        StatefulElement { state, inner }
+    }
+
+    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
+        eprintln!("Stateful::update");
+        let inner = cx.with_state(&mut element.state, self.inner);
+        cx.update(inner, &mut element.inner)
+    }
+}
+
+impl<T: 'static, E: Element> Element for StatefulElement<T, E> {
+    fn id(&self) -> ElementId {
+        self.inner.id()
+    }
+
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
+        self.inner.layout(ctx, params)
+    }
+
+    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
+        self.inner.event(ctx, event)
+    }
+
+    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
+        self.inner.natural_size(axis, params)
+    }
+
+    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+        self.inner.natural_baseline(params)
+    }
+
+    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
+        self.inner.hit_test(ctx, position)
+    }
+
+    fn paint(&mut self, ctx: &mut PaintCtx) {
+        self.inner.paint(ctx)
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn debug(&self, w: &mut DebugWriter) {
+        w.type_name("StatefulElement");
+        w.child("inner", &self.inner);
+    }
+}

@@ -1,6 +1,7 @@
-use crate::{elem_node::TransformNode, AnyWidget, ChangeFlags, Element, Environment, TreeCtx, Widget, WidgetId};
+use crate::{element::TransformNode, AnyWidget, ChangeFlags, Element, Environment, TreeCtx, Widget};
 use std::any::Any;
 
+/*
 /// Helper function to update a list of child elements (`TransformNode<Box<dyn Element>>`), from
 /// a list of widgets, matching the elements by ID.
 ///
@@ -76,3 +77,4 @@ where
 
     change_flags
 }
+*/

@@ -43,22 +43,18 @@ impl<A: Widget + 'static, B: Widget + 'static> Overlay<A, B> {
 impl<A: Widget, B: Widget> Widget for Overlay<A, B> {
     type Element = OverlayElement<A::Element, B::Element>;
 
-    fn id(&self) -> WidgetId {
-        self.a.id()
-    }
-
-    fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
         OverlayElement {
-            a: self.a.build(cx, env),
-            b: self.b.build(cx, env),
+            a: cx.build(self.a),
+            b: cx.build(self.b),
             z_order: self.z_order,
         }
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, env: &Environment) -> ChangeFlags {
+    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         let mut flags = ChangeFlags::empty();
-        flags |= self.a.update(cx, &mut element.a, env);
-        flags |= self.b.update(cx, &mut element.b, env);
+        flags |= cx.update(self.a, &mut element.a);
+        flags |= cx.update(self.b, &mut element.b);
         flags
     }
 }
@@ -74,7 +70,7 @@ pub struct OverlayElement<A, B> {
 }
 
 impl<A: Element, B: Element> Element for OverlayElement<A, B> {
-    fn id(&self) -> WidgetId {
+    fn id(&self) -> ElementId {
         self.a.id()
     }
 
@@ -124,6 +120,7 @@ impl<A: Element, B: Element> Element for OverlayElement<A, B> {
 
     fn debug(&self, visitor: &mut DebugWriter) {
         visitor.type_name("OverlayElement");
+        visitor.property("id", self.id());
         visitor.property("z_order", self.z_order);
         visitor.child("a", &self.a);
         visitor.child("b", &self.b);

@@ -24,23 +24,19 @@ impl Background {
 impl Widget for Background {
     type Element = Background;
 
-    fn id(&self) -> WidgetId {
-        WidgetId::ANONYMOUS
-    }
-
-    fn build(self, cx: &mut TreeCtx, env: &Environment) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
         self
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element, env: &Environment) -> ChangeFlags {
+    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         element.paint = self.paint;
         ChangeFlags::PAINT
     }
 }
 
 impl Element for Background {
-    fn id(&self) -> WidgetId {
-        WidgetId::ANONYMOUS
+    fn id(&self) -> ElementId {
+        ElementId::ANONYMOUS
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {

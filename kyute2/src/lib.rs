@@ -31,14 +31,13 @@ mod context;
 mod counter;
 #[cfg(feature = "debug_window")]
 mod debug_window;
-mod elem_node;
+mod element;
 mod environment;
 mod length;
 mod reconcile;
 mod skia_backend;
 mod style;
 mod vec_diff;
-mod widget_id;
 mod window;
 
 // public exports
@@ -47,15 +46,13 @@ pub use application::{AppCtx, AppLauncher};
 pub use asset::{Asset, AssetId};
 pub use atoms::Atom;
 pub use color::Color;
-pub use context::{EventCtx, HitTestResult, LayoutCtx, PaintCtx, RouteEventCtx, TreeCtx};
-pub use elem_node::Element;
+pub use context::{ElementId, ElementTree, EventCtx, HitTestResult, LayoutCtx, PaintCtx, RouteEventCtx, TreeCtx};
+pub use element::Element;
 pub use environment::{EnvKey, EnvValue, Environment};
 pub use event::{Event, EventKind};
 pub use layout::{Alignment, Geometry, LayoutParams};
 pub use length::{LengthOrPercentage, UnitExt};
-pub use reconcile::reconcile_elements;
-pub use widget::{AnyWidget, ChangeFlags, Widget};
-pub use widget_id::WidgetId;
+pub use widget::{AnyWidget, ChangeFlags, Stateful, StatefulElement, Widget};
 pub use window::{AppWindowBuilder, AppWindowHandle};
 
 // macro reexports

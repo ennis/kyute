@@ -1,4 +1,4 @@
-use crate::{keyboard_types::Modifiers, Affine, Point, WidgetId};
+use crate::{keyboard_types::Modifiers, Affine, ElementId, Point};
 use std::{cell::RefCell, collections::HashSet, fmt};
 use tracing::warn;
 
@@ -97,7 +97,7 @@ impl Default for PointerButtons {
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct PointerEvent {
     /// The widget for which this event is intended. Can be `None` if the target is not known, and determined on the fly by hit-testing.
-    pub target: Option<WidgetId>,
+    pub target: Option<ElementId>,
     /// Position in device-independent (logical) pixels, relative to the parent window.
     pub position: Point,
     /// State of the keyboard modifiers when this event was emitted.
@@ -182,13 +182,13 @@ pub enum EventKind {
 }
 
 pub struct Event<'a> {
-    pub route: &'a [WidgetId],
+    pub route: &'a [ElementId],
     pub handled: bool,
     pub kind: EventKind,
 }
 
 impl<'a> Event<'a> {
-    pub fn new(route: &'a [WidgetId], kind: EventKind) -> Event<'a> {
+    pub fn new(route: &'a [ElementId], kind: EventKind) -> Event<'a> {
         Event {
             route,
             handled: false,
@@ -196,7 +196,7 @@ impl<'a> Event<'a> {
         }
     }
 
-    pub fn next_target(&mut self) -> Option<WidgetId> {
+    pub fn next_target(&mut self) -> Option<ElementId> {
         let (next, rest) = self.route.split_first()?;
         self.route = rest;
         Some(*next)

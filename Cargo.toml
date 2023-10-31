@@ -12,6 +12,12 @@ members = [
     "kyute-shell",           # user interface library - windowing, drawing and system integration
 ]
 
+# Patch winit to our version
+[patch.crates-io]
+winit = { path="../winit" }
+egui = { path="../egui/crates/egui" }
+epaint = { path="../egui/crates/epaint" }
+ecolor = { path="../egui/crates/ecolor" }
 
 [profile.release]
 debug = true

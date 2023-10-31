@@ -1,4 +1,4 @@
-use crate::{AnyWidget, ChangeFlags, Element, Environment, TreeCtx, Widget, WidgetId};
+use crate::{AnyWidget, ChangeFlags, Element, Environment, TreeCtx, Widget};
 use std::cmp::Ordering;
 
 /*/// An element of a vector diff.
@@ -64,7 +64,7 @@ impl<T> VecDiff<T> {
 }*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/*
 enum PatchItem<W> {
     /// Moves the cursor to the beginning of the sequence.
     Start,
@@ -132,3 +132,4 @@ impl<W> Patch<W> {
         change_flags
     }
 }
+*/

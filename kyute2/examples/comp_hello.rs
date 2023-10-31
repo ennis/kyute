@@ -1,9 +1,9 @@
 use kyute2::{
-    composable, drawing, make_uniform_data, shader, shader_paint,
+    drawing, make_uniform_data, shader, shader_paint,
     text::{TextSpan, TextStyle},
     theme::palette,
     widget::{grid::GridArea, Background, Frame, Grid, Null, Text, WidgetExt},
-    Alignment, AppCtx, AppLauncher, AppWindowBuilder, Color, Environment, UnitExt, Widget,
+    Alignment, AppCtx, AppLauncher, AppWindowBuilder, Color, Environment, Stateful, UnitExt, Widget,
 };
 use kyute2_macros::grid_template;
 use skia_safe as sk;
@@ -20,7 +20,6 @@ use tracing_subscriber::{layer::SubscriberExt, Layer};
 
 grid_template!(GRID: [START] 100px 1fr 1fr [END] / [TOP] 50px [BOTTOM] );
 
-#[composable]
 fn color_swatch() -> impl Widget {
     let paint = shader_paint! {
         r#"
@@ -49,7 +48,6 @@ fn color_swatch() -> impl Widget {
     Background::new(paint)
 }
 
-#[composable]
 fn main_window_contents() -> impl Widget {
     let text_style = Arc::new(
         TextStyle::new()
@@ -71,10 +69,23 @@ fn main_window_contents() -> impl Widget {
         Text::new(text),
     );
 
-    let swatch = color_swatch().clickable();
+    /*let swatch = color_swatch().clickable();
     if swatch.clicked() {
         info!("swatch clicked");
-    }
+    }*/
+
+    let swatch = Stateful::new(
+        || false,
+        |cx| {
+            Frame::new(50.0.into(), 50.0.into(), color_swatch())
+                .clickable()
+                .on_clicked(|cx| {
+                    let state: &mut bool = cx.state_mut().unwrap();
+                    eprintln!("swatch clicked: {state}");
+                    *state = !*state;
+                })
+        },
+    );
 
     grid.add(
         GridArea {
@@ -93,8 +104,7 @@ fn main_window_contents() -> impl Widget {
 
 /// This function is run whenever the UI of a window needs to be rebuilt,
 /// or the application receives a message that it is interested in.
-#[composable]
-fn application(app_ctx: &mut AppCtx) {
+fn application(window_ctx: &mut WindowCtx) {
     // build or rebuild the main window
     let contents = main_window_contents();
     let window_handle = AppWindowBuilder::new(contents)
