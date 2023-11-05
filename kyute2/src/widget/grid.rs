@@ -1,14 +1,13 @@
 //! Grid layout.
 //!
 use crate::{
-    composable,
     debug_util::DebugWriter,
     drawing::{Paint, ToSkia},
     element::TransformNode,
     layout::place_into,
     widget::Axis,
-    Alignment, AnyWidget, ChangeFlags, Color, Element, ElementId, Environment, Event, EventCtx, Geometry,
-    HitTestResult, LayoutCtx, LayoutParams, LengthOrPercentage, PaintCtx, RouteEventCtx, TreeCtx, Widget,
+    Alignment, AnyWidget, BoxConstraints, ChangeFlags, Color, Element, ElementId, Event, EventCtx, Geometry,
+    HitTestResult, LayoutCtx, LengthOrPercentage, PaintCtx, TreeCtx, Widget,
 };
 use kurbo::{Insets, Point, Size, Vec2};
 use kyute2_macros::grid_template;
@@ -254,10 +253,10 @@ impl Widget for Grid {
                 // FIXME: ID shouldn't be derived from index
                 content: TransformNode::new(cx.build_with_id(&i, item.content)),
                 area: item.area,
-                x_align: Default::default(),
+                x_align: item.x_align,
+                y_align: item.y_align,
                 row_range: Default::default(),
                 column_range: Default::default(),
-                y_align: Default::default(),
                 natural_baseline: 0.0,
             })
             .collect();
@@ -295,13 +294,14 @@ impl Widget for Grid {
         }
 
         {
-            // we can't compare paints for now, so assume they change
+            // we can't compare paints for now, so assume they don't change
             // TODO: compare paints and don't repaint if they haven't changed
             element.row_background = self.row_background;
             element.alternate_row_background = self.alternate_row_background;
             element.row_gap_background = self.row_gap_background;
             element.column_gap_background = self.column_gap_background;
-            change_flags |= ChangeFlags::PAINT;
+            // TODO
+            //change_flags |= ChangeFlags::PAINT;
         }
 
         let num_items = self.content.len();
@@ -309,6 +309,7 @@ impl Widget for Grid {
         for (i, item) in self.content.into_iter().enumerate() {
             // TODO: match by item identity
             if i < num_items_in_element {
+                //eprintln!("update grid item");
                 change_flags |= cx.update_with_id(&i, item.content, &mut element.content[i].content.content);
             } else {
                 let elem = GridItemElement {
@@ -391,7 +392,7 @@ impl Element for GridElement {
         self.id
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         let _span = trace_span!("grid layout", id = ?self.id).entered();
 
         // TODO the actual direction of rows and columns depends on the writing mode
@@ -462,7 +463,7 @@ impl Element for GridElement {
                 subconstraints.min.width = 0.0;
                 subconstraints.min.height = 0.0;
 
-                let child_layout = item.content.layout(ctx, &subconstraints);
+                let child_layout = ctx.layout(&mut item.content, &subconstraints);
                 trace!("[{:?}] constraints: {:?}", item.content.id(), subconstraints);
                 trace!("[{:?}] layout: {:?}", item.content.id(), child_layout);
 
@@ -513,12 +514,16 @@ impl Element for GridElement {
         }
     }*/
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
+    fn natural_width(&mut self, height: f64) -> f64 {
         // Not sure how to implement that more efficiently other than just recomputing the whole layout
         todo!()
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+    fn natural_height(&mut self, width: f64) -> f64 {
+        todo!()
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         // argh
         todo!()
     }
@@ -609,7 +614,7 @@ struct GridItemElement {
 }
 
 impl GridItemElement {
-    fn update_natural_baseline(&mut self, parent_constraints: &LayoutParams) {
+    fn update_natural_baseline(&mut self, parent_constraints: &BoxConstraints) {
         let mut constraints = *parent_constraints;
         constraints.min.width = 0.0;
         constraints.max.width = f64::INFINITY;
@@ -622,13 +627,12 @@ impl GridItemElement {
     ///
     /// # Arguments
     /// * parent_constraints constraints passed to the GridElement's `layout` method
-    fn get_natural_width(&mut self, parent_constraints: &LayoutParams) -> f64 {
-        let mut constraints = *parent_constraints;
-        constraints.min.width = 0.0;
-        constraints.max.width = f64::INFINITY;
-        constraints.min.height = 0.0;
-        constraints.max.height = f64::INFINITY;
-        self.content.natural_size(Axis::Horizontal, &constraints)
+    fn get_natural_width(&mut self) -> f64 {
+        //constraints.min.width = 0.0;
+        //constraints.max.width = f64::INFINITY;
+        //constraints.min.height = 0.0;
+        //constraints.max.height = f64::INFINITY;
+        self.content.natural_width(f64::INFINITY)
     }
 
     /// Returns the natural height of this grid element, possibly under constrained column widths.
@@ -637,25 +641,12 @@ impl GridItemElement {
     /// * parent_constraints constraints passed to the GridElement's `layout` method
     /// * column_layout the result of column layout. Used to constrain the width of the item.
     /// * column_gap column gap of the parent grid
-    fn get_natural_height(
-        &mut self,
-        parent_constraints: &LayoutParams,
-        column_layout: &[GridTrackLayout],
-        column_gap: f64,
-    ) -> f64 {
-        let mut constraints = *parent_constraints;
-        constraints.min.width = 0.0;
-        constraints.max.width = f64::INFINITY;
-        constraints.min.height = 0.0;
-        constraints.max.height = f64::INFINITY;
-
+    fn get_natural_height(&mut self, column_layout: &[GridTrackLayout], column_gap: f64) -> f64 {
         // if we already determined the size of the columns,
         // constrain the width by the size of the column range
-        let w = track_span_width(column_layout, self.column_range.clone(), column_gap);
+        let width = track_span_width(column_layout, self.column_range.clone(), column_gap);
         //trace!("using column width constraint: max_width = {}", w);
-        constraints.max.width = w;
-
-        self.content.natural_size(Axis::Vertical, &constraints)
+        self.content.natural_height(width)
     }
 }
 
@@ -889,7 +880,7 @@ impl GridElement {
     fn compute_track_sizes(
         &mut self,
         layout_ctx: &mut LayoutCtx,
-        constraints: &LayoutParams,
+        constraints: &BoxConstraints,
         axis: GridAxis,
         track_count: usize,
         available_space: f64,
@@ -924,7 +915,7 @@ impl GridElement {
                 match axis {
                     GridAxis::Column => {
                         for item in items_in_track_mut(&mut self.content, axis, i) {
-                            let width = item.get_natural_width(constraints);
+                            let width = item.get_natural_width();
                             max_natural_size = max_natural_size.max(width);
                         }
                     }
@@ -938,7 +929,7 @@ impl GridElement {
 
                         // 2nd pass: calculate max height
                         for item in items_in_track_mut(&mut self.content, axis, i) {
-                            let mut height = item.get_natural_height(constraints, &self.column_layout, column_gap);
+                            let mut height = item.get_natural_height(&self.column_layout, column_gap);
                             if item.y_align == Alignment::FirstBaseline || item.y_align == Alignment::LastBaseline {
                                 // adjust the returned size with additional padding to account for baseline alignment
                                 height += max_baseline - item.natural_baseline;

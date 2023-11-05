@@ -3,8 +3,8 @@ use crate::{
     drawing::ToSkia,
     text::{get_font_collection, ChangeKind, TextSpan, TextStyle},
     widget::Axis,
-    ChangeFlags, Element, ElementId, Environment, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, LayoutParams,
-    PaintCtx, Point, RouteEventCtx, TreeCtx, Widget,
+    BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, PaintCtx,
+    Point, TreeCtx, Widget,
 };
 use kurbo::Size;
 use skia_safe as sk;
@@ -138,7 +138,7 @@ impl Element for TextElement {
         ElementId::ANONYMOUS
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         // layout paragraph in available space
         let _span = trace_span!("text layout").entered();
 
@@ -150,9 +150,9 @@ impl Element for TextElement {
         // - the new available width is >= the current paragraph width (otherwise new line breaks are necessary)
         // - the current layout is still valid (i.e. it hasn't been previously invalidated)
 
-        if !self.relayout && self.paragraph.max_width() <= available_width as f32 {
+        if !self.relayout && self.paragraph.longest_line() <= available_width as f32 {
             let paragraph_size = Size {
-                width: self.paragraph.max_width() as f64,
+                width: self.paragraph.longest_line() as f64,
                 height: self.paragraph.height() as f64,
             };
             let size = params.constrain(paragraph_size);
@@ -164,18 +164,18 @@ impl Element for TextElement {
             };
         }
 
-        self.paragraph.layout(dbg!(available_width) as sk::scalar);
-        let w = self.paragraph.max_width() as f64;
+        self.paragraph.layout(available_width as sk::scalar);
+        let w = self.paragraph.longest_line() as f64;
         let h = self.paragraph.height() as f64;
         let alphabetic_baseline = self.paragraph.alphabetic_baseline();
         let unconstrained_size = Size::new(w, h);
         let size = params.constrain(unconstrained_size);
         self.relayout = false;
 
-        self.paragraph.max_width();
+        /*self.paragraph.max_width();
         self.paragraph.max_intrinsic_width();
         self.paragraph.height();
-        self.paragraph.alphabetic_baseline();
+        self.paragraph.alphabetic_baseline();*/
 
         // update cached values
         //self.available_width = available_width;
@@ -195,17 +195,16 @@ impl Element for TextElement {
         ChangeFlags::NONE
     }
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
-        match axis {
-            Axis::Horizontal => self.paragraph.max_intrinsic_width() as f64,
-            Axis::Vertical => {
-                warn!("unimplemented: text element intrinsic height");
-                dbg!(self.paragraph.alphabetic_baseline()) as f64
-            }
-        }
+    fn natural_width(&mut self, height: f64) -> f64 {
+        self.paragraph.max_intrinsic_width() as f64
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+    fn natural_height(&mut self, width: f64) -> f64 {
+        warn!("unimplemented: text element intrinsic height");
+        dbg!(self.paragraph.alphabetic_baseline()) as f64
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         // this should work even before layout() is called
         // FIXME: yeah no it doesn't
         self.paragraph.alphabetic_baseline() as f64
@@ -216,7 +215,7 @@ impl Element for TextElement {
             warn!("hit_test called before layout");
         }
         let paragraph_size = Size {
-            width: self.paragraph.max_width() as f64,
+            width: self.paragraph.longest_line() as f64,
             height: self.paragraph.height() as f64,
         };
         paragraph_size.to_rect().contains(position)
@@ -231,9 +230,13 @@ impl Element for TextElement {
         self
     }
 
-    fn debug(&self, visitor: &mut DebugWriter) {
-        visitor.type_name("TextElement");
-        visitor.property("id", self.id());
-        visitor.str_property("text", &self.text.text);
+    fn debug(&self, w: &mut DebugWriter) {
+        w.type_name("TextElement");
+        w.property("id", self.id());
+        w.property("baseline", self.paragraph.alphabetic_baseline());
+        w.property("longest_line", self.paragraph.longest_line());
+        w.property("max_width", self.paragraph.max_width());
+        w.property("height", self.paragraph.height());
+        w.str_property("text", &self.text.text);
     }
 }

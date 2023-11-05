@@ -1,18 +1,45 @@
 use crate::{
     drawing,
-    drawing::{Paint, ToSkia},
+    drawing::{BoxShadow, Paint, ToSkia},
     skia,
     widget::prelude::*,
+    Color,
 };
-use kurbo::PathEl;
+use kurbo::{Arc, BezPath, Circle, CircleSegment, Ellipse, Insets, PathEl, RoundedRect, Shape};
+use skia_safe::utils::shadow_utils::draw_shadow;
+use smallvec::SmallVec;
 use std::any::Any;
+use tracing::warn;
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
 /// Shape widget.
-pub struct Shape<S> {
+pub struct Shape<S, Ops = NullOp<S>> {
     shape: S,
-    fill: drawing::Paint,
-    stroke: drawing::Paint,
-    stroke_width: f64,
+    ops: Ops,
+}
+
+impl<S, Ops> Shape<S, Ops> {
+    pub fn border(self, width: f64, paint: impl Into<Paint>) -> Shape<S, BorderOp<Ops>> {
+        Shape {
+            shape: self.shape,
+            ops: BorderOp {
+                width,
+                paint: paint.into(),
+            },
+        }
+    }
+
+    pub fn drop_shadow(self) -> Shape<S> {
+        Shape {
+            shape: self.shape,
+            ops: OpThen {
+                first: self.ops,
+                second: DropShadowOp,
+            },
+        }
+    }
 }
 
 impl<S> Shape<S> {
@@ -127,3 +154,4 @@ impl<S: drawing::Shape + 'static> Element for Shape<S> {
         self
     }
 }
+*/

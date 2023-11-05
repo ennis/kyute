@@ -1,5 +1,4 @@
-use crate::{composable, theme::FONT_SIZE, Atom, Color};
-use kyute_compose::cache_cx;
+use crate::{Atom, Color};
 use once_cell::sync::Lazy;
 use std::{
     any::Any,

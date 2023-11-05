@@ -18,7 +18,7 @@ pub mod vector_icon;
 pub(crate) use svg_path::svg_path_to_skia;
 
 pub use border::{Border, BorderStyle};
-pub use box_shadow::BoxShadow;
+pub use box_shadow::{draw_box_shadow, BoxShadow};
 pub use image::{Image, ImageCache};
 pub use paint::{ColorStop, LinearGradient, Paint, RepeatMode, UniformData};
 pub use path::Path;

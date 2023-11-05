@@ -1,5 +1,4 @@
 use crate::AppGlobals;
-use kyute_compose::Cache;
 use std::{
     any::Any,
     collections::HashMap,
@@ -35,6 +34,7 @@ pub trait WindowHandler {
     /// Returns true to force the UI to rebuild.
     fn event(&mut self, event: &winit::event::WindowEvent, time: Duration) -> bool;
     fn as_any(&mut self) -> &mut dyn Any;
+    fn window_id(&self) -> WindowId;
 }
 
 /// Application context passed to the main UI function.
@@ -46,29 +46,17 @@ pub struct AppCtx<'a> {
 }
 
 impl<'a> AppCtx<'a> {
+    pub fn quit(&mut self) {
+        self.event_loop.exit();
+    }
+
     pub fn register_window(&mut self, window_id: WindowId, handler: Box<dyn WindowHandler>) {
         if self.app_state.windows.insert(window_id, handler).is_some() {
             panic!("window already registered");
         }
     }
 
-    pub fn with_window_handler(
-        &mut self,
-        id: u64,
-        build: impl FnOnce(&mut Self) -> Box<dyn WindowHandler>,
-        update: impl FnOnce(&mut Self, &mut dyn WindowHandler),
-    ) {
-        //if self.app_state.windows.
-
-        let window_id = WindowId::from(id);
-        if self.app_state.windows.contains_key(&window_id) {
-            panic!("window already registered");
-        }
-        let handler = init(self);
-        self.app_state.windows.insert(window_id, handler);
-    }
-
-    pub fn window_handler(&mut self, window_id: WindowId) -> &mut dyn WindowHandler {
+    pub(crate) fn window_handler(&mut self, window_id: WindowId) -> &mut dyn WindowHandler {
         &mut **self
             .app_state
             .windows
@@ -85,12 +73,12 @@ impl<'a> AppCtx<'a> {
 
 /// Holds the windows and the application logic.
 pub(crate) struct AppState {
-    pub(crate) windows_by_id: HashMap<u64, WindowId>,
-    pub(crate) windows: HashMap<WindowId, Option<Box<dyn WindowHandler>>>,
+    //pub(crate) windows_by_id: HashMap<u64, WindowId>,
+    pub(crate) windows: HashMap<WindowId, Box<dyn WindowHandler>>,
 }
 
 impl AppState {
-    pub fn register_window(&mut self, window_id: WindowId, handler: Box<dyn WindowHandler>) {
+    /*pub fn register_window(&mut self, window_id: WindowId, handler: Box<dyn WindowHandler>) {
         if self.windows.insert(window_id, handler).is_some() {
             panic!("window already registered");
         }
@@ -102,9 +90,12 @@ impl AppState {
 
     pub fn close_window(&mut self, window_id: WindowId) {
         self.windows.remove(&window_id);
-    }
+    }*/
 
-    fn run_ui(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>, logic: &mut Box<dyn FnMut(&mut AppCtx)>) {
+    fn run_ui<F>(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>, logic: &mut F)
+    where
+        F: FnMut(&mut AppCtx) + 'static,
+    {
         let mut app_ctx = AppCtx {
             app_state: self,
             event_loop,
@@ -150,31 +141,59 @@ impl Wake for AppWaker {
 ///
 /// TODO
 pub struct AppLauncher {
-    ui_fn: Box<dyn FnMut(&mut AppCtx)>,
+    app_state: AppState,
+    event_loop: EventLoop<ExtEvent>,
+    #[cfg(feature = "debug_window")]
+    debug_window: crate::debug_window::DebugWindow,
 }
 
 impl AppLauncher {
-    pub fn new(ui_fn: impl FnMut(&mut AppCtx) + 'static) -> AppLauncher {
-        AppLauncher { ui_fn: Box::new(ui_fn) }
-    }
-
-    pub fn run(mut self) {
+    pub fn new() -> AppLauncher {
         let mut event_loop: EventLoop<ExtEvent> = EventLoopBuilder::with_user_event()
             .build()
             .expect("failed to create the event loop");
 
+        let mut app_state = AppState {
+            windows: Default::default(),
+        };
+
+        // Create the debug window before the AppGlobals:
+        // on windows the internal WGPU instance will create a debug DX12 device,
+        // which will remove any existing device (notably the one used by the compositor in AppGlobals).
+        //
+        // This is OK if we create the compositor device after.
         #[cfg(feature = "debug_window")]
         let mut debug_window = crate::debug_window::DebugWindow::new(&event_loop);
+
         AppGlobals::new();
 
-        //let waker = Waker::from(Arc::new(AppWaker(Mutex::new(event_loop.create_proxy()))));
-        let mut app_state = AppState {
-            windows: HashMap::new(),
+        AppLauncher {
+            app_state,
+            event_loop,
+            #[cfg(feature = "debug_window")]
+            debug_window,
+        }
+    }
+
+    // FIXME: annoyingly we need to use a closure because of `event_loop`
+    pub fn with_app_ctx<R>(&mut self, f: impl FnOnce(&mut AppCtx) -> R) -> R {
+        let mut app_ctx = AppCtx {
+            app_state: &mut self.app_state,
+            event_loop: &self.event_loop,
         };
-        let mut ui_fn = self.ui_fn;
+        f(&mut app_ctx)
+    }
+
+    pub fn run<F>(self, mut ui_fn: F)
+    where
+        F: FnMut(&mut AppCtx) + 'static,
+    {
+        let event_loop = self.event_loop;
+        let mut app_state = self.app_state;
+        let mut debug_window = self.debug_window;
 
         // run UI at least once to create the initial windows
-        run_ui(&mut app_state, &event_loop, &mut ui_fn);
+        //app_state.run_ui(&event_loop, &mut ui_fn);
 
         let mut force_next_ui = false;
         // run the event loop
@@ -183,6 +202,7 @@ impl AppLauncher {
 
         event_loop
             .run(move |event, elwt| {
+                //eprintln!("{:?}", event);
                 let event_time = std::time::Instant::now().duration_since(event_loop_start_time);
 
                 #[cfg(feature = "debug_window")]
@@ -205,7 +225,7 @@ impl AppLauncher {
 
                         // Application update code.
                         // It can call `elwt.exit()` to exit the event loop, and request window repaints.
-                        run_ui(&mut app_state, elwt, &mut ui_fn);
+                        app_state.run_ui(elwt, &mut ui_fn);
                     }
                     _ => (),
                 }

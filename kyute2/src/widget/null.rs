@@ -1,6 +1,6 @@
 use crate::{
-    debug_util::DebugWriter, widget::Axis, ChangeFlags, Element, ElementId, Environment, Event, EventCtx, Geometry,
-    HitTestResult, LayoutCtx, LayoutParams, PaintCtx, RouteEventCtx, TreeCtx, Widget,
+    debug_util::DebugWriter, widget::Axis, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry,
+    HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
 };
 use kurbo::Point;
 use std::any::Any;
@@ -33,7 +33,7 @@ impl Element for NullElement {
         ElementId::ANONYMOUS
     }
 
-    fn layout(&mut self, _ctx: &mut LayoutCtx, _params: &LayoutParams) -> Geometry {
+    fn layout(&mut self, _ctx: &mut LayoutCtx, _params: &BoxConstraints) -> Geometry {
         Geometry::ZERO
     }
 
@@ -41,11 +41,15 @@ impl Element for NullElement {
         ChangeFlags::NONE
     }
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
+    fn natural_width(&mut self, _height: f64) -> f64 {
         0.0
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+    fn natural_height(&mut self, _width: f64) -> f64 {
+        0.0
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         0.0
     }
 

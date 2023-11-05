@@ -1896,3 +1896,97 @@ fn main_ui() -> impl Widget {
 }
 
 ```
+
+    fn stateful_test(app: &AppState) -> impl Widget + '_ {
+      // app: 'a
+      // flag: 'b (anonymous inside closure)
+      // inner_state: implies 'a == 'b, unprovable
+  
+      //let mut what = false;
+      //let f = move |state: &'b mut bool| test2(app, state);
+  
+      // issue: closure can either return a borrow of the state (anonymous lifetime), or something borrowed externally.
+      // the resulting lifetime is anonymous, and cannot be used to prove that the closure is valid.
+      // closure with bounds for<'a: 'b> 'b + FnOnce(&'a mut bool) -> impl Debug + 'a
+  
+      Stateful::<bool, _>::new(move |ctx, state: &mut bool| {
+          // issue: inner_state conflates two lifetimes that are unrelated to each other:
+          // the anonymous lifetime of "state" which can be anything, and the lifetime of the borrowed data ('a).
+          // in short: the widget returned by the closure can't borrow from both the local state and the app.
+          //
+          // Solving this would be an absolute win.
+          //
+          // First, the lifetime of the state should be definite. I.e. the closure type should NOT be for<'a> FnOnce(&'a mut bool),
+          // but rather FnOnce(&'b mut bool) where 'b for "some concrete lifetime".
+          //
+          // Next question: where does this 'b lifetime come from?
+          // It should be the lifetime of the state, but it's not known here
+          inner_state(app, state)
+  
+          // Alternatives?
+          // 1. not returning a widget, but rather build the widget in the closure
+
+          // NOTE: 
+      })
+    }
+
+https://github.com/audulus/rui/issues/26 seems to tackle a related/similar problem?
+
+## Investigate [rui](https://github.com/audulus/rui/)
+
+Interesting stuff:
+- https://github.com/audulus/rui/issues/26: seems to tackle the "closure that returns a value borrowing input" problem
+- There's only one trait to implement ("View") instead of the Element/Widget split
+  - There's no retained element tree, so that might explain that
+- Not sure about memoization
+  - According to the readme: "everything is re-rendered when state changes", so no memoization / fine-grained invalidation
+- Basically, "immediate mode with better layout options", which is interesting
+- Passes state down the tree with a "context", like we do. However, the context is accessed explicitly with "Bindings" that identify the state within the context, instead of accessing it by looking up a TypeID. This feels much more principled: steal this idea :)
+  - Bindings are just `Copy`able IDs to avoid borrowing issue in callbacks (still need `move` though?) 
+  - Q: can we track dependencies this way? 
+    - Idea: inside `Widget::build` or `update`, the TreeCtx can keep track of all referenced state entries.
+
+
+
+## Shapes
+Idea: apply "ShapeOps" in sequence, each shape op has layout and paint methods.
+They can modify the shape for the operator above it (e.g. borders will inflate the shape).
+Example of ShapeOps:
+- Fill
+- Stroke (stroke inside)
+- Border (offset + stroke)
+- DropShadow
+- InnerShadow
+- Offset (offset along normals) =>
+- Transform
+
+
+Text::new().padding(4.0).background(
+  // Shape is sized according to the size of the text, does not affect 
+  // available space for the text
+  Shape::new(RoundedRect)
+      .drop_shadow()    // painted first
+      .fill()           // then this
+      .inner_stroke()   // then this
+      .outer_stroke()   // then this
+      // then the text is rendered
+);
+
+In general, the background shape has no influence on the resulting geometry of the widget.
+The inner widget defines the geometry, and the shape draws itself within that geometry.
+This is different from CSS where borders affect the layout of the element.
+=> This means that when changing the border width, users should also change the padding of the widget inside
+to account for larger borders.
+
+Q: Is that a problem?
+A: Not sure; it's nice that changing the rendered shape doesn't affect the geometry and doesn't require a relayout in the general case, so I'd tend to keep that.
+A2: nvm, flutter has decorations with content padding, so I'd just copy that
+
+Idea: move shapes to "Frame", add `.decoration` method.
+
+## Layout puzzle: size to fit content, but obey minimum constraints
+
+E.g. button has min constraint 80x30, max constraint propagated from above, can be unbounded.
+Button should have minimum possible size, but if not tight around the text, the text should be centered.
+
+**Problem**: alignment widget will expand to max possible size if constrained. This may not be what we want

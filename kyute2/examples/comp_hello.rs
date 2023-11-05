@@ -1,24 +1,33 @@
+use kurbo::Insets;
 use kyute2::{
-    drawing, make_uniform_data, shader, shader_paint,
+    drawing,
+    drawing::BoxShadow,
+    make_uniform_data, shader, shader_paint,
     text::{TextSpan, TextStyle},
+    theme,
     theme::palette,
-    widget::{grid::GridArea, Background, Frame, Grid, Null, Text, WidgetExt},
-    Alignment, AppCtx, AppLauncher, AppWindowBuilder, Color, Environment, Stateful, UnitExt, Widget,
+    widget::{
+        button, grid::GridArea, Background, BorderStyle, Frame, Grid, Null, RoundedRectBorder, ShapeDecoration, Text,
+        WidgetExt,
+    },
+    Alignment, AppCtx, AppLauncher, AppWindowHandle, Color, Stateful, UnitExt, Widget,
 };
 use kyute2_macros::grid_template;
 use skia_safe as sk;
 use std::{
     any::Any,
+    borrow::Cow,
     cell::OnceCell,
     sync::Arc,
     time::{Duration, Instant},
 };
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, Layer};
+use winit::window::WindowBuilder;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-grid_template!(GRID: [START] 100px 1fr 1fr [END] / [TOP] 50px [BOTTOM] );
+grid_template!(GRID: [START] 200px 1fr 1fr [END] / [TOP] 100px [BOTTOM] );
 
 fn color_swatch() -> impl Widget {
     let paint = shader_paint! {
@@ -56,6 +65,7 @@ fn main_window_contents() -> impl Widget {
             .color(palette::PINK_200),
     );
     let text = TextSpan::new("Hello, world!", text_style);
+
     let mut grid = Grid::from_template(&GRID);
     grid.add(
         GridArea {
@@ -66,7 +76,27 @@ fn main_window_contents() -> impl Widget {
         },
         Alignment::START,
         Alignment::START,
-        Text::new(text),
+        Text::new(text).decorate(
+            ShapeDecoration::new()
+                .border(RoundedRectBorder {
+                    color: palette::PURPLE_900,
+                    radius: 20.0,
+                    dimensions: Insets::uniform(10.0),
+                    style: BorderStyle::Solid,
+                })
+                .border(RoundedRectBorder {
+                    color: palette::PURPLE_400,
+                    radius: 20.0,
+                    dimensions: Insets::uniform(10.0),
+                    style: BorderStyle::Solid,
+                })
+                .border(RoundedRectBorder {
+                    color: palette::RED_200,
+                    radius: 20.0,
+                    dimensions: Insets::uniform(10.0),
+                    style: BorderStyle::Solid,
+                }),
+        ),
     );
 
     /*let swatch = color_swatch().clickable();
@@ -74,18 +104,38 @@ fn main_window_contents() -> impl Widget {
         info!("swatch clicked");
     }*/
 
+    // Shape + shape modifiers?
+
     let swatch = Stateful::new(
         || false,
-        |cx| {
+        |cx, state| {
             Frame::new(50.0.into(), 50.0.into(), color_swatch())
                 .clickable()
-                .on_clicked(|cx| {
-                    let state: &mut bool = cx.state_mut().unwrap();
+                .on_clicked(move |cx| {
+                    let state = &mut cx[state];
                     eprintln!("swatch clicked: {state}");
                     *state = !*state;
                 })
         },
     );
+
+    let button = button("Click me").on_clicked(move |cx| {
+        eprintln!("You did it!");
+    });
+
+    // issue: by threading the state implicitly through TreeCtx
+    // there's no way to restrain the amount of state accessible by child widgets
+    // and thus the amount of state they depend on.
+    // -> we cannot assume that a widget is dependent on only a subset of the state in the stack.
+    //    and the widget must be considered dirty if any item in the stack has changed.
+    //
+    // Solutions?
+    // - pass the state explicitly: Widget becomes Widget<State>, `build(&mut self, state: &mut State) -> Self::Element` method passes the state down.
+    //     - and now we've reinvented xilem (which isn't a bad thing in itself)
+    //     - ... and also https://github.com/audulus/rui apparently
+    //      They have a "ViewId" which is basically our ElementId
+    //      Interestingly, they have only one trait "View".
+    // - Inspired by https://github.com/audulus/rui =>
 
     grid.add(
         GridArea {
@@ -94,24 +144,25 @@ fn main_window_contents() -> impl Widget {
             row_span: 1,
             column_span: 1,
         },
-        Alignment::START,
-        Alignment::START,
-        swatch,
+        Alignment::CENTER,
+        Alignment::CENTER,
+        button,
     );
 
     Frame::new(100.percent(), 100.percent(), grid)
 }
 
-/// This function is run whenever the UI of a window needs to be rebuilt,
-/// or the application receives a message that it is interested in.
-fn application(window_ctx: &mut WindowCtx) {
-    // build or rebuild the main window
-    let contents = main_window_contents();
-    let window_handle = AppWindowBuilder::new(contents)
-        .title("Main window")
-        .build(app_ctx, &Environment::default());
-    if window_handle.close_requested() {
-        app_ctx.quit();
+struct Application {
+    main_window_handle: AppWindowHandle,
+}
+
+impl Application {
+    fn update(&mut self, app_ctx: &mut AppCtx) {
+        // build or rebuild the main window contents
+        self.main_window_handle.update(app_ctx, main_window_contents());
+        if self.main_window_handle.close_requested() {
+            app_ctx.quit();
+        }
     }
 }
 
@@ -122,5 +173,9 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    AppLauncher::new(application).run();
+    let mut launcher = AppLauncher::new();
+    let main_window_handle =
+        launcher.with_app_ctx(|ctx| AppWindowHandle::new(ctx, WindowBuilder::new().with_title("Hello")));
+    let mut app = Application { main_window_handle };
+    launcher.run(move |ctx| app.update(ctx));
 }

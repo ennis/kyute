@@ -1,10 +1,13 @@
 use crate::{
     application::{AppState, ExtEvent},
     composition::DrawableSurface,
+    debug_util::{
+        elem_ptr_id, DebugEventElementInfo, DebugEventInfo, DebugLayoutElementInfo, DebugLayoutInfo, ElementPtrId,
+    },
     drawing::ToSkia,
     widget::Axis,
     window::WindowFocusState,
-    AppCtx, ChangeFlags, Element, Environment, Event, Geometry, LayoutParams, Widget,
+    AppCtx, BoxConstraints, ChangeFlags, Element, Event, Geometry, Widget,
 };
 use kurbo::{Affine, Point};
 use skia_safe as sk;
@@ -15,8 +18,10 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     num::NonZeroU64,
+    ops::{Index, IndexMut},
 };
 use tracing::warn;
+use usvg::Tree;
 use winit::{event_loop::EventLoopWindowTarget, window::WindowId};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -43,6 +48,63 @@ impl fmt::Debug for ElementId {
         write!(f, "{:08X}", self.to_u64())
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Handle to a state value in a `TreeCtx`.
+///
+/// A handle to a state value that can be accessed by indexing into a `TreeCtx`.
+/// It is created with `TreeCtx::with_state`, and is valid only within the closure passed to `with_state`.
+///
+/// # Example
+///
+/// TODO
+pub struct State<T> {
+    /// Position of the state pointer in the stack.
+    index: usize,
+    _phantom: PhantomData<fn() -> T>,
+}
+
+// Copyable so that it's easily movable in closures
+impl<T> Copy for State<T> {}
+
+impl<T> Clone for State<T> {
+    fn clone(&self) -> Self {
+        State {
+            index: self.index,
+            _phantom: Default::default(),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Trait to access ambient state by type in a `TreeCtx`.
+///
+/// It is blanket-implemented for all `'static` types.
+pub trait Ambient: 'static {
+    /// Returns a reference to an ambient value of this type in the specified context.
+    fn ambient<'a>(ctx: &'a TreeCtx) -> Option<&'a Self>;
+
+    /// Returns a reference to an ambient value of this type in the specified context,
+    /// or a default value if no ambient value of the specified type is found.
+    fn ambient_or_default(ctx: &TreeCtx) -> Self
+    where
+        Self: Default + Clone,
+    {
+        Self::ambient(ctx).cloned().unwrap_or_default()
+    }
+}
+
+impl<T> Ambient for T
+where
+    T: 'static,
+{
+    fn ambient<'a>(ctx: &'a TreeCtx) -> Option<&'a Self> {
+        ctx.ambient()
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Child -> Parent
@@ -117,6 +179,8 @@ pub struct TreeCtx<'a> {
     pub(crate) app_state: &'a mut AppState,
     pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
     pub(crate) tree: &'a mut ElementTree,
+
+    ambient_stack: Vec<*const dyn Any>, // issue: these don't have the same lifetime: bottom of the stack is long-lived, top is short-lived
     state_stack: Vec<*mut dyn Any>, // issue: these don't have the same lifetime: bottom of the stack is long-lived, top is short-lived
     id_stack: IdStack,
 }
@@ -134,21 +198,26 @@ impl<'a> TreeCtx<'a> {
             app_state,
             event_loop,
             tree,
+            ambient_stack: vec![],
             state_stack: vec![],
             id_stack,
         }
     }
 
+    /// Appends an ID to the current ID path.
+    ///
+    /// Should be matched by a call to `exit`.
     fn enter<ID: Hash>(&mut self, id: &ID) -> ElementId {
         self.id_stack.enter(id)
     }
 
+    /// Removes the last ID from the current ID path.
     fn exit(&mut self) {
         self.id_stack.exit();
     }
 
-    /// The element ID of the node.
-    pub fn element_id(&self) -> ElementId {
+    /// The current element ID.
+    pub fn current_id(&self) -> ElementId {
         self.id_stack.current()
     }
 
@@ -170,8 +239,9 @@ impl<'a> TreeCtx<'a> {
         }
     }*/
 
-    pub fn state<T: Any>(&self) -> Option<&T> {
-        for s in self.state_stack.iter().rev() {
+    /// Looks up an ambient state entry with the specified type in this context and returns a reference to it.
+    pub fn ambient<T: Any>(&self) -> Option<&T> {
+        for s in self.ambient_stack.iter().rev() {
             // SAFETY: we bind the resulting lifetime to the lifetime of self
             // and all the references in the stack are guaranteed to outlive
             // self since they are added and removed in only one function: with_state,
@@ -186,66 +256,101 @@ impl<'a> TreeCtx<'a> {
         None
     }
 
-    pub fn state_mut<T: Any>(&mut self) -> Option<&mut T> {
-        for s in self.state_stack.iter_mut().rev() {
-            // SAFETY: same as above, plus state_mut borrows self mutably
-            // so it's impossible to call state_mut while there are still
-            // mutable references.
-            unsafe {
-                let s = &mut **s;
-                if let Some(s) = s.downcast_mut::<T>() {
-                    return Some(s);
-                }
-            }
-        }
-        None
-    }
-
-    pub fn with_state<R>(&mut self, state: &mut dyn Any, f: impl FnOnce(&mut TreeCtx<'a>) -> R) -> R {
-        self.state_stack.push(state as *mut dyn Any);
-        let result = f(self);
+    /// Pushes the specified state value on the context and calls the specified closure.
+    ///
+    /// # Example
+    pub fn with_state<T, F, R>(&mut self, state: &mut T, f: F) -> R
+    where
+        T: Any,
+        F: FnOnce(&mut TreeCtx<'a>, State<T>) -> R,
+    {
+        self.state_stack.push(state as &mut dyn Any as *mut dyn Any);
+        let handle = State {
+            index: self.state_stack.len() - 1,
+            _phantom: PhantomData,
+        };
+        let result = f(self, handle);
         self.state_stack.pop();
         result
     }
 
-    pub fn build<W: Widget>(&mut self, widget: W) -> W::Element {
-        let id = self.element_id();
-        widget.build(self, id)
-
-        /*if id != self.current_id && id != WidgetId::ANONYMOUS {
-            // build child with different ID
-            self.child_added(id);
-            let last_id = self.current_id;
-            self.current_id = id;
-            let r = widget.build(self, env);
-            self.current_id = last_id;
-            r
-        } else {
-            // same inherited ID
-            widget.build(self, env)
-        }*/
+    /// Pushes the specified ambient value on the context and calls the specified closure.
+    ///
+    /// The ambient value is accessible in the closure with `Ambient::ambient`.
+    /// # Example
+    pub fn with_ambient<T, F, R>(&mut self, value: &T, f: F) -> R
+    where
+        T: Any,
+        F: FnOnce(&mut TreeCtx<'a>) -> R,
+    {
+        self.ambient_stack.push(value as &dyn Any as *const dyn Any);
+        let result = f(self);
+        self.ambient_stack.pop();
+        result
     }
 
+    /// Builds a child widget.
+    pub fn build<W: Widget>(&mut self, widget: W) -> W::Element {
+        let id = self.current_id();
+        widget.build(self, id)
+    }
+
+    /// Builds a child widget with the specified ID.
     pub fn build_with_id<W: Widget, ID: Hash>(&mut self, id: &ID, widget: W) -> W::Element {
-        let parent_id = self.element_id();
+        let parent_id = self.current_id();
         self.enter(id);
-        self.tree.insert(self.element_id(), parent_id);
+        self.tree.insert(self.current_id(), parent_id);
         let element = self.build(widget);
         self.exit();
         element
     }
 
+    /// Updates an element from the provided widget.
     pub fn update<W: Widget>(&mut self, widget: W, element: &mut W::Element) -> ChangeFlags {
-        let element_id = self.element_id();
-        assert_eq!(element_id, element.id());
+        let current_id = self.current_id();
+        let element_id = element.id();
+        assert!(current_id == element_id || element_id == ElementId::ANONYMOUS);
         widget.update(self, element)
     }
 
+    /// Updates an element from the provided widget with the specified ID.
     pub fn update_with_id<W: Widget, ID: Hash>(&mut self, id: &ID, widget: W, element: &mut W::Element) -> ChangeFlags {
         self.enter(id);
         let change_flags = self.update(widget, element);
         self.exit();
         change_flags
+    }
+}
+
+impl<'a, T: 'static> Index<State<T>> for TreeCtx<'a> {
+    type Output = T;
+
+    fn index(&self, state: State<T>) -> &Self::Output {
+        let ptr = self.state_stack.get(state.index).expect("invalid state handle");
+        // SAFETY: we bind the resulting lifetime to the lifetime of self
+        // and all the references in the stack are guaranteed to outlive
+        // self since they are added and removed in only one function: with_state,
+        // and access to the reference can only be done via the closure passed to with_state.
+        unsafe {
+            let ptr = &**ptr;
+            ptr.downcast_ref::<T>().expect("invalid state handle")
+        }
+    }
+}
+
+impl<'a, T: 'static> IndexMut<State<T>> for TreeCtx<'a> {
+    fn index_mut(&mut self, state: State<T>) -> &mut Self::Output {
+        let ptr = self.state_stack.get(state.index).expect("invalid state handle");
+        // SAFETY: same as above, plus state_mut borrows self mutably
+        // so it's impossible to call index_mut while there are still
+        // mutable references.
+        unsafe {
+            let ptr = &mut **ptr;
+            // NOTE: downcast_mut_unchecked would be unsound: the state could be moved
+            // to another branch of the state tree. The stack would be of the same size in the
+            // new branch, but the type of the state could be different.
+            ptr.downcast_mut::<T>().expect("invalid state handle")
+        }
     }
 }
 
@@ -267,9 +372,27 @@ pub struct EventCtx<'a> {
     pub(crate) id: Option<ElementId>,
 
     pub change_flags: ChangeFlags,
+    pub debug_info: DebugEventInfo,
 }
 
 impl<'a> EventCtx<'a> {
+    pub fn event<T>(&mut self, child_element: &mut T, event: &mut Event) -> ChangeFlags
+    where
+        T: Element,
+    {
+        let change_flags = child_element.event(self, event);
+        #[cfg(debug_assertions)]
+        {
+            self.debug_info.add(DebugEventElementInfo {
+                element_ptr: elem_ptr_id(child_element),
+                event: event.kind.clone(),
+                handled: false,
+                change_flags: change_flags.clone(),
+            });
+        }
+        change_flags
+    }
+
     pub fn request_focus(&mut self, id: ElementId) {
         *self.focus = Some(id);
     }
@@ -277,38 +400,11 @@ impl<'a> EventCtx<'a> {
     pub fn request_pointer_capture(&mut self, id: ElementId) {
         *self.pointer_capture = Some(id);
     }
-
-    /*pub fn move_focus(&mut self) {
-
-    }*/
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Event passed to RouteEventCtx
-pub struct RouteEventCtx<'a> {
-    pub inner: EventCtx<'a>,
-}
-
-impl<'a> RouteEventCtx<'a> {
-    /*/// Default event propagation behavior.
-    pub fn route_event<E: Element>(&mut self, element: &mut E, event: &mut Event) -> ChangeFlags {
-        // this relies on the caller element to bypass this function if it inherits the ID of
-        // the child element
-        if let Some(next_target) = event.next_target() {
-            if Some(element.id()) == self.inner.id {
-                warn!("RouteEventCtx::route_event should not be used for a child element with the same ID as its parent. Instead, forward the event directly to the child with `Element::route_event`.")
-            }
-            element.route_event(self, next_target, event)
-        } else {
-            element.event(&mut self.inner, event)
-        }
-    }*/
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Layout context.
+/// Context passed to `Element::layout`.
 pub struct LayoutCtx<'a> {
     /// Parent window handle.
     pub(crate) window: &'a winit::window::Window,
@@ -321,6 +417,8 @@ pub struct LayoutCtx<'a> {
 
     /// ID of the parent element
     pub(crate) id: Option<ElementId>,
+
+    pub(crate) debug_info: DebugLayoutInfo,
 }
 
 impl<'a> LayoutCtx<'a> {
@@ -330,7 +428,24 @@ impl<'a> LayoutCtx<'a> {
             focus,
             window_transform: Default::default(),
             id: None,
+            debug_info: Default::default(),
         }
+    }
+
+    pub fn layout<T>(&mut self, child_element: &mut T, constraints: &BoxConstraints) -> Geometry
+    where
+        T: Element,
+    {
+        let geometry = child_element.layout(self, constraints);
+        #[cfg(debug_assertions)]
+        {
+            self.debug_info.add(DebugLayoutElementInfo {
+                element_ptr: elem_ptr_id(child_element),
+                constraints: *constraints,
+                geometry: geometry.clone(),
+            });
+        }
+        geometry
     }
 
     /// Returns the scale factor of the parent window.
@@ -395,6 +510,15 @@ impl<'a> PaintCtx<'a> {
         surface.canvas().restore();
         self.window_transform = prev_transform;
 
+        result
+    }
+
+    pub fn with_canvas<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut sk::Canvas) -> R,
+    {
+        let mut surface = self.surface.surface();
+        let result = f(surface.canvas());
         result
     }
 }

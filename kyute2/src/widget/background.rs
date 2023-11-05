@@ -30,7 +30,9 @@ impl Widget for Background {
 
     fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         element.paint = self.paint;
-        ChangeFlags::PAINT
+        // TODO: compare paints
+        ChangeFlags::empty()
+        //ChangeFlags::PAINT
     }
 }
 
@@ -39,20 +41,24 @@ impl Element for Background {
         ElementId::ANONYMOUS
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
-        self.size = params.max;
-        Geometry::new(params.max)
+    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+        self.size = constraints.max;
+        Geometry::new(constraints.max)
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
         ChangeFlags::empty()
     }
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
-        0.0
+    fn natural_width(&mut self, height: f64) -> f64 {
+        self.size.width
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+    fn natural_height(&mut self, width: f64) -> f64 {
+        self.size.height
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         0.0
     }
 
@@ -70,7 +76,7 @@ impl Element for Background {
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
-        todo!()
+        self
     }
 
     fn debug(&self, visitor: &mut DebugWriter) {

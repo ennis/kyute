@@ -1,7 +1,10 @@
 use crate::{
     application::{AppState, ExtEvent},
     context::ElementTree,
-    debug_util::{debug_element_tree, DebugArena, DebugNode, ElementPtrId, PropertyValue, PropertyValueKind},
+    debug_util::{
+        DebugArena, DebugLayoutInfo, DebugNode, DebugRect, DebugSnapshotCause, ElementPtrId, PropertyValue,
+        PropertyValueKind,
+    },
     window::{DebugOverlayData, UiHostWindowHandler},
     Element, ElementId, Geometry, PaintCtx,
 };
@@ -10,7 +13,7 @@ use egui::{
     epaint::text,
     text::{Fonts, LayoutJob},
     vec2, Align2, CentralPanel, CollapsingHeader, Color32, FontFamily, FontId, Frame, Grid, Rect, Response, RichText,
-    Sense, SidePanel, Stroke, TextFormat, TextStyle, Ui, WidgetText,
+    Sense, SidePanel, Stroke, TextFormat, TextStyle, TopBottomPanel, Ui, WidgetText,
 };
 use egui_json_tree::JsonTree;
 use egui_wgpu::{wgpu, wgpu::TextureFormat};
@@ -19,7 +22,11 @@ use kurbo::Affine;
 use kyute2::debug_util::get_debug_snapshots;
 use once_cell::sync::OnceCell;
 use raw_window_handle::RawWindowHandle;
-use std::{collections::hash_map::DefaultHasher, hash::Hasher, mem, ptr};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::Hasher,
+    mem, ptr,
+};
 use winit::{
     event::WindowEvent,
     event_loop::EventLoopWindowTarget,
@@ -222,37 +229,41 @@ impl DebugWindowState {
         });
     }
 
-    fn property_panel_contents(&mut self, ui: &mut Ui, debug_root: &DebugNode) {
+    fn property_panel_contents(&mut self, ui: &mut Ui, debug_root: &DebugNode, layout_info: &DebugLayoutInfo) {
         if let Some(selection) = self.selection {
+            if let Some(layout_info) = layout_info.get(selection) {
+                ui.heading("Layout");
+                Grid::new("layout").num_columns(2).striped(true).show(ui, |ui| {
+                    ui.label("Constraints");
+                    ui.label(format!("{:?}", layout_info.constraints));
+                    ui.end_row();
+                    ui.label("Size");
+                    ui.label(format!("{:?}", layout_info.geometry.size));
+                    ui.end_row();
+                    ui.label("Bounding Rect");
+                    ui.label(format!("{:?}", DebugRect(layout_info.geometry.bounding_rect)));
+                    ui.end_row();
+                    ui.label("Paint Bounding Rect");
+                    ui.label(format!("{:?}", DebugRect(layout_info.geometry.paint_bounding_rect)));
+                    ui.end_row();
+                    ui.label("Baseline");
+                    if let Some(b) = layout_info.geometry.baseline {
+                        ui.label(format!("{}", b));
+                    } else {
+                        ui.label("Unspecified");
+                    }
+                    ui.end_row();
+                });
+            }
             if let Some(node) = debug_root.find_by_ptr(selection) {
+                ui.separator();
+                ui.heading("Properties");
                 Grid::new("root").num_columns(2).striped(true).show(ui, |ui| {
                     for prop in node.properties {
                         ui.label(prop.name);
                         match prop.value {
                             PropertyValueKind::Erased(p) => {
-                                if let Some(geom) = p.cast::<Geometry>() {
-                                    // pretty-print geometry
-                                    Grid::new("geometry").num_columns(2).show(ui, |ui| {
-                                        ui.label("Size");
-                                        ui.label(format!("{:?}", geom.size));
-                                        ui.end_row();
-                                        ui.label("Bounding Rect");
-                                        ui.label(format!("{:?}", geom.bounding_rect));
-                                        ui.end_row();
-                                        ui.label("Paint Bounding Rect");
-                                        ui.label(format!("{:?}", geom.paint_bounding_rect));
-                                        ui.end_row();
-                                        ui.label("Baseline");
-                                        if let Some(b) = geom.baseline {
-                                            ui.label(format!("{}", b));
-                                        } else {
-                                            ui.label("Unspecified");
-                                        }
-                                        ui.end_row();
-                                    });
-                                } else {
-                                    ui.label(format!("{:?}", p));
-                                }
+                                ui.label(format!("{:?}", p));
                             }
                             PropertyValueKind::Str(str) => {
                                 ui.label(format!("{}", str));
@@ -274,29 +285,37 @@ impl DebugWindowState {
             return;
         };
 
-        let arena = DebugArena::new();
-        let root = &handler.root;
-        self.focused = handler.focus;
-        self.pointer_grab = handler.pointer_grab;
-
         let snapshots = get_debug_snapshots();
         let num_snapshots = snapshots.len();
 
-        let elem_tree_debug_root;
-        let elem_tree;
-        if self.show_current_snapshot || num_snapshots == 0 {
-            elem_tree_debug_root = debug_element_tree(&arena, "root", root);
-            elem_tree = handler.element_tree.clone();
+        if num_snapshots == 0 {
+            return;
+        }
+
+        let snapshot_index = if self.show_current_snapshot {
+            num_snapshots - 1
         } else {
-            elem_tree_debug_root = snapshots[self.snapshot_index].root;
-            elem_tree = handler.element_tree.clone();
+            self.snapshot_index
         };
 
-        SidePanel::left("debug_panel")
-            .default_width(300.0)
-            .min_width(300.0)
-            .frame(Frame::none())
+        let snapshot = &snapshots[snapshot_index];
+        self.focused = snapshot.focused;
+        self.pointer_grab = snapshot.pointer_grab;
+
+        TopBottomPanel::top("event_selector_panel")
+            .default_height(80.0)
+            .min_height(80.0)
             .show(ctx, |ui| {
+                ui.heading(format!(
+                    "Snapshot #{} ({})",
+                    snapshot_index,
+                    match snapshot.cause {
+                        DebugSnapshotCause::Relayout => "After Relayout",
+                        DebugSnapshotCause::Event => "After Event",
+                        DebugSnapshotCause::BeforePaint => "Before Paint",
+                    }
+                ));
+
                 ui.horizontal(|ui| {
                     if ui.selectable_label(self.show_current_snapshot, "Current").clicked() {
                         self.show_current_snapshot = true;
@@ -312,11 +331,21 @@ impl DebugWindowState {
                             .suffix(format!(" / {}", max_snapshots)),
                     );
                 });
-                self.element_tree_panel_contents(ui, &elem_tree_debug_root, &elem_tree);
+
+                ui.label(format!("focused: {:?}", snapshot.focused));
+                ui.label(format!("pointer_grab: {:?}", snapshot.pointer_grab));
+            });
+
+        SidePanel::left("debug_panel")
+            .default_width(300.0)
+            .min_width(300.0)
+            .frame(Frame::none())
+            .show(ctx, |ui| {
+                self.element_tree_panel_contents(ui, &snapshot.root, &snapshot.element_tree);
 
                 // update debug overlay
                 if let Some(hover_selection) = self.hover_selection {
-                    if let Some(layout) = debug_element_layout(&elem_tree_debug_root, hover_selection) {
+                    if let Some(layout) = debug_element_layout(&snapshot.root, hover_selection) {
                         let transform = layout.parent_transform * layout.transform;
                         let rect = transform.transform_rect_bbox(layout.geometry.bounding_rect);
                         handler.set_debug_overlay(Some(DebugOverlayData {
@@ -328,32 +357,13 @@ impl DebugWindowState {
                 } else {
                     handler.set_debug_overlay(None);
                 }
-                handler.window.request_redraw();
+                //handler.window.request_redraw();
             });
 
         CentralPanel::default().show(ctx, |ui| {
-            self.property_panel_contents(ui, &elem_tree_debug_root);
+            self.property_panel_contents(ui, &snapshot.root, &snapshot.layout_info);
         });
     }
-
-    /*fn snapshot(&mut self, app_state: &mut AppState) {
-        // TODO: pick window
-        let Some((id, window)) = app_state.windows.iter_mut().next() else {
-            return;
-        };
-        let Some(handler) = window.as_any().downcast_mut::<UiHostWindowHandler>() else {
-            return;
-        };
-
-        let arena = get_debug_arena();
-        let root = debug_element_tree(arena, "root", &handler.root);
-        let event_data = mem::take(&mut handler.event_debug_data);
-
-        /*self.snapshots.push(Snapshot {
-            event: event_data,
-            root: &DebugNode {},
-        })*/
-    }*/
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -404,7 +414,9 @@ fn setup_wgpu(
 ) {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::DX12,
+        flags: wgpu::InstanceFlags::empty(), // disable default debug flags because it conflicts with our DX12 device
         dx12_shader_compiler: Default::default(),
+        ..Default::default()
     });
     let surface = unsafe { instance.create_surface(&window) }.unwrap();
 
@@ -470,7 +482,7 @@ impl DebugWindow {
         let mut window = WindowBuilder::new()
             .with_title("Widget Inspector")
             .with_visible(true)
-            .with_inner_size(winit::dpi::LogicalSize::new(1350.0, 800.0))
+            .with_inner_size(winit::dpi::LogicalSize::new(1000.0, 800.0))
             .build(elwt)
             .expect("failed to open debug window");
 

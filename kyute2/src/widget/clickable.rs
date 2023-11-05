@@ -1,6 +1,7 @@
 //! Clickable widget wrapper
-use crate::widget::prelude::*;
+use crate::{context::Ambient, widget::prelude::*};
 use keyboard_types::{Key, KeyState};
+use kyute2::widget::WidgetState;
 use std::mem;
 use tracing::trace;
 
@@ -44,9 +45,10 @@ where
 
     fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
         eprintln!("clickable rebuilt");
+        let inner = cx.with_ambient(&WidgetState::default(), |cx| cx.build(self.inner));
         ClickableElement {
             id,
-            inner: cx.build(self.inner),
+            content: inner,
             state: Default::default(),
             events: Default::default(),
             hovered: false,
@@ -54,12 +56,21 @@ where
     }
 
     fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        eprintln!("clickable update");
+        //eprintln!("clickable update");
         let events = mem::take(&mut element.events);
         if events.clicked {
             (self.on_clicked)(cx);
         }
-        self.inner.update(cx, &mut element.inner)
+
+        let prev_state = WidgetState::ambient(cx).cloned().unwrap_or_default();
+        cx.with_ambient(
+            &WidgetState {
+                hovered: element.state.hovered,
+                active: element.state.active,
+                ..prev_state
+            },
+            |cx| cx.update(self.inner, &mut element.content),
+        )
     }
 }
 
@@ -80,7 +91,7 @@ struct ClickableEvents {
 
 pub struct ClickableElement<Inner> {
     id: ElementId,
-    inner: Inner,
+    content: Inner,
     state: ClickableState,
     events: ClickableEvents,
     hovered: bool,
@@ -91,8 +102,8 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
         self.id
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
-        self.inner.layout(ctx, params)
+    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+        ctx.layout(&mut self.content, constraints)
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
@@ -100,8 +111,8 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
 
         // We don't capture anything, so forward to children first.
         if let Some(target) = event.next_target() {
-            assert_eq!(self.inner.id(), target);
-            change_flags |= self.inner.event(ctx, event);
+            assert_eq!(self.content.id(), target);
+            change_flags |= self.content.event(ctx, event);
         }
 
         if event.handled {
@@ -191,16 +202,20 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
         }
     }
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
-        self.inner.natural_size(axis, params)
+    fn natural_width(&mut self, height: f64) -> f64 {
+        self.content.natural_width(height)
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
-        self.inner.natural_baseline(params)
+    fn natural_height(&mut self, width: f64) -> f64 {
+        self.content.natural_height(width)
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
+        self.content.natural_baseline(params)
     }
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        let hit = self.inner.hit_test(ctx, position);
+        let hit = self.content.hit_test(ctx, position);
         if hit {
             ctx.add(self.id);
         }
@@ -208,7 +223,7 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.inner.paint(ctx)
+        self.content.paint(ctx)
     }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -220,6 +235,6 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
         visitor.property("id", self.id);
         visitor.property("state", self.state);
         visitor.property("events", self.events);
-        visitor.child("inner", &self.inner);
+        visitor.child("inner", &self.content);
     }
 }

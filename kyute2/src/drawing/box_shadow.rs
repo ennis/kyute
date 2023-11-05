@@ -75,16 +75,17 @@ pub fn draw_box_shadow(canvas: &mut sk::Canvas, rrect: &RoundedRect, shadow: &Bo
         // The element shape should be wholly contained within outer_rrect.
         // The shadow shape is drawn (with drawDRRect) with a blur filter, and clipped to the
         // element shape.
-        /*let inner_rrect = rrect.translate(shadow.offset).inset(self.spread, self.spread);
+
+        let tr_rect = (rrect.rect() + shadow.offset).inset(-Insets::uniform(shadow.spread));
+        let inner_rrect = RoundedRect::from_rect(tr_rect, rrect.radii());
         let outer_rrect: RoundedRect =
-            area_casting_shadow_in_hole(&inner_rrect.rect, self.offset, self.blur, self.spread).into();
+            area_casting_shadow_in_hole(&inner_rrect.rect(), shadow.offset, shadow.blur, shadow.spread)
+                .to_rounded_rect(0.0);
         let inner_rrect = inner_rrect.to_skia();
         let outer_rrect = outer_rrect.to_skia();
-        let canvas = ctx.surface.canvas();
         canvas.save();
         canvas.clip_rrect(rrect.to_skia(), sk::ClipOp::Intersect, true);
         canvas.draw_drrect(outer_rrect, inner_rrect, &shadow_paint);
-        canvas.restore();*/
-        todo!("inset shadows")
+        canvas.restore();
     }
 }

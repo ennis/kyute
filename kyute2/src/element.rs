@@ -1,21 +1,24 @@
 //!
 use crate::{
-    debug_util::DebugWriter, widget::Axis, Affine, ChangeFlags, ElementId, Environment, Event, EventCtx, Geometry,
-    HitTestResult, LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx, TreeCtx, Vec2, Widget,
+    debug_util::DebugWriter, widget::Axis, Affine, BoxConstraints, ChangeFlags, ElementId, Event, EventCtx, Geometry,
+    HitTestResult, LayoutCtx, PaintCtx, Point, Rect, TreeCtx, Vec2, Widget,
 };
 use std::{any::Any, collections::hash_map::DefaultHasher, fmt, hash::Hasher, num::NonZeroU64, ptr};
 use tracing::warn;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub trait Element: 'static {
+/// Elements in the UI tree.
+///
+/// See the crate documentation for more information.
+pub trait Element: Any + 'static {
     /// Returns an ID that uniquely identifies this element in the UI tree.
     ///
     /// This is the ID passed to `Widget::build`.
     fn id(&self) -> ElementId;
 
     /// Measures this widget and layouts the children of this widget.
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry;
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry;
 
     /// Deliver an event to this element or one of its children.
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags;
@@ -37,11 +40,13 @@ pub trait Element: 'static {
     ///
     /// It should be finite.
     // This is like druid's "compute_max_intrinsic", or flutter's getMaxIntrinsic{Width,Height}
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64;
+    fn natural_width(&mut self, height: f64) -> f64;
+    fn natural_height(&mut self, width: f64) -> f64;
 
     /// Returns the _natural baseline_ of the element.
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64;
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64;
 
+    /// Hit-testing.
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool;
 
     /// Called to paint the widget.
@@ -58,7 +63,7 @@ impl Element for Box<dyn Element> {
         (&**self).id()
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         (&mut **self).layout(ctx, params)
     }
 
@@ -70,11 +75,15 @@ impl Element for Box<dyn Element> {
         (&mut **self).route_event(ctx, event)
     }*/
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
-        (&mut **self).natural_size(axis, params)
+    fn natural_width(&mut self, height: f64) -> f64 {
+        (&mut **self).natural_width(height)
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+    fn natural_height(&mut self, width: f64) -> f64 {
+        (&mut **self).natural_height(width)
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         (&mut **self).natural_baseline(params)
     }
 
@@ -87,6 +96,9 @@ impl Element for Box<dyn Element> {
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
+        // FIXME: maybe this should forward to `<dyn Element>::as_any_mut`?
+        // Or maybe Box<dyn Element> shouldn't implement Element at all, but this is needed for
+        // `impl Widget for Box<dyn AnyWidget>`
         self
     }
 
@@ -102,10 +114,14 @@ impl Element for Box<dyn Element> {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// A container for a widget.
+///
+/// TODO: make a version with only an offset instead of a full-blown transform
 pub struct TransformNode<T: ?Sized = dyn Element> {
     /// Parent-to-local transform.
     pub transform: Affine,
+
     // In debug mode, track the layout and final transform of the element,
+    // TODO: remove this, we now record the layout for every element in LayoutCtx
     #[cfg(debug_assertions)]
     pub(crate) window_transform: Affine,
     #[cfg(debug_assertions)]
@@ -175,8 +191,8 @@ impl<T: Element> Element for TransformNode<T> {
     }*/
 
     /// Calls `layout` on the content element.
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
-        let result = self.content.layout(ctx, params);
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+        let result = ctx.layout(&mut self.content, params);
 
         #[cfg(debug_assertions)]
         {
@@ -194,11 +210,15 @@ impl<T: Element> Element for TransformNode<T> {
     fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
     }*/
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
-        self.content.natural_size(axis, params)
+    fn natural_width(&mut self, height: f64) -> f64 {
+        self.content.natural_width(height)
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+    fn natural_height(&mut self, width: f64) -> f64 {
+        self.content.natural_height(width)
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         self.content.natural_baseline(params)
     }
 

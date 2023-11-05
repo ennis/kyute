@@ -12,19 +12,16 @@ use std::{
 
 /// Layout constraints passed down to child widgets
 #[derive(Copy, Clone)]
-pub struct LayoutParams {
-    /// Scale factor.
-    pub scale_factor: f64,
+pub struct BoxConstraints {
     /// Minimum allowed size.
     pub min: Size,
     /// Maximum allowed size (can be infinite).
     pub max: Size,
 }
 
-impl Default for LayoutParams {
+impl Default for BoxConstraints {
     fn default() -> Self {
-        LayoutParams {
-            scale_factor: 1.0,
+        BoxConstraints {
             min: Size::ZERO,
             max: Size::new(f64::INFINITY, f64::INFINITY),
         }
@@ -33,20 +30,18 @@ impl Default for LayoutParams {
 
 // required because we also have a custom hash impl
 // (https://rust-lang.github.io/rust-clippy/master/index.html#derive_hash_xor_eq)
-impl PartialEq for LayoutParams {
+impl PartialEq for BoxConstraints {
     fn eq(&self, other: &Self) -> bool {
         self.min.width.to_bits() == other.min.width.to_bits()
             && self.min.height.to_bits() == other.min.height.to_bits()
             && self.max.width.to_bits() == other.max.width.to_bits()
             && self.max.height.to_bits() == other.max.height.to_bits()
-            && self.scale_factor.to_bits() == other.scale_factor.to_bits()
         //&& self.font_size == other.font_size
     }
 }
 
-impl Hash for LayoutParams {
+impl Hash for BoxConstraints {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.scale_factor.to_bits().hash(state);
         self.min.width.to_bits().hash(state);
         self.min.height.to_bits().hash(state);
         self.max.width.to_bits().hash(state);
@@ -61,31 +56,46 @@ impl Hash for LayoutParams {
     }
 }*/
 
-impl fmt::Debug for LayoutParams {
+impl fmt::Debug for BoxConstraints {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.min.width == self.max.width {
             write!(f, "[w={}, ", self.min.width)?;
         } else {
-            write!(f, "[{}≤w≤{}, ", self.min.width, self.max.width)?;
+            if self.max.width.is_finite() {
+                write!(f, "[{}≤w≤{}, ", self.min.width, self.max.width)?;
+            } else {
+                write!(f, "[{}≤w≤∞, ", self.min.width)?;
+            }
         }
 
         if self.min.height == self.max.height {
-            write!(f, "h={} ", self.min.width)?;
+            write!(f, "h={} ", self.min.height)?;
         } else {
-            write!(f, "{}≤h≤{} ", self.min.width, self.max.width)?;
+            if self.max.height.is_finite() {
+                write!(f, "{}≤h≤{}", self.min.height, self.max.height)?;
+            } else {
+                write!(f, "{}≤h≤∞", self.min.height)?;
+            }
         }
 
-        write!(f, "@ {:.1}:1]", self.scale_factor)
+        write!(f, "]")
     }
 }
 
-impl LayoutParams {
-    pub fn deflate(&self, insets: Insets) -> LayoutParams {
-        LayoutParams {
+impl BoxConstraints {
+    pub fn deflate(&self, insets: Insets) -> BoxConstraints {
+        BoxConstraints {
             max: Size {
                 width: (self.max.width - insets.x_value()).max(self.min.width),
                 height: (self.max.height - insets.y_value()).max(self.min.height),
             },
+            ..*self
+        }
+    }
+
+    pub fn loosen(&self) -> BoxConstraints {
+        BoxConstraints {
+            min: Size::ZERO,
             ..*self
         }
     }

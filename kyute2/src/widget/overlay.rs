@@ -1,5 +1,5 @@
 //! Stacking widget.
-use crate::{widget::prelude::*, RouteEventCtx};
+use crate::widget::prelude::*;
 use std::any::Any;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,7 +24,6 @@ pub struct Overlay<A, B> {
 }
 
 impl<A: Widget + 'static, B: Widget + 'static> Overlay<A, B> {
-    #[composable]
     pub fn new(a: A, b: B, z_order: ZOrder) -> Overlay<A, B> {
         Overlay { a, b, z_order }
     }
@@ -74,14 +73,14 @@ impl<A: Element, B: Element> Element for OverlayElement<A, B> {
         self.a.id()
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
-        let sublayout = self.a.layout(ctx, params);
-        let b_constraints = LayoutParams {
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+        let sublayout = ctx.layout(&mut self.a, params);
+        let b_constraints = BoxConstraints {
             min: sublayout.size,
             max: sublayout.size,
             ..*params
         };
-        let _sublayout_b = self.b.layout(ctx, &b_constraints);
+        let _sublayout_b = ctx.layout(&mut self.b, &b_constraints);
         sublayout
     }
 
@@ -89,11 +88,15 @@ impl<A: Element, B: Element> Element for OverlayElement<A, B> {
         self.a.event(ctx, event)
     }
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
-        self.a.natural_size(axis, params)
+    fn natural_width(&mut self, height: f64) -> f64 {
+        self.a.natural_width(height)
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+    fn natural_height(&mut self, width: f64) -> f64 {
+        self.b.natural_height(width)
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         self.a.natural_baseline(params)
     }
 

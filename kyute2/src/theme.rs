@@ -1,29 +1,4 @@
-//! Environment keys that control the visual aspect (theme) of common widgets.
-use super::atoms::atom;
-use crate::{environment::EnvKey, Color, Environment};
-use once_cell::sync::Lazy;
-
-macro_rules! theme_key {
-    ($name:tt) => {
-        EnvKey::new(atom!($name))
-    };
-}
-
-/// Builtin themes.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum Theme {
-    Dark,
-    Light,
-}
-
-pub const FONT_SIZE: EnvKey<f64> = theme_key!("font-size"); // [14.0];
-pub const TEXT_COLOR: EnvKey<Color> = theme_key!("text-color");
-//pub const DEFAULT_FONT: EnvKey<Font> = theme_key!("default-font");
-pub const DARK_MODE: EnvKey<bool> = theme_key!("dark-mode");
-pub const WINDOW_BACKGROUND_COLOR: EnvKey<Color> = theme_key!("window-background-color");
-pub const TEXT_BACKGROUND_COLOR: EnvKey<Color> = theme_key!("text-background-color");
-pub const CONTENT_BACKGROUND_COLOR: EnvKey<Color> = theme_key!("content-background-color");
-pub const ALTERNATE_CONTENT_BACKGROUND_COLOR: EnvKey<Color> = theme_key!("alternate-content-background-color");
+use crate::Color;
 
 pub mod palette {
     use crate::Color;
@@ -295,35 +270,39 @@ pub mod palette {
     pub const BLUE_GREY_A700: Color = Color::from_hex("#455a64"); // #455a64;
 }
 
-static DARK_THEME: Lazy<Environment> = Lazy::new(|| {
-    let mut env = Environment::new();
-    env.set(&DARK_MODE, true);
-    env.set(&TEXT_COLOR, Color::from_hex("#c8c8c8"));
-    env.set(&WINDOW_BACKGROUND_COLOR, Color::from_hex("#515151"));
-    env.set(&TEXT_BACKGROUND_COLOR, Color::from_hex("#1e1e1e"));
-    env.set(&CONTENT_BACKGROUND_COLOR, Color::from_hex("#212121"));
-    env.set(&ALTERNATE_CONTENT_BACKGROUND_COLOR, Color::from_hex("#424242"));
-    env
-});
-
-static LIGHT_THEME: Lazy<Environment> = Lazy::new(|| {
-    let mut env = Environment::new();
-    env.set(&DARK_MODE, false);
-    env.set(&TEXT_COLOR, Color::from_hex("#272727"));
-    env.set(&WINDOW_BACKGROUND_COLOR, Color::from_hex("#f2f2f2"));
-    env.set(&TEXT_BACKGROUND_COLOR, Color::from_hex("#ffffff"));
-    env.set(&CONTENT_BACKGROUND_COLOR, Color::from_hex("#212121"));
-    env.set(&ALTERNATE_CONTENT_BACKGROUND_COLOR, Color::from_hex("#424242"));
-    env
-});
-
-pub fn dark_theme() -> Environment {
-    DARK_THEME.clone()
-}
-pub fn light_theme() -> Environment {
-    LIGHT_THEME.clone()
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Theme {
+    pub dark_mode: bool,
+    pub font_size: f64,
+    pub font_family: &'static str,
+    pub text_color: Color,
+    pub window_background_color: Color,
+    pub text_background_color: Color,
+    pub content_background_color: Color,
+    pub alternate_content_background_color: Color,
+    pub accent_color: Color,
 }
 
-pub fn setup_default_style(env: &mut Environment) {
-    *env = env.merged(dark_theme());
-}
+pub const DARK_THEME: Theme = Theme {
+    dark_mode: true,
+    font_size: 14.0,
+    font_family: "Inter Medium",
+    text_color: Color::from_hex("#c8c8c8"),
+    window_background_color: Color::from_hex("#515151"),
+    text_background_color: Color::from_hex("#1e1e1e"),
+    content_background_color: Color::from_hex("#212121"),
+    alternate_content_background_color: Color::from_hex("#424242"),
+    accent_color: Color::from_hex("#e91e63"),
+};
+
+pub const LIGHT_THEME: Theme = Theme {
+    dark_mode: false,
+    font_size: 14.0,
+    font_family: "Inter Medium",
+    text_color: Color::from_hex("#272727"),
+    window_background_color: Color::from_hex("#f2f2f2"),
+    text_background_color: Color::from_hex("#ffffff"),
+    content_background_color: Color::from_hex("#212121"),
+    alternate_content_background_color: Color::from_hex("#424242"),
+    accent_color: Color::from_hex("#e91e63"),
+};

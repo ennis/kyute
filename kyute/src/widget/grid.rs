@@ -1679,7 +1679,7 @@ impl Widget for Grid {
             item.widget.paint(ctx);
         }
 
-        // draw debug grid lines
+        /*// draw debug grid lines
         if computed.show_grid_lines {
             let paint = sk::Paint::new(Color::new(1.0, 0.5, 0.2, 1.0).to_skia(), None);
             for x in column_layout.iter().map(|x| x.pos).chain(std::iter::once(width - 1.0)) {
@@ -1696,7 +1696,7 @@ impl Widget for Grid {
                     &paint,
                 );
             }
-        }
+        }*/
     }
 
     fn debug_node(&self) -> DebugNode {

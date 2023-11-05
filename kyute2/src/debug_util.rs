@@ -1,14 +1,15 @@
 //! Debugging utilities
 
-use crate::{context::ElementTree, ChangeFlags, Element, ElementId, EventKind, Geometry};
+use crate::{context::ElementTree, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventKind, Geometry};
+use kurbo::Rect;
 use once_cell::sync::OnceCell;
 use serde_json as json;
 use std::{
     any::Any,
-    collections::hash_map::DefaultHasher,
+    collections::{hash_map::DefaultHasher, HashMap},
     fmt,
-    fmt::Debug,
-    hash::Hasher,
+    fmt::{Debug, Formatter},
+    hash::{Hash, Hasher},
     mem, ptr,
     sync::{Mutex, MutexGuard},
     time::Duration,
@@ -47,7 +48,10 @@ pub type ElementPtrId = u64;
 /// FIXME: this may not work correctly with ZST element types.
 pub fn elem_ptr_id(elem: &dyn Element) -> ElementPtrId {
     let mut hasher = DefaultHasher::new();
-    ptr::hash(elem, &mut hasher);
+    // The cast to *const () is necessary because otherwise it might hash the vtable pointer
+    // which is not guaranteed to be unique even for the same allocation.
+    ptr::hash(elem as *const _ as *const (), &mut hasher);
+    elem.type_id().hash(&mut hasher);
     hasher.finish()
 }
 
@@ -180,14 +184,14 @@ impl<'a> DebugWriter<'a> {
     }
 
     pub fn child(&mut self, name: &'a str, inner: &dyn Element) {
-        let node = debug_element_tree(self.arena, name, inner);
+        let node = dump_ui_tree_inner(self.arena, name, inner);
         self.children.push(node);
     }
 }
 
 pub type DebugArena = bumpalo::Bump;
 
-pub fn debug_element_tree<'a>(arena: &'a DebugArena, name: &'a str, element: &dyn Element) -> DebugNode<'a> {
+fn dump_ui_tree_inner<'a>(arena: &'a DebugArena, name: &'a str, element: &dyn Element) -> DebugNode<'a> {
     let mut writer = DebugWriter {
         arena,
         ty: "",
@@ -205,6 +209,8 @@ pub fn debug_element_tree<'a>(arena: &'a DebugArena, name: &'a str, element: &dy
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // Global debug arena
 static DEBUG_ARENA_LOCK: Mutex<()> = Mutex::new(());
 static mut DEBUG_ARENA: OnceCell<DebugArena> = OnceCell::new();
@@ -214,56 +220,106 @@ unsafe fn get_debug_arena() -> &'static DebugArena {
     DEBUG_ARENA.get_or_init(|| DebugArena::new())
 }
 
-pub(crate) fn get_debug_snapshots() -> MutexGuard<'static, Vec<DebugSnapshot>> {
-    let snapshots = DEBUG_SNAPSHOTS.get_or_init(|| Mutex::new(Vec::new()));
-    snapshots.lock().unwrap()
-}
-
-/// Collected debug information for an event.
-pub struct DebugEventData {
-    /// Calculated route.
-    pub route: Vec<ElementId>,
-    /// Event kind.
-    pub kind: EventKind,
-    /// Change flags returned by the root element.
+/// Debug information collected during event propagation.
+#[derive(Clone, Debug)]
+pub struct DebugEventElementInfo {
+    /// The element that received the event.
+    pub element_ptr: ElementPtrId,
+    /// The event that was received.
+    pub event: EventKind,
+    /// Whether the event was handled by the element.
+    pub handled: bool,
     pub change_flags: ChangeFlags,
 }
 
+#[derive(Default, Clone, Debug)]
+pub struct DebugEventInfo {
+    pub elements: Vec<DebugEventElementInfo>,
+}
+
+impl DebugEventInfo {
+    pub fn add(&mut self, element_info: DebugEventElementInfo) {
+        self.elements.push(element_info)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DebugLayoutElementInfo {
+    /// The element that was laid out.
+    pub element_ptr: ElementPtrId,
+    /// The geometry of the element.
+    pub geometry: Geometry,
+    /// The constraints that were used to lay out the element.
+    pub constraints: BoxConstraints,
+}
+
+/// Debug information collected during the layout pass.
+#[derive(Default, Clone, Debug)]
+pub struct DebugLayoutInfo {
+    pub elements: HashMap<ElementPtrId, DebugLayoutElementInfo>,
+}
+
+impl DebugLayoutInfo {
+    pub fn add(&mut self, element_info: DebugLayoutElementInfo) {
+        self.elements.insert(element_info.element_ptr, element_info);
+    }
+
+    pub fn get(&self, ptr_id: ElementPtrId) -> Option<&DebugLayoutElementInfo> {
+        self.elements.get(&ptr_id)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum DebugSnapshotCause {
+    /// Snapshot taken after relayout.
+    Relayout,
+    /// Snapshot taken after event propagation.
+    Event,
+    /// SNapshot taken before painting.
+    BeforePaint,
+}
+
 pub struct DebugSnapshot {
+    /// The cause of the snapshot.
+    pub cause: DebugSnapshotCause,
     /// Time since the start of event loop.
     pub time: Duration,
     /// The window for which we are recording the snapshot.
     pub window: WindowId,
     /// The root debug node of the element tree.
     pub root: DebugNode<'static>,
-    /// All events that happened for this window since the last snapshot.
-    pub event_data: Vec<DebugEventData>,
     /// Widget tree
     pub element_tree: ElementTree,
+    /// Layout information.
+    pub layout_info: DebugLayoutInfo,
+    /// Event information.
+    pub event_info: DebugEventInfo,
+    /// Focused widget
+    pub focused: Option<ElementId>,
+    pub pointer_grab: Option<ElementId>,
 }
 
-/// Records a snapshot of the element tree after propagating an event.
-pub(crate) fn debug_record_ui_snapshot(
-    time: Duration,
-    window: WindowId,
-    root: &dyn Element,
-    element_tree: ElementTree,
-    event_data: Vec<DebugEventData>,
-) {
-    let _lock = DEBUG_ARENA_LOCK.lock().unwrap();
+/// Dumps the given UI tree to a debug tree.
+pub fn dump_ui_tree(tree_root: &dyn Element) -> DebugNode<'static> {
     // SAFETY: we only access the debug arena here, and it's protected by DEBUG_ARENA_LOCK.
     // Values returned by the arena have static lifetime and cannot be invalidated.
     let arena = unsafe { get_debug_arena() };
-    let root = debug_element_tree(&*arena, "root", root);
-    let mut snapshots = get_debug_snapshots();
-    snapshots.push(DebugSnapshot {
-        time,
-        window,
-        root,
-        event_data,
-        element_tree,
-    });
+    dump_ui_tree_inner(arena, "root", tree_root)
 }
+
+/// Records a snapshot of the element tree after propagating an event.
+pub fn record_ui_snapshot(snapshot: DebugSnapshot) {
+    let mut snapshots = get_debug_snapshots();
+    snapshots.push(snapshot);
+}
+
+/// Locks and returns the collection of recorded snapshots.
+pub fn get_debug_snapshots() -> MutexGuard<'static, Vec<DebugSnapshot>> {
+    let snapshots = DEBUG_SNAPSHOTS.get_or_init(|| Mutex::new(Vec::new()));
+    snapshots.lock().unwrap()
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
 struct DebugDumpVisitor<'a> {
@@ -400,3 +456,11 @@ pub(crate) fn dump_widget_tree<W: Widget>(w: &W) {
     dump_widget_tree_rec(&node, 0, &mut Vec::new(), true);
 }
 */
+
+pub struct DebugRect(pub Rect);
+
+impl fmt::Debug for DebugRect {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[{:?} {:?}]", self.0.origin(), self.0.size())
+    }
+}

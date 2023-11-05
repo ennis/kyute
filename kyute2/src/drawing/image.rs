@@ -2,7 +2,7 @@
 use crate::{
     asset::{AssetLoadError, AssetLoader},
     drawing::ToSkia,
-    Asset, Data, EnvKey, Size,
+    Asset, Data, Size,
 };
 use std::{
     collections::HashMap,

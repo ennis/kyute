@@ -2,25 +2,27 @@
 mod key;
 
 use crate::{
-    application::{AppCtx, WindowHandler},
-    composable, composition,
+    application::{AppCtx, AppState, ExtEvent, WindowHandler},
+    composition,
     composition::ColorType,
     context::ElementTree,
-    debug_util::{debug_record_ui_snapshot, DebugEventData},
+    debug_util,
+    debug_util::{DebugEventInfo, DebugLayoutInfo, DebugSnapshot, DebugSnapshotCause, ElementPtrId},
     drawing::ToSkia,
     event::{KeyboardEvent, PointerButton, PointerButtons, PointerEvent},
-    widget::null::NullElement,
-    AnyWidget, AppGlobals, ChangeFlags, Color, Element, ElementId, Environment, Event, EventCtx, EventKind,
-    HitTestResult, LayoutCtx, LayoutParams, PaintCtx, Point, Rect, RouteEventCtx, Size, TreeCtx, Widget,
+    theme,
+    widget::{null::NullElement, WidgetExt},
+    AnyWidget, AppGlobals, BoxConstraints, ChangeFlags, Color, Element, ElementId, Event, EventCtx, EventKind,
+    HitTestResult, LayoutCtx, PaintCtx, Point, Rect, Size, TreeCtx, Widget,
 };
 use bitflags::Flags;
 use keyboard_types::KeyState;
 use kyute2::window::key::{key_code_from_winit, modifiers_from_winit};
-use kyute_compose::{cache_cx, State};
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use std::{
     any::Any,
     cell::RefCell,
+    collections::HashMap,
     mem,
     rc::Rc,
     time::{Duration, Instant},
@@ -28,6 +30,7 @@ use std::{
 use tracing::{info, trace, trace_span, warn};
 use winit::{
     event::{DeviceId, ElementState, MouseButton, WindowEvent},
+    event_loop::EventLoopWindowTarget,
     keyboard::KeyLocation,
     platform::windows::WindowBuilderExtWindows,
     window::{WindowBuilder, WindowId},
@@ -117,27 +120,21 @@ impl UiHostWindowHandler {
             pointer_capture: &mut self.pointer_grab,
             id: None,
             change_flags: ChangeFlags::NONE,
+            debug_info: Default::default(),
         };
 
         let root = event.next_target().expect("route should have at least one element");
         assert_eq!(root, self.root.id());
-
         let change_flags = self.root.event(&mut ctx, event);
+
+        self.debug_event_info = ctx.debug_info;
 
         #[cfg(debug_assertions)]
         {
+            dbg!(self.focus);
+            dbg!(self.pointer_grab);
             // record a snapshot of the UI after delivering the event
-            debug_record_ui_snapshot(
-                time,
-                self.window.id(),
-                &self.root,
-                self.element_tree.clone(),
-                vec![DebugEventData {
-                    route: event.route.to_owned(),
-                    kind: event.kind.clone(),
-                    change_flags,
-                }],
-            );
+            self.record_debug_snapshot(DebugSnapshotCause::Event, time);
         }
 
         // TODO follow-up events
@@ -207,6 +204,8 @@ struct InputState {
     pointer_buttons: PointerButtons,
 }
 
+struct UiHostWindowState {}
+
 /// UI host window handler
 pub(crate) struct UiHostWindowHandler {
     /// Winit window
@@ -232,7 +231,13 @@ pub(crate) struct UiHostWindowHandler {
     input_state: InputState,
     last_click: Option<LastClick>,
     close_requested: bool,
+
     debug_overlay: Option<DebugOverlayData>,
+
+    /// Debug info collected during the last call to update_layout.
+    debug_layout_info: DebugLayoutInfo,
+    /// Debug info collected during the last event propagation.
+    debug_event_info: DebugEventInfo,
 }
 
 impl UiHostWindowHandler {
@@ -255,20 +260,17 @@ impl UiHostWindowHandler {
             last_click: None,
             close_requested: false,
             debug_overlay: None,
+            debug_layout_info: Default::default(),
+            debug_event_info: Default::default(),
         }
     }
 
-    fn update_content<T: Widget>(&mut self, content: T) {
-        let mut tree_ctx = TreeCtx::new(&mut self.element_tree);
-
-        let mut change_flags = content.update(&mut tree_ctx, &mut self.root);
-        trace!("update_content: {:?}", change_flags);
-        if change_flags.intersects(ChangeFlags::STRUCTURE | ChangeFlags::GEOMETRY) {
-            self.update_layout();
-        }
-        if change_flags.intersects(ChangeFlags::PAINT) {
-            self.window.request_redraw();
-        }
+    fn get<'a>(app_ctx: &'a mut AppCtx, window_id: WindowId) -> &'a mut UiHostWindowHandler {
+        let handler = app_ctx.window_handler(window_id);
+        handler
+            .as_any()
+            .downcast_mut::<UiHostWindowHandler>()
+            .expect("unexpected window type")
     }
 
     fn update_layout(&mut self) {
@@ -276,8 +278,7 @@ impl UiHostWindowHandler {
         let scale_factor = self.window.scale_factor();
         let window_size = self.window.inner_size().to_logical(scale_factor);
         let mut ctx = LayoutCtx::new(&self.window, self.focus);
-        let layout_params = LayoutParams {
-            scale_factor, // assume x == y
+        let layout_params = BoxConstraints {
             min: Size::ZERO,
             max: Size::new(window_size.width, window_size.height),
         };
@@ -287,7 +288,28 @@ impl UiHostWindowHandler {
             window_size,
             geometry
         );
-        self.window.request_redraw();
+
+        #[cfg(debug_assertions)]
+        {
+            self.debug_layout_info = ctx.debug_info;
+        }
+
+        //self.window.request_redraw();
+    }
+
+    fn record_debug_snapshot(&mut self, cause: DebugSnapshotCause, time: Duration) {
+        let ui_tree = debug_util::dump_ui_tree(&self.root);
+        debug_util::record_ui_snapshot(DebugSnapshot {
+            cause,
+            time,
+            window: self.window.id(),
+            root: ui_tree,
+            element_tree: self.element_tree.clone(),
+            layout_info: self.debug_layout_info.clone(),
+            event_info: mem::take(&mut self.debug_event_info),
+            focused: self.focus,
+            pointer_grab: self.pointer_grab,
+        });
     }
 
     /*fn schedule_render(&mut self) {
@@ -303,7 +325,7 @@ impl UiHostWindowHandler {
 }
 
 impl UiHostWindowHandler {
-    fn paint(&mut self) {
+    fn paint(&mut self, time: Duration) {
         trace!("UiHostWindowHandler::paint");
         let app = AppGlobals::get();
 
@@ -314,6 +336,12 @@ impl UiHostWindowHandler {
         {
             let mut skia_surface = surface.surface();
             skia_surface.canvas().clear(Color::from_hex("#111111").to_skia());
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            // record a snapshot of the UI before painting
+            self.record_debug_snapshot(DebugSnapshotCause::BeforePaint, time);
         }
 
         let mut paint_ctx = PaintCtx {
@@ -340,76 +368,6 @@ impl UiHostWindowHandler {
 }
 
 impl WindowHandler for UiHostWindowHandler {
-    /*fn connect(&mut self, handle: &WindowHandle) {
-        let idle_handle = handle.get_idle_handle().unwrap();
-        self.handle = Some(handle.clone());
-        self.idle_handle = Some(handle.get_idle_handle().unwrap());
-        // create composition layer
-        let app = AppGlobals::get();
-        let size = handle.get_size();
-        let layer = app.compositor.create_surface_layer(size, ColorType::RGBAF16);
-        self.layer = Some(layer);
-        // SAFETY: the raw window handle is valid
-        unsafe {
-            app.compositor.bind_layer(layer, handle.raw_window_handle());
-            // this initial wait is important
-            app.compositor.wait_for_surface(layer);
-        }
-    }*/
-
-    /*fn size(&mut self, size: Size) {
-        trace!("UiHostWindowHandler::size({size})");
-        // resize the layer
-        let app = AppGlobals::get();
-        app.compositor.set_surface_layer_size(self.layer.unwrap(), size);
-        // relayout
-        self.update_layout();
-    }*/
-
-    /*fn prepare_paint(&mut self) {
-        // submit damage regions
-        let handle = self.handle.clone().unwrap();
-        for r in mem::take(&mut self.damage_regions.regions) {
-            handle.invalidate_rect(r);
-        }
-    }*/
-
-    /*fn pointer_move(&mut self, event: &glazier::PointerEvent) {
-        //trace!("UiHostWindowHandler::pointer_move");
-        self.propagate_pointer_event(PointerEventKind::PointerMove, event);
-        // somehow schedule a recomp
-        self.app_handle.schedule_update();
-    }
-
-    fn pointer_down(&mut self, event: &glazier::PointerEvent) {
-        trace!("UiHostWindowHandler::pointer_down");
-        self.propagate_pointer_event(PointerEventKind::PointerDown, event);
-        // FIXME: this might be called multiple times
-        self.app_handle.schedule_update();
-    }
-
-    fn pointer_up(&mut self, event: &glazier::PointerEvent) {
-        trace!("UiHostWindowHandler::pointer_up");
-        self.propagate_pointer_event(PointerEventKind::PointerUp, event);
-        self.app_handle.schedule_update();
-    }*/
-
-    /*fn request_close(&mut self) {
-        self.handle.as_ref().unwrap().close();
-    }*/
-
-    /*fn idle(&mut self, token: IdleToken) {
-        trace!("UiHostWindowHandler::idle({token:?})");
-        match token {
-            CONTENT_UPDATE => {
-                self.update_element_tree();
-            }
-            _ => {
-                warn!("unknown idle token {token:?}")
-            }
-        }
-    }*/
-
     fn event(&mut self, event: &WindowEvent, time: Duration) -> bool {
         let mut should_update_ui = false;
         match event {
@@ -552,7 +510,7 @@ impl WindowHandler for UiHostWindowHandler {
                     self.propagate_pointer_event(EventKind::PointerUp(pe), self.input_state.cursor_pos, time);
                 }
             }
-            WindowEvent::RedrawRequested => self.paint(),
+            WindowEvent::RedrawRequested => self.paint(time),
             WindowEvent::CloseRequested => {
                 self.close_requested = true;
                 should_update_ui = true;
@@ -587,6 +545,10 @@ impl WindowHandler for UiHostWindowHandler {
     fn as_any(&mut self) -> &mut dyn Any {
         self
     }
+
+    fn window_id(&self) -> WindowId {
+        self.window.id()
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -606,31 +568,6 @@ impl WindowHandler for UiHostWindowHandler {
 // Within the app logic,
 //
 
-pub struct AppWindowBuilder<T> {
-    title: String,
-    content: T,
-    id: u64,
-}
-
-impl<T: Widget> AppWindowBuilder<T> {
-    pub fn new(id: u64, content: T) -> AppWindowBuilder<T>
-    where
-        T: Widget,
-    {
-        let id = State::default();
-        AppWindowBuilder {
-            title: "".to_string(),
-            content,
-            id,
-        }
-    }
-
-    pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.title = title.into();
-        self
-    }
-}
-
 pub struct AppWindowHandle {
     window_id: WindowId,
     close_requested: bool,
@@ -640,65 +577,79 @@ impl AppWindowHandle {
     pub fn close_requested(&self) -> bool {
         self.close_requested
     }
-
     pub fn close(&self, app_ctx: &mut AppCtx) {
         app_ctx.close_window(self.window_id);
     }
-}
 
-impl<T: Widget + 'static> AppWindowBuilder<T> {
-    pub fn build(self, cx: &mut AppCtx) -> AppWindowHandle {
-        cx.with_window_handler(
-            self.id,
-            |cx| {
-                // create the window
-                let window = WindowBuilder::new()
-                    .with_no_redirection_bitmap(true)
-                    .build(cx.event_loop)
-                    .expect("failed to create window");
-                let size = window.inner_size();
-                let window_id = window.id();
-                let raw_window_handle = window.raw_window_handle()/*.expect("failed to get raw window handle")*/;
+    pub fn update<T>(&self, app_ctx: &mut AppCtx, content: T)
+    where
+        T: Widget + Any,
+    {
+        // move out the element_tree & the root element so that we can run "update" without borrow-locking the handler and app_ctx
+        let handler = UiHostWindowHandler::get(app_ctx, self.window_id);
+        let mut element_tree = mem::take(&mut handler.element_tree);
+        let mut root = mem::replace(&mut handler.root, Box::new(NullElement));
+        // app_ctx now free here
 
-                // create a compositor layer for the window
-                let app = AppGlobals::get();
-                let layer = app
-                    .compositor
-                    .create_surface_layer(Size::new(size.width as f64, size.height as f64), ColorType::RGBAF16);
+        // provide default theme values
+        let content = content.provide(theme::DARK_THEME);
 
-                let mut handler = UiHostWindowHandler::new(window, layer);
+        // do update
+        let mut tree_ctx = TreeCtx::new(app_ctx.app_state, app_ctx.event_loop, &mut element_tree);
+        // We don't paramterize the AppWindow with the widget type, so it might change between
+        // calls to update.
+        // This is the same logic as AnyWidget::update
+        let change_flags = if let Some(element) = (&mut *root).as_any_mut().downcast_mut::<T::Element>() {
+            tree_ctx.update(content, element)
+        } else {
+            root = Box::new(tree_ctx.build(content));
+            eprintln!("update: widget type changed, rebuilding");
+            ChangeFlags::STRUCTURE
+        };
 
-                unsafe {
-                    // Bind the layer to the window
-                    // SAFETY: idk? the window handle is valid?
-                    app.compositor.bind_layer(layer, raw_window_handle);
-                }
-                // the initial wait is important: see https://learn.microsoft.com/en-us/windows/uwp/gaming/reduce-latency-with-dxgi-1-3-swap-chains#step-4-wait-before-rendering-each-frame
-                app.compositor.wait_for_surface(layer);
+        // put back element_tree & root
+        let handler = UiHostWindowHandler::get(app_ctx, self.window_id);
+        handler.element_tree = element_tree;
+        handler.root = root;
 
-                // update the content
-                handler.update_content(self.content);
-                cx.register_window(window_id, Box::new(handler));
-                self.id.set_without_invalidation(Some(window_id));
-                AppWindowHandle {
-                    window_id,
-                    close_requested: false,
-                }
-            },
-            |cx, handler| {
-                let handler = handler
-                    .as_any()
-                    .downcast_mut::<UiHostWindowHandler>()
-                    .expect("unexpected window type");
-                handler.window.set_title(&self.title);
-                handler.update_content(self.content);
-                let close_requested = mem::take(&mut handler.close_requested);
-                AppWindowHandle {
-                    window_id: id,
-                    close_requested,
-                }
-            },
-        );
+        eprintln!("update_content: {:?}", change_flags);
+        if change_flags.intersects(ChangeFlags::STRUCTURE | ChangeFlags::GEOMETRY) {
+            handler.update_layout();
+        }
+        if change_flags.intersects(ChangeFlags::PAINT) {
+            handler.window.request_redraw();
+        }
+    }
+
+    pub fn new(app_ctx: &mut AppCtx, window_builder: WindowBuilder) -> AppWindowHandle {
+        // create the window
+        let window = window_builder
+            .with_no_redirection_bitmap(true)
+            .build(app_ctx.event_loop)
+            .expect("failed to create window");
+        let size = window.inner_size();
+        let window_id = window.id();
+        let raw_window_handle = window.raw_window_handle()/*.expect("failed to get raw window handle")*/;
+
+        // create a compositor layer for the window
+        let app = AppGlobals::get();
+        let layer = app
+            .compositor
+            .create_surface_layer(Size::new(size.width as f64, size.height as f64), ColorType::RGBAF16);
+        unsafe {
+            // Bind the layer to the window
+            // SAFETY: idk? the window handle is valid?
+            app.compositor.bind_layer(layer, raw_window_handle);
+        }
+        // the initial wait is important: see https://learn.microsoft.com/en-us/windows/uwp/gaming/reduce-latency-with-dxgi-1-3-swap-chains#step-4-wait-before-rendering-each-frame
+        app.compositor.wait_for_surface(layer);
+
+        // register handler
+        app_ctx.register_window(window_id, Box::new(UiHostWindowHandler::new(window, layer)));
+        AppWindowHandle {
+            window_id,
+            close_requested: false,
+        }
     }
 }
 

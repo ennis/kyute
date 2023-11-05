@@ -1,14 +1,21 @@
 //! Frame containers
 use crate::{
-    debug_util::DebugWriter, element::TransformNode, layout::place_into, widget::Axis, Alignment, ChangeFlags, Element,
-    ElementId, Environment, Event, EventCtx, Geometry, HitTestResult, Insets, LayoutCtx, LayoutParams,
-    LengthOrPercentage, PaintCtx, Point, Rect, RouteEventCtx, Size, TreeCtx, Vec2, Widget,
+    debug_util::DebugWriter,
+    element::TransformNode,
+    layout::place_into,
+    widget::{
+        decoration::{ShapeBorder, ShapeDecoration},
+        Axis,
+    },
+    Alignment, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry, HitTestResult, Insets,
+    LayoutCtx, LengthOrPercentage, PaintCtx, Point, Rect, Size, TreeCtx, Vec2, Widget,
 };
+use kyute2::widget::RoundedRectBorder;
 use std::any::Any;
 use tracing::trace;
 
 /// A container with a fixed width and height, into which an unique widget is placed.
-pub struct FrameElement<T> {
+pub struct FrameElement<T, B> {
     width: LengthOrPercentage,
     height: LengthOrPercentage,
     change_flags: ChangeFlags,
@@ -21,16 +28,16 @@ pub struct FrameElement<T> {
     padding_right: LengthOrPercentage,
     padding_top: LengthOrPercentage,
     padding_bottom: LengthOrPercentage,
-    scale_factor: f64,
     /// Computed size
     size: Size,
     /// Computed bounds
     bounding_rect: Rect,
     paint_bounding_rect: Rect,
+    decoration: ShapeDecoration<B>,
     content: TransformNode<T>,
 }
 
-impl<T> FrameElement<T> {
+impl<T, B> FrameElement<T, B> {
     /// Updates this element's change flags given the changes reported by
     /// the content element.
     ///
@@ -56,22 +63,25 @@ impl<T> FrameElement<T> {
     }
 }
 
-impl<T: Element + 'static> Element for FrameElement<T> {
+impl<T: Element + 'static, B: ShapeBorder + 'static> Element for FrameElement<T, B> {
     fn id(&self) -> ElementId {
         self.content.id()
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         // First, determine the size of this frame.
         // If any lengths are specified as percentages, resolve them:
         // consider percentage lengths as relative to the maximum available space.
         // TODO emit warning if available space is infinite
         let width = params.constrain_width(self.width.resolve(params.max.width));
         let height = params.constrain_height(self.height.resolve(params.max.height));
-        let padding_left = self.padding_left.resolve(params.max.width);
-        let padding_right = self.padding_right.resolve(params.max.width);
-        let padding_top = self.padding_top.resolve(params.max.height);
-        let padding_bottom = self.padding_top.resolve(params.max.height);
+
+        // compute padding: resolve user padding + padding added by the decoration
+        let deco_insets = self.decoration.insets();
+        let padding_left = self.padding_left.resolve(params.max.width) + deco_insets.x0;
+        let padding_right = self.padding_right.resolve(params.max.width) - deco_insets.x1;
+        let padding_top = self.padding_top.resolve(params.max.height) + deco_insets.y0;
+        let padding_bottom = self.padding_bottom.resolve(params.max.height) - deco_insets.y1;
 
         // Computed size of the frame: just apply constraints from the parent element.
         let size = Size::new(width, height);
@@ -81,13 +91,12 @@ impl<T: Element + 'static> Element for FrameElement<T> {
         // - the scale factor has changed (this invalidates all layouts)
         // - the current change flags says the child geometry or position are dirty
         if self.size != size
-            || self.scale_factor != params.scale_factor
             || self
                 .change_flags
                 .intersects(ChangeFlags::CHILD_GEOMETRY | ChangeFlags::LAYOUT_CHILD_POSITIONS)
         {
-            let sub = LayoutParams { max: size, ..*params };
-            let content_geom = self.content.layout(ctx, &sub);
+            let sub = BoxConstraints { max: size, ..*params };
+            let content_geom = ctx.layout(&mut self.content, &sub);
 
             if self.change_flags.contains(ChangeFlags::LAYOUT_CHILD_POSITIONS) {
                 let offset = place_into(
@@ -97,7 +106,7 @@ impl<T: Element + 'static> Element for FrameElement<T> {
                     None,
                     self.x_align,
                     self.y_align,
-                    &Insets::new(padding_left, padding_right, padding_top, padding_bottom),
+                    &Insets::new(padding_left, padding_top, padding_right, padding_bottom),
                 );
                 self.content.set_offset(offset);
             }
@@ -110,7 +119,6 @@ impl<T: Element + 'static> Element for FrameElement<T> {
                 .transform_rect_bbox(content_geom.paint_bounding_rect);
         }
 
-        self.scale_factor = params.scale_factor;
         self.size = size;
         self.change_flags = ChangeFlags::empty();
         // TODO propagate baseline
@@ -133,19 +141,25 @@ impl<T: Element + 'static> Element for FrameElement<T> {
         self.update_change_flags(flags)
     }*/
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
-        let size = match axis {
-            Axis::Horizontal => params.constrain_width(self.width.resolve(params.max.width)),
-            Axis::Vertical => params.constrain_height(self.height.resolve(params.max.height)),
-        };
-        if !size.is_finite() {
-            self.content.natural_size(axis, params)
+    fn natural_width(&mut self, height: f64) -> f64 {
+        let w = self.width.resolve(f64::INFINITY);
+        if !w.is_finite() {
+            self.content.natural_width(height)
         } else {
-            size
+            w
         }
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+    fn natural_height(&mut self, width: f64) -> f64 {
+        let h = self.height.resolve(f64::INFINITY);
+        if !h.is_finite() {
+            self.content.natural_height(width)
+        } else {
+            h
+        }
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         // TODO: welp, we'd need to take alignment and padding into account here
         self.content.natural_baseline(params)
     }
@@ -162,6 +176,8 @@ impl<T: Element + 'static> Element for FrameElement<T> {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
+        self.change_flags = ChangeFlags::empty();
+        self.decoration.paint(ctx, self.size.to_rect());
         self.content.paint(ctx)
     }
 
@@ -179,7 +195,6 @@ impl<T: Element + 'static> Element for FrameElement<T> {
         visitor.property("padding_right", self.padding_right);
         visitor.property("padding_top", self.padding_top);
         visitor.property("padding_bottom", self.padding_bottom);
-        visitor.property("scale_factor", self.scale_factor);
         visitor.property("size", self.size);
         visitor.property("bounding_rect", self.bounding_rect);
         visitor.property("paint_bounding_rect", self.paint_bounding_rect);
@@ -189,20 +204,33 @@ impl<T: Element + 'static> Element for FrameElement<T> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct Frame<T> {
-    width: LengthOrPercentage,
-    height: LengthOrPercentage,
-    x_align: Alignment,
-    y_align: Alignment,
-    padding_left: LengthOrPercentage,
-    padding_right: LengthOrPercentage,
-    padding_top: LengthOrPercentage,
-    padding_bottom: LengthOrPercentage,
-    content: T,
+pub struct Frame<T, B> {
+    /// Maximum width of the frame.
+    pub width: LengthOrPercentage,
+    /// Maximum height of the frame.
+    pub height: LengthOrPercentage,
+    /// Horizontal content alignment.
+    pub x_align: Alignment,
+    /// Vertical content alignment.
+    pub y_align: Alignment,
+    /// Padding on the left side of the content.
+    pub padding_left: LengthOrPercentage,
+    /// Padding on the right side of the content.
+    pub padding_right: LengthOrPercentage,
+    /// Padding on the top side of the content.
+    pub padding_top: LengthOrPercentage,
+    /// Padding on the bottom side of the content.
+    pub padding_bottom: LengthOrPercentage,
+    /// Decoration of the frame.
+    ///
+    /// May add additional padding.
+    pub decoration: ShapeDecoration<B>,
+    /// The content of the frame.
+    pub content: T,
 }
 
-impl<T> Frame<T> {
-    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, content: T) -> Frame<T> {
+impl<T> Frame<T, RoundedRectBorder> {
+    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, content: T) -> Frame<T, RoundedRectBorder> {
         Frame {
             width,
             height,
@@ -212,13 +240,32 @@ impl<T> Frame<T> {
             padding_right: Default::default(),
             padding_top: Default::default(),
             padding_bottom: Default::default(),
+            decoration: ShapeDecoration::new(),
             content,
         }
     }
 }
 
-impl<T: Widget> Widget for Frame<T> {
-    type Element = FrameElement<T::Element>;
+impl<T, B> Frame<T, B> {
+    /// Sets the decoration of this frame.
+    pub fn decoration<C>(self, decoration: ShapeDecoration<C>) -> Frame<T, C> {
+        Frame {
+            width: self.width,
+            height: self.height,
+            x_align: self.x_align,
+            y_align: self.y_align,
+            padding_left: self.padding_left,
+            padding_right: self.padding_right,
+            padding_top: self.padding_top,
+            padding_bottom: self.padding_bottom,
+            decoration,
+            content: self.content,
+        }
+    }
+}
+
+impl<T: Widget, B: ShapeBorder + 'static> Widget for Frame<T, B> {
+    type Element = FrameElement<T::Element, B>;
 
     fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
         let content = cx.build(self.content);
@@ -234,10 +281,10 @@ impl<T: Widget> Widget for Frame<T> {
             padding_right: self.padding_right,
             padding_top: self.padding_top,
             padding_bottom: self.padding_bottom,
-            scale_factor: 0.0,
             size: Default::default(),
             bounding_rect: Default::default(),
             paint_bounding_rect: Default::default(),
+            decoration: self.decoration,
         }
     }
 
@@ -267,6 +314,9 @@ impl<T: Widget> Widget for Frame<T> {
             element.y_align = self.y_align;
             element.change_flags |= ChangeFlags::LAYOUT_CHILD_POSITIONS;
         }
+
+        // TODO check for decoration change
+        element.decoration = self.decoration;
 
         // update contents
         let flags = element.content.update(cx, self.content);

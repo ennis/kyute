@@ -1,4 +1,4 @@
-use crate::{AnyWidget, ChangeFlags, Element, Environment, TreeCtx, Widget};
+use crate::{AnyWidget, ChangeFlags, Element, TreeCtx, Widget};
 use std::cmp::Ordering;
 
 /*/// An element of a vector diff.

@@ -1,6 +1,6 @@
 use crate::{
-    composable, element::TransformNode, widget::Axis, AnyWidget, ChangeFlags, Element, ElementId, Environment, Event,
-    EventCtx, Geometry, HitTestResult, LayoutCtx, LayoutParams, PaintCtx, RouteEventCtx, TreeCtx, Widget,
+    element::TransformNode, widget::Axis, AnyWidget, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx,
+    Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
 };
 use kurbo::Point;
 use std::any::Any;
@@ -49,7 +49,7 @@ impl Element for VBoxElement {
         self.id
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &LayoutParams) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         Geometry::ZERO
     }
 
@@ -67,11 +67,15 @@ impl Element for VBoxElement {
         }
     }
 
-    fn natural_size(&mut self, axis: Axis, params: &LayoutParams) -> f64 {
+    fn natural_width(&mut self, height: f64) -> f64 {
         todo!()
     }
 
-    fn natural_baseline(&mut self, params: &LayoutParams) -> f64 {
+    fn natural_height(&mut self, width: f64) -> f64 {
+        todo!()
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         todo!()
     }
 
