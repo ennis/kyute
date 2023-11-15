@@ -69,10 +69,10 @@ impl Element for Background {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        let mut surface = ctx.surface.surface();
-        let canvas = surface.canvas();
-        let bounds = Rect::from_origin_size(Point::ZERO, self.size);
-        canvas.draw_rect(bounds.to_skia(), &self.paint.to_sk_paint(bounds));
+        ctx.with_canvas(|canvas| {
+            let bounds = Rect::from_origin_size(Point::ZERO, self.size);
+            canvas.draw_rect(bounds.to_skia(), &self.paint.to_sk_paint(bounds));
+        });
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

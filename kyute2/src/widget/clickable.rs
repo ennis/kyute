@@ -112,7 +112,7 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
         // We don't capture anything, so forward to children first.
         if let Some(target) = event.next_target() {
             assert_eq!(self.content.id(), target);
-            change_flags |= self.content.event(ctx, event);
+            change_flags |= ctx.event(&mut self.content, event);
         }
 
         if event.handled {
@@ -223,7 +223,7 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.content.paint(ctx)
+        ctx.paint(&mut self.content);
     }
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {

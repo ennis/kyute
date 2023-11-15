@@ -1,8 +1,9 @@
 use crate::{
-    application::{AppState, ExtEvent},
+    application::{AppState, ExtEvent, WindowHandler},
     composition::DrawableSurface,
     debug_util::{
-        elem_ptr_id, DebugEventElementInfo, DebugEventInfo, DebugLayoutElementInfo, DebugLayoutInfo, ElementPtrId,
+        elem_ptr_id, DebugEventElementInfo, DebugEventInfo, DebugLayoutElementInfo, DebugLayoutInfo,
+        DebugPaintElementInfo, DebugPaintInfo, ElementPtrId,
     },
     drawing::ToSkia,
     widget::Axis,
@@ -10,6 +11,7 @@ use crate::{
     AppCtx, BoxConstraints, ChangeFlags, Element, Event, Geometry, Widget,
 };
 use kurbo::{Affine, Point};
+use raw_window_handle::RawWindowHandle;
 use skia_safe as sk;
 use std::{
     any::Any,
@@ -17,8 +19,9 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
+    mem,
     num::NonZeroU64,
-    ops::{Index, IndexMut},
+    ops::{Deref, DerefMut, Index, IndexMut},
 };
 use tracing::warn;
 use usvg::Tree;
@@ -107,7 +110,10 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Child -> Parent
+/// Maps an element ID to its parent.
+///
+/// This is mainly used to determine the propagation path of window events
+/// (like keyboard events, pointer events, etc.).
 pub type ElementTree = HashMap<ElementId, ElementId>;
 
 struct IdStack {
@@ -176,32 +182,127 @@ impl IdStack {
 }
 
 pub struct TreeCtx<'a> {
-    pub(crate) app_state: &'a mut AppState,
-    pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
-    pub(crate) tree: &'a mut ElementTree,
+    /// Application context.
+    pub app_ctx: AppCtx<'a>,
 
+    /// The parent window handle, if there's one.
+    ///
+    /// Used to create child windows.
+    parent_window: Option<RawWindowHandle>,
+
+    /// Keeps track of parent-child relationships between element IDs.
+    tree: ElementTree,
+
+    /// Ambient states in scope.
     ambient_stack: Vec<*const dyn Any>, // issue: these don't have the same lifetime: bottom of the stack is long-lived, top is short-lived
+
+    /// States in scope.
     state_stack: Vec<*mut dyn Any>, // issue: these don't have the same lifetime: bottom of the stack is long-lived, top is short-lived
+
+    /// ID stack used to generate unique IDs for elements.
     id_stack: IdStack,
 }
 
+impl<'a> Deref for TreeCtx<'a> {
+    type Target = AppCtx<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.app_ctx
+    }
+}
+
+impl<'a> DerefMut for TreeCtx<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.app_ctx
+    }
+}
+
 impl<'a> TreeCtx<'a> {
-    pub(crate) fn new(
-        app_state: &'a mut AppState,
-        event_loop: &'a EventLoopWindowTarget<ExtEvent>,
-        tree: &'a mut ElementTree,
-    ) -> TreeCtx<'a> {
+    /// Creates the root TreeCtx.
+    pub fn new(app_state: &'a mut AppState, event_loop: &'a EventLoopWindowTarget<ExtEvent>) -> TreeCtx<'a> {
         let mut id_stack = IdStack::new();
         // Push a dummy ID on the stack so that the root element gets an ID.
         id_stack.enter(&0);
         TreeCtx {
-            app_state,
-            event_loop,
-            tree,
+            app_ctx: AppCtx { app_state, event_loop },
+            parent_window: None,
+            tree: ElementTree::default(),
             ambient_stack: vec![],
             state_stack: vec![],
             id_stack,
         }
+    }
+
+    /// Runs a closure with a mutable reference to the window handler of the specified window.
+    pub fn with_window_handler<R>(
+        &mut self,
+        window_id: WindowId,
+        f: impl FnOnce(&mut Self, &mut dyn WindowHandler) -> R,
+    ) -> R {
+        let mut handler = self
+            .app_ctx
+            .app_state
+            .windows
+            .get_mut(&window_id)
+            .expect("unknown window ID")
+            .take()
+            .expect("with_window_handler was called recursively with the same window ID");
+
+        let mut prev_parent_window = mem::replace(&mut self.parent_window, Some(handler.raw_window_handle()));
+        let result = f(self, &mut handler);
+        *handler = Some(handler);
+        self.parent_window = prev_parent_window;
+        *self.app_ctx.app_state.windows.get_mut(&window_id) = Some(handler);
+        result
+    }
+
+    /// Updates an element that has its own separate element tree.
+    ///
+    /// Usually, child windows keep a separate `ElementTree` corresponding to the subtree of elements
+    /// rooted at the child window. This method allows to update that `ElementTree` independently of
+    /// the element tree of any parent elements.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` the widget used to update the element
+    /// * `element` the element to update
+    /// * `element_tree` the element tree returned by the previous call to `update_with_element_tree`, or the empty tree if this is the first call
+    ///
+    /// # Return value
+    ///
+    /// A tuple `(change_flags, element_tree)` with the change flags that resulted from the element update, and the updated element tree.
+    ///
+    /// # Implementation notes
+    ///
+    /// We pass the element tree o
+    pub fn update_with_element_tree<T>(
+        &mut self,
+        content: T,
+        element: &mut Box<dyn Element>,
+        element_tree: &mut ElementTree,
+    ) -> ChangeFlags
+    where
+        T: Widget + Any,
+    {
+        // This is a bit convoluted, but this way we don't have to deal with an additional lifetime
+        // in `TreeCtx`
+        mem::swap(&mut self.tree, element_tree);
+        // NOTE: this is pretty much the same logic as AnyWidget::update
+        let change_flags = if let Some(element) = (&mut *element).as_any_mut().downcast_mut::<T::Element>() {
+            // We can update the element in place if it's the expected type
+            self.update(content, element)
+        } else {
+            // Otherwise it is rebuilt from scratch
+            *element = Box::new(self.build(content));
+            ChangeFlags::STRUCTURE
+        };
+        mem::swap(&mut self.tree, element_tree);
+        change_flags
+    }
+
+    /// Returns the current parent window handle.
+    pub fn parent_window(&self) -> Option<RawWindowHandle> {
+        self.parent_window
     }
 
     /// Appends an ID to the current ID path.
@@ -385,6 +486,7 @@ impl<'a> EventCtx<'a> {
         {
             self.debug_info.add(DebugEventElementInfo {
                 element_ptr: elem_ptr_id(child_element),
+                element_id: child_element.id(),
                 event: event.kind.clone(),
                 handled: false,
                 change_flags: change_flags.clone(),
@@ -489,6 +591,8 @@ pub struct PaintCtx<'a> {
 
     /// Drawable surface.
     pub surface: DrawableSurface,
+
+    pub(crate) debug_info: DebugPaintInfo,
 }
 
 impl<'a> PaintCtx<'a> {
@@ -511,6 +615,18 @@ impl<'a> PaintCtx<'a> {
         self.window_transform = prev_transform;
 
         result
+    }
+
+    pub fn paint(&mut self, child_element: &mut dyn Element) {
+        #[cfg(debug_assertions)]
+        {
+            self.debug_info.add(DebugPaintElementInfo {
+                element_ptr: elem_ptr_id(child_element),
+                transform: self.window_transform,
+            });
+        }
+
+        child_element.paint(self);
     }
 
     pub fn with_canvas<F, R>(&mut self, f: F) -> R

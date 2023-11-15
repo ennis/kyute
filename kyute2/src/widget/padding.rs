@@ -32,7 +32,7 @@ impl<E: Element> Element for PaddingElement<E> {
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
         let offset = Vec2::new(self.padding.x0, self.padding.y0);
-        event.with_transform(&Affine::translate(offset), |event| self.content.event(ctx, event))
+        event.with_transform(&Affine::translate(offset), |event| ctx.event(&mut self.content, event))
     }
 
     fn natural_width(&mut self, height: f64) -> f64 {
@@ -58,7 +58,7 @@ impl<E: Element> Element for PaddingElement<E> {
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
         ctx.with_transform(&Affine::translate(Vec2::new(self.padding.x0, self.padding.y0)), |ctx| {
-            self.content.paint(ctx)
+            ctx.paint(&mut self.content);
         });
     }
 

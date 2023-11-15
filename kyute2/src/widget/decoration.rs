@@ -286,7 +286,7 @@ where
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        self.content.event(ctx, event)
+        ctx.event(&mut self.content, event)
     }
 
     fn natural_width(&mut self, height: f64) -> f64 {
@@ -314,7 +314,7 @@ where
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
         self.decoration.paint(ctx, self.content.size.to_rect());
-        self.content.paint(ctx);
+        ctx.paint(&mut self.content)
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

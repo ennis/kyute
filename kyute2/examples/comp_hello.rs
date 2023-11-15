@@ -174,8 +174,8 @@ fn main() {
         .init();
 
     let mut launcher = AppLauncher::new();
-    let main_window_handle =
-        launcher.with_app_ctx(|ctx| AppWindowHandle::new(ctx, WindowBuilder::new().with_title("Hello")));
+    let main_window_handle = launcher
+        .with_ctx(|ctx| AppWindowHandle::new(ctx, WindowBuilder::new().with_title("Hello"), main_window_contents()));
     let mut app = Application { main_window_handle };
     launcher.run(move |ctx| app.update(ctx));
 }

@@ -176,12 +176,6 @@ impl Default for Alignment {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Describes the size of an element and how it should be positioned inside a containing block.
-
-// FIXME: why alignment & padding should be treated differently than other layout parameters, such
-// as grid positions, or docking status, or explicit offsets?
-// TODO: is it possible to design an extensible mechanism for a child to specify layout properties for a parent?
-// I.e. decouple positioning info from actual geometry.
-
 #[derive(Copy, Clone, PartialEq)]
 pub struct Geometry {
     /// Element size.

@@ -1990,3 +1990,65 @@ E.g. button has min constraint 80x30, max constraint propagated from above, can 
 Button should have minimum possible size, but if not tight around the text, the text should be centered.
 
 **Problem**: alignment widget will expand to max possible size if constrained. This may not be what we want
+
+
+## Outline views
+
+A generalization of list views.
+
+### Previous work
+
+- [flutter_tree_view](https://github.com/baumths/flutter_tree_view)
+- [SwiftUI OutlineGroup](https://developer.apple.com/documentation/swiftui/outlinegroup)
+  - Identifiable data + closure to access children
+  - How to do incremental updates?
+
+
+
+### Sketch
+
+```rust
+
+use std::hash::Hash;
+
+pub trait Identifiable {
+  type Id: Copy + Hash;
+  fn id(&self) -> Self::Id;
+}
+
+pub trait DiffableCollection: Clone {
+  type Item;
+  // Indexable, access elements by ID
+  // Return an iterator over elements added & removed, compared to a previous instance 
+    // Basically implies immutable collections
+}
+
+
+
+pub trait TreeDataSource {
+  type Item: Identifiable;
+  fn element(&self, id: Self::Item::Id) -> &Self::Item;
+  fn children(&self, id: Self::Item::Id) -> impl Iterator<Item=&Self::Item>;
+  fn revision(&self) -> Revision;
+  fn changes(&self, since: Revision) -> impl Iterator<Item=Diff<Self::Item>>;
+}
+
+```
+
+Complete IDs: IDs uniquely identify an element in the tree.
+Partial IDs: IDs uniquely identify a child node within a parent.
+
+Partial IDs imply that we need to identify nodes in the tree by an "ID path".
+
+Q: Full IDs or ID paths?
+
+
+
+```rust 
+
+struct TreeNode {
+  id: u64,
+  children: Vec<TreeNode>
+}
+
+```

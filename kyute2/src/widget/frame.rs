@@ -131,7 +131,7 @@ impl<T: Element + 'static, B: ShapeBorder + 'static> Element for FrameElement<T,
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        let flags = self.content.event(ctx, event);
+        let flags = ctx.event(&mut self.content, event);
         self.update_change_flags(flags)
     }
 
@@ -178,7 +178,7 @@ impl<T: Element + 'static, B: ShapeBorder + 'static> Element for FrameElement<T,
     fn paint(&mut self, ctx: &mut PaintCtx) {
         self.change_flags = ChangeFlags::empty();
         self.decoration.paint(ctx, self.size.to_rect());
-        self.content.paint(ctx)
+        ctx.paint(&mut self.content);
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

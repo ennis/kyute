@@ -216,6 +216,11 @@ pub trait WidgetExt: Widget + Sized + 'static {
         Overlay::new(self, Background::new(paint.into()), ZOrder::Below)
     }
 
+    /// Makes the widget clickable.
+    ///
+    /// # Example
+    ///
+    /// TODO
     #[must_use]
     fn clickable(self) -> Clickable<Self> {
         Clickable::new(self)
@@ -409,7 +414,7 @@ impl<T: 'static, E: Element> Element for StatefulElement<T, E> {
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        self.inner.event(ctx, event)
+        ctx.event(&mut self.inner, event)
     }
 
     fn natural_width(&mut self, height: f64) -> f64 {
@@ -429,7 +434,7 @@ impl<T: 'static, E: Element> Element for StatefulElement<T, E> {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.inner.paint(ctx)
+        ctx.paint(&mut self.inner)
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

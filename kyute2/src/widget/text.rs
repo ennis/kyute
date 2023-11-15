@@ -222,8 +222,9 @@ impl Element for TextElement {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.paragraph
-            .paint(ctx.surface.surface().canvas(), Point::ZERO.to_skia());
+        ctx.with_canvas(|canvas| {
+            self.paragraph.paint(canvas, Point::ZERO.to_skia());
+        })
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {

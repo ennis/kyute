@@ -206,8 +206,6 @@ impl Compositor {
     ///
     /// * size Size of the surface in pixels
     /// * format Pixel format
-    ///
-    /// TODO: floating-point size doesn't make sense
     pub fn create_surface_layer(&self, size: Size, format: ColorType) -> LayerID {
         let mut inner = self.inner.borrow_mut();
         let id = inner.layers.insert(LayerInfo {});

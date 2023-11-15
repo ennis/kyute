@@ -1,9 +1,10 @@
 use crate::{
     application::{AppState, ExtEvent},
     context::ElementTree,
+    debug_util,
     debug_util::{
-        DebugArena, DebugLayoutInfo, DebugNode, DebugRect, DebugSnapshotCause, ElementPtrId, PropertyValue,
-        PropertyValueKind,
+        DebugAffine, DebugArena, DebugLayoutInfo, DebugNode, DebugRect, DebugSnapshot, DebugSnapshotCause,
+        ElementPtrId, PropertyValue, PropertyValueKind,
     },
     window::{DebugOverlayData, UiHostWindowHandler},
     Element, ElementId, Geometry, PaintCtx,
@@ -19,7 +20,7 @@ use egui_json_tree::JsonTree;
 use egui_wgpu::{wgpu, wgpu::TextureFormat};
 use egui_winit::winit::event::Event;
 use kurbo::Affine;
-use kyute2::debug_util::get_debug_snapshots;
+use kyute2::debug_util::{get_debug_snapshots, DebugPaintInfo};
 use once_cell::sync::OnceCell;
 use raw_window_handle::RawWindowHandle;
 use std::{
@@ -68,8 +69,18 @@ struct DebugWindowState {
     snapshot_index: usize,
 }
 
+fn element_in_propgation_path(debug_snapshot: &DebugSnapshot, element_ptr_id: ElementPtrId) -> bool {
+    debug_snapshot
+        .event_info
+        .elements
+        .iter()
+        .find(|e| e.element_ptr == element_ptr_id)
+        .is_some()
+}
+
 impl DebugWindowState {
-    fn draw_list_item(&mut self, ui: &mut Ui, item: &DebugNode, level: u32) {
+    /// Draw a row (and its children) of the element tree.
+    fn draw_element_tree_node(&mut self, ui: &mut Ui, node: &DebugNode, debug_snapshot: &DebugSnapshot, level: u32) {
         let id = ui.id();
         let mut expanded: bool = ui.data(|data| data.get_temp(id).unwrap_or(true));
 
@@ -93,21 +104,34 @@ impl DebugWindowState {
         let delete_icon_pos = rect.right_center() - vec2(16.0, 0.0); // button position
         let expand_icon_pos = rect.left_center() + indent_offset + vec2(8.0, 0.0); // expand icon position
 
-        let bg_color = if self.selection == Some(item.ptr_id) {
+        let in_event_propagation_path = element_in_propgation_path(debug_snapshot, node.ptr_id);
+
+        let event_highlight = if in_event_propagation_path {
+            ui.ctx().animate_value_with_time(id, 1.0, 0.0)
+        } else {
+            ui.ctx().animate_value_with_time(id, 0.0, 0.25)
+        };
+
+        // determine the background color
+        let bg_color = if self.selection == Some(node.ptr_id) {
             active_color
         } else if response_bg.hovered() {
             hover_color
         } else {
             default_bg_color
         };
+        // Fade out event highlight
+        let mut bg_color_f = egui::Rgba::from(bg_color);
+        bg_color_f = (1.0 - event_highlight) * bg_color_f + event_highlight * egui::Rgba::from_rgb(1.0, 0.0, 0.0);
+        let bg_color: Color32 = bg_color_f.into();
 
         let stroke = Stroke::new(0.0, Color32::BLACK);
 
         if response_bg.clicked() {
-            self.selection = Some(item.ptr_id);
+            self.selection = Some(node.ptr_id);
         }
         if response_bg.hovered() {
-            self.hover_selection = Some(item.ptr_id);
+            self.hover_selection = Some(node.ptr_id);
         }
 
         // Layer row & label
@@ -118,30 +142,34 @@ impl DebugWindowState {
             ui.allocate_ui_at_rect(text_rect, |ui: &mut egui::Ui| {
                 ui.horizontal(|ui| {
                     use egui_phosphor::regular as icons;
-                    let icon = match item.ty {
-                        "GridElement" => icons::GRID_FOUR,
+                    let icon = match node.ty {
+                        "GridElement" => icons::SQUARES_FOUR,
                         "TransformNode" => icons::ARROWS_OUT_CARDINAL,
+                        "DecoratedBoxElement" => icons::PAINT_BRUSH,
                         "TextElement" => icons::TEXT_T,
-                        "FrameElement" => icons::FRAME_CORNERS,
+                        "FrameElement" => icons::RECTANGLE,
                         "ClickableElement" => icons::CURSOR_CLICK,
                         "NullElement" => icons::PLACEHOLDER,
                         "OverlayElement" => icons::STACK_SIMPLE,
+                        "AlignElement" => icons::ALIGN_LEFT,
                         "Background" => icons::PAINT_ROLLER,
+                        "PaddingElement" => icons::FRAME_CORNERS,
+                        "ConstrainedElement" => icons::BOUNDING_BOX,
                         _ => icons::QUESTION,
                     };
 
                     ui.colored_label(Color32::WHITE, RichText::new(icon).size(20.0));
-                    ui.colored_label(Color32::YELLOW, format!(" {} ", item.ty));
-                    ui.colored_label(text_color, item.name);
+                    ui.colored_label(Color32::YELLOW, format!(" {} ", node.ty));
+                    ui.colored_label(text_color, node.name);
 
-                    if !item.id.is_anonymous() {
-                        ui.colored_label(Color32::GRAY, format!(" ({:08X})", item.id.to_u64() >> 32));
+                    if !node.id.is_anonymous() {
+                        ui.colored_label(Color32::GRAY, format!(" ({:08X})", node.id.to_u64() >> 32));
                     }
 
-                    if Some(item.id) == self.pointer_grab {
+                    if Some(node.id) == self.pointer_grab {
                         ui.label(RichText::new(" pointer grab").font(FontId::monospace(12.0)));
                     }
-                    if Some(item.id) == self.focused {
+                    if Some(node.id) == self.focused {
                         ui.label(RichText::new(" focus").font(FontId::monospace(12.0)));
                     }
                 })
@@ -158,7 +186,7 @@ impl DebugWindowState {
 
         {
             // caret
-            if !item.children.is_empty() {
+            if !node.children.is_empty() {
                 //let mut expanded: bool = ui.data(|data| data.get_temp(id).unwrap_or(false));
                 let rect = Rect::from_center_size(expand_icon_pos, vec2(16.0, 16.0));
                 let resp = ui.allocate_rect(rect, Sense::click());
@@ -196,9 +224,9 @@ impl DebugWindowState {
         ui.advance_cursor_after_rect(rect);
 
         if expanded {
-            for child in item.children {
+            for child in node.children {
                 ui.push_id(child.ptr_id, |ui| {
-                    self.draw_list_item(ui, child, level + 1);
+                    self.draw_element_tree_node(ui, child, debug_snapshot, level + 1);
                 });
             }
         }
@@ -206,12 +234,12 @@ impl DebugWindowState {
         ui.data_mut(|data| data.insert_temp(id, expanded));
     }
 
-    fn element_tree_panel_contents(&mut self, ui: &mut Ui, debug_root: &DebugNode, elem_tree: &ElementTree) {
+    fn element_tree_panel_contents(&mut self, ui: &mut Ui, debug_snapshot: &DebugSnapshot) {
         self.hover_selection = None;
 
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            self.draw_list_item(ui, debug_root, 0);
+            self.draw_element_tree_node(ui, &debug_snapshot.root, debug_snapshot, 0);
         });
 
         // element tree
@@ -220,7 +248,7 @@ impl DebugWindowState {
                 ui.label("Child");
                 ui.label("Parent");
                 ui.end_row();
-                for (child, parent) in elem_tree.iter() {
+                for (child, parent) in debug_snapshot.element_tree.iter() {
                     ui.label(format!("{:08X}", child.to_u64() >> 32));
                     ui.label(format!("{:08X}", parent.to_u64() >> 32));
                     ui.end_row();
@@ -229,29 +257,67 @@ impl DebugWindowState {
         });
     }
 
-    fn property_panel_contents(&mut self, ui: &mut Ui, debug_root: &DebugNode, layout_info: &DebugLayoutInfo) {
+    fn event_panel_contents(&mut self, ui: &mut Ui, debug_snapshot: &DebugSnapshot) {
+        ui.heading("Event delivery");
+
+        Grid::new("layout").num_columns(3).striped(true).show(ui, |ui| {
+            ui.label("Type");
+            ui.label("ID");
+            ui.label("Change Flags");
+            ui.label("Event");
+            ui.end_row();
+            ui.end_row();
+            for event in debug_snapshot.event_info.iter() {
+                let Some(node) = debug_snapshot.root.find_by_ptr(event.element_ptr) else {
+                    continue;
+                };
+                ui.label(format!("{:?}", node.ty));
+                ui.label(format!("{:08X}", event.element_id.to_u64() >> 32));
+                ui.label(format!("{:?}", event.change_flags));
+                ui.label(format!("{:?}", event.event));
+                ui.end_row();
+            }
+        });
+    }
+
+    fn property_panel_contents(
+        &mut self,
+        ui: &mut Ui,
+        debug_root: &DebugNode,
+        layout_info: &DebugLayoutInfo,
+        paint_info: &DebugPaintInfo,
+    ) {
         if let Some(selection) = self.selection {
             if let Some(layout_info) = layout_info.get(selection) {
-                ui.heading("Layout");
+                ui.heading("Geometry");
                 Grid::new("layout").num_columns(2).striped(true).show(ui, |ui| {
                     ui.label("Constraints");
-                    ui.label(format!("{:?}", layout_info.constraints));
+                    ui.monospace(format!("{:?}", layout_info.constraints));
                     ui.end_row();
                     ui.label("Size");
-                    ui.label(format!("{:?}", layout_info.geometry.size));
+                    ui.monospace(format!("{:?}", layout_info.geometry.size));
                     ui.end_row();
                     ui.label("Bounding Rect");
-                    ui.label(format!("{:?}", DebugRect(layout_info.geometry.bounding_rect)));
+                    ui.monospace(format!("{:?}", DebugRect(layout_info.geometry.bounding_rect)));
                     ui.end_row();
                     ui.label("Paint Bounding Rect");
-                    ui.label(format!("{:?}", DebugRect(layout_info.geometry.paint_bounding_rect)));
+                    ui.monospace(format!("{:?}", DebugRect(layout_info.geometry.paint_bounding_rect)));
                     ui.end_row();
                     ui.label("Baseline");
                     if let Some(b) = layout_info.geometry.baseline {
-                        ui.label(format!("{}", b));
+                        ui.monospace(format!("{}", b));
                     } else {
-                        ui.label("Unspecified");
+                        ui.monospace("Unspecified");
                     }
+                    ui.end_row();
+                });
+            }
+            if let Some(paint_info) = paint_info.get(selection) {
+                ui.separator();
+                ui.heading("Paint");
+                Grid::new("paint").num_columns(2).striped(true).show(ui, |ui| {
+                    ui.label("Transform");
+                    ui.monospace(format!("{:?}", DebugAffine(paint_info.transform)));
                     ui.end_row();
                 });
             }
@@ -263,10 +329,10 @@ impl DebugWindowState {
                         ui.label(prop.name);
                         match prop.value {
                             PropertyValueKind::Erased(p) => {
-                                ui.label(format!("{:?}", p));
+                                ui.monospace(format!("{:?}", p));
                             }
                             PropertyValueKind::Str(str) => {
-                                ui.label(format!("{}", str));
+                                ui.monospace(format!("{}", str));
                             }
                         }
                         ui.end_row();
@@ -274,6 +340,28 @@ impl DebugWindowState {
                 });
             }
         }
+    }
+
+    fn update_debug_overlay(&mut self, handler: &mut UiHostWindowHandler, snapshot: &DebugSnapshot) {
+        // element selected for debug overlay
+        let overlay_element = self.hover_selection.or(self.selection);
+
+        // update debug overlay
+        if let Some(elem) = overlay_element {
+            if let Some(layout_info) = snapshot.layout_info.get(elem) {
+                if let Some(paint_info) = snapshot.paint_info.get(elem) {
+                    let paint_rect = paint_info
+                        .transform
+                        .transform_rect_bbox(layout_info.geometry.paint_bounding_rect);
+                    handler.set_debug_overlay(Some(DebugOverlayData {
+                        debug_bounds: vec![paint_rect],
+                    }));
+                    return;
+                }
+            }
+        }
+
+        handler.set_debug_overlay(None);
     }
 
     fn ui(&mut self, ctx: &egui::Context, app_state: &mut AppState) {
@@ -312,7 +400,7 @@ impl DebugWindowState {
                     match snapshot.cause {
                         DebugSnapshotCause::Relayout => "After Relayout",
                         DebugSnapshotCause::Event => "After Event",
-                        DebugSnapshotCause::BeforePaint => "Before Paint",
+                        DebugSnapshotCause::AfterPaint => "After Paint",
                     }
                 ));
 
@@ -332,8 +420,21 @@ impl DebugWindowState {
                     );
                 });
 
-                ui.label(format!("focused: {:?}", snapshot.focused));
-                ui.label(format!("pointer_grab: {:?}", snapshot.pointer_grab));
+                {
+                    let mut v = debug_util::is_collection_enabled();
+                    ui.checkbox(&mut v, "Enable debug collection");
+                    debug_util::enable_collection(v);
+                }
+
+                //ui.label(format!("focused: {:?}", snapshot.focused));
+                //ui.label(format!("pointer_grab: {:?}", snapshot.pointer_grab));
+            });
+
+        TopBottomPanel::bottom("event_panel")
+            .default_height(200.0)
+            .min_height(200.0)
+            .show(ctx, |ui| {
+                self.event_panel_contents(ui, snapshot);
             });
 
         SidePanel::left("debug_panel")
@@ -341,27 +442,13 @@ impl DebugWindowState {
             .min_width(300.0)
             .frame(Frame::none())
             .show(ctx, |ui| {
-                self.element_tree_panel_contents(ui, &snapshot.root, &snapshot.element_tree);
-
-                // update debug overlay
-                if let Some(hover_selection) = self.hover_selection {
-                    if let Some(layout) = debug_element_layout(&snapshot.root, hover_selection) {
-                        let transform = layout.parent_transform * layout.transform;
-                        let rect = transform.transform_rect_bbox(layout.geometry.bounding_rect);
-                        handler.set_debug_overlay(Some(DebugOverlayData {
-                            debug_bounds: vec![rect],
-                        }));
-                    } else {
-                        handler.set_debug_overlay(None);
-                    }
-                } else {
-                    handler.set_debug_overlay(None);
-                }
-                //handler.window.request_redraw();
+                self.element_tree_panel_contents(ui, snapshot);
+                self.update_debug_overlay(handler, snapshot);
+                handler.window.request_redraw();
             });
 
         CentralPanel::default().show(ctx, |ui| {
-            self.property_panel_contents(ui, &snapshot.root, &snapshot.layout_info);
+            self.property_panel_contents(ui, &snapshot.root, &snapshot.layout_info, &snapshot.paint_info);
         });
     }
 }
@@ -395,7 +482,7 @@ fn setup_custom_fonts(ctx: &egui::Context) {
     style.text_styles = [
         (TextStyle::Heading, FontId::new(15.0, FontFamily::Proportional)),
         (TextStyle::Body, FontId::new(12.0, FontFamily::Proportional)),
-        (TextStyle::Monospace, FontId::new(12.0, FontFamily::Proportional)),
+        (TextStyle::Monospace, FontId::new(14.0, FontFamily::Monospace)),
         (TextStyle::Button, FontId::new(12.0, FontFamily::Proportional)),
         (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
     ]
@@ -413,7 +500,7 @@ fn setup_wgpu(
     wgpu::SurfaceConfiguration,
 ) {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::DX12,
+        backends: wgpu::Backends::VULKAN,
         flags: wgpu::InstanceFlags::empty(), // disable default debug flags because it conflicts with our DX12 device
         dx12_shader_compiler: Default::default(),
         ..Default::default()

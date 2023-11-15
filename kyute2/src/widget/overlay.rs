@@ -85,7 +85,7 @@ impl<A: Element, B: Element> Element for OverlayElement<A, B> {
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        self.a.event(ctx, event)
+        ctx.event(&mut self.a, event)
     }
 
     fn natural_width(&mut self, height: f64) -> f64 {
@@ -107,12 +107,12 @@ impl<A: Element, B: Element> Element for OverlayElement<A, B> {
     fn paint(&mut self, ctx: &mut PaintCtx) {
         match self.z_order {
             ZOrder::Above => {
-                self.a.paint(ctx);
-                self.b.paint(ctx);
+                ctx.paint(&mut self.a);
+                ctx.paint(&mut self.b);
             }
             ZOrder::Below => {
-                self.b.paint(ctx);
-                self.a.paint(ctx);
+                ctx.paint(&mut self.b);
+                ctx.paint(&mut self.a);
             }
         }
     }

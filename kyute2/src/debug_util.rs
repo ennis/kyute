@@ -1,7 +1,7 @@
 //! Debugging utilities
 
 use crate::{context::ElementTree, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventKind, Geometry};
-use kurbo::Rect;
+use kurbo::{Affine, Rect};
 use once_cell::sync::OnceCell;
 use serde_json as json;
 use std::{
@@ -11,7 +11,10 @@ use std::{
     fmt::{Debug, Formatter},
     hash::{Hash, Hasher},
     mem, ptr,
-    sync::{Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, MutexGuard,
+    },
     time::Duration,
 };
 use threadbound::ThreadBound;
@@ -215,9 +218,34 @@ fn dump_ui_tree_inner<'a>(arena: &'a DebugArena, name: &'a str, element: &dyn El
 static DEBUG_ARENA_LOCK: Mutex<()> = Mutex::new(());
 static mut DEBUG_ARENA: OnceCell<DebugArena> = OnceCell::new();
 static DEBUG_SNAPSHOTS: OnceCell<Mutex<Vec<DebugSnapshot>>> = OnceCell::new();
+static ENABLE_COLLECTION: AtomicBool = AtomicBool::new(true);
 
 unsafe fn get_debug_arena() -> &'static DebugArena {
     DEBUG_ARENA.get_or_init(|| DebugArena::new())
+}
+
+/// Debug information collected during painting.
+#[derive(Clone, Debug)]
+pub struct DebugPaintElementInfo {
+    /// The element that was painted.
+    pub element_ptr: ElementPtrId,
+    /// Transform applied to the element (relative to the window).
+    pub transform: Affine,
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct DebugPaintInfo {
+    pub elements: HashMap<ElementPtrId, DebugPaintElementInfo>,
+}
+
+impl DebugPaintInfo {
+    pub fn add(&mut self, element_info: DebugPaintElementInfo) {
+        self.elements.insert(element_info.element_ptr, element_info);
+    }
+
+    pub fn get(&self, ptr_id: ElementPtrId) -> Option<&DebugPaintElementInfo> {
+        self.elements.get(&ptr_id)
+    }
 }
 
 /// Debug information collected during event propagation.
@@ -225,6 +253,8 @@ unsafe fn get_debug_arena() -> &'static DebugArena {
 pub struct DebugEventElementInfo {
     /// The element that received the event.
     pub element_ptr: ElementPtrId,
+    /// Element ID.
+    pub element_id: ElementId,
     /// The event that was received.
     pub event: EventKind,
     /// Whether the event was handled by the element.
@@ -240,6 +270,10 @@ pub struct DebugEventInfo {
 impl DebugEventInfo {
     pub fn add(&mut self, element_info: DebugEventElementInfo) {
         self.elements.push(element_info)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &DebugEventElementInfo> {
+        self.elements.iter()
     }
 }
 
@@ -275,8 +309,8 @@ pub enum DebugSnapshotCause {
     Relayout,
     /// Snapshot taken after event propagation.
     Event,
-    /// SNapshot taken before painting.
-    BeforePaint,
+    /// Snapshot taken after painting.
+    AfterPaint,
 }
 
 pub struct DebugSnapshot {
@@ -292,6 +326,8 @@ pub struct DebugSnapshot {
     pub element_tree: ElementTree,
     /// Layout information.
     pub layout_info: DebugLayoutInfo,
+    /// Layout information.
+    pub paint_info: DebugPaintInfo,
     /// Event information.
     pub event_info: DebugEventInfo,
     /// Focused widget
@@ -305,6 +341,14 @@ pub fn dump_ui_tree(tree_root: &dyn Element) -> DebugNode<'static> {
     // Values returned by the arena have static lifetime and cannot be invalidated.
     let arena = unsafe { get_debug_arena() };
     dump_ui_tree_inner(arena, "root", tree_root)
+}
+
+pub fn enable_collection(enabled: bool) {
+    ENABLE_COLLECTION.store(enabled, Ordering::Relaxed);
+}
+
+pub fn is_collection_enabled() -> bool {
+    ENABLE_COLLECTION.load(Ordering::Relaxed)
 }
 
 /// Records a snapshot of the element tree after propagating an event.
@@ -461,6 +505,27 @@ pub struct DebugRect(pub Rect);
 
 impl fmt::Debug for DebugRect {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{:?} {:?}]", self.0.origin(), self.0.size())
+        write!(
+            f,
+            "[({:.1},{:.1}) {:.1}×{:.1}]",
+            self.0.origin().x,
+            self.0.origin().y,
+            self.0.size().width,
+            self.0.size().height
+        )
+    }
+}
+
+pub struct DebugAffine(pub Affine);
+
+impl fmt::Debug for DebugAffine {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let coeffs = self.0.as_coeffs();
+        write!(
+            f,
+            "{:6.1} {:6.1} {:6.1}\n{:6.1} {:6.1} {:6.1}\n",
+            coeffs[0], coeffs[2], coeffs[4], coeffs[1], coeffs[3], coeffs[5]
+        )?;
+        Ok(())
     }
 }

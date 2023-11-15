@@ -1,4 +1,5 @@
-use crate::AppGlobals;
+use crate::{AppGlobals, TreeCtx};
+use raw_window_handle::RawWindowHandle;
 use std::{
     any::Any,
     collections::HashMap,
@@ -35,6 +36,7 @@ pub trait WindowHandler {
     fn event(&mut self, event: &winit::event::WindowEvent, time: Duration) -> bool;
     fn as_any(&mut self) -> &mut dyn Any;
     fn window_id(&self) -> WindowId;
+    fn raw_window_handle(&self) -> RawWindowHandle;
 }
 
 /// Application context passed to the main UI function.
@@ -51,7 +53,7 @@ impl<'a> AppCtx<'a> {
     }
 
     pub fn register_window(&mut self, window_id: WindowId, handler: Box<dyn WindowHandler>) {
-        if self.app_state.windows.insert(window_id, handler).is_some() {
+        if self.app_state.windows.insert(window_id, Some(handler)).is_some() {
             panic!("window already registered");
         }
     }
@@ -73,8 +75,11 @@ impl<'a> AppCtx<'a> {
 
 /// Holds the windows and the application logic.
 pub(crate) struct AppState {
-    //pub(crate) windows_by_id: HashMap<u64, WindowId>,
-    pub(crate) windows: HashMap<WindowId, Box<dyn WindowHandler>>,
+    /// All open windows by ID.
+    ///
+    /// The value type is an `Option` because we need to be able to temporarily move out
+    /// the window handler out of AppState to avoid borrowing issues.
+    pub(crate) windows: HashMap<WindowId, Option<Box<dyn WindowHandler>>>,
 }
 
 impl AppState {
@@ -94,13 +99,8 @@ impl AppState {
 
     fn run_ui<F>(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>, logic: &mut F)
     where
-        F: FnMut(&mut AppCtx) + 'static,
+        F: FnMut(&mut TreeCtx) + 'static,
     {
-        let mut app_ctx = AppCtx {
-            app_state: self,
-            event_loop,
-        };
-        (logic)(&mut app_ctx);
     }
 }
 
@@ -175,18 +175,17 @@ impl AppLauncher {
         }
     }
 
-    // FIXME: annoyingly we need to use a closure because of `event_loop`
-    pub fn with_app_ctx<R>(&mut self, f: impl FnOnce(&mut AppCtx) -> R) -> R {
-        let mut app_ctx = AppCtx {
-            app_state: &mut self.app_state,
-            event_loop: &self.event_loop,
-        };
-        f(&mut app_ctx)
+    /// Manually runs a UI function.
+    ///
+    /// Typically this is used to create the initial window before entering the event loop.
+    pub fn with_ctx<R>(&mut self, f: impl FnOnce(&mut TreeCtx) -> R) -> R {
+        let mut tree_ctx = TreeCtx::new(&mut self.app_state, &self.event_loop);
+        f(&mut tree_ctx)
     }
 
-    pub fn run<F>(self, mut ui_fn: F)
+    pub fn run<F>(self, mut logic: F)
     where
-        F: FnMut(&mut AppCtx) + 'static,
+        F: FnMut(&mut TreeCtx) + 'static,
     {
         let event_loop = self.event_loop;
         let mut app_state = self.app_state;
@@ -212,9 +211,12 @@ impl AppLauncher {
 
                 match event {
                     winit::event::Event::WindowEvent { window_id, event } => {
-                        // dispatch to the appropriate window widget
+                        // dispatch to the appropriate window handler
                         if let Some(window) = app_state.windows.get_mut(&window_id) {
-                            force_next_ui |= window.event(&event, event_time);
+                            force_next_ui |= window
+                                .as_mut()
+                                .expect("Event received while running app logic. This should not happen.")
+                                .event(&event, event_time);
                         } else {
                             warn!("event for unknown window {:?}", window_id);
                         }
@@ -223,9 +225,10 @@ impl AppLauncher {
                         #[cfg(feature = "debug_window")]
                         debug_window.request_redraw();
 
-                        // Application update code.
+                        // Run the application logic.
                         // It can call `elwt.exit()` to exit the event loop, and request window repaints.
-                        app_state.run_ui(elwt, &mut ui_fn);
+                        let mut cx = TreeCtx::new(&mut app_state, elwt);
+                        logic(&mut cx);
                     }
                     _ => (),
                 }

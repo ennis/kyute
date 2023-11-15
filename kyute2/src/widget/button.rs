@@ -6,39 +6,13 @@ use crate::{
     theme::Theme,
     widget::{
         prelude::*, Align, BorderStyle, Clickable, Constrained, DecoratedBox, Frame, Padding, RoundedRectBorder,
-        ShapeDecoration, Text, WidgetExt,
+        ShapeDecoration, Text, WidgetExt, WidgetState,
     },
     Alignment, Color, Widget,
 };
 use kurbo::{Insets, Vec2};
-use kyute2::widget::WidgetState;
 use smallvec::smallvec;
 use std::sync::Arc;
-
-/*border-radius: 8px;
-padding: 3px;
-min-width: 80px;
-min-height: 30px;
-
-[$dark-mode] {
-    background: rgb(88 88 88);
-    border: solid 1px rgb(49 49 49);
-    box-shadow: inset 0px 1px rgb(115 115 115), 0px 1px 2px -1px rgb(49 49 49);
-    [:hover] background: rgb(100 100 100);
-    [:focus] border: solid 1px #3895f2;
-    [:active] background: rgb(60 60 60);
-    [:active] box-shadow: none;
-}
-
-[!$dark-mode] {
-    background: rgb(255 255 255);
-    border: solid 1px rgb(180 180 180);
-    box-shadow: 0px 1px 3px -1px rgb(180 180 180);
-    [:hover] background: rgb(240 240 240);
-    [:active] background: rgb(240 240 240);
-    [:active] box-shadow: none;
-    [:focus] border: solid 1px #3895f2;
-}*/
 
 pub fn button(label: &str) -> Clickable<impl Widget> {
     // FIXME: annoyingly we need to allocate to move the string in the closure

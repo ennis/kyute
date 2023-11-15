@@ -119,14 +119,6 @@ impl Element for Box<dyn Element> {
 pub struct TransformNode<T: ?Sized = dyn Element> {
     /// Parent-to-local transform.
     pub transform: Affine,
-
-    // In debug mode, track the layout and final transform of the element,
-    // TODO: remove this, we now record the layout for every element in LayoutCtx
-    #[cfg(debug_assertions)]
-    pub(crate) window_transform: Affine,
-    #[cfg(debug_assertions)]
-    pub(crate) geometry: Geometry,
-
     pub content: T,
 }
 
@@ -135,10 +127,6 @@ impl<T: Sized> TransformNode<T> {
         TransformNode {
             transform: Affine::IDENTITY,
             content,
-            #[cfg(debug_assertions)]
-            window_transform: Default::default(),
-            #[cfg(debug_assertions)]
-            geometry: Default::default(),
         }
     }
 }
@@ -192,18 +180,11 @@ impl<T: Element> Element for TransformNode<T> {
 
     /// Calls `layout` on the content element.
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
-        let result = ctx.layout(&mut self.content, params);
-
-        #[cfg(debug_assertions)]
-        {
-            self.geometry = result;
-        }
-
-        result
+        ctx.layout(&mut self.content, params)
     }
 
     fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        event.with_transform(&self.transform, |event| self.content.event(ctx, event))
+        event.with_transform(&self.transform, |event| ctx.event(&mut self.content, event))
     }
 
     /*/// Propagates an event to the content element, applying the transform.
@@ -229,12 +210,7 @@ impl<T: Element> Element for TransformNode<T> {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        #[cfg(debug_assertions)]
-        {
-            self.window_transform = ctx.window_transform;
-        }
-
-        ctx.with_transform(&self.transform, |ctx| self.content.paint(ctx))
+        ctx.with_transform(&self.transform, |ctx| ctx.paint(&mut self.content))
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -244,13 +220,6 @@ impl<T: Element> Element for TransformNode<T> {
     fn debug(&self, w: &mut DebugWriter) {
         w.type_name("TransformNode");
         w.property("transform", self.transform);
-
-        #[cfg(debug_assertions)]
-        {
-            w.property("window_transform", self.window_transform);
-            w.property("geometry", self.geometry);
-        }
-
         w.child("content", &self.content);
     }
 }
