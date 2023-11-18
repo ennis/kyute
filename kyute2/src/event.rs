@@ -1,8 +1,7 @@
-use crate::{keyboard_types::Modifiers, Affine, ElementId, Point};
-use std::{cell::RefCell, collections::HashSet, fmt};
-use tracing::warn;
+use std::fmt;
 
 pub use crate::keyboard_types::KeyboardEvent;
+use crate::{keyboard_types::Modifiers, Affine, ElementId, Point};
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -132,7 +131,7 @@ impl PointerEvent {
         self.transform.inverse() * self.position
     }
 
-    pub fn transformed(mut self, transform: Affine) -> PointerEvent {
+    pub fn transformed(self, transform: Affine) -> PointerEvent {
         let transform = self.transform * transform;
         PointerEvent { transform, ..self }
     }

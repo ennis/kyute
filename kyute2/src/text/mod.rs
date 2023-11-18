@@ -1,10 +1,8 @@
-use crate::Color;
-use skia_safe as sk;
+use std::{cell::OnceCell, sync::Arc};
+
 use skia_safe::{textlayout::FontCollection, FontMgr};
-use std::{
-    cell::OnceCell,
-    sync::{Arc, Mutex, OnceLock},
-};
+
+use crate::Color;
 
 thread_local! {
     static FONT_COLLECTION: OnceCell<FontCollection> = OnceCell::new();

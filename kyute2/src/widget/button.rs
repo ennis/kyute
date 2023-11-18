@@ -1,3 +1,8 @@
+use std::sync::Arc;
+
+use kurbo::{Insets, Vec2};
+use smallvec::smallvec;
+
 use crate::{
     context::Ambient,
     drawing::BoxShadow,
@@ -5,14 +10,11 @@ use crate::{
     theme,
     theme::Theme,
     widget::{
-        prelude::*, Align, BorderStyle, Clickable, Constrained, DecoratedBox, Frame, Padding, RoundedRectBorder,
+        prelude::*, Align, BorderStyle, Clickable, Constrained, DecoratedBox, Padding, RoundedRectBorder,
         ShapeDecoration, Text, WidgetExt, WidgetState,
     },
     Alignment, Color, Widget,
 };
-use kurbo::{Insets, Vec2};
-use smallvec::smallvec;
-use std::sync::Arc;
 
 pub fn button(label: &str) -> Clickable<impl Widget> {
     // FIXME: annoyingly we need to allocate to move the string in the closure

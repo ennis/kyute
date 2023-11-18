@@ -1,19 +1,20 @@
 //! Grid layout.
 //!
+use std::{any::Any, borrow::Cow, mem, ops::Range};
+
+use kurbo::{Insets, Point, Size, Vec2};
+use skia_safe as sk;
+use tracing::{error, trace};
+use tracy_client::span;
+
 use crate::{
     debug_util::DebugWriter,
     drawing::{Paint, ToSkia},
     element::TransformNode,
     layout::place_into,
-    widget::Axis,
     Alignment, AnyWidget, BoxConstraints, ChangeFlags, Color, Element, ElementId, Event, EventCtx, Geometry,
-    HitTestResult, LayoutCtx, LengthOrPercentage, PaintCtx, TreeCtx, Widget,
+    HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
 };
-use kurbo::{Insets, Point, Size, Vec2};
-use kyute2_macros::grid_template;
-use skia_safe as sk;
-use std::{any::Any, borrow::Cow, mem, ops::Range};
-use tracing::{error, trace, trace_span};
 
 /// Length of a grid track.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -162,7 +163,7 @@ enum GridAxis {
     Column,
 }
 
-impl GridAxis {
+/*impl GridAxis {
     fn visual_axis(self) -> Axis {
         match self {
             GridAxis::Row => Axis::Horizontal,
@@ -176,8 +177,9 @@ impl GridAxis {
             GridAxis::Column => Axis::Horizontal,
         }
     }
-}
+}*/
 
+/*
 /// Returns the size of a box along the specified axis.
 fn size_across(axis: GridAxis, size: Size) -> f64 {
     // TODO depends on the writing mode
@@ -185,7 +187,7 @@ fn size_across(axis: GridAxis, size: Size) -> f64 {
         GridAxis::Row => size.height,
         GridAxis::Column => size.width,
     }
-}
+}*/
 
 //grid_template! { GRID:[START] 100px 1fr 1fr [END] / [TOP] auto[BOTTOM] }
 
@@ -397,7 +399,7 @@ impl Element for GridElement {
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
-        let _span = trace_span!("grid layout", id = ?self.id).entered();
+        let _span = span!("Grid layout");
 
         // TODO the actual direction of rows and columns depends on the writing mode
         // When (or if) we support other writing modes, rewrite this. Layout is complicated!
@@ -436,7 +438,7 @@ impl Element for GridElement {
         let mut row_baselines: Vec<f64> = vec![0.0; self.layout.row_layout.len()];
 
         {
-            let _span = trace_span!("grid collect row baselines").entered();
+            let _span = span!("grid layout: collect row baselines");
             for item in self.content.iter() {
                 if item.y_align == Alignment::FirstBaseline || item.y_align == Alignment::LastBaseline {
                     // TODO last baseline
@@ -447,7 +449,7 @@ impl Element for GridElement {
         }
 
         {
-            let _span = trace_span!("grid item measure & place").entered();
+            let _span = span!("grid layout: item measure & place");
             for item in self.content.iter_mut() {
                 //let (column_start, column_end) = item.column_range;
                 //let (row_start, row_end) = item.row_range.get();
@@ -468,8 +470,8 @@ impl Element for GridElement {
                 subconstraints.min.height = 0.0;
 
                 let child_layout = ctx.layout(&mut item.content, &subconstraints);
-                trace!("[{:?}] constraints: {:?}", item.content.id(), subconstraints);
-                trace!("[{:?}] layout: {:?}", item.content.id(), child_layout);
+                //trace!("[{:?}] constraints: {:?}", item.content.id(), subconstraints);
+                //trace!("[{:?}] layout: {:?}", item.content.id(), child_layout);
 
                 // place the item within its grid cell
                 let row = item.row_range.start as usize;
@@ -518,16 +520,16 @@ impl Element for GridElement {
         }
     }*/
 
-    fn natural_width(&mut self, height: f64) -> f64 {
+    fn natural_width(&mut self, _height: f64) -> f64 {
         // Not sure how to implement that more efficiently other than just recomputing the whole layout
         todo!()
     }
 
-    fn natural_height(&mut self, width: f64) -> f64 {
+    fn natural_height(&mut self, _width: f64) -> f64 {
         todo!()
     }
 
-    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
+    fn natural_baseline(&mut self, _params: &BoxConstraints) -> f64 {
         // argh
         todo!()
     }
@@ -811,13 +813,15 @@ impl GridElement {
     ///
     /// Returns the computed row and column count.
     fn place_items(&mut self) -> (usize, usize) {
-        trace!("=== [{:?}] placing {} items ===", self.id, self.content.len());
+        let _span = span!("grid layout: place items");
+
+        /*trace!("=== [{:?}] placing {} items ===", self.id, self.content.len());
         trace!(
             "{} template rows, {} template columns, autoflow: {:?}",
             self.template.rows.len(),
             self.template.columns.len(),
             self.flow
-        );
+        );*/
 
         let mut final_row_count = self.template.rows.len();
         let mut final_column_count = self.template.columns.len();
@@ -844,7 +848,7 @@ impl GridElement {
             final_row_count = final_row_count.max(row_range.end as usize);
             final_column_count = final_column_count.max(column_range.end as usize);
 
-            trace!(
+            /*trace!(
                 "{:?}: rows {}..{} columns {}..{} (area = {:?}, cursor = {:?})",
                 item.content.id(),
                 row_range.start,
@@ -853,17 +857,17 @@ impl GridElement {
                 column_range.end,
                 item.area,
                 flow_cursor
-            );
+            );*/
 
             item.row_range = row_range.start..row_range.end;
             item.column_range = column_range.start..column_range.end;
         }
 
-        trace!(
+        /*trace!(
             "final track count: rows={} columns={}",
             final_row_count,
             final_column_count
-        );
+        );*/
 
         (final_row_count, final_column_count)
     }
@@ -878,7 +882,7 @@ impl GridElement {
     /// A tuple `(total_size, changed)` with the total track size including gaps + whether the grid line positions have changed since last time.
     fn compute_track_sizes(
         &mut self,
-        layout_ctx: &mut LayoutCtx,
+        _layout_ctx: &mut LayoutCtx,
         constraints: &BoxConstraints,
         axis: GridAxis,
         track_count: usize,
@@ -886,14 +890,14 @@ impl GridElement {
         row_gap: f64,
         column_gap: f64,
     ) -> (f64, bool) {
-        let _span = trace_span!("grid track sizing", ?axis).entered();
+        let _span = span!("grid layout: grid track sizing");
 
         let gap = match axis {
             GridAxis::Row => row_gap,
             GridAxis::Column => column_gap,
         };
 
-        trace!("=== [{:?}] laying out: {:?} ===", self.id, axis);
+        //trace!("=== [{:?}] laying out: {:?} ===", self.id, axis);
 
         // base sizes (cross-axis) of the tracks (column widths, or row heights)
         let mut base_size = vec![0.0; track_count];
@@ -902,7 +906,7 @@ impl GridElement {
 
         // for each track, update base_size and growth limit
         for i in 0..track_count {
-            trace!("--- laying out track {} ---", i);
+            //trace!("--- laying out track {} ---", i);
 
             // If automatic sizing is requested (for min or max), compute the items natural sizes (result of layout with unbounded boxconstraints)
             // Also, for rows (axis == TrackAxis::Row) with AlignItems::Baseline, compute the max baseline offset of all items in the track
@@ -938,7 +942,7 @@ impl GridElement {
                     }
                 }
 
-                trace!("track #{} max_natural_size={:?}", i, max_natural_size);
+                //trace!("track #{} max_natural_size={:?}", i, max_natural_size);
             }
 
             // apply min size constraint
@@ -1009,7 +1013,7 @@ impl GridElement {
         }
 
         //tracing::trace!("{:?} base_size={:?}, growth_limit={:?}", axis, base_size, growth_limit);
-        let mut layout = match axis {
+        let layout = match axis {
             GridAxis::Row => &mut self.layout.row_layout,
             GridAxis::Column => &mut self.layout.column_layout,
         };

@@ -1,37 +1,26 @@
-use crate::{
-    application::{AppState, ExtEvent},
-    context::ElementTree,
-    debug_util,
-    debug_util::{
-        DebugAffine, DebugArena, DebugLayoutInfo, DebugNode, DebugRect, DebugSnapshot, DebugSnapshotCause,
-        ElementPtrId, PropertyValue, PropertyValueKind,
-    },
-    window::{DebugOverlayData, UiHostWindowHandler},
-    Element, ElementId, Geometry, PaintCtx,
-};
+use std::collections::HashMap;
+
 use egui::{
-    collapsing_header::CollapsingState,
-    epaint::text,
-    text::{Fonts, LayoutJob},
-    vec2, Align2, CentralPanel, CollapsingHeader, Color32, FontFamily, FontId, Frame, Grid, Rect, Response, RichText,
-    Sense, SidePanel, Stroke, TextFormat, TextStyle, TopBottomPanel, Ui, WidgetText,
+    vec2, Align2, CentralPanel, CollapsingHeader, Color32, FontFamily, FontId, Frame, Grid, Rect, RichText, Sense,
+    SidePanel, Stroke, TextStyle, TopBottomPanel, Ui,
 };
-use egui_json_tree::JsonTree;
-use egui_wgpu::{wgpu, wgpu::TextureFormat};
-use egui_winit::winit::event::Event;
+use egui_wgpu::wgpu;
 use kurbo::Affine;
-use kyute2::debug_util::{get_debug_snapshots, DebugPaintInfo};
-use once_cell::sync::OnceCell;
-use raw_window_handle::RawWindowHandle;
-use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
-    hash::Hasher,
-    mem, ptr,
-};
 use winit::{
     event::WindowEvent,
     event_loop::EventLoopWindowTarget,
-    window::{Window, WindowBuilder},
+    window::{Window, WindowBuilder, WindowId},
+};
+
+use crate::{
+    application::{AppState, ExtEvent},
+    debug_util,
+    debug_util::{
+        get_debug_snapshots, DebugAffine, DebugRect, ElementDebugNode, ElementPtrId, LayoutDebugInfo, PaintDebugInfo,
+        PropertyValueKind, SnapshotCause, WindowSnapshot,
+    },
+    window::{DebugOverlay, WindowPaintOptions},
+    ElementId, Geometry,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -44,7 +33,7 @@ struct DebugElementLayout {
     geometry: Geometry,
 }
 
-fn debug_element_layout(debug_root: &DebugNode, target: ElementPtrId) -> Option<DebugElementLayout> {
+fn debug_element_layout(debug_root: &ElementDebugNode, target: ElementPtrId) -> Option<DebugElementLayout> {
     if let Some(node) = debug_root.find_by_ptr(target) {
         let mut layout = DebugElementLayout {
             parent_transform: Default::default(),
@@ -60,16 +49,19 @@ fn debug_element_layout(debug_root: &DebugNode, target: ElementPtrId) -> Option<
     }
 }
 
-struct DebugWindowState {
+struct DebugState {
     selection: Option<ElementPtrId>,
     hover_selection: Option<ElementPtrId>,
     focused: Option<ElementId>,
     pointer_grab: Option<ElementId>,
     show_current_snapshot: bool,
     snapshot_index: usize,
+    force_continuous_redraw: bool,
+    force_relayout: bool,
+    debug_overlays: HashMap<WindowId, DebugOverlay>,
 }
 
-fn element_in_propgation_path(debug_snapshot: &DebugSnapshot, element_ptr_id: ElementPtrId) -> bool {
+fn element_in_propgation_path(debug_snapshot: &WindowSnapshot, element_ptr_id: ElementPtrId) -> bool {
     debug_snapshot
         .event_info
         .elements
@@ -78,9 +70,15 @@ fn element_in_propgation_path(debug_snapshot: &DebugSnapshot, element_ptr_id: El
         .is_some()
 }
 
-impl DebugWindowState {
+impl DebugState {
     /// Draw a row (and its children) of the element tree.
-    fn draw_element_tree_node(&mut self, ui: &mut Ui, node: &DebugNode, debug_snapshot: &DebugSnapshot, level: u32) {
+    fn draw_element_tree_node(
+        &mut self,
+        ui: &mut Ui,
+        node: &ElementDebugNode,
+        debug_snapshot: &WindowSnapshot,
+        level: u32,
+    ) {
         let id = ui.id();
         let mut expanded: bool = ui.data(|data| data.get_temp(id).unwrap_or(true));
 
@@ -136,7 +134,7 @@ impl DebugWindowState {
 
         // Layer row & label
         {
-            let pixel_rect = response_bg.rect.shrink(0.5);
+            let _pixel_rect = response_bg.rect.shrink(0.5);
             ui.painter().rect(response_bg.rect, 0.0, bg_color, stroke);
 
             ui.allocate_ui_at_rect(text_rect, |ui: &mut egui::Ui| {
@@ -211,7 +209,7 @@ impl DebugWindowState {
         {
             // useless button
             let rect = Rect::from_center_size(delete_icon_pos, vec2(16.0, 16.0));
-            let resp = ui.allocate_rect(rect, Sense::click());
+            let _resp = ui.allocate_rect(rect, Sense::click());
             ui.painter().text(
                 delete_icon_pos,
                 Align2::CENTER_CENTER,
@@ -234,21 +232,27 @@ impl DebugWindowState {
         ui.data_mut(|data| data.insert_temp(id, expanded));
     }
 
-    fn element_tree_panel_contents(&mut self, ui: &mut Ui, debug_snapshot: &DebugSnapshot) {
+    fn element_tree_panel_contents(&mut self, ui: &mut Ui, debug_snapshot: &WindowSnapshot) {
         self.hover_selection = None;
 
+        ui.heading(format!(
+            "Window {} ({:?})",
+            u64::from(debug_snapshot.window),
+            debug_snapshot.window_title
+        ));
+        ui.separator();
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
             self.draw_element_tree_node(ui, &debug_snapshot.root, debug_snapshot, 0);
         });
 
-        // element tree
-        CollapsingHeader::new("Element Tree").default_open(true).show(ui, |ui| {
-            Grid::new("element_tree").num_columns(2).striped(true).show(ui, |ui| {
+        // ID tree
+        CollapsingHeader::new("ID Tree").default_open(true).show(ui, |ui| {
+            Grid::new("id_tree").num_columns(2).striped(true).show(ui, |ui| {
                 ui.label("Child");
                 ui.label("Parent");
                 ui.end_row();
-                for (child, parent) in debug_snapshot.element_tree.iter() {
+                for (child, parent) in debug_snapshot.element_id_tree.map.iter() {
                     ui.label(format!("{:08X}", child.to_u64() >> 32));
                     ui.label(format!("{:08X}", parent.to_u64() >> 32));
                     ui.end_row();
@@ -257,7 +261,7 @@ impl DebugWindowState {
         });
     }
 
-    fn event_panel_contents(&mut self, ui: &mut Ui, debug_snapshot: &DebugSnapshot) {
+    fn event_panel_contents(&mut self, ui: &mut Ui, debug_snapshot: &WindowSnapshot) {
         ui.heading("Event delivery");
 
         Grid::new("layout").num_columns(3).striped(true).show(ui, |ui| {
@@ -283,9 +287,9 @@ impl DebugWindowState {
     fn property_panel_contents(
         &mut self,
         ui: &mut Ui,
-        debug_root: &DebugNode,
-        layout_info: &DebugLayoutInfo,
-        paint_info: &DebugPaintInfo,
+        debug_root: &ElementDebugNode,
+        layout_info: &LayoutDebugInfo,
+        paint_info: &PaintDebugInfo,
     ) {
         if let Some(selection) = self.selection {
             if let Some(layout_info) = layout_info.get(selection) {
@@ -342,7 +346,9 @@ impl DebugWindowState {
         }
     }
 
-    fn update_debug_overlay(&mut self, handler: &mut UiHostWindowHandler, snapshot: &DebugSnapshot) {
+    fn update_debug_overlays(&mut self, snapshot: &WindowSnapshot) {
+        self.debug_overlays.clear();
+
         // element selected for debug overlay
         let overlay_element = self.hover_selection.or(self.selection);
 
@@ -353,26 +359,19 @@ impl DebugWindowState {
                     let paint_rect = paint_info
                         .transform
                         .transform_rect_bbox(layout_info.geometry.paint_bounding_rect);
-                    handler.set_debug_overlay(Some(DebugOverlayData {
-                        debug_bounds: vec![paint_rect],
-                    }));
+                    self.debug_overlays.insert(
+                        snapshot.window,
+                        DebugOverlay {
+                            debug_bounds: vec![paint_rect],
+                        },
+                    );
                     return;
                 }
             }
         }
-
-        handler.set_debug_overlay(None);
     }
 
-    fn ui(&mut self, ctx: &egui::Context, app_state: &mut AppState) {
-        // TODO: pick window
-        let Some((id, window)) = app_state.windows.iter_mut().next() else {
-            return;
-        };
-        let Some(handler) = window.as_any().downcast_mut::<UiHostWindowHandler>() else {
-            return;
-        };
-
+    fn ui(&mut self, ctx: &egui::Context, _app_state: &mut AppState) {
         let snapshots = get_debug_snapshots();
         let num_snapshots = snapshots.len();
 
@@ -387,8 +386,9 @@ impl DebugWindowState {
         };
 
         let snapshot = &snapshots[snapshot_index];
-        self.focused = snapshot.focused;
-        self.pointer_grab = snapshot.pointer_grab;
+
+        //self.focused = snapshot.focused;
+        //self.pointer_grab = snapshot.pointer_grab;
 
         TopBottomPanel::top("event_selector_panel")
             .default_height(80.0)
@@ -398,9 +398,9 @@ impl DebugWindowState {
                     "Snapshot #{} ({})",
                     snapshot_index,
                     match snapshot.cause {
-                        DebugSnapshotCause::Relayout => "After Relayout",
-                        DebugSnapshotCause::Event => "After Event",
-                        DebugSnapshotCause::AfterPaint => "After Paint",
+                        SnapshotCause::Relayout => "After Relayout",
+                        SnapshotCause::Event => "After Event",
+                        SnapshotCause::AfterPaint => "After Paint",
                     }
                 ));
 
@@ -426,6 +426,8 @@ impl DebugWindowState {
                     debug_util::enable_collection(v);
                 }
 
+                ui.checkbox(&mut self.force_continuous_redraw, "Force continuous redraw");
+                ui.checkbox(&mut self.force_relayout, "Force relayout");
                 //ui.label(format!("focused: {:?}", snapshot.focused));
                 //ui.label(format!("pointer_grab: {:?}", snapshot.pointer_grab));
             });
@@ -434,7 +436,7 @@ impl DebugWindowState {
             .default_height(200.0)
             .min_height(200.0)
             .show(ctx, |ui| {
-                self.event_panel_contents(ui, snapshot);
+                self.event_panel_contents(ui, &snapshot.window_snapshots[0]);
             });
 
         SidePanel::left("debug_panel")
@@ -442,14 +444,19 @@ impl DebugWindowState {
             .min_width(300.0)
             .frame(Frame::none())
             .show(ctx, |ui| {
-                self.element_tree_panel_contents(ui, snapshot);
-                self.update_debug_overlay(handler, snapshot);
-                handler.window.request_redraw();
+                self.element_tree_panel_contents(ui, &snapshot.window_snapshots[0]);
             });
 
         CentralPanel::default().show(ctx, |ui| {
-            self.property_panel_contents(ui, &snapshot.root, &snapshot.layout_info, &snapshot.paint_info);
+            self.property_panel_contents(
+                ui,
+                &snapshot.window_snapshots[0].root,
+                &snapshot.window_snapshots[0].layout_info,
+                &snapshot.window_snapshots[0].paint_info,
+            );
         });
+
+        self.update_debug_overlays(&snapshot.window_snapshots[0]);
     }
 }
 
@@ -464,18 +471,11 @@ fn setup_custom_fonts(ctx: &egui::Context) {
     );
 
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-    //egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Fill);
-
     fonts
         .families
         .entry(FontFamily::Proportional)
         .or_default()
         .insert(0, "Inter-Medium".to_owned());
-    /*fonts
-    .families
-    .entry(FontFamily::Monospace)
-    .or_default()
-    .insert(0, "roboto".to_owned());*/
     ctx.set_fonts(fonts);
 
     let mut style = (*ctx.style()).clone();
@@ -496,7 +496,7 @@ fn setup_wgpu(
     wgpu::Instance,
     wgpu::Device,
     wgpu::Queue,
-    wgpu::Surface,
+    wgpu::Surface<'static>,
     wgpu::SurfaceConfiguration,
 ) {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -505,7 +505,7 @@ fn setup_wgpu(
         dx12_shader_compiler: Default::default(),
         ..Default::default()
     });
-    let surface = unsafe { instance.create_surface(&window) }.unwrap();
+    let surface = unsafe { instance.create_surface_from_raw(&window) }.unwrap();
 
     // thank the web backend for the async bullshit
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -556,8 +556,8 @@ pub(crate) struct DebugWindow {
     wgpu_queue: wgpu::Queue,
     egui_wgpu: egui_wgpu::Renderer,
     surface_config: wgpu::SurfaceConfiguration,
-    surface: wgpu::Surface,
-    state: DebugWindowState,
+    surface: wgpu::Surface<'static>,
+    state: DebugState,
 }
 
 impl DebugWindow {
@@ -566,9 +566,9 @@ impl DebugWindow {
             visuals: egui::Visuals::light(),
             ..egui::Style::default()
         };*/
-        let mut window = WindowBuilder::new()
+        let window = WindowBuilder::new()
             .with_title("Widget Inspector")
-            .with_visible(true)
+            .with_visible(false) // intiially invisible
             .with_inner_size(winit::dpi::LogicalSize::new(1000.0, 800.0))
             .build(elwt)
             .expect("failed to open debug window");
@@ -576,7 +576,7 @@ impl DebugWindow {
         // lots of bullshit
 
         let (_, device, queue, surface, surface_config) = setup_wgpu(&window);
-        let mut egui_wgpu = egui_wgpu::Renderer::new(&device, surface_config.format, None, 1);
+        let egui_wgpu = egui_wgpu::Renderer::new(&device, surface_config.format, None, 1);
         let mut egui_winit = egui_winit::State::new(&window);
         egui_winit.set_pixels_per_point(window.scale_factor() as f32);
         let mut egui_ctx = egui::Context::default();
@@ -592,15 +592,32 @@ impl DebugWindow {
             surface_config,
             wgpu_queue: queue,
             wgpu_device: device,
-            state: DebugWindowState {
+            state: DebugState {
                 selection: None,
                 hover_selection: None,
                 focused: None,
                 pointer_grab: None,
                 show_current_snapshot: true,
                 snapshot_index: 0,
+                force_continuous_redraw: false,
+                force_relayout: false,
+                debug_overlays: Default::default(),
             },
         }
+    }
+
+    /// Whether the "force continuous redraw" option is checked.
+    pub(crate) fn force_continuous_redraw(&self) -> bool {
+        self.state.force_continuous_redraw
+    }
+
+    /// Returns the debug paint options for the specified window.
+    pub(crate) fn window_paint_options(&self, window_id: WindowId) -> WindowPaintOptions {
+        let mut options = WindowPaintOptions::default();
+        if let Some(overlay) = self.state.debug_overlays.get(&window_id) {
+            options.debug_overlay = Some(overlay.clone());
+        }
+        options
     }
 
     fn window_event(&mut self, event: &WindowEvent, app_state: &mut AppState) {
@@ -618,7 +635,7 @@ impl DebugWindow {
                 let raw_input = self.egui_winit.take_egui_input(&self.window);
                 let egui::FullOutput {
                     platform_output,
-                    repaint_after,
+                    repaint_after: _,
                     textures_delta,
                     shapes,
                 } = self.egui_ctx.run(raw_input, |ctx| self.state.ui(ctx, app_state));
@@ -687,8 +704,6 @@ impl DebugWindow {
                     self.window.request_redraw();
                 }
             }
-
-            _ => {}
         }
     }
 
@@ -698,7 +713,7 @@ impl DebugWindow {
 
     pub(crate) fn event(
         &mut self,
-        elwt: &EventLoopWindowTarget<ExtEvent>,
+        _elwt: &EventLoopWindowTarget<ExtEvent>,
         event: &winit::event::Event<ExtEvent>,
         app_state: &mut AppState,
     ) -> bool {
@@ -715,7 +730,7 @@ impl DebugWindow {
                             // because modifier state isn't passed to KeyboardInput anymore
                             // because the winit API is hostile, or stupid, or both
                             self.modifiers = modifiers.clone();
-                            true
+                            false
                         }
                         WindowEvent::KeyboardInput { event, .. } => {
                             // catch the "Ctrl+F12" key combination to open the debug window
@@ -724,8 +739,10 @@ impl DebugWindow {
                                 && event.state == winit::event::ElementState::Pressed
                             {
                                 self.window.set_visible(true);
+                                true
+                            } else {
+                                false
                             }
-                            true
                         }
                         _ => false,
                     }
@@ -735,6 +752,3 @@ impl DebugWindow {
         }
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// DEBUG OVERLAY

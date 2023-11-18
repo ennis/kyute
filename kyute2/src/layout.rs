@@ -1,6 +1,6 @@
 //! Types and functions used for layouting widgets.
 use crate::{LengthOrPercentage, Rect, Size};
-use kurbo::{Insets, Point, Vec2};
+use kurbo::{Insets, Vec2};
 use std::{
     fmt,
     hash::{Hash, Hasher},

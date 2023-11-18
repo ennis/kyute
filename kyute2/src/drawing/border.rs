@@ -1,10 +1,7 @@
 use crate::{
-    drawing::{BlendMode, Paint, ToSkia},
-    Color, PaintCtx,
+    drawing::{BlendMode, Paint},
+    Color,
 };
-use kurbo::{Shape, Vec2};
-use skia_safe as sk;
-use tracing::warn;
 
 /*
 /// Border reference position

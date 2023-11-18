@@ -1,18 +1,10 @@
 use crate::CRATE;
-use proc_macro::{Diagnostic, Level};
-use proc_macro2::{Literal, TokenStream};
-use quote::{format_ident, quote, ToTokens, TokenStreamExt};
-use std::collections::HashSet;
+use proc_macro2::TokenStream;
+use quote::quote;
 use syn::{
-    braced, bracketed, parenthesized,
+    bracketed, parenthesized,
     parse::{Parse, ParseStream},
-    parse_macro_input, parse_quote,
-    punctuated::Punctuated,
-    spanned::Spanned,
-    token,
-    token::{Brace, Paren, Token},
-    AngleBracketedGenericArguments, Block, Data, ExprClosure, GenericParam, Generics, Ident, LitFloat, LitInt, LitStr,
-    ParenthesizedGenericArguments, Pat, PatIdent, PatTuple, PatWild, Path, Token, Visibility,
+    parse_macro_input, token, Ident, LitFloat, LitInt, Token, Visibility,
 };
 
 enum TrackSize {

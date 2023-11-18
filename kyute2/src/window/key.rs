@@ -520,7 +520,7 @@ pub(crate) fn key_code_from_winit(input: &winit::event::KeyEvent) -> (keyboard_t
         },
         winit::keyboard::Key::Character(str) => Key::Character(str.to_string()),
         winit::keyboard::Key::Unidentified(_) => Key::Unidentified,
-        winit::keyboard::Key::Dead(ch) => Key::Unidentified,
+        winit::keyboard::Key::Dead(_ch) => Key::Unidentified,
     };
 
     (key, code)

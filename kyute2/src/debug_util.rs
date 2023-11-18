@@ -1,24 +1,23 @@
 //! Debugging utilities
-
-use crate::{context::ElementTree, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventKind, Geometry};
-use kurbo::{Affine, Rect};
-use once_cell::sync::OnceCell;
-use serde_json as json;
 use std::{
     any::Any,
     collections::{hash_map::DefaultHasher, HashMap},
     fmt,
-    fmt::{Debug, Formatter},
+    fmt::Debug,
     hash::{Hash, Hasher},
-    mem, ptr,
+    ptr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Mutex, MutexGuard,
     },
     time::Duration,
 };
-use threadbound::ThreadBound;
+
+use kurbo::{Affine, Rect};
+use once_cell::sync::OnceCell;
 use winit::window::WindowId;
+
+use crate::{context::ElementIdTree, BoxConstraints, ChangeFlags, Element, ElementId, EventKind, Geometry};
 
 pub trait PropertyValue: Any + Debug + Send + Sync {
     fn as_any(&self) -> &dyn Any;
@@ -124,17 +123,20 @@ impl<'a> Property<'a> {
     }
 }
 
+/// Debug information about an element in the UI tree.
+///
+/// This is built by the `Element::debug` method.
 #[derive(Copy, Clone)]
-pub struct DebugNode<'a> {
+pub struct ElementDebugNode<'a> {
     pub name: &'a str,
     pub ty: &'a str,
     pub ptr_id: ElementPtrId,
     pub id: ElementId,
     pub properties: &'a [Property<'a>],
-    pub children: &'a [DebugNode<'a>],
+    pub children: &'a [ElementDebugNode<'a>],
 }
 
-impl<'a> DebugNode<'a> {
+impl<'a> ElementDebugNode<'a> {
     pub fn property<T: Any + Copy>(&self, name: &str) -> Option<&'a T> {
         self.properties.iter().find(|p| p.name == name)?.cast()
     }
@@ -143,14 +145,14 @@ impl<'a> DebugNode<'a> {
         self.properties.iter().find(|p| p.name == name)?.as_str()
     }
 
-    pub fn find_by_ptr(&'a self, ptr_id: ElementPtrId) -> Option<&'a DebugNode<'a>> {
+    pub fn find_by_ptr(&'a self, ptr_id: ElementPtrId) -> Option<&'a ElementDebugNode<'a>> {
         if self.ptr_id == ptr_id {
             return Some(self);
         }
         self.children.iter().find_map(|c| c.find_by_ptr(ptr_id))
     }
 
-    pub fn find_by_id(&'a self, id: ElementId) -> Option<&'a DebugNode<'a>> {
+    pub fn find_by_id(&'a self, id: ElementId) -> Option<&'a ElementDebugNode<'a>> {
         if self.id == id {
             return Some(self);
         }
@@ -162,7 +164,7 @@ pub struct DebugWriter<'a> {
     arena: &'a bumpalo::Bump,
     ty: &'a str,
     properties: Vec<Property<'a>>,
-    children: Vec<DebugNode<'a>>,
+    children: Vec<ElementDebugNode<'a>>,
 }
 
 impl<'a> DebugWriter<'a> {
@@ -194,7 +196,7 @@ impl<'a> DebugWriter<'a> {
 
 pub type DebugArena = bumpalo::Bump;
 
-fn dump_ui_tree_inner<'a>(arena: &'a DebugArena, name: &'a str, element: &dyn Element) -> DebugNode<'a> {
+fn dump_ui_tree_inner<'a>(arena: &'a DebugArena, name: &'a str, element: &dyn Element) -> ElementDebugNode<'a> {
     let mut writer = DebugWriter {
         arena,
         ty: "",
@@ -202,7 +204,7 @@ fn dump_ui_tree_inner<'a>(arena: &'a DebugArena, name: &'a str, element: &dyn El
         children: vec![],
     };
     element.debug(&mut writer);
-    DebugNode {
+    ElementDebugNode {
         name,
         ty: writer.ty,
         ptr_id: elem_ptr_id(element),
@@ -215,7 +217,6 @@ fn dump_ui_tree_inner<'a>(arena: &'a DebugArena, name: &'a str, element: &dyn El
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Global debug arena
-static DEBUG_ARENA_LOCK: Mutex<()> = Mutex::new(());
 static mut DEBUG_ARENA: OnceCell<DebugArena> = OnceCell::new();
 static DEBUG_SNAPSHOTS: OnceCell<Mutex<Vec<DebugSnapshot>>> = OnceCell::new();
 static ENABLE_COLLECTION: AtomicBool = AtomicBool::new(true);
@@ -226,7 +227,7 @@ unsafe fn get_debug_arena() -> &'static DebugArena {
 
 /// Debug information collected during painting.
 #[derive(Clone, Debug)]
-pub struct DebugPaintElementInfo {
+pub struct PaintElementDebugInfo {
     /// The element that was painted.
     pub element_ptr: ElementPtrId,
     /// Transform applied to the element (relative to the window).
@@ -234,23 +235,23 @@ pub struct DebugPaintElementInfo {
 }
 
 #[derive(Default, Clone, Debug)]
-pub struct DebugPaintInfo {
-    pub elements: HashMap<ElementPtrId, DebugPaintElementInfo>,
+pub struct PaintDebugInfo {
+    pub elements: HashMap<ElementPtrId, PaintElementDebugInfo>,
 }
 
-impl DebugPaintInfo {
-    pub fn add(&mut self, element_info: DebugPaintElementInfo) {
+impl PaintDebugInfo {
+    pub fn add(&mut self, element_info: PaintElementDebugInfo) {
         self.elements.insert(element_info.element_ptr, element_info);
     }
 
-    pub fn get(&self, ptr_id: ElementPtrId) -> Option<&DebugPaintElementInfo> {
+    pub fn get(&self, ptr_id: ElementPtrId) -> Option<&PaintElementDebugInfo> {
         self.elements.get(&ptr_id)
     }
 }
 
-/// Debug information collected during event propagation.
+/// Debug information about how an element handled an event.
 #[derive(Clone, Debug)]
-pub struct DebugEventElementInfo {
+pub struct EventHandlingDebugInfo {
     /// The element that received the event.
     pub element_ptr: ElementPtrId,
     /// Element ID.
@@ -262,23 +263,24 @@ pub struct DebugEventElementInfo {
     pub change_flags: ChangeFlags,
 }
 
+/// Debug information collected during event propagation.
 #[derive(Default, Clone, Debug)]
-pub struct DebugEventInfo {
-    pub elements: Vec<DebugEventElementInfo>,
+pub struct EventDebugInfo {
+    /// Debug info for each element in the propagation path of the event.
+    pub elements: Vec<EventHandlingDebugInfo>,
 }
 
-impl DebugEventInfo {
-    pub fn add(&mut self, element_info: DebugEventElementInfo) {
+impl EventDebugInfo {
+    pub fn add(&mut self, element_info: EventHandlingDebugInfo) {
         self.elements.push(element_info)
     }
-
-    pub fn iter(&self) -> impl Iterator<Item = &DebugEventElementInfo> {
+    pub fn iter(&self) -> impl Iterator<Item = &EventHandlingDebugInfo> {
         self.elements.iter()
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct DebugLayoutElementInfo {
+pub struct ElementLayoutDebugInfo {
     /// The element that was laid out.
     pub element_ptr: ElementPtrId,
     /// The geometry of the element.
@@ -289,22 +291,22 @@ pub struct DebugLayoutElementInfo {
 
 /// Debug information collected during the layout pass.
 #[derive(Default, Clone, Debug)]
-pub struct DebugLayoutInfo {
-    pub elements: HashMap<ElementPtrId, DebugLayoutElementInfo>,
+pub struct LayoutDebugInfo {
+    pub elements: HashMap<ElementPtrId, ElementLayoutDebugInfo>,
 }
 
-impl DebugLayoutInfo {
-    pub fn add(&mut self, element_info: DebugLayoutElementInfo) {
+impl LayoutDebugInfo {
+    pub fn add(&mut self, element_info: ElementLayoutDebugInfo) {
         self.elements.insert(element_info.element_ptr, element_info);
     }
 
-    pub fn get(&self, ptr_id: ElementPtrId) -> Option<&DebugLayoutElementInfo> {
+    pub fn get(&self, ptr_id: ElementPtrId) -> Option<&ElementLayoutDebugInfo> {
         self.elements.get(&ptr_id)
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum DebugSnapshotCause {
+pub enum SnapshotCause {
     /// Snapshot taken after relayout.
     Relayout,
     /// Snapshot taken after event propagation.
@@ -313,30 +315,39 @@ pub enum DebugSnapshotCause {
     AfterPaint,
 }
 
-pub struct DebugSnapshot {
-    /// The cause of the snapshot.
-    pub cause: DebugSnapshotCause,
-    /// Time since the start of event loop.
-    pub time: Duration,
-    /// The window for which we are recording the snapshot.
+/// Debug snapshot of the state of a single window.
+pub struct WindowSnapshot {
+    /// ID of the window.
     pub window: WindowId,
-    /// The root debug node of the element tree.
-    pub root: DebugNode<'static>,
-    /// Widget tree
-    pub element_tree: ElementTree,
+    /// Window title
+    pub window_title: String,
     /// Layout information.
-    pub layout_info: DebugLayoutInfo,
+    pub layout_info: LayoutDebugInfo,
     /// Layout information.
-    pub paint_info: DebugPaintInfo,
+    pub paint_info: PaintDebugInfo,
     /// Event information.
-    pub event_info: DebugEventInfo,
+    pub event_info: EventDebugInfo,
+    /// The root debug node of the UI tree.
+    pub root: ElementDebugNode<'static>,
     /// Focused widget
     pub focused: Option<ElementId>,
     pub pointer_grab: Option<ElementId>,
+    /// Widget tree
+    pub element_id_tree: ElementIdTree,
+}
+
+/// Debug snapshot of the state of the whole application.
+pub struct DebugSnapshot {
+    /// The cause of the snapshot.
+    pub cause: SnapshotCause,
+    /// Time since the start of event loop.
+    pub time: Duration,
+    /// Snapshots of the state of each window.
+    pub window_snapshots: Vec<WindowSnapshot>,
 }
 
 /// Dumps the given UI tree to a debug tree.
-pub fn dump_ui_tree(tree_root: &dyn Element) -> DebugNode<'static> {
+pub fn dump_ui_tree(tree_root: &dyn Element) -> ElementDebugNode<'static> {
     // SAFETY: we only access the debug arena here, and it's protected by DEBUG_ARENA_LOCK.
     // Values returned by the arena have static lifetime and cannot be invalidated.
     let arena = unsafe { get_debug_arena() };
@@ -351,8 +362,8 @@ pub fn is_collection_enabled() -> bool {
     ENABLE_COLLECTION.load(Ordering::Relaxed)
 }
 
-/// Records a snapshot of the element tree after propagating an event.
-pub fn record_ui_snapshot(snapshot: DebugSnapshot) {
+/// Records a snapshot of the application state.
+pub fn record_app_snapshot(snapshot: DebugSnapshot) {
     let mut snapshots = get_debug_snapshots();
     snapshots.push(snapshot);
 }

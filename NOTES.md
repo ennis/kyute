@@ -2004,7 +2004,6 @@ A generalization of list views.
   - How to do incremental updates?
 
 
-
 ### Sketch
 
 ```rust
@@ -2052,3 +2051,50 @@ struct TreeNode {
 }
 
 ```
+
+## Window event handling
+It works like this:
+- (Application) the event loop receives a window event
+- (WindowHandler) it is passed to the window handler (in event() or paint())
+- (WindowHandler) the window handler handles the event, and determines where the UI event should be sent
+- (WindowHandler) the window handler sends the UI event to the appropriate widget
+
+There's an issue with FocusGained/FocusLost events. Now that those states are app-wide, application code should build
+and send those events. Otherwise, the window handler may end up needing to send a FocusLost event to *another* window,
+which it is not supposed to do.
+
+Modified window event handling:
+- (Application) the event loop receives a window event
+- (WindowHandler) it is passed to the window handler (in window_event() or paint())
+- (WindowHandler) the window handler determines if it is interested in it, and if so, queues events to be propagated
+   by adding them to a queue in AppState
+- (Application) control returns to application
+- (Application) app dequeues pushed events and sends them to the elements, via their corresponding WindowHandler
+- (WindowHandler) event() is called, window handler propagates the event to the element
+
+Other ideas:
+- WindowHandlers have a "UiTreeHandle": handle to a UI tree, visible by the application
+- when registering the window, also optionally register the UI tree
+- application can then send events directly to the UI tree without coordinating with the WindowHandler
+
+Alternative:
+- Windows are just Elements
+- they receive a special type of event (`WindowEvent`).
+
+
+Tentative:
+- the app maintains a list of weak ptrs to window handlers
+- window events received by the app are sent to window handlers
+- window handlers create events and send them to the application
+
+Issue with the current situation: a lot of things are done by the windowhandler, which is common to all windows hosting a UI tree.
+Split that into a reusable component, tentatively named `UiContentHost`.
+Windows with UI content should use this type, and forward the window events to it.
+=> Note sure that's useful, short term: it would be useful if we wanted to host UI in a non-winit window, but then we'd need to have
+an API on UiContentHost to receive window events (in a windowing-crate-agnostic fashion)
+
+=> ignore all this above
+
+
+## ElementIdTree is supremely annoying
+Need to maintain it, store it somewhere, next to the UI element tree. Would  

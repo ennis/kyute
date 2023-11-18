@@ -3,10 +3,11 @@
 //! * `vulkan` : enables vulkan support
 //!     * skia: uses the vulkan backend
 //!     * win32: enables vulkan interop for composition swap chains
+
 #![feature(const_fn_floating_point_arithmetic)]
 
-extern crate core;
-extern crate self as kyute2;
+// TODO why is this needed?
+//extern crate core;
 
 // public modules
 pub mod application;
@@ -20,11 +21,11 @@ pub mod text;
 pub mod theme;
 pub mod utils;
 pub mod widget;
+pub mod window;
 
 // internal modules
 mod app_globals;
 mod asset;
-mod atoms;
 mod backend;
 mod color;
 mod context;
@@ -38,22 +39,20 @@ mod reconcile;
 mod skia_backend;
 mod style;
 mod vec_diff;
-mod window;
 
 // public exports
 pub use app_globals::AppGlobals;
 pub use application::{AppCtx, AppLauncher};
 pub use asset::{Asset, AssetId};
-pub use atoms::Atom;
 pub use color::Color;
-pub use context::{ElementId, ElementTree, EventCtx, HitTestResult, LayoutCtx, PaintCtx, State, TreeCtx};
+pub use context::{ElementId, ElementIdTree, EventCtx, HitTestResult, LayoutCtx, PaintCtx, State, TreeCtx};
 pub use element::Element;
 //pub use environment::{EnvKey, EnvValue, Environment};
 pub use event::{Event, EventKind};
 pub use layout::{Alignment, BoxConstraints, Geometry};
 pub use length::{LengthOrPercentage, UnitExt};
 pub use widget::{AnyWidget, ChangeFlags, Stateful, StatefulElement, Widget};
-pub use window::AppWindowHandle;
+pub use window::{AppWindowHandle, PopupOptions, PopupWindow};
 
 // macro reexports
 pub use kyute2_macros::grid_template;

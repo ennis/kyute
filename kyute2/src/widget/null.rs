@@ -1,9 +1,11 @@
-use crate::{
-    debug_util::DebugWriter, widget::Axis, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry,
-    HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
-};
-use kurbo::Point;
 use std::any::Any;
+
+use kurbo::Point;
+
+use crate::{
+    debug_util::DebugWriter, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry, HitTestResult,
+    LayoutCtx, PaintCtx, TreeCtx, Widget,
+};
 
 /// A widget that does nothing.
 #[derive(Copy, Clone, Default)]
@@ -14,7 +16,7 @@ pub struct Null;
 impl Widget for Null {
     type Element = NullElement;
 
-    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
+    fn build(self, _cx: &mut TreeCtx, _element_id: ElementId) -> Self::Element {
         NullElement
     }
 
@@ -37,7 +39,7 @@ impl Element for NullElement {
         Geometry::ZERO
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&mut self, _ctx: &mut EventCtx, _event: &mut Event) -> ChangeFlags {
         ChangeFlags::NONE
     }
 
@@ -49,11 +51,11 @@ impl Element for NullElement {
         0.0
     }
 
-    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
+    fn natural_baseline(&mut self, _params: &BoxConstraints) -> f64 {
         0.0
     }
 
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
+    fn hit_test(&self, _ctx: &mut HitTestResult, _position: Point) -> bool {
         false
     }
 

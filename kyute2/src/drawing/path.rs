@@ -1,8 +1,6 @@
-use crate::{
-    drawing::{svg_path_to_skia, BoxShadow, Paint, ToSkia},
-    PaintCtx, Rect,
-};
 use skia_safe as sk;
+
+use crate::drawing::{svg_path_to_skia, BoxShadow, Paint};
 
 /// Path visual.
 pub struct Path {

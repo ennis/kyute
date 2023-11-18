@@ -13,7 +13,6 @@ once_cell = "1.17.1"
 threadbound = "0.1.6"
 tracing = "0.1.37"
 graal = { path = "../../graal/graal" , optional = true }
-#kyute-compose = { path = "../kyute-compose" }
 kyute-common = { path="../kyute-common" }
 kyute2-macros = { path="macros" }
 slotmap = "1.0.6"
@@ -28,18 +27,18 @@ roxmltree = { version = "0.18.0", optional = true }
 usvg = { version = "0.32.0", optional = true }
 winit = { path="../../winit" }
 keyboard-types = "0.7.0"
-raw-window-handle = "0.5.2"
+raw-window-handle = "0.6"
 bumpalo = "3.14.0"
 smallvec = "1.11.1"
+tracy-client = "0.16.4"
 
 # Bullshit needed to open another window with egui in it: egui, wgpu renderer, winit integration, pollster
-# because of WGPUs stupid async API, phosphor for icons (let me have that at least).
+# because of WGPUs stupid async API, phosphor for icons
 egui = {  path = "../../egui/crates/egui", optional = true }
 egui-wgpu = { path = "../../egui/crates/egui-wgpu", optional = true }
 egui-winit = { path = "../../egui/crates/egui-winit", optional = true }
 egui-phosphor = { version =  "0.3.0", features = ["fill"], optional = true }
 pollster = { version =  "0.3.0", optional = true }
-egui_json_tree = { version =  "0.1.0", optional = true }
 serde_json = { version =  "1.0", optional = true }
 
 # Windows dependencies
@@ -81,15 +80,12 @@ windows = { version = "0.48", features = [
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.10", features = ["fmt", "env-filter"] }
 tracing-tree = "0.2.1"
-tracing-tracy = "0.10.2"
+#tracing-tracy = "0.10.2"
 spin_sleep = "1.1.1"
-
-[build-dependencies]
-string_cache_codegen = "0.5.2"
 
 [features]
 default = ["d3d", "svg", "debug_window"]
 vulkan = ["dep:graal", "skia-safe/vulkan"]
 d3d = ["skia-safe/d3d"]
 svg = ["dep:roxmltree", "dep:usvg", "dep:svgtypes"]
-debug_window = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit", "dep:egui-phosphor", "dep:pollster", "dep:egui_json_tree", "dep:serde_json"]
+debug_window = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit", "dep:egui-phosphor", "dep:pollster", "dep:serde_json"]

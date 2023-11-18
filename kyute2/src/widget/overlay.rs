@@ -42,7 +42,7 @@ impl<A: Widget + 'static, B: Widget + 'static> Overlay<A, B> {
 impl<A: Widget, B: Widget> Widget for Overlay<A, B> {
     type Element = OverlayElement<A::Element, B::Element>;
 
-    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, _element_id: ElementId) -> Self::Element {
         OverlayElement {
             a: cx.build(self.a),
             b: cx.build(self.b),

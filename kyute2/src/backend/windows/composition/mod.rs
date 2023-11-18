@@ -1,14 +1,9 @@
 //! Windows compositor implementation details
 
-use crate::{
-    backend,
-    backend::windows::event::Win32Event,
-    composition::{ColorType, LayerID},
-    AppGlobals, Size,
-};
 use raw_window_handle::RawWindowHandle;
 use skia_safe as sk;
 use slotmap::SecondaryMap;
+use tracy_client::span;
 use windows::{
     core::ComInterface,
     Foundation::Numerics::Vector2,
@@ -17,10 +12,7 @@ use windows::{
         Graphics::{
             Direct3D12::{ID3D12CommandQueue, ID3D12Device, ID3D12Fence, ID3D12Resource, D3D12_FENCE_FLAG_NONE},
             Dxgi::{
-                Common::{
-                    DXGI_ALPHA_MODE_IGNORE, DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_R16G16B16A16_FLOAT,
-                    DXGI_SAMPLE_DESC,
-                },
+                Common::{DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_SAMPLE_DESC},
                 IDXGIFactory3, IDXGISwapChain3, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
                 DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, DXGI_SWAP_EFFECT_FLIP_DISCARD,
                 DXGI_USAGE_RENDER_TARGET_OUTPUT,
@@ -32,6 +24,13 @@ use windows::{
         },
     },
     UI::Composition::{Compositor as WinCompositor, ContainerVisual, Desktop::DesktopWindowTarget, Visual},
+};
+
+use crate::{
+    backend,
+    backend::windows::event::Win32Event,
+    composition::{ColorType, LayerID},
+    AppGlobals, Size,
 };
 
 //mod swap_chain;
@@ -140,7 +139,9 @@ impl Compositor {
     }
 
     /// Creates a surface layer.
-    pub(crate) fn create_surface_layer(&mut self, id: LayerID, size: Size, format: ColorType) {
+    ///
+    /// FIXME: don't ignore format
+    pub(crate) fn create_surface_layer(&mut self, id: LayerID, size: Size, _format: ColorType) {
         // Create the swap chain backing the layer
         let width = size.width as u32;
         let height = size.height as u32;
@@ -148,6 +149,7 @@ impl Compositor {
         assert!(width != 0 && height != 0, "surface layer cannot be zero-sized");
 
         // create swap chain
+
         let swap_chain_desc = DXGI_SWAP_CHAIN_DESC1 {
             Width: width,
             Height: height,
@@ -208,8 +210,9 @@ impl Compositor {
 
     /// Waits for submitted GPU commands to complete.
     fn wait_for_gpu_command_completion(&mut self) {
+        let _span = span!("wait_for_gpu_command_completion");
         unsafe {
-            let mut fence_value = &mut self.completion_fence_value;
+            let fence_value = &mut self.completion_fence_value;
             *fence_value += 1;
             self.command_queue
                 .Signal(&self.completion_fence, *fence_value)
@@ -273,6 +276,7 @@ impl Compositor {
     ///
     /// TODO explain
     pub(crate) fn wait_for_surface(&mut self, surface: LayerID) {
+        let _span = span!("wait_for_surface");
         let layer = &mut self.visuals[surface];
         let swap_chain = layer.swap_chain.as_mut().expect("layer should be a surface layer");
 
@@ -304,7 +308,7 @@ impl Compositor {
             .cast::<ICompositorDesktopInterop>()
             .expect("could not retrieve ICompositorDesktopInterop");
         let desktop_window_target = interop
-            .CreateDesktopWindowTarget(HWND(win32_handle.hwnd as isize), false)
+            .CreateDesktopWindowTarget(HWND(win32_handle.hwnd.into()), false)
             .expect("could not create DesktopWindowTarget");
         desktop_window_target
             .SetRoot(&self.visuals[id].visual)
@@ -359,6 +363,7 @@ impl Compositor {
 
     /// Creates a skia drawing context for the specified surface layer.
     pub(crate) fn acquire_drawing_surface(&mut self, surface_layer: LayerID) -> DrawableSurface {
+        let _span = span!("acquire_drawing_surface");
         let layer = &mut self.visuals[surface_layer];
         let swap_chain = layer.swap_chain.as_mut().expect("layer should be a surface layer");
 
@@ -393,9 +398,18 @@ impl Compositor {
             .as_mut()
             .expect("layer should be a surface layer");
 
-        unsafe {
+        {
+            let _span = span!("skia: flush_and_submit");
             surface.surface.flush_and_submit();
+        }
+
+        unsafe {
+            let _span = span!("DX12: present");
             swap_chain.inner.Present(1, 0).unwrap();
+
+            if let Some(client) = tracy_client::Client::running() {
+                client.frame_mark();
+            }
         }
     }
 }

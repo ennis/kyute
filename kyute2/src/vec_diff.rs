@@ -1,6 +1,3 @@
-use crate::{AnyWidget, ChangeFlags, Element, TreeCtx, Widget};
-use std::cmp::Ordering;
-
 /*/// An element of a vector diff.
 pub enum DiffElem<T> {
     /// Add element at the specified position.

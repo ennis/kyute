@@ -1,15 +1,33 @@
 //! Widget tree manipulation and traversal.
-use crate::{
-    context::TreeCtx, Alignment, BoxConstraints, Element, ElementId, Event, EventCtx, Geometry, HitTestResult,
-    LayoutCtx, PaintCtx, UnitExt,
-};
-use bitflags::bitflags;
-use kurbo::Size;
 use std::{
     any::{Any, TypeId},
     marker::PhantomData,
     ops::DerefMut,
 };
+
+use bitflags::bitflags;
+use kurbo::Size;
+
+pub use align::Align;
+pub use background::Background;
+pub use button::button;
+pub use clickable::Clickable;
+pub use constrained::Constrained;
+pub use decoration::{BorderStyle, DecoratedBox, RoundedRectBorder, ShapeBorder, ShapeDecoration};
+pub use flex::{VBox, VBoxElement};
+pub use frame::Frame;
+pub use grid::{Grid, GridTemplate};
+pub use null::Null;
+pub use overlay::Overlay;
+pub use padding::Padding;
+pub use text::Text;
+
+use crate::{
+    context::TreeCtx, Alignment, BoxConstraints, Element, ElementId, Event, EventCtx, Geometry, HitTestResult,
+    LayoutCtx, PaintCtx,
+};
+////////////////////////////////////////////////////////////////////////////////////////////////////
+use crate::{context::State, debug_util::DebugWriter, drawing::Paint, widget::overlay::ZOrder, Insets, Point};
 
 pub mod align;
 pub mod background;
@@ -34,23 +52,6 @@ pub mod prelude {
         EventKind, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Rect, Size, State, TreeCtx, Widget,
     };
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-use crate::{context::State, debug_util::DebugWriter, drawing::Paint, widget::overlay::ZOrder, Insets, Point, Rect};
-
-pub use align::Align;
-pub use background::Background;
-pub use button::button;
-pub use clickable::Clickable;
-pub use constrained::Constrained;
-pub use decoration::{BorderStyle, DecoratedBox, RoundedRectBorder, ShapeBorder, ShapeDecoration};
-pub use flex::{VBox, VBoxElement};
-pub use frame::Frame;
-pub use grid::{Grid, GridTemplate};
-pub use null::Null;
-pub use overlay::Overlay;
-pub use padding::Padding;
-pub use text::Text;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -216,6 +217,12 @@ pub trait WidgetExt: Widget + Sized + 'static {
         Overlay::new(self, Background::new(paint.into()), ZOrder::Below)
     }
 
+    /// Shows an overlay on top of the widget.
+    #[must_use]
+    fn overlay<W: Widget + 'static>(self, overlay: W) -> Overlay<Self, W> {
+        Overlay::new(self, overlay, ZOrder::Above)
+    }
+
     /// Makes the widget clickable.
     ///
     /// # Example
@@ -305,7 +312,7 @@ where
 {
     type Element = W::Element;
 
-    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
         cx.with_ambient(&self.value, move |cx| cx.build(self.inner))
     }
 
@@ -339,7 +346,7 @@ where
 {
     type Element = W::Element;
 
-    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
         let prev = cx.ambient::<T>().cloned().unwrap_or_default();
         let value = (self.f)(prev);
         cx.with_ambient(&value, move |cx| cx.build(self.inner))

@@ -1,29 +1,21 @@
+use std::{cell::OnceCell, sync::Arc};
+
 use kurbo::Insets;
+use tracing_subscriber::layer::SubscriberExt;
+use winit::window::WindowBuilder;
+
 use kyute2::{
-    drawing,
-    drawing::BoxShadow,
-    make_uniform_data, shader, shader_paint,
+    shader_paint,
     text::{TextSpan, TextStyle},
-    theme,
     theme::palette,
     widget::{
-        button, grid::GridArea, Background, BorderStyle, Frame, Grid, Null, RoundedRectBorder, ShapeDecoration, Text,
+        button, grid::GridArea, Background, BorderStyle, Frame, Grid, RoundedRectBorder, ShapeDecoration, Text,
         WidgetExt,
     },
-    Alignment, AppCtx, AppLauncher, AppWindowHandle, Color, Stateful, UnitExt, Widget,
+    window::PopupOptions,
+    Alignment, AppLauncher, AppWindowHandle, PopupWindow, Size, Stateful, TreeCtx, UnitExt, Widget,
 };
 use kyute2_macros::grid_template;
-use skia_safe as sk;
-use std::{
-    any::Any,
-    borrow::Cow,
-    cell::OnceCell,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tracing::info;
-use tracing_subscriber::{layer::SubscriberExt, Layer};
-use winit::window::WindowBuilder;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -119,23 +111,53 @@ fn main_window_contents() -> impl Widget {
         },
     );
 
-    let button = button("Click me").on_clicked(move |cx| {
-        eprintln!("You did it!");
-    });
-
-    // issue: by threading the state implicitly through TreeCtx
-    // there's no way to restrain the amount of state accessible by child widgets
-    // and thus the amount of state they depend on.
-    // -> we cannot assume that a widget is dependent on only a subset of the state in the stack.
-    //    and the widget must be considered dirty if any item in the stack has changed.
+    // Issue: opening a child window requires a TreeCtx, which, if the function doesn't get one,
+    // requires creating a dummy widget so that its `build` method is called. In turn, this requires
+    // a dummy element because all widgets produce elements.
     //
-    // Solutions?
-    // - pass the state explicitly: Widget becomes Widget<State>, `build(&mut self, state: &mut State) -> Self::Element` method passes the state down.
-    //     - and now we've reinvented xilem (which isn't a bad thing in itself)
-    //     - ... and also https://github.com/audulus/rui apparently
-    //      They have a "ViewId" which is basically our ElementId
-    //      Interestingly, they have only one trait "View".
-    // - Inspired by https://github.com/audulus/rui =>
+    // It would be better if we could open child windows without needing an "anchor" into the UI tree
+    // of the parent window (because it's completely useless).
+
+    //let menu = Stateful::new();
+
+    #[derive(Default)]
+    struct MenuState {
+        open: bool,
+    }
+
+    let menu_button = Stateful::new(
+        || MenuState::default(),
+        |cx, state| {
+            let b = button("Click me").on_clicked(move |cx| {
+                let state = &mut cx[state];
+                eprintln!("swatch clicked: {}", state.open);
+                state.open = !state.open;
+            });
+
+            let window_widget = PopupWindow {
+                content: move |cx: &mut TreeCtx| {
+                    /*let text_style = Arc::new(
+                        TextStyle::new()
+                            .font_size(20.0)
+                            .font_family("Courier New")
+                            .color(palette::PINK_200),
+                    );
+                    let text = TextSpan::new("It's a menu!", text_style);
+                    Text::new(text)*/
+                    button("close it").on_clicked(move |cx| {
+                        cx[state].open = false;
+                    })
+                },
+                options: PopupOptions {
+                    opened: cx[state].open,
+                    size: Some(Size::new(200., 200.)),
+                    position: None,
+                },
+            };
+
+            b.overlay(window_widget)
+        },
+    );
 
     grid.add(
         GridArea {
@@ -146,7 +168,7 @@ fn main_window_contents() -> impl Widget {
         },
         Alignment::CENTER,
         Alignment::CENTER,
-        button,
+        menu_button,
     );
 
     Frame::new(100.percent(), 100.percent(), grid)
@@ -157,11 +179,11 @@ struct Application {
 }
 
 impl Application {
-    fn update(&mut self, app_ctx: &mut AppCtx) {
+    fn update(&mut self, ctx: &mut TreeCtx) {
         // build or rebuild the main window contents
-        self.main_window_handle.update(app_ctx, main_window_contents());
+        self.main_window_handle.update(ctx, main_window_contents());
         if self.main_window_handle.close_requested() {
-            app_ctx.quit();
+            ctx.quit();
         }
     }
 }
@@ -173,9 +195,12 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    /*use tracing_subscriber::layer::SubscriberExt;
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()))
+        .expect("set up the subscriber");*/
+
     let mut launcher = AppLauncher::new();
-    let main_window_handle = launcher
-        .with_ctx(|ctx| AppWindowHandle::new(ctx, WindowBuilder::new().with_title("Hello"), main_window_contents()));
+    let main_window_handle = launcher.with_ctx(|ctx| AppWindowHandle::new(ctx, "Hello", main_window_contents()));
     let mut app = Application { main_window_handle };
     launcher.run(move |ctx| app.update(ctx));
 }

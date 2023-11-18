@@ -1,9 +1,13 @@
 //! Clickable widget wrapper
-use crate::{context::Ambient, widget::prelude::*};
-use keyboard_types::{Key, KeyState};
-use kyute2::widget::WidgetState;
 use std::mem;
+
+use keyboard_types::{Key, KeyState};
 use tracing::trace;
+
+use crate::{
+    context::Ambient,
+    widget::{prelude::*, WidgetState},
+};
 
 type DefaultClickHandler = fn(&mut TreeCtx);
 
@@ -18,7 +22,7 @@ impl<T> Clickable<T, DefaultClickHandler> {
     pub fn new(inner: T) -> Clickable<T, DefaultClickHandler> {
         Clickable {
             inner,
-            on_clicked: |cx| {
+            on_clicked: |_cx| {
                 trace!("Clickable::on_clicked");
             },
         }
@@ -120,7 +124,7 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
         }
 
         match event.kind {
-            EventKind::PointerDown(ref p) => {
+            EventKind::PointerDown(ref _p) => {
                 eprintln!("clickable PointerDown");
                 ctx.request_focus(self.id);
                 ctx.request_pointer_capture(self.id);
@@ -134,20 +138,20 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
                 // doesn't depend on the widget state.
                 ChangeFlags::PAINT
             }
-            EventKind::PointerUp(ref p) => {
+            EventKind::PointerUp(ref _p) => {
                 event.handled = true;
                 self.state.active = false;
                 self.events.activated = Some(false);
                 self.events.clicked = true;
                 ChangeFlags::PAINT
             }
-            EventKind::PointerOver(ref p) => {
+            EventKind::PointerOver(ref _p) => {
                 //eprintln!("clickable PointerOver");
                 self.state.hovered = true;
                 ChangeFlags::NONE
                 //ChangeFlags::PAINT
             }
-            EventKind::PointerOut(ref p) => {
+            EventKind::PointerOut(ref _p) => {
                 //eprintln!("clickable PointerOut");
                 self.state.hovered = false;
                 ChangeFlags::NONE
@@ -179,9 +183,11 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
                         ChangeFlags::PAINT
                     }
                     KeyState::Up => {
-                        self.state.active = false;
-                        self.events.activated = Some(false);
-                        self.events.clicked = true;
+                        if self.state.active {
+                            self.events.activated = Some(false);
+                            self.events.clicked = true;
+                            self.state.active = false;
+                        }
                         ChangeFlags::PAINT
                     }
                 }

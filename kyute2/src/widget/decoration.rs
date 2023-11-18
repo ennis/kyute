@@ -1,17 +1,18 @@
 //! Frame decorations
 
+use std::any::Any;
+
+use kurbo::{Insets, PathEl, Rect, RoundedRect};
+use smallvec::SmallVec;
+use tracing::warn;
+
 use crate::{
     drawing,
     drawing::{BoxShadow, Paint, Shape, ToSkia},
-    element::TransformNode,
     skia,
     widget::{padding::PaddingElement, prelude::*},
     Color, PaintCtx,
 };
-use kurbo::{Affine, Insets, PathEl, Rect, RoundedRect, Vec2};
-use smallvec::SmallVec;
-use std::any::Any;
-use tracing::warn;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -200,7 +201,7 @@ impl<B: ShapeBorder> ShapeDecoration<B> {
                 canvas.draw_rect(rect.to_skia(), &paint);
             } else if let Some(rrect) = inner_shape.as_rounded_rect() {
                 canvas.draw_rrect(rrect.to_skia(), &paint);
-            } else if let Some(line) = inner_shape.as_line() {
+            } else if let Some(_line) = inner_shape.as_line() {
                 todo!("line shape")
             } else {
                 let mut sk_path: skia::Path = skia::Path::new();
@@ -346,7 +347,7 @@ where
 {
     type Element = DecoratedBoxElement<Border, W::Element>;
 
-    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
         let padding = self.decoration.insets();
         DecoratedBoxElement {
             decoration: self.decoration,
@@ -359,7 +360,7 @@ where
     }
 
     fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        let mut flags = ChangeFlags::empty();
+        let flags = ChangeFlags::empty();
         // TODO compare decorations
         let padding = self.decoration.insets();
         element.decoration = self.decoration;

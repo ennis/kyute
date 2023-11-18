@@ -1,10 +1,10 @@
 //!
+use std::any::Any;
+
 use crate::{
-    debug_util::DebugWriter, widget::Axis, Affine, BoxConstraints, ChangeFlags, ElementId, Event, EventCtx, Geometry,
-    HitTestResult, LayoutCtx, PaintCtx, Point, Rect, TreeCtx, Vec2, Widget,
+    debug_util::DebugWriter, Affine, BoxConstraints, ChangeFlags, ElementId, Event, EventCtx, Geometry, HitTestResult,
+    LayoutCtx, PaintCtx, Point, TreeCtx, Vec2, Widget,
 };
-use std::{any::Any, collections::hash_map::DefaultHasher, fmt, hash::Hasher, num::NonZeroU64, ptr};
-use tracing::warn;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -47,6 +47,12 @@ pub trait Element: Any + 'static {
     fn natural_baseline(&mut self, params: &BoxConstraints) -> f64;
 
     /// Hit-testing.
+    ///
+    /// This function returns true if the given point is inside the element.
+    /// In addition, if the element is not anonymous (`self.id() != ElementId::ANONYMOUS`) and the
+    /// point is inside the element, the element's ID is added to the list in `HitTestResult`.
+    ///
+    /// FIXME: should elements add themselves if they fail the hit-test, but one of their children passes?
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool;
 
     /// Called to paint the widget.
@@ -55,7 +61,7 @@ pub trait Element: Any + 'static {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
     /// Implement to give a debug name to your widget. Used only for debugging.
-    fn debug(&self, w: &mut DebugWriter) {}
+    fn debug(&self, _w: &mut DebugWriter) {}
 }
 
 impl Element for Box<dyn Element> {

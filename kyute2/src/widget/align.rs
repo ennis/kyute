@@ -138,7 +138,7 @@ where
 {
     type Element = AlignElement<W::Element>;
 
-    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
         AlignElement {
             x: self.x,
             y: self.y,

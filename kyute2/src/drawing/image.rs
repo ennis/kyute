@@ -61,7 +61,7 @@ impl Asset for Image {
             let sk_data = skia_safe::Data::new_bytes(bytes);
             let sk_image = skia_safe::Image::from_encoded(sk_data)
                 .unwrap()
-                .new_raster_image() // must call to force decoding and release
+                .to_raster_image(None) // must call to force decoding and release
                 .unwrap();
             Ok(Image(sk_image))
         }

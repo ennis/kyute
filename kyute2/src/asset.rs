@@ -2,12 +2,12 @@ use std::{
     error::Error,
     fmt,
     fs::File,
-    future::Future,
     hash::{Hash, Hasher},
     io,
     marker::PhantomData,
     sync::Arc,
 };
+
 use thiserror::Error;
 
 /// URI for an asset.

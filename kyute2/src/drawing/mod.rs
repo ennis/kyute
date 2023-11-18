@@ -1,7 +1,17 @@
 //! Drawing-related wrappers and helpers for use with skia.
-use crate::{Affine, Color, Point, Rect, Size, Vec2};
+// re-export kurbo types
+pub use kurbo::{RoundedRect, RoundedRectRadii, Shape};
 use skia_safe as sk;
-use std::fmt;
+
+pub use border::{Border, BorderStyle};
+pub use box_shadow::{draw_box_shadow, BoxShadow};
+pub use image::{Image, ImageCache};
+pub use paint::{ColorStop, LinearGradient, Paint, RepeatMode, UniformData};
+pub use path::Path;
+#[cfg(feature = "svg")]
+pub(crate) use svg_path::svg_path_to_skia;
+
+use crate::{Affine, Color, Point, Rect, Vec2};
 
 mod border;
 mod box_shadow;
@@ -13,18 +23,6 @@ mod path;
 mod svg_path;
 #[cfg(feature = "svg")]
 pub mod vector_icon;
-
-#[cfg(feature = "svg")]
-pub(crate) use svg_path::svg_path_to_skia;
-
-pub use border::{Border, BorderStyle};
-pub use box_shadow::{draw_box_shadow, BoxShadow};
-pub use image::{Image, ImageCache};
-pub use paint::{ColorStop, LinearGradient, Paint, RepeatMode, UniformData};
-pub use path::Path;
-
-// re-export kurbo types
-pub use kurbo::{RoundedRect, RoundedRectRadii, Shape};
 
 /// Types that can be converted to their skia equivalent.
 pub trait ToSkia {

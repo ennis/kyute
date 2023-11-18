@@ -1,14 +1,13 @@
 //! Description of paints.
+use kurbo::Vec2;
+use skia_safe as sk;
+use skia_safe::gradient_shader::GradientShaderColors;
+use tracing::warn;
+
 use crate::{
     drawing::{Image, ToSkia},
     Color, Data, Rect,
 };
-use kurbo::Vec2;
-use skia_safe as sk;
-use skia_safe::gradient_shader::GradientShaderColors;
-use std::{cell::OnceCell, ffi::c_void, fmt, mem, sync::OnceLock};
-use threadbound::ThreadBound;
-use tracing::warn;
 
 /// Image repeat mode.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]

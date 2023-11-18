@@ -24,11 +24,11 @@ impl Background {
 impl Widget for Background {
     type Element = Background;
 
-    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
+    fn build(self, _cx: &mut TreeCtx, _element_id: ElementId) -> Self::Element {
         self
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
+    fn update(self, _cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         element.paint = self.paint;
         // TODO: compare paints
         ChangeFlags::empty()
@@ -41,28 +41,28 @@ impl Element for Background {
         ElementId::ANONYMOUS
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, _ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
         self.size = constraints.max;
         Geometry::new(constraints.max)
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&mut self, _ctx: &mut EventCtx, _event: &mut Event) -> ChangeFlags {
         ChangeFlags::empty()
     }
 
-    fn natural_width(&mut self, height: f64) -> f64 {
+    fn natural_width(&mut self, _height: f64) -> f64 {
         self.size.width
     }
 
-    fn natural_height(&mut self, width: f64) -> f64 {
+    fn natural_height(&mut self, _width: f64) -> f64 {
         self.size.height
     }
 
-    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
+    fn natural_baseline(&mut self, _params: &BoxConstraints) -> f64 {
         0.0
     }
 
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
+    fn hit_test(&self, _ctx: &mut HitTestResult, position: Point) -> bool {
         let hit = self.size.to_rect().contains(position);
         trace!("background hit test: {}", hit);
         hit

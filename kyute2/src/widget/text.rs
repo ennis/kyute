@@ -1,16 +1,17 @@
+use std::any::Any;
+
+use kurbo::Size;
+use skia_safe as sk;
+use tracing::warn;
+use tracy_client::span;
+
 use crate::{
     debug_util::DebugWriter,
     drawing::ToSkia,
     text::{get_font_collection, ChangeKind, TextSpan, TextStyle},
-    widget::Axis,
     BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, PaintCtx,
     Point, TreeCtx, Widget,
 };
-use kurbo::Size;
-use skia_safe as sk;
-use skia_safe::textlayout::ParagraphBuilder;
-use std::any::Any;
-use tracing::{trace_span, warn};
 
 /// A simple text label.
 #[derive(Clone, Default)]
@@ -27,7 +28,7 @@ impl Text {
 impl Widget for Text {
     type Element = TextElement;
 
-    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
+    fn build(self, _cx: &mut TreeCtx, _element_id: ElementId) -> Self::Element {
         let text = self.text.unwrap_or_default();
         let paragraph = build_paragraph(&text);
         TextElement {
@@ -40,7 +41,7 @@ impl Widget for Text {
         }
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
+    fn update(self, _cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         if let Some(text) = self.text {
             let change = text.compare_to(&element.text);
             match change {
@@ -100,6 +101,7 @@ fn add_text_span(text_span: &TextSpan, paragraph: &mut sk::textlayout::Paragraph
 }
 
 fn build_paragraph(text: &TextSpan) -> sk::textlayout::Paragraph {
+    let _span = span!("build_paragraph");
     let font_collection = get_font_collection();
     let mut text_style = sk::textlayout::TextStyle::new();
     text_style.set_font_size(16.0 as sk::scalar); // TODO default font size
@@ -138,13 +140,13 @@ impl Element for TextElement {
         ElementId::ANONYMOUS
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, _ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         // layout paragraph in available space
-        let _span = trace_span!("text layout").entered();
+        let _span = span!("text layout");
 
         // available space for layout
         let available_width = params.max.width;
-        let available_height = params.max.height;
+        let _available_height = params.max.height;
 
         // We can reuse the previous layout if and only if:
         // - the new available width is >= the current paragraph width (otherwise new line breaks are necessary)
@@ -190,27 +192,27 @@ impl Element for TextElement {
         }
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&mut self, _ctx: &mut EventCtx, _event: &mut Event) -> ChangeFlags {
         // this might change if there's dynamic text (e.g. hyperlinks)
         ChangeFlags::NONE
     }
 
-    fn natural_width(&mut self, height: f64) -> f64 {
+    fn natural_width(&mut self, _height: f64) -> f64 {
         self.paragraph.max_intrinsic_width() as f64
     }
 
-    fn natural_height(&mut self, width: f64) -> f64 {
+    fn natural_height(&mut self, _width: f64) -> f64 {
         warn!("unimplemented: text element intrinsic height");
         dbg!(self.paragraph.alphabetic_baseline()) as f64
     }
 
-    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
+    fn natural_baseline(&mut self, _params: &BoxConstraints) -> f64 {
         // this should work even before layout() is called
         // FIXME: yeah no it doesn't
         self.paragraph.alphabetic_baseline() as f64
     }
 
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
+    fn hit_test(&self, _ctx: &mut HitTestResult, position: Point) -> bool {
         if self.relayout {
             warn!("hit_test called before layout");
         }
@@ -222,6 +224,7 @@ impl Element for TextElement {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
+        span!("text paint");
         ctx.with_canvas(|canvas| {
             self.paragraph.paint(canvas, Point::ZERO.to_skia());
         })

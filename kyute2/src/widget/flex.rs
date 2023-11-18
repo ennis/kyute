@@ -1,9 +1,11 @@
-use crate::{
-    element::TransformNode, widget::Axis, AnyWidget, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx,
-    Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
-};
-use kurbo::Point;
 use std::any::Any;
+
+use kurbo::Point;
+
+use crate::{
+    element::TransformNode, AnyWidget, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry,
+    HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
+};
 
 pub struct VBox {
     content: Vec<Box<dyn AnyWidget>>,
@@ -31,7 +33,7 @@ impl Widget for VBox {
         VBoxElement { id, content }
     }
 
-    fn update(self, cx: &mut TreeCtx, node: &mut Self::Element) -> ChangeFlags {
+    fn update(self, _cx: &mut TreeCtx, _node: &mut Self::Element) -> ChangeFlags {
         todo!()
         //reconcile_elements(cx, self.content, &mut node.content, env)
     }
@@ -49,7 +51,7 @@ impl Element for VBoxElement {
         self.id
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, _ctx: &mut LayoutCtx, _params: &BoxConstraints) -> Geometry {
         Geometry::ZERO
     }
 
@@ -67,23 +69,23 @@ impl Element for VBoxElement {
         }
     }
 
-    fn natural_width(&mut self, height: f64) -> f64 {
+    fn natural_width(&mut self, _height: f64) -> f64 {
         todo!()
     }
 
-    fn natural_height(&mut self, width: f64) -> f64 {
+    fn natural_height(&mut self, _width: f64) -> f64 {
         todo!()
     }
 
-    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
+    fn natural_baseline(&mut self, _params: &BoxConstraints) -> f64 {
         todo!()
     }
 
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
+    fn hit_test(&self, _ctx: &mut HitTestResult, _position: Point) -> bool {
         todo!()
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx) {
+    fn paint(&mut self, _ctx: &mut PaintCtx) {
         todo!()
     }
 

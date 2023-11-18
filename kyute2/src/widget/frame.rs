@@ -1,18 +1,19 @@
 //! Frame containers
+use std::any::Any;
+
+use tracing::trace;
+
 use crate::{
     debug_util::DebugWriter,
     element::TransformNode,
     layout::place_into,
     widget::{
         decoration::{ShapeBorder, ShapeDecoration},
-        Axis,
+        RoundedRectBorder,
     },
     Alignment, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry, HitTestResult, Insets,
-    LayoutCtx, LengthOrPercentage, PaintCtx, Point, Rect, Size, TreeCtx, Vec2, Widget,
+    LayoutCtx, LengthOrPercentage, PaintCtx, Point, Rect, Size, TreeCtx, Widget,
 };
-use kyute2::widget::RoundedRectBorder;
-use std::any::Any;
-use tracing::trace;
 
 /// A container with a fixed width and height, into which an unique widget is placed.
 pub struct FrameElement<T, B> {
