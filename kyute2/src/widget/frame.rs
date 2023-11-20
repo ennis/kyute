@@ -8,7 +8,7 @@ use crate::{
     element::TransformNode,
     layout::place_into,
     widget::{
-        decoration::{ShapeBorder, ShapeDecoration},
+        decoration::{Decoration, ShapeBorder, ShapeDecoration},
         RoundedRectBorder,
     },
     Alignment, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry, HitTestResult, Insets,
@@ -51,14 +51,10 @@ impl<T, B> FrameElement<T, B> {
         // propagate all flags, except GEOMETRY since the size of frames is fixed
         // and does not adapt to the content. Thus, child geometry changes do not affect
         // the geometry of this frame
-        self.change_flags |= f.difference(ChangeFlags::GEOMETRY);
-        if f.intersects(ChangeFlags::SIZE) {
+        self.change_flags |= f.difference(ChangeFlags::GEOMETRY | ChangeFlags::APP_LOGIC);
+        if f.intersects(ChangeFlags::GEOMETRY) {
             // if the size of the content has changed, we'll need to recompute its size and reposition it.
             self.change_flags |= ChangeFlags::CHILD_GEOMETRY | ChangeFlags::LAYOUT_CHILD_POSITIONS;
-        }
-        if f.intersects(ChangeFlags::POSITIONING) {
-            // if the content reports that only the positioning elements have changed, then  the positioning has changed, not its size given the same constraints
-            self.change_flags |= ChangeFlags::LAYOUT_CHILD_POSITIONS;
         }
         self.change_flags
     }
@@ -268,7 +264,7 @@ impl<T, B> Frame<T, B> {
 impl<T: Widget, B: ShapeBorder + 'static> Widget for Frame<T, B> {
     type Element = FrameElement<T::Element, B>;
 
-    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
+    fn build(self, cx: &mut TreeCtx, _element_id: ElementId) -> Self::Element {
         let content = cx.build(self.content);
         trace!("build Frame");
         FrameElement {
@@ -298,7 +294,7 @@ impl<T: Widget, B: ShapeBorder + 'static> Widget for Frame<T, B> {
             // the position of the content may change, and its size as well
             // (since the layout constraints passed to the child change).
             element.change_flags |=
-                ChangeFlags::SIZE | ChangeFlags::LAYOUT_CHILD_POSITIONS | ChangeFlags::CHILD_GEOMETRY;
+                ChangeFlags::GEOMETRY | ChangeFlags::LAYOUT_CHILD_POSITIONS | ChangeFlags::CHILD_GEOMETRY;
         }
         if self.padding_top != element.padding_top
             || self.padding_bottom != element.padding_bottom
@@ -321,6 +317,7 @@ impl<T: Widget, B: ShapeBorder + 'static> Widget for Frame<T, B> {
 
         // update contents
         let flags = element.content.update(cx, self.content);
-        element.update_change_flags(flags)
+        element.update_change_flags(flags);
+        flags
     }
 }

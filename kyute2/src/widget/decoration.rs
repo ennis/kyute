@@ -14,6 +14,14 @@ use crate::{
     Color, PaintCtx,
 };
 
+/// Represents a decoration that can be applied to a widget.
+///
+/// TODO document
+pub trait Decoration: PartialEq {
+    fn insets(&self) -> Insets;
+    fn paint(&self, ctx: &mut PaintCtx, rect: Rect);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BorderStyle {
@@ -28,7 +36,7 @@ impl Default for BorderStyle {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-pub trait ShapeBorder {
+pub trait ShapeBorder: PartialEq {
     type Shape: Shape;
     fn dimensions(&self) -> Insets;
     fn inner_shape(&self, rect: Rect) -> Self::Shape;
@@ -36,6 +44,7 @@ pub trait ShapeBorder {
     fn paint(&self, ctx: &mut PaintCtx, rect: Rect);
 }
 
+#[derive(PartialEq)]
 pub struct RoundedRectBorder {
     pub color: Color,
     pub radius: f64,
@@ -88,6 +97,7 @@ impl ShapeBorder for RoundedRectBorder {
 }
 
 /// Applies border A, then border B.
+#[derive(PartialEq)]
 pub struct CompoundBorder<Inner, Outer> {
     inner: Inner,
     outer: Outer,
@@ -128,9 +138,7 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//impl<S,Inner> BoxShadow<> for InnerShadow<>
-
-// TODO: a generic "decoration" trait? inset + outset + paint?
+#[derive(PartialEq)]
 pub struct ShapeDecoration<Border> {
     pub fill: Paint,
     pub border: Border,
@@ -169,12 +177,14 @@ impl<B: ShapeBorder> ShapeDecoration<B> {
         self.shadows.push(shadow);
         self
     }
+}
 
-    pub fn insets(&self) -> Insets {
+impl<B: ShapeBorder> Decoration for ShapeDecoration<B> {
+    fn insets(&self) -> Insets {
         self.border.dimensions()
     }
 
-    pub fn paint(&self, ctx: &mut PaintCtx, rect: Rect) {
+    fn paint(&self, ctx: &mut PaintCtx, rect: Rect) {
         let inner_shape = self.border.inner_shape(rect);
         let outer_shape = self.border.outer_shape(rect);
 
@@ -250,8 +260,8 @@ impl<B: ShapeBorder> ShapeDecoration<B> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct DecoratedBoxElement<Border, E> {
-    decoration: ShapeDecoration<Border>,
+pub struct DecoratedBoxElement<D, E> {
+    decoration: D,
     content: PaddingElement<E>,
 }
 
@@ -269,9 +279,9 @@ pub struct DecoratedBoxElement<Border, E> {
     }
 }*/
 
-impl<Border, E> Element for DecoratedBoxElement<Border, E>
+impl<D, E> Element for DecoratedBoxElement<D, E>
 where
-    Border: ShapeBorder + 'static,
+    D: Decoration + 'static,
     E: Element,
 {
     fn id(&self) -> ElementId {
@@ -329,23 +339,25 @@ where
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-pub struct DecoratedBox<Border, W> {
-    pub decoration: ShapeDecoration<Border>,
+
+// TODO this should take a "Decoration" directly, not a Border
+pub struct DecoratedBox<D, W> {
+    pub decoration: D,
     pub content: W,
 }
 
-impl<Border, W> DecoratedBox<Border, W> {
-    pub fn new(decoration: ShapeDecoration<Border>, content: W) -> Self {
+impl<D, W> DecoratedBox<D, W> {
+    pub fn new(decoration: D, content: W) -> Self {
         Self { decoration, content }
     }
 }
 
-impl<Border, W> Widget for DecoratedBox<Border, W>
+impl<D, W> Widget for DecoratedBox<D, W>
 where
-    Border: ShapeBorder + 'static,
+    D: Decoration + 'static,
     W: Widget,
 {
-    type Element = DecoratedBoxElement<Border, W::Element>;
+    type Element = DecoratedBoxElement<D, W::Element>;
 
     fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
         let padding = self.decoration.insets();
@@ -360,13 +372,16 @@ where
     }
 
     fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        let flags = ChangeFlags::empty();
-        // TODO compare decorations
-        let padding = self.decoration.insets();
-        element.decoration = self.decoration;
-        element.content.padding = padding;
-        // TODO
-        //flags |= ChangeFlags::GEOMETRY;
+        let mut flags = ChangeFlags::empty();
+        if element.decoration != self.decoration {
+            let padding = self.decoration.insets();
+            if element.content.padding != padding {
+                element.content.padding = padding;
+                flags |= ChangeFlags::GEOMETRY;
+            }
+            element.decoration = self.decoration;
+            flags |= ChangeFlags::PAINT;
+        }
         flags | cx.update(self.content, &mut element.content.content)
     }
 }

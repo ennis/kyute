@@ -187,6 +187,9 @@ impl<'a> DebugWriter<'a> {
             value: PropertyValueKind::Erased(value),
         });
     }
+    pub fn alloc_str(&mut self, s: &str) -> &'a str {
+        self.arena.alloc_str(s)
+    }
 
     pub fn child(&mut self, name: &'a str, inner: &dyn Element) {
         let node = dump_ui_tree_inner(self.arena, name, inner);

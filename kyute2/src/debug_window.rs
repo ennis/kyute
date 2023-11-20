@@ -5,7 +5,6 @@ use egui::{
     SidePanel, Stroke, TextStyle, TopBottomPanel, Ui,
 };
 use egui_wgpu::wgpu;
-use kurbo::Affine;
 use winit::{
     event::WindowEvent,
     event_loop::EventLoopWindowTarget,
@@ -20,12 +19,13 @@ use crate::{
         PropertyValueKind, SnapshotCause, WindowSnapshot,
     },
     window::{DebugOverlay, WindowPaintOptions},
-    ElementId, Geometry,
+    ElementId,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // USEFUL CODE
 
+/*
 #[derive(Copy, Clone)]
 struct DebugElementLayout {
     parent_transform: Affine,
@@ -47,7 +47,7 @@ fn debug_element_layout(debug_root: &ElementDebugNode, target: ElementPtrId) -> 
     } else {
         None
     }
-}
+}*/
 
 struct DebugState {
     selection: Option<ElementPtrId>,

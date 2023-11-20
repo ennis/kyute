@@ -13,7 +13,7 @@ pub use background::Background;
 pub use button::button;
 pub use clickable::Clickable;
 pub use constrained::Constrained;
-pub use decoration::{BorderStyle, DecoratedBox, RoundedRectBorder, ShapeBorder, ShapeDecoration};
+pub use decoration::{BorderStyle, DecoratedBox, Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration};
 pub use flex::{VBox, VBoxElement};
 pub use frame::Frame;
 pub use grid::{Grid, GridTemplate};
@@ -61,32 +61,28 @@ bitflags! {
         const NONE = 0;
         /// Any structural change (child added / removed).
         const STRUCTURE = (1 << 0);
-        /// The size of the element has changed.
-        const SIZE = (1 << 1);
-        /// The positioning information of the element has changed (alignment).
-        /// TODO remove this, layout doesn't contain positioning information anymore
-        #[deprecated]
-        const POSITIONING = (1<<2);
-        /// Geometry has changed (SIZE | POSITIONING)
-        const GEOMETRY = Self::SIZE.bits() | Self::POSITIONING.bits();
+        /// The geometry of the element has changed.
+        const GEOMETRY = (1 << 1);
+        // Geometry has changed (SIZE | POSITIONING)
+        //const GEOMETRY = Self::SIZE.bits() | Self::POSITIONING.bits();
         /// Element must be repainted.
         const PAINT = (1<<3);
+        /// The app logic may need to be re-run.
+        const APP_LOGIC = (1<<4);
 
         /// Child geometry may have changed.
-        const CHILD_GEOMETRY = (1<<4);
-
+        const CHILD_GEOMETRY = (1<<5);
         /// (Layout) constraints have changed.
-        const LAYOUT_CONSTRAINTS = (1<<5);
+        const LAYOUT_CONSTRAINTS = (1<<6);
         /// (Layout) child positions within the parent may have changed.
         const LAYOUT_CHILD_POSITIONS = (1<<7);
-
         /// The baseline of the element has changed.
         const BASELINE_CHANGED = (1<<8);
 
-        // FIXME: the POSITIONING and SIZE flags are useless since if any of these changes we must call `layout`
-        // on the child anyway to retrieve the latest size or alignment.
-        // Technically, we could optimize the case where the child knows that only the positioning info has changed and not
-        // its size, so that the parent can
+        const LAYOUT_FLAGS = Self::CHILD_GEOMETRY.bits()
+            | Self::LAYOUT_CONSTRAINTS.bits()
+            | Self::LAYOUT_CHILD_POSITIONS.bits()
+            | Self::BASELINE_CHANGED.bits();
 
         const ALL = 0xFFFF;
     }
@@ -275,7 +271,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
     }
 
     #[must_use]
-    fn decorate<Border: ShapeBorder>(self, decoration: ShapeDecoration<Border>) -> DecoratedBox<Border, Self> {
+    fn decorate<D: Decoration>(self, decoration: D) -> DecoratedBox<D, Self> {
         DecoratedBox::new(decoration, self)
     }
 

@@ -61,20 +61,26 @@ where
 
     fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
         //eprintln!("clickable update");
+        let mut change_flags = ChangeFlags::empty();
         let events = mem::take(&mut element.events);
+
         if events.clicked {
             (self.on_clicked)(cx);
+            // FIXME: whenever there's a click, assume that the application state might have changed
+            // and re-run the app logic again
+            change_flags |= ChangeFlags::APP_LOGIC;
         }
 
         let prev_state = WidgetState::ambient(cx).cloned().unwrap_or_default();
-        cx.with_ambient(
+        change_flags |= cx.with_ambient(
             &WidgetState {
                 hovered: element.state.hovered,
                 active: element.state.active,
                 ..prev_state
             },
             |cx| cx.update(self.inner, &mut element.content),
-        )
+        );
+        change_flags
     }
 }
 
@@ -136,26 +142,40 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
                 // TODO: for now return "PAINT" because we make the assumption that the only
                 // thing affected by widget state is the painting. Notably, we assume that layout
                 // doesn't depend on the widget state.
-                ChangeFlags::PAINT
+
+                // FIXME: the RedrawRequested event happens before the UI has the chance to be updated:
+                // 1. the MouseEvent is received
+                // 2. clickable returns ChangeFlags::PAINT
+                // 3. parent window requests redraw
+                // 4. RedrawRequested is handled by the window
+                // 5. AboutToWait
+                // 6. the app logic is re-run, but it's too late
+                //
+                // (6.) should come before (4.) so that the UI is updated before the window is redrawn.
+                //
+                // Proposal: when an event is handled and results in a repaint, the repaint should be
+                // deferred to after the app logic is run
+                //
+
+                change_flags |= ChangeFlags::APP_LOGIC;
             }
             EventKind::PointerUp(ref _p) => {
                 event.handled = true;
                 self.state.active = false;
                 self.events.activated = Some(false);
                 self.events.clicked = true;
-                ChangeFlags::PAINT
+                change_flags |= ChangeFlags::APP_LOGIC;
             }
             EventKind::PointerOver(ref _p) => {
                 //eprintln!("clickable PointerOver");
                 self.state.hovered = true;
-                ChangeFlags::NONE
-                //ChangeFlags::PAINT
+                // FIXME: should be APP_LOGIC but i'm not sure if we should do it all the time
+                // change_flags |= ChangeFlags::APP_LOGIC;
             }
             EventKind::PointerOut(ref _p) => {
                 //eprintln!("clickable PointerOut");
                 self.state.hovered = false;
-                ChangeFlags::NONE
-                //ChangeFlags::PAINT
+                // change_flags |= ChangeFlags::APP_LOGIC;
             }
             EventKind::Keyboard(ref key) => {
                 match key.state {
@@ -171,6 +191,7 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
                             self.state.active = true;
                             self.events.activated = Some(true);
                             self.events.clicked = true;
+                            change_flags |= ChangeFlags::APP_LOGIC;
                         }
 
                         /*if key.key == Key::Tab {
@@ -180,15 +201,14 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
                                 ctx.focus_next();
                             }
                         }*/
-                        ChangeFlags::PAINT
                     }
                     KeyState::Up => {
                         if self.state.active {
                             self.events.activated = Some(false);
                             self.events.clicked = true;
                             self.state.active = false;
+                            change_flags |= ChangeFlags::APP_LOGIC;
                         }
-                        ChangeFlags::PAINT
                     }
                 }
             }
@@ -204,8 +224,10 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
                 self.focused.signal(false);
                 ctx.request_relayout();
             }*/
-            _ => ChangeFlags::NONE,
+            _ => {}
         }
+
+        change_flags
     }
 
     fn natural_width(&mut self, height: f64) -> f64 {

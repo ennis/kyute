@@ -29,7 +29,7 @@ mod asset;
 mod backend;
 mod color;
 mod context;
-mod counter;
+//mod counter;
 #[cfg(feature = "debug_window")]
 mod debug_window;
 mod element;
@@ -46,13 +46,13 @@ pub use application::{AppCtx, AppLauncher};
 pub use asset::{Asset, AssetId};
 pub use color::Color;
 pub use context::{ElementId, ElementIdTree, EventCtx, HitTestResult, LayoutCtx, PaintCtx, State, TreeCtx};
-pub use element::Element;
+pub use element::{Element, TransformNode};
 //pub use environment::{EnvKey, EnvValue, Environment};
 pub use event::{Event, EventKind};
 pub use layout::{Alignment, BoxConstraints, Geometry};
-pub use length::{LengthOrPercentage, UnitExt};
+pub use length::{LengthOrPercentage, UnitExt, IN_TO_DIP, PT_TO_DIP};
 pub use widget::{AnyWidget, ChangeFlags, Stateful, StatefulElement, Widget};
-pub use window::{AppWindowHandle, PopupOptions, PopupWindow};
+pub use window::{AppWindowHandle, PopupOptions, PopupTarget};
 
 // macro reexports
 pub use kyute2_macros::grid_template;

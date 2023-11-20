@@ -1,6 +1,8 @@
 use crate::{
+    debug_util,
+    debug_util::{DebugSnapshot, SnapshotCause},
     window::{WindowHandler, WindowPaintOptions},
-    AppGlobals, TreeCtx,
+    AppGlobals, ChangeFlags, TreeCtx,
 };
 use std::{
     collections::HashMap,
@@ -9,7 +11,7 @@ use std::{
     sync::{Arc, Mutex},
     task::Wake,
 };
-use tracing::{trace, warn};
+use tracing::{error, trace, warn};
 use tracy_client::{set_thread_name, span};
 use winit::{
     event::WindowEvent,
@@ -162,7 +164,7 @@ impl AppLauncher {
 
     pub fn run<F>(self, mut logic: F)
     where
-        F: FnMut(&mut TreeCtx) + 'static,
+        F: FnMut(&mut TreeCtx) -> ChangeFlags + 'static,
     {
         let event_loop = self.event_loop;
         let mut app_state = self.app_state;
@@ -176,6 +178,7 @@ impl AppLauncher {
         // run the event loop
         event_loop.set_control_flow(ControlFlow::Wait);
         let event_loop_start_time = std::time::Instant::now();
+        let mut app_logic_dirty = false;
 
         event_loop
             .run(move |event, elwt| {
@@ -205,7 +208,7 @@ impl AppLauncher {
                                         win_handler.paint(event_time, &options);
                                     }
                                     _ => {
-                                        win_handler.event(&event, event_time);
+                                        app_logic_dirty |= win_handler.event(&event, event_time);
                                     }
                                 }
                             } else {
@@ -216,19 +219,45 @@ impl AppLauncher {
                         }
                     }
                     winit::event::Event::AboutToWait => {
-                        // Signal to window handlers that there are no more events.
+                        // FIXME: if all we did was paint, we don't need to run the app logic again
+
+                        eprintln!("AboutToWait");
+
+                        // Call "before_app_logic" on all windows.
                         for handler in app_state.windows.values() {
                             if let Some(handler) = handler.upgrade() {
-                                handler.events_cleared();
+                                handler.before_app_logic();
                             }
                         }
 
                         // Once we've processed all incoming window events and propagated them to
                         // the elements, run the application logic.
                         // It can call `elwt.exit()` to exit the event loop, and request window repaints.
-                        let _span = span!("app logic");
-                        let mut cx = TreeCtx::new(&mut app_state, elwt);
-                        logic(&mut cx);
+                        let mut change_flags = ChangeFlags::APP_LOGIC;
+                        let mut iterations = 0;
+                        let max_iterations = 10;
+                        // Run it until it doesn't request any more re-evaluations, or we reach a
+                        // maximum number of iterations, or the application requests to exit.
+                        while change_flags.contains(ChangeFlags::APP_LOGIC) && !elwt.exiting() {
+                            let _span = span!("app logic");
+                            let mut cx = TreeCtx::new(&mut app_state, elwt);
+                            change_flags = logic(&mut cx);
+                            iterations += 1;
+                            if iterations > max_iterations {
+                                error!(
+                                    "app logic ran for {} iterations, there might be an infinite update loop",
+                                    iterations
+                                );
+                                break;
+                            }
+                        }
+
+                        // Call "after_app_logic" on all windows.
+                        for handler in app_state.windows.values() {
+                            if let Some(handler) = handler.upgrade() {
+                                handler.after_app_logic();
+                            }
+                        }
 
                         // Debug window maintenance
                         #[cfg(feature = "debug_window")]
@@ -236,6 +265,25 @@ impl AppLauncher {
                             // The debug window redraws continuously. Don't bother with trying to
                             // optimize it.
                             debug_window.request_redraw();
+
+                            // collect debug snapshots
+                            if debug_util::is_collection_enabled() {
+                                let mut snapshots = vec![];
+                                for handler in app_state.windows.values() {
+                                    if let Some(handler) = handler.upgrade() {
+                                        if let Some(snapshot) = handler.snapshot() {
+                                            snapshots.push(snapshot);
+                                        }
+                                    }
+                                }
+                                if !snapshots.is_empty() {
+                                    debug_util::record_app_snapshot(DebugSnapshot {
+                                        cause: SnapshotCause::AfterPaint,
+                                        time: event_time,
+                                        window_snapshots: snapshots,
+                                    });
+                                }
+                            }
 
                             // If "Force continuous redraw" has been enabled, request a redraw for
                             // all windows.
@@ -247,6 +295,8 @@ impl AppLauncher {
                                 }
                             }
                         }
+
+                        eprintln!("------ end event cycle ------");
                     }
                     _ => (),
                 }

@@ -2098,3 +2098,15 @@ an API on UiContentHost to receive window events (in a windowing-crate-agnostic 
 
 ## ElementIdTree is supremely annoying
 Need to maintain it, store it somewhere, next to the UI element tree. Would  
+
+## Issues with app logic
+
+1. Repaints due to events are done before the app logic is run. If the app logic changes the UI, it won't be reflected immediately.
+2. When the app logic modifies internal state, parts of the UI that depend on the value of the state may not be updated.
+
+(1.) Defer repaint requests to after the app logic is run
+
+
+## Next steps
+
+A more convenient/less verbose way of creating grids and putting elements in them. 

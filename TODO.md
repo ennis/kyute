@@ -41,13 +41,12 @@
 
 | Feature                     | Difficulty | Details                                                                               |
 |-----------------------------|------------|---------------------------------------------------------------------------------------|
-| ~~Grid layout~~             | DONE       |                                                                                       |
+| ~~Grid layout~~             | ★★ DONE    |                                                                                       |
 | Relative layouts            | ★          | A modifier to position a widget above/below another widget, or to the left/right.     |
 | Simple spinner (numeric)    | ★          |                                                                                       |
 | Numeric Drags/Sliders       | ★          |                                                                                       |
 | Disabled widgets            | ★          |                                                                                       |
 | Separator                   | ★          |                                                                                       |
-| Rich text macro             | ★          |                                                                                       |
 | Form layout                 | ★          |                                                                                       |
 | Group box                   | ★          | aka "Box"                                                                             |
 | Disclosure groups           | ★          | aka "Collapsible Group"                                                               |
@@ -59,12 +58,13 @@
 | Progress bar                | ★          |                                                                                       |
 | Segmented controls          | ★          | https://developer.apple.com/design/human-interface-guidelines/segmented-controls      |
 | Cursor modifier             | ★          | Changes the cursor that is displayed when hovering over the widget                    |
+| Rich text macro             | ★★         |                                                                                       |
 | Icon font support           | ★★         |                                                                                       |
+| Single-line text input      | ★★         |                                                                                       |
 | Filtered text input         | ★★         |                                                                                       |
 | Split views                 | ★★         |                                                                                       |
 | Image widget                | ★★         |                                                                                       |
 | Combo box / pull down       | ★★         |                                                                                       |
-| Single-line text editor     | ★★         |                                                                                       |
 | Tab navigation              | ★★         |                                                                                       |
 | Tab view                    | ★★         |                                                                                       |
 | File picker / std dialogs   | ★★         |                                                                                       |
@@ -76,7 +76,7 @@
 | Drag-drop                   | ★★?        |                                                                                       |
 | Tooltips                    | ★★?        |                                                                                       |
 | Token fields                | ★★         | https://developer.apple.com/design/human-interface-guidelines/token-fields            |
-| Child/popup windows         | ★★★        |                                                                                       |
+| ~~Child/popup windows~~     | ★★★ DONE   |                                                                                       |
 | Scroll views                | ★★★        |                                                                                       |
 | Advanced tables             | ★★★        | Tables + reorderable rows, sorting, selection (possibly mergeable with outline views) |
 | Color picker                | ★★★        |                                                                                       |
@@ -85,8 +85,8 @@
 | Timeline widget             | ★★★        |                                                                                       |
 | Drop down with autocomplete | ★★★        |                                                                                       |
 | Property grid               | ★★★        |                                                                                       |
-| Rive integration            | ★★★        | https://rive.app/                                                                     |
-| Multi-line text editor      | ★★★?       |                                                                                       |
+| Rive integration            | ★★★★       | https://rive.app/                                                                     |
+| Multi-line text input       | ★★★?       |                                                                                       |
 | Curve editor                | ★★★★       | Animation curves                                                                      |
 | Gradient editor             | ★★★★       | Color gradients                                                                       |
 | Docking system              | ★★★★       |                                                                                       |
@@ -176,3 +176,4 @@ It should be stateless.
 
 - Copy/paste
 - Keyboard navigation
+

@@ -131,6 +131,24 @@ pub enum Paint {
     },
 }
 
+impl PartialEq for Paint {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Paint::Color(a), Paint::Color(b)) => a == b,
+            (Paint::LinearGradient(a), Paint::LinearGradient(b)) => a == b,
+            (Paint::Image { .. }, Paint::Image { .. }) => {
+                // TODO
+                false
+            }
+            (Paint::Shader { .. }, Paint::Shader { .. }) => {
+                // TODO
+                false
+            }
+            _ => false,
+        }
+    }
+}
+
 // Nope, not thread safe.
 //impl_env_value!(Paint);
 
@@ -239,7 +257,7 @@ impl Paint {
         }
     }
 
-    pub fn image(uri: &str, repeat_x: RepeatMode, repeat_y: RepeatMode) -> Paint {
+    pub fn image(_uri: &str, _repeat_x: RepeatMode, _repeat_y: RepeatMode) -> Paint {
         // TODO: call outside of composition?
         todo!()
         /*let image_cache = cache::environment().get(&IMAGE_CACHE).unwrap();
