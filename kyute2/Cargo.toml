@@ -37,7 +37,7 @@ tracy-client = "0.16.4"
 egui = {  path = "../../egui/crates/egui", optional = true }
 egui-wgpu = { path = "../../egui/crates/egui-wgpu", optional = true }
 egui-winit = { path = "../../egui/crates/egui-winit", optional = true }
-egui-phosphor = { version =  "0.3.0", features = ["fill"], optional = true }
+egui-phosphor = { version =  "=0.3.0", features = ["fill"], optional = true }
 pollster = { version =  "0.3.0", optional = true }
 serde_json = { version =  "1.0", optional = true }
 

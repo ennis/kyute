@@ -153,7 +153,9 @@ deliver the event.
 A: Let's say that events targeting a child window don't bubble up to the parent window 
 (bubbling stops at the UI root for the child window). This would tend to complicate things anyway. 
 
-
+In order to create a popup with the correct no-focus behavior:
+- create with WS_POPUP + WS_EX_NOACTIVATE style
+- trap WM_MOUSEACTIVATE sent to the popup
 
 
 ## Disabled widgets

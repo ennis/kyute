@@ -93,7 +93,7 @@ impl<A: Element, B: Element> Element for OverlayElement<A, B> {
     }
 
     fn natural_height(&mut self, width: f64) -> f64 {
-        self.b.natural_height(width)
+        self.a.natural_height(width)
     }
 
     fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {

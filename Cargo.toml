@@ -9,7 +9,7 @@ members = [
     "kyute-common",          # user interface library - common types
     "kyute-common/macros",   # user interface library - common types - proc macros
     "kyute/macros",          # user interface library - widgets and application architecture - proc macros
-    "kyute-shell",           # user interface library - windowing, drawing and system integration
+    #"kyute-shell",           # user interface library - windowing, drawing and system integration
 ]
 
 # Patch winit to our version

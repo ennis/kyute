@@ -236,7 +236,7 @@ impl AppLauncher {
                         let mut change_flags = ChangeFlags::APP_LOGIC;
                         let mut iterations = 0;
                         let max_iterations = 10;
-                        // Run it until it doesn't request any more re-evaluations, or we reach a
+                        // Run it until it doesn't request re-evaluations, or we reach a
                         // maximum number of iterations, or the application requests to exit.
                         while change_flags.contains(ChangeFlags::APP_LOGIC) && !elwt.exiting() {
                             let _span = span!("app logic");

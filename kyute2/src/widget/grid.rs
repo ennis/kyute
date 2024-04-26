@@ -403,7 +403,7 @@ impl<S: GridStyle + 'static> Widget for Grid<S> {
         fn update<T: PartialEq>(orig: &mut T, new: T, flags: &mut ChangeFlags, change: ChangeFlags) {
             if *orig != new {
                 *orig = new;
-                *flags |= ChangeFlags::GEOMETRY | ChangeFlags::PAINT;
+                *flags |= change;
             }
         }
 
@@ -430,7 +430,7 @@ impl<S: GridStyle + 'static> Widget for Grid<S> {
                 );
             } else {
                 let elem = GridItemElement {
-                    content: TransformNode::new(cx.build(item.content)),
+                    content: TransformNode::new(cx.build_with_id(&i, item.content)),
                     area: item.area,
                     alignment: item.alignment,
                     row_range: Default::default(),

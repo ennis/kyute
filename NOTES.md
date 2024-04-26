@@ -1,27 +1,31 @@
-
 ## Visual layer
 
 For fast animations that do not require a full recomp on each frame, introduce a visual layer.
 Possibly using the underlying composition framework (Core Animation, Windows.UI.Composition).
 
 ### Basic ideas
+
 ~~- the `layout` method now returns `Layer` elements (which can contain sublayers). Remove the `paint` method.~~
 -> the `layout` methods still return Measurements, but also *animate* the widget's layer.
--> add a `layer` method to Widget that returns the animation layer of the widget. For wrappers, defer to the inner widget.
+-> add a `layer` method to Widget that returns the animation layer of the widget. For wrappers, defer to the inner
+widget.
 ~~-> actually, do we still need a layer object? Just use methods on LayoutCtx to animate the "current" layer~~
 
 - `Layer` elements have properties that can be animated somehow.
     - Common properties: transform (position, rotation, scale), opacity
 
 ### Questions
-How to expose the layer hierarchy to the application? Is it immutable? Do we rebuild it from scratch everytime, with some kind of caching?
-We need some caching because there are retained objects behind the tree (composition objects provided by the OS, shouldn't rebuild them from scratch all the time).
+
+How to expose the layer hierarchy to the application? Is it immutable? Do we rebuild it from scratch everytime, with
+some kind of caching?
+We need some caching because there are retained objects behind the tree (composition objects provided by the OS,
+shouldn't rebuild them from scratch all the time).
 
 Promising approach: leverage the positional cache, and stash layers in it.
 e.g. `Container::new` would retrieve (get-or-create) a layer with `cache::state(|| Layer::new())`.
 
-Layers would have interior mutability: i.e. can call `set_width`, `set_height` on them, and they would still be considered to be the same object.
-
+Layers would have interior mutability: i.e. can call `set_width`, `set_height` on them, and they would still be
+considered to be the same object.
 
 Adding sublayers during layout: `layer.add_child(...)`.
 Problem with that: we also have to remove sublayers of child widgets that have been deleted.
@@ -35,8 +39,8 @@ doesn't change the value of the property immediately
 Instead, it posts the new value of the property to the event loop, which will then perform the layer tree update
 before paint, where it has exclusive access to it.
 
-
 ### Layer animations
+
 - Go straight to the compositor API in most cases
 - Otherwise (when no system compositor is available):
     - add the animation object to some global compositor queue
@@ -44,7 +48,6 @@ before paint, where it has exclusive access to it.
     - after layer eval, delete layers that are not reachable from the root
         - problem: we lose state by doing that
             - layer deletion should be tied to the deletion of the layer ref in the positional cache
-
 
 ### Lifecycle of Layers
 
@@ -62,8 +65,6 @@ fn layout(&self) {
         // copy-on-write?
         l.set_transform(...);
     }
-
-
 }
 ```
 
@@ -76,7 +77,6 @@ fn layout(&self) {
 ```rust
 impl Widget for Viewport {
     fn layout(&self, ctx: &mut LayoutCtx, constraints: BoxConstraints, env: &Environment) {
-
         let mut child_constraints = constraints;
         if !self.constrain_width {
             child_constraints.min.width = 0.0;
@@ -117,10 +117,10 @@ impl Widget for Viewport {
 }
 ```
 
-
-
 ### Avoiding a shared interior-mutable tree
+
 Alternatives:
+
 - store layers in a slotmap, `Layer` is just `(Arc<Compositor>, LayerIndex)`, layers are internally refcounted
 - pass around `&mut CompositionTree`, mutate it with IDs
     - problem: layers must be removed manually
@@ -134,21 +134,23 @@ would have to be followed by a layout).
 -> hence, must be an "imperative, mutable" kind of API
 
 ### Examples of GUI frameworks with compositing layers
+
 - JavaFX? Not exposed through the API, not sure if it uses a compositor
 - Flutter? RenderObjects, owned by widgets (via "elements"), dropped on unmount
 
 ### Issue: duplicated widget bounds
+
 - Need to set the widget position in WidgetPod::offset AND in the widget's visual layer
 - The visual layer should contain the truth (offset & bounds)
 - But what about animations?
-    - It's possible to animate the position of a layer; when a layer is animating, what bounds do we use for hit-testing?
+    - It's possible to animate the position of a layer; when a layer is animating, what bounds do we use for
+      hit-testing?
     - alternatively: what value do we read back for the position when it's animating?
-        - the *current* position? no way to get that when an animation is in progress (DirectComposition doesn't provide a way to read back values)
+        - the *current* position? no way to get that when an animation is in progress (DirectComposition doesn't provide
+          a way to read back values)
         - the *target* position?
 
-
 ## Layers during painting
-
 
 ```rust
 
@@ -214,20 +216,24 @@ impl<Content: Widget> Widget for Container<Content> {
 
 ```
 
-
 ## Formalizing relayout
 
 Relayout is the process of recalculating the size of widgets under new constraints, and placing child widgets.
 It may happen because:
+
 - a widget explicitly requested a relayout during event handling (by calling `ctx.request_relayout`)
-    - in which case, the `layout` method *will* be called at some point in the future on the widget that requested the update
+    - in which case, the `layout` method *will* be called at some point in the future on the widget that requested the
+      update
 - an external factor influencing the layout has changed: this includes the _box constraints_ and the _scale factor_.
     - Typically, this relayout is triggered by the parent window when it is resized.
 
-By default, the only retained state modified by the layout process is the offset of child widgets, which is typically managed by the `WidgetPod` wrapper.
+By default, the only retained state modified by the layout process is the offset of child widgets, which is typically
+managed by the `WidgetPod` wrapper.
 However, it's important to cache the calculation of subtrees if they are known to never change. This is also done in
-`WidgetPod`: if the box constraints & scale factor haven't changed, then it returns the previously computed measurements, otherwise
-it calls `layout` on the child. In the event that a child widget called `request_layout` during propagation, `WidgetPod` invalidates
+`WidgetPod`: if the box constraints & scale factor haven't changed, then it returns the previously computed
+measurements, otherwise
+it calls `layout` on the child. In the event that a child widget called `request_layout` during propagation, `WidgetPod`
+invalidates
 its cached measurements, so `layout` will always be called.
 
 Currently, a layout is always followed by a repaint: this is because `LayerWidget`
@@ -244,6 +250,7 @@ creates the corresponding skia surface and calls paint. 3D views override this a
 with whatever API.
 
 ## TODO
+
 - Embed images in crate
 - Pull-down buttons (https://developer.apple.com/design/human-interface-guidelines/macos/buttons/pull-down-buttons/)
 - Checkboxes
@@ -257,11 +264,13 @@ with whatever API.
 - Fix LinearGradient build code
 
 ## Rethink grids
-They are very flexible, but the API is not very ergonomic.
-A big issue is the lack of immediate feedback. To solve this, create an interactive grid designer. Or at least, some kind of live reload.
 
+They are very flexible, but the API is not very ergonomic.
+A big issue is the lack of immediate feedback. To solve this, create an interactive grid designer. Or at least, some
+kind of live reload.
 
 ## Different backgrounds
+
 - Window default
     - Supposed to put form controls on it
     - Boxes background is just an overlay
@@ -272,10 +281,12 @@ A big issue is the lack of immediate feedback. To solve this, create an interact
     - also: alternative content background
 
 ## The necessity for an interface designer
+
 The edit/compile/check cycle is long and tedious: adjusting the size of an element takes >30sec.
 It needs to be faster if we want the UI creation process to be pleasant.
 
 There are several solutions to that:
+
 - reduce compile times: not really possible
 - hot-reload rust code: same, not really possible
 - separate structure from styling and hot-reload styling information separately (a.k.a. the CSS way)
@@ -288,6 +299,7 @@ a small hot-reloadable DSL to quickly prototype interfaces.
 ### Another possibility: ad-hoc variables
 
 For instance:
+
 ```rust
 #[composable]
 pub fn new() -> Toolbar {
@@ -315,6 +327,7 @@ pub fn new() -> Toolbar {
 ```
 
 ## Grid ad-hoc syntax
+
 - rows/columns
 - track names
 - template
@@ -323,6 +336,7 @@ pub fn new() -> Toolbar {
 - area
 
 ### Option A
+
 ```
 // anonymous tracks
 "R(g=5px):200,200,1*,auto;C:[40px]"
@@ -335,6 +349,7 @@ pub fn new() -> Toolbar {
 ```
 
 ### Option B: CSS grid
+
 ```
 // named track lines
 "[name] 200 [type] 200 [value] 1fr / [header] 6em {4em} [rows-end] / 5px 5px"
@@ -355,6 +370,7 @@ rows-end / name
 ```
 
 ## Paint & border syntax
+
 CSS-like:
 
 ```
@@ -375,6 +391,7 @@ sfdsd {
 ```
 
 ## Removing EnvRef
+
 I don't like it. It forces us to defer resolving things like styles to layout.
 
 The main use case for dynamic environment values are things like disabled widget trees.
@@ -384,15 +401,18 @@ Also: changing the font of a subtree.
 Alternative? style inheritance
 
 # Core data framework
+
 - Undo/redo
 - Fast collection diffs
 - Persistence abstracted away
 
 ## TODO
+
 - `#[composable(tweak_literals)]`
 - more robust tweak macro (span fixup)
 
 ## General CSS support?
+
 Style => a container for style properties. Like environments, can inherit from a parent style.
 Style value resolution: cached?
 Fast lookup of properties.
@@ -411,13 +431,16 @@ pub struct Style(imbl::HashMap<Property, PropertyValue>);
 ```
 
 Issue with alignment:
+
 - CSS alignment on an element specifies the alignment of the element _in its parent_.
 - the alignment property on our containers specifies the alignment of _the contents inside the container_
 
 In CSS, positioning properties are specified on the positioned element.
 
-Due to our layout algorithm, we can't really do the same thing as CSS: we would need to propagate the alignment upwards during layout.
+Due to our layout algorithm, we can't really do the same thing as CSS: we would need to propagate the alignment upwards
+during layout.
 It is possible, though:
+
 - replace `Measurements` with a proper `Layout` struct, containing:
     - the size
     - clip bounds
@@ -445,10 +468,12 @@ struct Layout {
 ```
 
 ## Formalized containers
+
 You have a widget, which may or may not draw something, and may or may not fill its provided space.
 Use a container to force a specific size, align it within the provided space
 
 Current problem: some methods (e.g. "align" or "padding") have different implementations:
+
 - one as an extension trait on widgets
 - the other as a method on containers
   They can have subtly different behaviors.
@@ -467,6 +492,7 @@ Current problem: some methods (e.g. "align" or "padding") have different impleme
   -> current widget impls shouldn't change too much
 
 list of modifiers:
+
 * .grid_row_span
 * .grid_row
 * .grid_column
@@ -514,7 +540,7 @@ In a 500x500 fixed size box.
 `.align` doesn't do anything on the widget until it's inserted in a container.
 
 Other example:
-    
+
     .max_width(50%).border().padding(40px)    // a box with a border around it, sized to 50% of the available space after padding
     .padding(40px).border().max_width(50%)    // the element, padded 50px, with a border around it, the whole box sized to 50% of the available space
 
@@ -536,29 +562,33 @@ Commutativity (same result if the modifiers are switched):
 .border <> .align
 .{min/max}_width <> .padding .align
 
-
-
 How does alignment work?
-E.g. in the previous example, is the border drawn around the whole available space in which the rectangle is placed (because of align)
+E.g. in the previous example, is the border drawn around the whole available space in which the rectangle is placed (
+because of align)
 or only around the rectangle?
+
 - Arguably, the least surprising behavior would be around the rectangle (align comes after).
 
 Alignment mechanism:
-- match position on unit rectangle
 
+- match position on unit rectangle
 
 ## Backgrounds, shapes, borders, etc.
 
 What has been decided so far:
+
 - in order to "style" an element, apply a modifier `Background` on it, which will draw stuff behind the element
 - provide a `Rectangle` (possibly rounded) shape widget to be used for simple backgrounds.
-- there are also `StyledBoxes`, which draw box decorations around a content element, but also handle the layout of the content within
-  - `StyledBox` should stay
+- there are also `StyledBoxes`, which draw box decorations around a content element, but also handle the layout of the
+  content within
+    - `StyledBox` should stay
 
 There's some duplication:
+
 - borders are added by `StyledBox`, `Border` widgets, and `Rectangle` widgets.
-  - there's duplicated code in all of those related to the computation of final border radii.
-- we could remove borders from `Rectangle`, but we'd still need to keep the radii of the rectangle, which should be in sync
+    - there's duplicated code in all of those related to the computation of final border radii.
+- we could remove borders from `Rectangle`, but we'd still need to keep the radii of the rectangle, which should be in
+  sync
   with the radii of the border around it:
 
 ```
@@ -570,19 +600,26 @@ There's some duplication:
 ```
 
 Proposition:
+
 - don't add borders to the rectangle shape widget, but make it so that border widgets push a clip mask
-  - this way, to round a rectangle, simply add a rounded border to it
+    - this way, to round a rectangle, simply add a rounded border to it
 
 Alternative:
-- keep border in rectangle, make it a "stroke style" 
-  - problem: the stroke size wouldn't be taken into account  
 
-Underlying question: do we emphasize the _shape_ (A) (rectangle, paths, etc.) or do we emphasize the _content_ (B) (text)
-A: widgets are visual primitives, like rectangles, rounded rectangles, paths, text elements, etc. They are composed via overlays.
+- keep border in rectangle, make it a "stroke style"
+    - problem: the stroke size wouldn't be taken into account
+
+Underlying question: do we emphasize the _shape_ (A) (rectangle, paths, etc.) or do we emphasize the _content_ (B) (
+text)
+A: widgets are visual primitives, like rectangles, rounded rectangles, paths, text elements, etc. They are composed via
+overlays.
+
 ```
   Rectangle::new().fill(...).radius(4.px()).overlay(Text::new("hello"))
 ```
-B: widgets are either content containers (text) or decorations around content. 
+
+B: widgets are either content containers (text) or decorations around content.
+
 ```
   Container::new(Null)
       .fill("rgb(255 255 255 / 30)")
@@ -600,18 +637,22 @@ What about drop shadows?
 ```
 
 # PointerOver / PointerOut events
-Those got lost along the way. 
+
+Those got lost along the way.
 
 Proposed implementation: in "focus_state", keep a "hot" widget ID. Whenever _a widget successfully passes the hit-test_,
 update the hot ID to this widget ID (this includes setting the hot ID to None if the widget has no ID).
-The window that emitted the event then compares the previous and the new hot widget IDs. If they are different, a PointerOut
+The window that emitted the event then compares the previous and the new hot widget IDs. If they are different, a
+PointerOut
 event is sent to the old widget ID (if not None), and a PointerOver event is sent to the new ID (if not None).
 
-Problem: what does "successfully passing the hit-test" means? 
+Problem: what does "successfully passing the hit-test" means?
 Hit-testing is only done in `WidgetPod` => PointerOver/PointerOut events will be received by all with the same ID.
-It's confusing: if we have WidgetPod -> Padding(40px) -> CustomWidget, the custom will receive PointerOver events when the
+It's confusing: if we have WidgetPod -> Padding(40px) -> CustomWidget, the custom will receive PointerOver events when
+the
 cursor enters the **padding area**, and not the actual widget.
-=> actually no, since within a frame, the inner widget is wrapped in a WidgetPod (that's the only mechanism for transforming child widgets)
+=> actually no, since within a frame, the inner widget is wrapped in a WidgetPod (that's the only mechanism for
+transforming child widgets)
 => Add a WidgetPod in "frame" widgets (that's already done)
 
 ```
@@ -637,52 +678,56 @@ cursor enters the **padding area**, and not the actual widget.
 
 # Tab navigation
 
-Declare some widgets as tab-focusable. For the tab order, use the "logical sequence" => grid insertion order. 
+Declare some widgets as tab-focusable. For the tab order, use the "logical sequence" => grid insertion order.
 
 A widget is tab-focusable if it accepts SetFocus events
 
 On tab:
+
 - send keyboard event to target
 - target calls `ctx.move_focus()`
 - event `Event::MoveFocus` is sent to the focused target
 - bubbles down to the target
-  - target doesn't handle it, bubbles up
-  - eventually, bubbles up to the parent container
-    - parent container sets the focus on the prev/next element (dispatch Event::SetFocus(direction) on children)
-    - if no prev/next element: MoveFocus bubbles up to parent container
+    - target doesn't handle it, bubbles up
+    - eventually, bubbles up to the parent container
+        - parent container sets the focus on the prev/next element (dispatch Event::SetFocus(direction) on children)
+        - if no prev/next element: MoveFocus bubbles up to parent container
 
 Alternative:
+
 - event return values:
-  - handled
-  - focus move
+    - handled
+    - focus move
 
 - widget calls `ctx.move_focus`
-  - route_event sees this result, marks parent widget 
+    - route_event sees this result, marks parent widget
 
 Right now event return values are "stateful" => stashed in context.
 
-
 Alternative:
-- instead of juggling events, build the focus chain on recomp 
-  - InternalEvent::BuildFocusChain { focus_chain: &mut FocusChain }
-  - which widget adds to the focus chain?
-    - clickables
-    - editors
-    - all widgets with an ID?
+
+- instead of juggling events, build the focus chain on recomp
+    - InternalEvent::BuildFocusChain { focus_chain: &mut FocusChain }
+    - which widget adds to the focus chain?
+        - clickables
+        - editors
+        - all widgets with an ID?
 
 How does the widget adds itself to the focus chain?
+
 - handles an event?
-- overrides 
+- overrides
 
 - problem: full tree traversal on each recomp
-  - caching?
-=> just do that, it's simple, easy to implement, flexible
-  - makes recomp (potentially) costly
-  - however, the event propagation code is already complicated enough as is, not much room for more
-
+    - caching?
+      => just do that, it's simple, easy to implement, flexible
+    - makes recomp (potentially) costly
+    - however, the event propagation code is already complicated enough as is, not much room for more
 
 # Event propagation results
+
 We want the widget that propagate the event to be able to intercept the result of event delivery:
+
 - if the event was handled by a descendant widget
 - whether a focus change was requested
 - dirty regions / repaint requests
@@ -691,40 +736,52 @@ We want the widget that propagate the event to be able to intercept the result o
 
 In `Widget::event`, EventCtx receives the return value, in a way.
 Q: Not sure why it's preferred over actually returning a `EventResult` object?
-A: Because with a return value, container/layout widgets need to merge the result manually; with a &mut-parameter, it's implicit, no additional code needed.
+A: Because with a return value, container/layout widgets need to merge the result manually; with a &mut-parameter, it's
+implicit, no additional code needed.
 
 => EventCtx collects the event result, route_event merges it with the parent context.
 => problem: if we add a vec to EventResult, lots of allocations for vectors that hold successful hit-tests
 
 # Debugging event propagation
+
 It can be difficult to understand how events propagate => debug visualization
 
 # Should `Window` really be a widget?
-Because of that, we're forced to have a dummy root widget and a bunch of `expect`s in EventCtx to account for this **unique** dummy root.
+
+Because of that, we're forced to have a dummy root widget and a bunch of `expect`s in EventCtx to account for this *
+*unique** dummy root.
 Alternatives:
+
 - instead of a single root widget, store a list of root windows.
 
 # Hit-testing on a separate tree?
+
 Or rather: hit-testing in a separate tree traversal?
 This might be necessary: consider the case of drag-and-drop.
 The user clicks on the source widget, drags it towards the target.
-Since the source widget captures pointer events, the target receives nothing, and can't react when the object is dragged into it.
+Since the source widget captures pointer events, the target receives nothing, and can't react when the object is dragged
+into it.
 Proposition:
+
 ```
 InternalEvent::HitTest {
   hovered: &mut HashSet<WidgetId>,
   hot: Option<WidgetId>
 }
 ```
-This event is solely handled by WidgetPods. Before sending a pointer event, send a hit-test request and send the event to the hot widget.
+
+This event is solely handled by WidgetPods. Before sending a pointer event, send a hit-test request and send the event
+to the hot widget.
 (only if necessary: if the pointer position did not change, don't update)
 
 # Definitive behavior for pointer events
+
 - PointerMove:
-  - deliver to root
-  - WidgetPods do hit-test and stop propagation if outside the bounds
+    - deliver to root
+    - WidgetPods do hit-test and stop propagation if outside the bounds
 
 # Accessing inner widgets
+
 FIXME: it can be difficult to access the inner widget when it is buried under several modifiers
 It's a common pattern: provide a widget with the base functionality, without the style,
 then provide a styled widget that wraps the base with style modifiers.
@@ -732,75 +789,81 @@ The styled widget needs to forward methods to the base, and this can be difficul
 It also makes it difficult to change the style by adding/removing modifiers because then you
 have to also modify all the method wrappers (add/remove .inner() as needed).
 
-
-Alternative proposal: modifiers implement Deref<Target=Widget>, inner widget is a TAIT like `impl Widget + Deref<Target=BaseWidget>`
+Alternative proposal: modifiers implement Deref<Target=Widget>, inner widget is a TAIT
+like `impl Widget + Deref<Target=BaseWidget>`
 Problem: this only works for one level of deref
 
 Proposal: `Modified` trait, like Iterator:
+
 ```rust
 pub trait Modified {
-    type Inner = 
+    type Inner =
 }
 ```
 
 # When to access the environment?
+
 Example: light mode / dark mode switch.
 
 During composition, or during layout? Right now we have both, and it's confusing.
 
 - During composition
-  - Env override scope is tied to function calls: must wrap composable call in a lambda
+    - Env override scope is tied to function calls: must wrap composable call in a lambda
 
 - During layout
-  - Env override scope is tied to the widget tree itself: preferred
-
+    - Env override scope is tied to the widget tree itself: preferred
 
 # Styles with pseudo-class dependencies
 
-Who is in charge of tracking the widget state? (focus, hover, active, disabled) 
+Who is in charge of tracking the widget state? (focus, hover, active, disabled)
 How is it propagated to child widgets?
 Should we avoid recomposition?
 
 ## Disabled
 
 This code should work:
+
 ```
 let widget = MyWidget::new().style("[if disabled] opacity: 50%;").disabled(true)
 ```
 
 ## Focus
+
 Focus is tracked by the framework, but only widgets that call `ctx.request_focus` can be focused.
 
 => currently, FocusGained, FocusLost is propagated to child widgets, so widgets with the same ID also receive it
-    but the styledbox doesn't have the same ID... it has the ID of its contents
+but the styledbox doesn't have the same ID... it has the ID of its contents
 
 ## Active
+
 It is the responsibility of the widget to set the active state.
-No event is propagated when a parent widget turns active, so that's not an option. 
+No event is propagated when a parent widget turns active, so that's not an option.
 
 ## Hover
-Tracked by the framework, but not directly exposed. Widgets that have hover behavior should respond to PointerEnter/Exit/Over/Out events.
+
+Tracked by the framework, but not directly exposed. Widgets that have hover behavior should respond to
+PointerEnter/Exit/Over/Out events.
 Should StyledBox have _hover behavior_ by default? Yes.
 
 => can be handled locally in StyledBox by handling the pointer events.
 
-
 # Invalidating layout during pointer handling
 
 That's an issue, because we can send multiple Pointer events (PointerEnter/PointerOver) without a relayout between.
-E.g. send a PointerOver to a widget that invalidates its layout, and just after a pointer over, but the layout is now invalid.
+E.g. send a PointerOver to a widget that invalidates its layout, and just after a pointer over, but the layout is now
+invalid.
 => solution: don't remove the old layout after invalidation
 
 # Sidebars
 
 MacOS-like:
+
 - sections
 - hierarchy
 
 # Form layouts
 
 Example user code:
-
 
 ```
 let mut form = Form::new();
@@ -826,13 +889,13 @@ form.push(Labeled::new("Stuff", Checkbox::new(...)))
 - collapsible sections
 - automatically generate text
 - labeled widgets?
-  - `Checkbox::new(label: &str) -> Labeled<Checkbox>`
-  - `Checkbox::unlabeled() -> Checkbox`
-
+    - `Checkbox::new(label: &str) -> Labeled<Checkbox>`
+    - `Checkbox::unlabeled() -> Checkbox`
 
 Q: is the label tied to the widget? or specified separately?
 
 => Collect use cases:
+
 - label: static element
 - label: dropdown
 - label: collection of radio choices (multiple rows)
@@ -847,52 +910,61 @@ Main issue: specific layout behavior for some widgets.
 E.g. checkboxes with the label on the other side.
 
 ## Option A: FormEntry trait
+
 A trait implemented by things (widgets, etc.) that represent an entry in a form.
 Through implementations of this trait, form entry widgets can insert themselves into a form, in the way best suited to
 the widget type.
 
 Pros:
+
 - different layout behaviors for some widgets (e.g. checkboxes)
 
-Cons: 
+Cons:
+
 - must be implemented for *all* widgets (that is, until specialization lands)
 
 ### Suboption A.1: LabeledContent
+
 More general than FormEntry, LabeledContent represents some content associated with a text label.
 It has no inherent layout (it's not a widget), but is used by several widgets (forms, toolbars)
 as their element type. => See SwiftUI LabeledContent
 
-
 ### Suboption A.2: widgets with built-in labels, and LabeledContent for the rest
+
 There's a FormRow trait, blanked-implemented for all LabeledContent. Some widgets
 directly implement FormEntry, like "toggles" (Checkbox+Label)
 
 Basically two kinds of input widgets:
+
 - "naked" widgets for which you need to provide a label, via `.labeled`
 - labeled widgets, which implement LabeledContent
 
-
 ## Option B: extension traits on FormBuilder
-All widgets that 
+
+All widgets that
 
 # Formatted text extension trait
-So that users can do `text.font_style()`, with `text: impl Into<Arc<str>>`
 
+So that users can do `text.font_style()`, with `text: impl Into<Arc<str>>`
 
 # BUG: invalidating cached stuff during speculative layouts
 
-The situation: 
+The situation:
 
-Grid launches a speculative layout on an element to compute max track sizes. This invokes WidgetPod::layout, which in turn invokes StyledBox::layout. 
-In addition to computing the layout, StyledBox::layout also computes and caches the CSS styles of the box. Currently, it *always*
+Grid launches a speculative layout on an element to compute max track sizes. This invokes WidgetPod::layout, which in
+turn invokes StyledBox::layout.
+In addition to computing the layout, StyledBox::layout also computes and caches the CSS styles of the box. Currently, it
+*always*
 invalidates (deletes) any previously computed styles (i.e. no caching).
 However, since we're in a speculative layout, `LayoutCache::update` doesn't store the result.
 
-Now, the grid launches the final layout. This invokes WidgetPod::layout, **but** WidgetPod has a valid cached layout, so it doesn't invoke StyledBox::layout.
+Now, the grid launches the final layout. This invokes WidgetPod::layout, **but** WidgetPod has a valid cached layout, so
+it doesn't invoke StyledBox::layout.
 Then, painting occurs, but StyledBox doesn't have the computed styles => crash.
 
-There's a slightly misleading promise here: that a call to `paint` is always preceded by a call to `layout`. This is true, but
-a **speculative** call to `layout` may happen between those. 
+There's a slightly misleading promise here: that a call to `paint` is always preceded by a call to `layout`. This is
+true, but
+a **speculative** call to `layout` may happen between those.
 => Conclusion: Widgets shouldn't invalidate cached results during speculative calls
 
 The rules here are getting very confusing, and not even enforced by the compiler.
@@ -903,20 +975,21 @@ Problem: no control over how children are drawn.
 Solution: child paint closures are moved into the closure.
 
 Q: What about caching?
-A: 
+A:
 
 Q: overhead? this allocates yet another tree
-
 
 # Drawing stuff
 
 Like, e.g. the check box mark.
+
 1. use a custom font
 2. load & draw a PNG image
 3. load & draw a SVG image
 4. hardcode in rust
 
 SVG spec too big. Alternatives:
+
 * IconVG
 * SVG native
 * Haiku Vector Icon Format
@@ -943,7 +1016,7 @@ In code: a fun and compact way of drawing dynamic icons, gauges, progress bars, 
 
 # TODO: a simple layout to place two elements relative to each other, simpler than grid
 
-e.g. 
+e.g.
 
 ```
 // place label to the right of the content
@@ -967,13 +1040,15 @@ item1.above(item2).above(item3).above(item3)
 ```
 
 Q: how to interpret vertical alignment with .above and .below modifiers,
-   and horizontal alignment with .right and .left?
+and horizontal alignment with .right and .left?
 A: it is ignored
-A': it is overwritten by the layout. However, instead of being interpreted as a position relative to edges of a containing box, 
-    it's interpreted as a position relative to a line separating the A & B (horizontal for .above/.below, vertical for .right/.left).
+A': it is overwritten by the layout. However, instead of being interpreted as a position relative to edges of a
+containing box,
+it's interpreted as a position relative to a line separating the A & B (horizontal for .above/.below, vertical for
+.right/.left).
 E.g. with .above/.below: HorizontalAlignment::Relative(0.0) aligns the top edge of A to the separating line.
-In a way it's similar to positioning within a containing box, except that the containing box is now a degenerate horizontal or vertical line (and doesn't contain the widgets at all). 
-
+In a way it's similar to positioning within a containing box, except that the containing box is now a degenerate
+horizontal or vertical line (and doesn't contain the widgets at all).
 
 # Dynamic vector drawables
 
@@ -999,7 +1074,7 @@ const GAUGE: VectorDrawable = VectorDrawable {
         Variant { n: "light" },
     ],
     scalars: &[
-      "gauge-value"
+        "gauge-value"
     ],
     colors: &[
         "gauge-color"
@@ -1013,46 +1088,45 @@ const GAUGE: VectorDrawable = VectorDrawable {
         Shape::Path { .. },
     ],
     ops: &[
-        Op::Fill { v: Some(VARIANT_DARK), s: 0, p: 1 }, 
+        Op::Fill { v: Some(VARIANT_DARK), s: 0, p: 1 },
         Op::Fill { v: None, s: 0, p: 0 }
     ]
 };
 
 ```
 
-
 # Writing modes, block flow directions, grids, etc.
+
 Out of scope for UIs?
-
-
 
 # Ideas/requirements for a data model
 
 Requirements:
+
 - no serialization code by hand except for tricky cases
 - serialize to whatever
 - ordered collections, works well with UI
 - undo/redo
-- objects cheap to copy 
+- objects cheap to copy
 
 Design:
-- difficult to access objects directly; instead, functions (in the GUI) receive a `ModelObject<T>`. Which is like a smart pointer around an object of the data model.
+
+- difficult to access objects directly; instead, functions (in the GUI) receive a `ModelObject<T>`. Which is like a
+  smart pointer around an object of the data model.
 - underlying structure is abstracted
 - ModelObjects are value types: they can be cloned, and compared
 - However, ModelObjects represent not a free standing value, but a value in a document.
 
-
-
 # Next steps:
+
 * Fix premult alpha on composited surfaces
 * rework Layer API
-  * remove `animation` module in kyute-shell (we won't be using that for animation)
-  * layers (and their swap chains) will be owned by specific widgets
-  * widgets paint to their swap chains when they want (usually during paint, but maybe as a result of a timer event)
-    * widgets signal a native layer update by setting a flag in the EventCtx or PaintCtx
-  * widgets register their native drawing layers during 
-  * layers are registered to the parent window during `paint` (`paint_ctx.register_layer(transform, layer)`)
-
+    * remove `animation` module in kyute-shell (we won't be using that for animation)
+    * layers (and their swap chains) will be owned by specific widgets
+    * widgets paint to their swap chains when they want (usually during paint, but maybe as a result of a timer event)
+        * widgets signal a native layer update by setting a flag in the EventCtx or PaintCtx
+    * widgets register their native drawing layers during
+    * layers are registered to the parent window during `paint` (`paint_ctx.register_layer(transform, layer)`)
 
 # Cache cell
 
@@ -1061,10 +1135,10 @@ Design:
 * Otherwise, uses a box
 * Cloneable
 
-
 # Support for MacOS?
 
 There are several configurations:
+
 - Windows, Linux: skia with vulkan device (via graal, or something else)
 - MacOS: skia with metal device
 
@@ -1082,32 +1156,33 @@ On windows, they are backed by swapchains. But this seems inefficient since they
 4. Cast CompositionGraphicsSurface to ICompositionSurface
 5. Set as the surface of a CreateSurfaceBrush
 
-The CompositionGraphicsSurface surface created by CompositionGraphicsDevice are not shareable with other APIs, so don't bother.
-
+The CompositionGraphicsSurface surface created by CompositionGraphicsDevice are not shareable with other APIs, so don't
+bother.
 
 Ideally, would like to draw directly on IDCompositionSurface, but how?
+
 * Not possible with DX12 devices (Compositor doesn't support DX12)
 * Should be possible with D3D11, but Windows.UI.Composition / CompositionGraphicsDevice doesn't support D3D11?
 
-=> Don't bother, it creates a swap chain under the hood (call BeginDraw multiple times and you see that it flips between two different resources with the DXGI_USAGE_BACK_BUFFER flag)
+=> Don't bother, it creates a swap chain under the hood (call BeginDraw multiple times and you see that it flips between
+two different resources with the DXGI_USAGE_BACK_BUFFER flag)
 
 Conclusion:
+
 * static elements (e.g. text): render and cache to texture
 * dynamic elements (gauges, button hover, etc.): re-render with small damage region
 * scrollable regions: composition layer
 * video, 3D: composition layer
 * static content with dynamic transform: composition layer
 
-
-
 # Skia stuff
 
 - create from native compositor surface
-   - different code paths for macos and vulkan (linux/vulkan or win32/vulkan)
+    - different code paths for macos and vulkan (linux/vulkan or win32/vulkan)
 - compositor surface interface
-  - does nothing by default, but there are specific interfaces for macOS or win32/vulkan
-  - vulkan interface for compositor surface:
-    - acquire_image, present_and_release_image()
+    - does nothing by default, but there are specific interfaces for macOS or win32/vulkan
+    - vulkan interface for compositor surface:
+        - acquire_image, present_and_release_image()
 
 |         | macOS           | Win32/Vulkan         |   |
 |---------|-----------------|----------------------|---|
@@ -1123,87 +1198,99 @@ pub trait VulkanCompositionSurface {
 ```
 
 Note:
-Skia supports D3D12, so instead of trying to shoehorn vulkan, use the D3D12 backend of skia. 
+Skia supports D3D12, so instead of trying to shoehorn vulkan, use the D3D12 backend of skia.
 graal/vulkan becomes optional on windows, no need for complicated interop.
 3D can still use vulkan via raw composition layers
 
 See also: [Possible Deprecation / Removal of D3D Backend](https://groups.google.com/g/skia-discuss/c/WY7yzRjGGFA)
-
 
 # Data structure for the retained widget tree
 
 "container-owns":
 (+) straightforward regarding ownership
 (-) event delivery is complicated:
-    - need participation of widgets for event delivery
-    - need to maintain a bloom filter to avoid unnecessary traversals
+- need participation of widgets for event delivery
+- need to maintain a bloom filter to avoid unnecessary traversals
 
 ID-tree:
 (+) event delivery is simpler, can directly address any widget
 (-) forced type erasure
-(-) can't easily borrow mutably multiple widgets at the same time (e.g. a parent and one of its children): deal-breaker for calculations that tend to access both (e.g. layout)
+(-) can't easily borrow mutably multiple widgets at the same time (e.g. a parent and one of its children): deal-breaker
+for calculations that tend to access both (e.g. layout)
 
-Possible way forward, as suggested on xilem zulip: container-owns synchronized with a side tree containing the widget hierarchy 
-
+Possible way forward, as suggested on xilem zulip: container-owns synchronized with a side tree containing the widget
+hierarchy
 
 # Issue: UI diff evaluation is in the same thread as the UI handler
 
 In other words: UI blocked when the UI diff is being calculated.
 
 Q: Is that an issue?
-A: It's easy to accidentally perform a costly operation in the UI eval function. If UI eval is done in another thread (the "application thread") by default,
-   it would not block the event handlers.
+A: It's easy to accidentally perform a costly operation in the UI eval function. If UI eval is done in another thread (
+the "application thread") by default,
+it would not block the event handlers.
 
 Q: what about layout? should it be done in another thread as well?
 A: would need to duplicate the element tree
 
 Advantages:
+
 * Doesn't block the UI by default
 
 Problems:
+
 * Signals would be emitted from the UI thread and received in the application thread, requiring Arc<CacheVar>
 * Can't access `Application::global()`
-  * no compositor
-  * no GPU backend
-  * no drawing
+    * no compositor
+    * no GPU backend
+    * no drawing
 
 ## What does "blocking the UI" mean?
 
 User clicks/drags something and doesn't see any feedback / cannot interact with anything else.
 This means that a long computation is preventing input events from being processed.
 
-In that sense, the evaluation of the UI diff *cannot* be expensive. Whether it's calculated in the same thread or another, 
-it will look the same to the user (except if we do UI updates directly on the element tree, without re-evaluating the widget tree).
+In that sense, the evaluation of the UI diff *cannot* be expensive. Whether it's calculated in the same thread or
+another,
+it will look the same to the user (except if we do UI updates directly on the element tree, without re-evaluating the
+widget tree).
 
 Conclusion: it makes no sense to move the UI diff evaluation outside the UI thread.
 
 # Multiple windows
 
 ## Option A
+
 UI closure per-window.
 App object retains a list of open windows (Idle handles), holds the app state in a refcell.
-When the app state changes (either compare with the prev state or increment rev index), signal all windows to redraw their UI.
+When the app state changes (either compare with the prev state or increment rev index), signal all windows to redraw
+their UI.
 Windows hold a shared ref to the app state, borrow_mut and re-run the UI closure with it.
 
 ## Option B
+
 UI closure for the whole app.
 App logic runs in a separate thread. Inside the UI closure, send diffs to the windows via channels.
 
 ## Option C
+
 UI closure for the whole app.
 App logic runs in the UI thread.
 App logic run after each window event.
 App logic sets diffs via `Rc<RefCell<>>` in WinHandler.
 
-# List diffs 
-List of insertion/removals/modifications. Each widget has an optional ID to identify it in the list. 
+# List diffs
+
+List of insertion/removals/modifications. Each widget has an optional ID to identify it in the list.
 ID produced from location in the call trace.
 
-Each element linked to a widget by its call ID. Element containers hold a `Vec<Box<dyn Element>>`, each elem node stores ID + inner element.
+Each element linked to a widget by its call ID. Element containers hold a `Vec<Box<dyn Element>>`, each elem node stores
+ID + inner element.
 Specialized function that performs reconciliation of widgets onto a `Vec<Box<dyn Element>>`.
 Elements know their ID, returned with `Element::id`.
 
 List patches: sequence of tokens:
+
 - Start: anchor at the start of the sequence
 - Modify(T): modify current element
 - Advance(N): skip N elements
@@ -1213,6 +1300,7 @@ List patches: sequence of tokens:
 - End: end sequence
 
 Example: insert 5 elements at position 5
+
 - Start
 - Advance(5)
 - Insert (x5)
@@ -1224,6 +1312,7 @@ Example: replace the whole list
 # Compositor API
 
 Annoying to do this every time:
+
 ```
 let app = Application::global();
 let mut compositor = app.compositor();
@@ -1233,6 +1322,7 @@ compositor.do_thing_with_layer_or_surface(layer_id.unwrap());
 Alternatives:
 
 A: Surfaces / layers are refcounted, non-thread-safe objects:
+
 ```
 // no need to access the compositor
 let layer = Layer::new()?;
@@ -1249,48 +1339,52 @@ Internally, store `Rc<Compositor>` + layer ID.
 
 Input/main task: receives and propagates input events to the element tree, which in turn may request repaints
 Render task: a loop, synced with presentation:
+
 ```rust
 fn render_task() {
-   loop {
+    loop {
         // sync with presentation
         wait_for_presentation();
         // receive last 
         let request = rx.recv();
-   }
+    }
 }
 ```
-
 
 Events by time:
 
 - Input event #1
-  - Propagate to element tree
-  - If the event resulted in dirty regions, immediately synchronize with presentation, and schedule idle task UI_UPDATE
+    - Propagate to element tree
+    - If the event resulted in dirty regions, immediately synchronize with presentation, and schedule idle task
+      UI_UPDATE
 - Input event #2
 - ...
 - Input event #n
-When the input event queue is clear:
-Idle task: UI_UPDATE
- - evaluate widget tree by calling the UI function
- - apply to element tree
- - if repaint needed: invalidate dirty region and schedule REPAINT
+  When the input event queue is clear:
+  Idle task: UI_UPDATE
+- evaluate widget tree by calling the UI function
+- apply to element tree
+- if repaint needed: invalidate dirty region and schedule REPAINT
 
 (may process additional input events here)
 
 Idle task: SYNC_WITH_PRESENTATION
- - sync with presentation
- - schedule UI_UPDATE
+
+- sync with presentation
+- schedule UI_UPDATE
 
 (process additional input events...)
 
 Idle task: UI_UPDATE
+
 - evaluate widget tree by calling the UI function
 - apply to element tree
 - repaint the element tree if needed
 
 Doesn't work with glazier: schedule_idle puts the work on the message queue immediately
 
-**Fact**: wait_for_presentation cannot run in the same thread as the UI handler, because otherwise it would block unrelated windows.
+**Fact**: wait_for_presentation cannot run in the same thread as the UI handler, because otherwise it would block
+unrelated windows.
 -> it's becoming clear that rendering should be done in a separate thread
 
 # New event routing
@@ -1300,23 +1394,27 @@ Goals: require minimum cooperation from the widget/element implementation
 Locate widgets using "ID paths" (slices of Widget IDs).
 
 Two things:
+
 - `event()`: receive an event destined to this widget
 - `route_event()`: propagate an event to a child widget, event not meant for us specifically
 
 Example: propagating an event through a VBox:
+
 - `VBox::route_event()` is called
 - VBox calls `Event::next_target(&mut self) -> WidgetID` to get the widget ID that should receive the event
 - if ID is the vbox:
-  - `VBox::event()`
+    - `VBox::event()`
 - otherwise lookup the ID in a map of some sort
-  - if ID not found that's an error (inconsistent tree)
+    - if ID not found that's an error (inconsistent tree)
 - call `child.route_event(event)`
 
 Propagating an event through a ElementNode:
+
 - transform pointer events
 - child.route_event
 
 Default implementation of route_event:
+
 - if next_event() return None, event is for us
 - otherwise: error, widget should have a route_event implementation
 
@@ -1324,12 +1422,12 @@ Default implementation of route_event:
 fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &Event) {
     if let Some(target) = ctx.next_target() {
         let Some(target) = self.child_by_id(target) else {
-          warn!("inconsistent tree");
-          return;
+            warn!("inconsistent tree");
+            return;
         };
         target.route_event(ctx, event);
     }
-  
+
     ctx.default_route_event(self, event);
 }
 ```
@@ -1337,6 +1435,7 @@ fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &Event) {
 Rule: every container widget should have a route_event implementation.
 
 ## Pointer event propagation:
+
 These events have no target, except when the mouse is captured by a widget.
 
 Should hit-testing be done as part of the event propagation? or should there be a separate hit-testing tree?
@@ -1356,11 +1455,10 @@ fn hit_test(&self, ctx: &mut HitTestCtx, position: Point) {
 ```
 
 Summary:
+
 * hit-test returns one or more targets
 * event is sent to those targets, and bubbles up
-  * 
-
-
+    *
 
 Should hit-test be manually recursive?
 
@@ -1373,43 +1471,49 @@ Q: which events are broadcast in old kyute?
 A: Some pointer events (because hit-test is done at the same time as propagation), UpdateChildFilter, dump_tree
 
 Propagating "events", or "requests" in a larger sense:
+
 1. Use events
 2. Use events, and convert them into method calls when arriving at target
 3. Use methods, implementation responsible for propagating to children
 4. Use a generic visitor mechanism
 
 In flutter:
+
 - Hit-test: implementors must propagate to children
 - Painting: implementors must propagate to children
 - Layout: implementors must propagate to children
 
 ## Layout caching
+
 ElementNodes can cache their layouts, and store a dirty flag for relayouts.
 
-
-
 # Layout v2
+
 More incrementality.
 
 Events affecting the layout of a widget:
+
 - structure of children changed (ChangeFlags::STRUCTURE)
 - size of children changed (ChangeFlags::SIZE)
 - positioning (alignment) of children changed (ChangeFlags::POSITIONING)
-- parent constraints changed 
+- parent constraints changed
 
-These may affect 
-- only the size but not the positioning of children (rare?) 
+These may affect
+
+- only the size but not the positioning of children (rare?)
 - only the positioning, but not the size of children
 - only the size of this widget, but not it's positioning, or its children
 - only the positioning, but not it's size, or its children
 
 4 separate components of layout:
+
 - self size
 - self positioning
 - child offsets
 - child geometry
 
 In order:
+
 1. compute child constraints (CONSTRAINTS, SIZE_DIRTY) -> CHILD_CONSTRAINTS
 2. layout_children (CHILD_CONSTRAINTS) -> CHILD_GEOMETRY
 3. compute_geometry (CONSTRAINTS, SIZE_DIRTY, CHILD_GEOMETRY) -> GEOMETRY
@@ -1417,8 +1521,9 @@ In order:
 compute_geometry may not depend on CHILD_GEOMETRY
 
 DirtyFlags:
+
 - CONSTRAINTS: parent constraints have changed
-~~- CHILD_CONSTRAINTS: child constraints have changed~~
+  ~~- CHILD_CONSTRAINTS: child constraints have changed~~
 - CHILD_GEOMETRY: child geometry may have changed
 - CHILD_POSITIONS: child positions may have changed
 - GEOMETRY: geometry may have changed
@@ -1431,68 +1536,68 @@ E.g. for `Frame`:
 ```rust 
 fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &LayoutParams) {
     if self.layout.constraints != constraints {
-      self.layout_flags |= LayoutFlags::CONSTRAINTS | LayoutFlags::CHILD_GEOMETRY | LayoutFlags::CHILD_POSITIONS;
+        self.layout_flags |= LayoutFlags::CONSTRAINTS | LayoutFlags::CHILD_GEOMETRY | LayoutFlags::CHILD_POSITIONS;
     }
 }
 
 fn event(&mut self, ctx: &mut EventCtx, event: &Event) {
-  // ... propagate event ...
-  if ctx.change_flags.intersects(ChangeFlags::SIZE) {
-    // size of child item has changed
-    self.layout_flags |= LayoutFlags::CHILD_GEOMETRY | LayoutFlags::CHILD_POSITIONS;
-  } 
-  if ctx.change_flags.intersects(ChangeFlags::POSITIONING) {
-    // only the positioning has changed, not its size given the same constraints
-    self.layout_flags |= LayoutFlags::CHILD_POSITIONS;
-  }
-  // child geometry changes do not affect the geometry of this frame
-  ctx.change_flags.remove(ChangeFlags::GEOMETRY);
-  
+    // ... propagate event ...
+    if ctx.change_flags.intersects(ChangeFlags::SIZE) {
+        // size of child item has changed
+        self.layout_flags |= LayoutFlags::CHILD_GEOMETRY | LayoutFlags::CHILD_POSITIONS;
+    }
+    if ctx.change_flags.intersects(ChangeFlags::POSITIONING) {
+        // only the positioning has changed, not its size given the same constraints
+        self.layout_flags |= LayoutFlags::CHILD_POSITIONS;
+    }
+    // child geometry changes do not affect the geometry of this frame
+    ctx.change_flags.remove(ChangeFlags::GEOMETRY);
 }
 ```
 
 ## Dirty flags
 
-Proposal: a method to propagate dirty flags upwards, automatically called as a result of `Widget::event` and `TreeCtx::update`.
+Proposal: a method to propagate dirty flags upwards, automatically called as a result of `Widget::event`
+and `TreeCtx::update`.
 
 ```rust
 impl TreeCtx {
-  pub fn update(&mut self, element: &mut E, widget: W) where W: Widget<Element=E>, E: Element {
-    let change_flags = widget.update(&mut element);
-    element.propagate_flags(change_flags)
-  }
+    pub fn update(&mut self, element: &mut E, widget: W) where W: Widget<Element=E>, E: Element {
+        let change_flags = widget.update(&mut element);
+        element.propagate_flags(change_flags)
+    }
 }
 
 impl EventCtx {
-  pub fn event(&mut self, child: &mut E, event: &E) where E: Element {
-    child.event(e);
-    element.propagate_flags(change_flags);
-  }
+    pub fn event(&mut self, child: &mut E, event: &E) where E: Element {
+        child.event(e);
+        element.propagate_flags(change_flags);
+    }
 }
 ```
 
-
 ## Length resolution
 
-Issue: lengths can be relative to the current font size or the parent element size. 
+Issue: lengths can be relative to the current font size or the parent element size.
 When updating the element tree, even if the relative length does not change, the layout might still change
 -> resolve everything in layout() for now, pass parent font size in LayoutParams
 
 ## Hit-testing contract
 
 Q: What should a widget do in `hit_test`?
-Q1  Should it return one hit? 
-Q2  Should it return multiple hits ordered by Z-index?
-Q3  Is it responsible for calling hit_test on the hit child elements? 
-Q4  Should we hit-test children that are out of parent bounds?
-Q5  Should elements report a hit on transparent parts?
+Q1 Should it return one hit?
+Q2 Should it return multiple hits ordered by Z-index?
+Q3 Is it responsible for calling hit_test on the hit child elements?
+Q4 Should we hit-test children that are out of parent bounds?
+Q5 Should elements report a hit on transparent parts?
 
 A: hit testing should return all intersected elements (if requested)
-There is demand For hit-testing outside parent bounds, see https://github.com/flutter/flutter/issues/75747. 
+There is demand For hit-testing outside parent bounds, see https://github.com/flutter/flutter/issues/75747.
 DOM events: hit-testing outside parent bounds by default.
 For transparent parts: depends on the widget.
 
 How to implement hit-testing outside parent bounds?
+
 1. a separate data structure holding visual nodes
 2. ID buffer (need separate rendering step, meh)
 3. elements compute the union of the bounds of all children
@@ -1504,13 +1609,14 @@ That means that every element other than simple wrappers will have a `geometry` 
 
 FIXME: bounds & paint bounds shouldn't be in Geometry
 Example: ElementNode, with a non-zero transform. What is the returned `bounding_rect`?
-Currently, it's the bounding rect of the content, *without the transform*, so the bounding rect in the content local coordinates.
+Currently, it's the bounding rect of the content, *without the transform*, so the bounding rect in the content local
+coordinates.
 It should be bounds in the ElementNode local coordinate system.
-
 
 ## Caching layout results
 
 Stuff to cache:
+
 - layout parameters, to determine if they have changed
 - geometry, to reuse if the widget has determined that it hasn't changed
 - total bounds (self + descendants)
@@ -1518,13 +1624,16 @@ Stuff to cache:
 Idea: include descendant bounds in geometry.
 
 ## Idea: attached properties?
-Same as WPF, QML, and flutter [ParentData](https://api.flutter.dev/flutter/rendering/ParentData-class.html). Used to store layout info for the parent into the child.
+
+Same as WPF, QML, and flutter [ParentData](https://api.flutter.dev/flutter/rendering/ParentData-class.html). Used to
+store layout info for the parent into the child.
 
 ## Idea: `ElementNode` shouldn't be an `Element`.
+
 The parent element should be responsible for applying transforms when propagating events, hit-testing, painting...
 
-
 ## why alignment & padding should be treated differently than other layout parameters?
+
 Such as grid positions, or docking status, or explicit offsets?
 
 TODO: is it possible to design an extensible mechanism for a child to specify layout properties for a parent?
@@ -1548,49 +1657,54 @@ Associated types?
 Type erasure?
 Return a `dyn Any`, and downcast.
 
-
 ## Layout modifiers
 
 Independent of the container (creates a sub-element):
+
 - padding
 - fixed width/height
 - alignment? could work, but what about relative positioning?
     - would be a separate widget
 
 Dependent on the container:
+
 - alignment (flex/grid/frame)
 - grid position (grid)
 - flex factor (flex)
 - dock index (dock)
 
 Mixed:
+
 - left/top/right/bottom: padding + alignment
 
 Issue: overhead of transforms
 e.g. padding + alignment would create two TransformNodes
 => Just create a widget that does both at the same time (e.g. frame)
 
-
 ## Text
+
 - Use swash.
 - should be a global font database, initialized from system fonts.
 
 ## Lengths
+
 Is it possible to resolve them early? Like during widget update?
-Need to know three things: 
+Need to know three things:
+
 - parent font size: OK
 - scale factor: could be OK
 - container size: obviously not known until layout
 
 Reasonably, for font sizes, we'd like em-sizes and dips/pixels
 
-More generally, early value resolutions would be easier to handle. 
+More generally, early value resolutions would be easier to handle.
 Ideally we would like to resolve before widgets are created, otherwise we need two versions of some data structures.
-For example, we'd need two TextSpan types: one for the user with properties specified in `Length`s, the other for the 
-element tree with values resolved to `f64` DIP sizes => that would be **super annoying** (citation needed: maybe it would be reasonable)
-
+For example, we'd need two TextSpan types: one for the user with properties specified in `Length`s, the other for the
+element tree with values resolved to `f64` DIP sizes => that would be **super annoying** (citation needed: maybe it
+would be reasonable)
 
 However, we lose the pretty syntax to specify the font size for a whole widget subtree:
+
 ```
 widget.align(...).font_size(...)  // sets font size for Align<Widget<...>>
 ```
@@ -1599,16 +1713,17 @@ And instead we need to work with closures and a thread-local environment:
 
 ```rust
 fn test() -> impl Widget {
-  with_environment(theme::FONT_SIZE, 16.0, || {
-    ...
-  })
+    with_environment(theme::FONT_SIZE, 16.0, || {
+        ...
+    })
 }
 ```
 
 Alternatively, we may use macros:
+
 ```rust
 fn test() -> impl Widget {
-  environment! {
+    environment! {
      theme::FONT_SIZE=16.0, disabled=self.disabled => Align::new(Widget::new(..))
   }
 }
@@ -1619,71 +1734,74 @@ Or alter the current model even more, threading the context explicitly
 ```rust
 #[composable]
 fn my_widget(cx: &Context, state: &Stuff) -> impl Widget {
-  // ...
+    // ...
 }
 ```
 
 Some widgets need a context, but not all.
-E.g. `Button::new(label)` should be just that, and not `Button::new(cx, label)`. 
+E.g. `Button::new(label)` should be just that, and not `Button::new(cx, label)`.
 The tree is a "tree of closures" taking a context parameter.
-The tree is then evaluated, passing a "Context" parameter. It's only at this stage that the signals, events and other retained state are accessible.
+The tree is then evaluated, passing a "Context" parameter. It's only at this stage that the signals, events and other
+retained state are accessible.
 
 ```rust
 fn my_widget(cx: &Context, data: &Data) -> impl Widget {
-  //...
+    //...
 }
 
 fn framed<'a>(cx: &Context, data: &'a Data) -> impl Widget + 'a {
-  // issue: borrowing of data
-  let button = Frame::new(200, 200, |cx| my_widget(cx, data)).clickable(cx);
-  // issue: mutating data
-  if button.clicked() {
-  }
-  // alternate design:
-  Frame::new(200, 200, |cx| my_widget(cx, data)).clickable(|cx,data| {
-    // do something with data? but then I'd need a mutable borrow of data, and I can't do that since my_widget already borrows it
-    // this means that Widgets should now have an additional "data" type parameter
-    // and then this basically becomes xilem
-  });
-  
-  // It will need to be written this way however, for list views with incremental updates (can't render incremental list views with a for loop)
+    // issue: borrowing of data
+    let button = Frame::new(200, 200, |cx| my_widget(cx, data)).clickable(cx);
+    // issue: mutating data
+    if button.clicked() {}
+    // alternate design:
+    Frame::new(200, 200, |cx| my_widget(cx, data)).clickable(|cx, data| {
+        // do something with data? but then I'd need a mutable borrow of data, and I can't do that since my_widget already borrows it
+        // this means that Widgets should now have an additional "data" type parameter
+        // and then this basically becomes xilem
+    });
+
+    // It will need to be written this way however, for list views with incremental updates (can't render incremental list views with a for loop)
 }
 ```
 
 Issue with incremental updates? Consider:
 
-1. a list widget sees that one element has been added to the list, and generates an incremental update to the element tree
-2. however, at the same time, a signal has been triggered for another element of the list (e.g. a button has been clicked inside a list entry)
+1. a list widget sees that one element has been added to the list, and generates an incremental update to the element
+   tree
+2. however, at the same time, a signal has been triggered for another element of the list (e.g. a button has been
+   clicked inside a list entry)
 3. how does the list widget know which widget to recompute?
 
-=> the cache system expects widget-producing functions to be called everytime (they may be skipped if they are cached). But the incremental list widget
+=> the cache system expects widget-producing functions to be called everytime (they may be skipped if they are cached).
+But the incremental list widget
 only calls the widget function for newly added/removed entries
 
 Conclusion: the incremental list widget *needs* to call the child closure for every child
 -> Not a big deal, since most children can be skipped, and the final diff on the element tree won't be large
 
 Can we do without calling the child item closure?
-The problem is that the child closure serves two purposes: creating/updating the item, 
+The problem is that the child closure serves two purposes: creating/updating the item,
 and reacting to events. If a list item receives an event, then the item closure must be called,
 and the item rebuilt.
 
 ```rust
 
 fn list(child_item: impl FnMut(Item) -> Widget) {
-  for (id,item) in items {
-    // enter scope and 
-    cx.scoped(id, |dirty| {
-        if dirty || diff.contains(id) {
-          // re-evaluate
-          let widget = child_item(item);
-          
-          true
-        } else {
-          // skip subtree
-          false
-        }
-    });
-  }
+    for (id, item) in items {
+        // enter scope and 
+        cx.scoped(id, |dirty| {
+            if dirty || diff.contains(id) {
+                // re-evaluate
+                let widget = child_item(item);
+
+                true
+            } else {
+                // skip subtree
+                false
+            }
+        });
+    }
 }
 
 ```
@@ -1730,24 +1848,29 @@ MainView(data: &AppData) {
 ```
 
 ## Mutations?
+
 Pass something in the square brackets, but it can't be the same data as the input parameters.
 I.e. we can't refer to input parameter data in reactive parts => this is annoying, can't get an ID to the data at all.
 
 Alternatively: don't pass a mut ref to the data, but instead pass a "mutation" object for the data model.
 Alternatively: capture input parameter data by value?
--> possible, but extremely annoying if data is not Copy. 
-Explanation: at the location where the reactive closure is defined, it can see and capture stuff from input parameters (`&Data`).
-The reactive closure cannot borrow from the input data, since it would lock the data for modification, and it would be impossible
+-> possible, but extremely annoying if data is not Copy.
+Explanation: at the location where the reactive closure is defined, it can see and capture stuff from input
+parameters (`&Data`).
+The reactive closure cannot borrow from the input data, since it would lock the data for modification, and it would be
+impossible
 to pass a `&mut Data` to the reactive closure.
 So, the challenge here is to capture everything by value. And if the stuff to capture in `Data` is not `Copy` then
-it's very annoying: we need to `.clone()` the data *outside* the closure and capture the clone. 
+it's very annoying: we need to `.clone()` the data *outside* the closure and capture the clone.
 
-
-Q: you get a reference to data to build the UI, but then how to modify that data at the same time? (the "reactive" part).
+Q: you get a reference to data to build the UI, but then how to modify that data at the same time? (the "reactive"
+part).
 
 Other issues:
+
 - receiving events when the view is skipped
-- for memoization, previous state not available until update, need to defer view creation at update time, which would need a borrow
+- for memoization, previous state not available until update, need to defer view creation at update time, which would
+  need a borrow
 
 ## In search of a good layout system
 
@@ -1759,48 +1882,58 @@ Avoid allocations
 
 Can it be incremental?
 
-
 ## Pass scale factor & font size in environment?
+
 No need to resolve lengths anymore.
 
 Issue with scale factor: scale factor changes will need a (full) recomposition
-Issue with font size: every container that has a custom font size will need to open an environment scope, can't "push" child items into the container
+Issue with font size: every container that has a custom font size will need to open an environment scope, can't "push"
+child items into the container
 
 Alternative: remove em-sizes?
 QML, WPF don't have them.
 
-Decision => em and physical pixel sizes removed for now. 
+Decision => em and physical pixel sizes removed for now.
 
 ## Expose a widget that renders a SKSL shader
+
 Good to prototype stuff.
-Allow passing uniforms to it. 
+Allow passing uniforms to it.
 
 ## Pain points
+
 - `event` vs `route_event`
 - widget tree tracking (`child_added`, `child_removed`) is error-prone, and completely non-functional right now
-  - it's necessary to build the event propagation path
+    - it's necessary to build the event propagation path
 
 ## Switch back to winit
 
 ## Nuke winit
 
 ## Nuke every crate related to windowing and vendor everything
-It's the only way to be sure.
-Somehow winit, raw_window_handle and others are getting worse every update. 
 
+It's the only way to be sure.
+Somehow winit, raw_window_handle and others are getting worse every update.
 
 ## Event propagation?
+
 There's no bubbling right now, nor capture.
-It's difficult to predict what propagation should look like, so do something familiar to users, like https://www.w3.org/TR/uievents/#event-flow.
+It's difficult to predict what propagation should look like, so do something familiar to users,
+like https://www.w3.org/TR/uievents/#event-flow.
 We already can determine the propagation path through the widget tree, which gives us a list of widget IDs.
-Compared to the DOM, we have the additional complication that IDs can refer to multiple widgets, with the following restrictions:
+Compared to the DOM, we have the additional complication that IDs can refer to multiple widgets, with the following
+restrictions:
+
 - two sibling widgets (sharing the same parent) cannot have the same ID (unless it's the ANONYMOUS id).
 - only widgets that have a direct parent-child relation can have the same ID, and only if the child is unique.
-  - i.e. a container widget cannot have the same ID as its parent.
--> in short, the only case where two widgets can share the same IDs is with a widget that wraps one unique child widget.
+    - i.e. a container widget cannot have the same ID as its parent.
+      -> in short, the only case where two widgets can share the same IDs is with a widget that wraps one unique child
+      widget.
 
 Implementing the capture phase:
-During the capture phase, the event is wrapped in the "Event::Propagate" wrapper. This wrapper holds the propagation path. If the widget wishes to capture the event, it can look inside this event and determine whether to continue propagation or stop it.
+During the capture phase, the event is wrapped in the "Event::Propagate" wrapper. This wrapper holds the propagation
+path. If the widget wishes to capture the event, it can look inside this event and determine whether to continue
+propagation or stop it.
 
 Roughly, the event logic for a widget will be:
 
@@ -1820,11 +1953,9 @@ if let Some(event) = event.next() {
 
 ```
 
-
 ## Environment values
 
 How to make a value depend on some environment value? How to check if the dependency should be recomputed?
-
 
 ```
 // with_state(cx, init, F) where F: for<'a> FnOnce(cx, &'a mut State) -> Widget + 'a    // returns a widget that borrows 'a
@@ -1935,23 +2066,27 @@ https://github.com/audulus/rui/issues/26 seems to tackle a related/similar probl
 ## Investigate [rui](https://github.com/audulus/rui/)
 
 Interesting stuff:
+
 - https://github.com/audulus/rui/issues/26: seems to tackle the "closure that returns a value borrowing input" problem
 - There's only one trait to implement ("View") instead of the Element/Widget split
-  - There's no retained element tree, so that might explain that
+    - There's no retained element tree, so that might explain that
 - Not sure about memoization
-  - According to the readme: "everything is re-rendered when state changes", so no memoization / fine-grained invalidation
+    - According to the readme: "everything is re-rendered when state changes", so no memoization / fine-grained
+      invalidation
 - Basically, "immediate mode with better layout options", which is interesting
-- Passes state down the tree with a "context", like we do. However, the context is accessed explicitly with "Bindings" that identify the state within the context, instead of accessing it by looking up a TypeID. This feels much more principled: steal this idea :)
-  - Bindings are just `Copy`able IDs to avoid borrowing issue in callbacks (still need `move` though?) 
-  - Q: can we track dependencies this way? 
-    - Idea: inside `Widget::build` or `update`, the TreeCtx can keep track of all referenced state entries.
-
-
+- Passes state down the tree with a "context", like we do. However, the context is accessed explicitly with "Bindings"
+  that identify the state within the context, instead of accessing it by looking up a TypeID. This feels much more
+  principled: steal this idea :)
+    - Bindings are just `Copy`able IDs to avoid borrowing issue in callbacks (still need `move` though?)
+    - Q: can we track dependencies this way?
+        - Idea: inside `Widget::build` or `update`, the TreeCtx can keep track of all referenced state entries.
 
 ## Shapes
+
 Idea: apply "ShapeOps" in sequence, each shape op has layout and paint methods.
 They can modify the shape for the operator above it (e.g. borders will inflate the shape).
 Example of ShapeOps:
+
 - Fill
 - Stroke (stroke inside)
 - Border (offset + stroke)
@@ -1960,16 +2095,15 @@ Example of ShapeOps:
 - Offset (offset along normals) =>
 - Transform
 
-
 Text::new().padding(4.0).background(
-  // Shape is sized according to the size of the text, does not affect 
-  // available space for the text
-  Shape::new(RoundedRect)
-      .drop_shadow()    // painted first
-      .fill()           // then this
-      .inner_stroke()   // then this
-      .outer_stroke()   // then this
-      // then the text is rendered
+// Shape is sized according to the size of the text, does not affect
+// available space for the text
+Shape::new(RoundedRect)
+.drop_shadow()    // painted first
+.fill()           // then this
+.inner_stroke()   // then this
+.outer_stroke()   // then this
+// then the text is rendered
 );
 
 In general, the background shape has no influence on the resulting geometry of the widget.
@@ -1979,7 +2113,8 @@ This is different from CSS where borders affect the layout of the element.
 to account for larger borders.
 
 Q: Is that a problem?
-A: Not sure; it's nice that changing the rendered shape doesn't affect the geometry and doesn't require a relayout in the general case, so I'd tend to keep that.
+A: Not sure; it's nice that changing the rendered shape doesn't affect the geometry and doesn't require a relayout in
+the general case, so I'd tend to keep that.
 A2: nvm, flutter has decorations with content padding, so I'd just copy that
 
 Idea: move shapes to "Frame", add `.decoration` method.
@@ -1991,7 +2126,6 @@ Button should have minimum possible size, but if not tight around the text, the 
 
 **Problem**: alignment widget will expand to max possible size if constrained. This may not be what we want
 
-
 ## Outline views
 
 A generalization of list views.
@@ -2000,9 +2134,8 @@ A generalization of list views.
 
 - [flutter_tree_view](https://github.com/baumths/flutter_tree_view)
 - [SwiftUI OutlineGroup](https://developer.apple.com/documentation/swiftui/outlinegroup)
-  - Identifiable data + closure to access children
-  - How to do incremental updates?
-
+    - Identifiable data + closure to access children
+    - How to do incremental updates?
 
 ### Sketch
 
@@ -2011,25 +2144,24 @@ A generalization of list views.
 use std::hash::Hash;
 
 pub trait Identifiable {
-  type Id: Copy + Hash;
-  fn id(&self) -> Self::Id;
+    type Id: Copy + Hash;
+    fn id(&self) -> Self::Id;
 }
 
 pub trait DiffableCollection: Clone {
-  type Item;
-  // Indexable, access elements by ID
-  // Return an iterator over elements added & removed, compared to a previous instance 
+    type Item;
+    // Indexable, access elements by ID
+    // Return an iterator over elements added & removed, compared to a previous instance 
     // Basically implies immutable collections
 }
 
 
-
 pub trait TreeDataSource {
-  type Item: Identifiable;
-  fn element(&self, id: Self::Item::Id) -> &Self::Item;
-  fn children(&self, id: Self::Item::Id) -> impl Iterator<Item=&Self::Item>;
-  fn revision(&self) -> Revision;
-  fn changes(&self, since: Revision) -> impl Iterator<Item=Diff<Self::Item>>;
+    type Item: Identifiable;
+    fn element(&self, id: Self::Item::Id) -> &Self::Item;
+    fn children(&self, id: Self::Item::Id) -> impl Iterator<Item=&Self::Item>;
+    fn revision(&self) -> Revision;
+    fn changes(&self, since: Revision) -> impl Iterator<Item=Diff<Self::Item>>;
 }
 
 ```
@@ -2041,19 +2173,19 @@ Partial IDs imply that we need to identify nodes in the tree by an "ID path".
 
 Q: Full IDs or ID paths?
 
-
-
 ```rust 
 
 struct TreeNode {
-  id: u64,
-  children: Vec<TreeNode>
+    id: u64,
+    children: Vec<TreeNode>
 }
 
 ```
 
 ## Window event handling
+
 It works like this:
+
 - (Application) the event loop receives a window event
 - (WindowHandler) it is passed to the window handler (in event() or paint())
 - (WindowHandler) the window handler handles the event, and determines where the UI event should be sent
@@ -2064,49 +2196,56 @@ and send those events. Otherwise, the window handler may end up needing to send 
 which it is not supposed to do.
 
 Modified window event handling:
+
 - (Application) the event loop receives a window event
 - (WindowHandler) it is passed to the window handler (in window_event() or paint())
 - (WindowHandler) the window handler determines if it is interested in it, and if so, queues events to be propagated
-   by adding them to a queue in AppState
+  by adding them to a queue in AppState
 - (Application) control returns to application
 - (Application) app dequeues pushed events and sends them to the elements, via their corresponding WindowHandler
 - (WindowHandler) event() is called, window handler propagates the event to the element
 
 Other ideas:
+
 - WindowHandlers have a "UiTreeHandle": handle to a UI tree, visible by the application
 - when registering the window, also optionally register the UI tree
 - application can then send events directly to the UI tree without coordinating with the WindowHandler
 
 Alternative:
+
 - Windows are just Elements
 - they receive a special type of event (`WindowEvent`).
 
-
 Tentative:
+
 - the app maintains a list of weak ptrs to window handlers
 - window events received by the app are sent to window handlers
 - window handlers create events and send them to the application
 
-Issue with the current situation: a lot of things are done by the windowhandler, which is common to all windows hosting a UI tree.
+Issue with the current situation: a lot of things are done by the windowhandler, which is common to all windows hosting
+a UI tree.
 Split that into a reusable component, tentatively named `UiContentHost`.
 Windows with UI content should use this type, and forward the window events to it.
-=> Note sure that's useful, short term: it would be useful if we wanted to host UI in a non-winit window, but then we'd need to have
+=> Note sure that's useful, short term: it would be useful if we wanted to host UI in a non-winit window, but then we'd
+need to have
 an API on UiContentHost to receive window events (in a windowing-crate-agnostic fashion)
 
 => ignore all this above
 
-
 ## ElementIdTree is supremely annoying
-Need to maintain it, store it somewhere, next to the UI element tree. Would  
+
+Need to maintain it, store it somewhere, next to the UI element tree. Would
 
 ## Issues with app logic
 
-1. Repaints due to events are done before the app logic is run. If the app logic changes the UI, it won't be reflected immediately.
+1. Repaints due to events are done before the app logic is run. If the app logic changes the UI, it won't be reflected
+   immediately.
 2. When the app logic modifies internal state, parts of the UI that depend on the value of the state may not be updated.
 
 (1.) Defer repaint requests to after the app logic is run
 
-
 ## Next steps
 
-A more convenient/less verbose way of creating grids and putting elements in them. 
+A more convenient/less verbose way of creating grids and putting elements in them.
+
+# Remove the 
