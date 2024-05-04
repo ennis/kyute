@@ -2,16 +2,25 @@ use std::{cell::OnceCell, sync::Arc};
 
 use kurbo::Insets;
 use kyute2::{
-    widget::Null,
+    text::{TextSpan, TextStyle},
+    theme,
+    widget::{button, Clickable, Frame, Null, Text},
     window::{UiHostWindowHandler, UiHostWindowOptions},
-    AppLauncher, Widget,
+    AppLauncher, UnitExt, Widget,
 };
 use tracing_subscriber::layer::SubscriberExt;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 fn main_window_contents() -> impl Widget {
-    Null
+    let text_style = Arc::new(
+        TextStyle::new()
+            .font_size(20.0)
+            .font_family("Courier New")
+            .color(theme::palette::PINK_200),
+    );
+    //let text = TextSpan::new("Hello, world!", text_style);
+    Frame::new(100.percent(), 100.percent(), button("hello"))
 }
 
 fn main() {

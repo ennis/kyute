@@ -1,6 +1,6 @@
 pub mod path_set;
 
-pub use path_set::{PathSet, PathSubset};
+pub use path_set::{WidgetSet, WidgetSlice};
 
 #[derive(Copy, Clone, Debug)]
 pub struct Cached<K, V> {

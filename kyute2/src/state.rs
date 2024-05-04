@@ -1,4 +1,4 @@
-use crate::{context::ContextDataKey, utils::PathSet, widget::WidgetPaths, ContextDataHandle, TreeCtx, WidgetId};
+use crate::{context::ContextDataKey, utils::WidgetSet, ContextDataHandle, TreeCtx, WidgetId};
 use std::{
     any::Any,
     cell::{Cell, RefCell},
@@ -7,8 +7,8 @@ use std::{
 
 pub struct State<T: ?Sized> {
     /// The subtree of the UI that depends on this state, either for reading or writing.
-    /// The tree is rooted at the UI node that called `with_state`.
-    dependents: RefCell<WidgetPaths>,
+    /// The tree is rooted at the UI root.
+    dependents: RefCell<WidgetSet>,
     /// The state data
     pub data: T,
 }
@@ -36,7 +36,7 @@ impl<T: 'static> State<T> {
     }
 
     pub fn request_update(&self, cx: &TreeCtx) {
-        cx.request_update(self.dependents.borrow().as_slice());
+        cx.request_update(&self.dependents.borrow());
     }
 
     /// Modifies the state and notify the dependents.

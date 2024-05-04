@@ -107,34 +107,34 @@ impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
         // - the computed size of the frame has changed (because the constraints passed to the child change in turn)
         // - the scale factor has changed (this invalidates all layouts)
         // - the current change flags says the child geometry or position are dirty
-        if self.size != size
-            || self
-                .change_flags
-                .intersects(ChangeFlags::CHILD_GEOMETRY | ChangeFlags::LAYOUT_CHILD_POSITIONS)
-        {
-            let sub = BoxConstraints { max: size, ..*params };
-            let content_geom = ctx.layout(&mut self.content, &sub);
+        //if self.size != size
+        //    || self
+        //        .change_flags
+        //        .intersects(ChangeFlags::CHILD_GEOMETRY | ChangeFlags::LAYOUT_CHILD_POSITIONS)
+        //{
+        let sub = BoxConstraints { max: size, ..*params };
+        let content_geom = ctx.layout(&mut self.content, &sub);
 
-            if self.change_flags.contains(ChangeFlags::LAYOUT_CHILD_POSITIONS) {
-                let offset = place_into(
-                    content_geom.size,
-                    content_geom.baseline,
-                    size,
-                    None,
-                    self.x_align,
-                    self.y_align,
-                    &Insets::new(padding_left, padding_top, padding_right, padding_bottom),
-                );
-                self.content.set_offset(offset);
-            }
-
-            // update our bounding rectangles
-            self.bounding_rect = self.content.transform.transform_rect_bbox(content_geom.bounding_rect);
-            self.paint_bounding_rect = self
-                .content
-                .transform
-                .transform_rect_bbox(content_geom.paint_bounding_rect);
+        if self.change_flags.contains(ChangeFlags::LAYOUT_CHILD_POSITIONS) {
+            let offset = place_into(
+                content_geom.size,
+                content_geom.baseline,
+                size,
+                None,
+                self.x_align,
+                self.y_align,
+                &Insets::new(padding_left, padding_top, padding_right, padding_bottom),
+            );
+            self.content.set_offset(offset);
         }
+
+        // update our bounding rectangles
+        self.bounding_rect = self.content.transform.transform_rect_bbox(content_geom.bounding_rect);
+        self.paint_bounding_rect = self
+            .content
+            .transform
+            .transform_rect_bbox(content_geom.paint_bounding_rect);
+        //}
 
         self.size = size;
         self.change_flags = ChangeFlags::empty();
@@ -148,7 +148,7 @@ impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
     }
 
     fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
-        ChangeFlags::empty()
+        self.content.event(ctx, event)
     }
 
     /*fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
@@ -181,10 +181,9 @@ impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
     }*/
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        if !self.bounding_rect.contains(position) {
-            return false;
-        }
-        self.content.hit_test(ctx, position)
+        // Always test the content to add children that pass the hit-test,
+        // but whether the frame passes or not is unrelated to the content.
+        self.content.hit_test(ctx, position) || self.bounding_rect.contains(position)
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {

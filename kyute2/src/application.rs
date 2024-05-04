@@ -1,6 +1,6 @@
 use crate::{
     context::root_tree_dispatch,
-    widget::{WidgetPaths, WidgetPathsRef},
+    utils::{WidgetSet, WidgetSlice},
     window::WindowPaintOptions,
     AppGlobals, ChangeFlags, TreeCtx, Widget, WidgetId,
 };
@@ -88,7 +88,7 @@ impl App {
     fn dispatch<'a>(
         &mut self,
         event_loop: &EventLoopWindowTarget<ExtEvent>,
-        paths: WidgetPathsRef,
+        paths: &WidgetSlice,
         mut f: impl FnMut(&mut TreeCtx, &mut dyn Widget) + 'a,
     ) {
         root_tree_dispatch(&mut self.app_state, event_loop, &mut *self.root, paths, &mut f);
@@ -109,7 +109,7 @@ impl App {
                     *result = Some(f(tree_ctx, widget));
                 }
             };
-            self.dispatch(event_loop, WidgetPaths::from_path(widget_path).as_slice(), &mut f_mut);
+            self.dispatch(event_loop, &WidgetSet::from_path(widget_path), &mut f_mut);
         }
         result
     }

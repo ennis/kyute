@@ -10,7 +10,7 @@ use crate::{
     drawing,
     drawing::{BoxShadow, Paint, Shape, ToSkia},
     skia,
-    widget::prelude::*,
+    widget::{prelude::*, Padding, WidgetVisitor},
     Color, PaintCtx,
 };
 
@@ -258,50 +258,47 @@ impl<B: ShapeBorder> Decoration for ShapeDecoration<B> {
     }
 }
 
-/*
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct DecoratedBoxElement<D, E> {
+pub struct DecoratedBox<D, W> {
     decoration: D,
-    content: PaddingElement<E>,
+    size: Size,
+    content: Padding<W>,
 }
 
-/*impl<Border: ShapeBorder, E> DecoratedBoxElement<Border, E> {
-    pub fn new(decoration: ShapeDecoration<Border>, content: E) -> Self {
+impl<D: Decoration, W> DecoratedBox<D, W> {
+    pub fn new(decoration: D, content: W) -> Self {
         let padding = decoration.insets();
         Self {
             decoration,
-            content: PaddingElement {
+            size: Default::default(),
+            content: Padding {
                 padding,
-                size: Default::default(),
+                // size: Default::default(),
                 content,
             },
         }
     }
-}*/
+}
 
-impl<D, E> Element for DecoratedBoxElement<D, E>
+impl<D, W> Widget for DecoratedBox<D, W>
 where
     D: Decoration + 'static,
-    E: Element,
+    W: Widget,
 {
-    fn id(&self) -> ElementId {
+    fn id(&self) -> WidgetId {
         self.content.id()
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
-        let mut geometry = ctx.layout(&mut self.content, constraints);
-        // assume that the decoration expands the paint bounds
-        geometry.bounding_rect = geometry.bounding_rect.union(geometry.size.to_rect());
-        geometry.paint_bounding_rect = geometry.paint_bounding_rect.union(geometry.size.to_rect());
-        geometry
+    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
+        self.content.visit_child(cx, id, visitor)
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        ctx.event(&mut self.content, event)
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        self.content.update(cx)
     }
 
-    fn natural_width(&mut self, height: f64) -> f64 {
+    /*fn natural_width(&mut self, height: f64) -> f64 {
         self.content.natural_width(height)
     }
 
@@ -311,36 +308,34 @@ where
 
     fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         self.content.natural_baseline(params)
+    }*/
+
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+        self.content.event(ctx, event)
     }
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        if self.content.hit_test(ctx, position) {
-            return true;
-        }
-        if self.content.size.to_rect().contains(position) {
-            ctx.add(self.id());
-            return true;
-        }
-        return false;
+        self.content.hit_test(ctx, position)
+    }
+
+    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+        let mut geometry = ctx.layout(&mut self.content, constraints);
+        // assume that the decoration expands the paint bounds
+        geometry.bounding_rect = geometry.bounding_rect.union(geometry.size.to_rect());
+        geometry.paint_bounding_rect = geometry.paint_bounding_rect.union(geometry.size.to_rect());
+        self.size = geometry.size;
+        geometry
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.decoration.paint(ctx, self.content.size.to_rect());
+        self.decoration.paint(ctx, self.size.to_rect());
         ctx.paint(&mut self.content)
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn debug(&self, w: &mut DebugWriter) {
-        w.type_name("DecoratedBoxElement");
-        w.child("content", &self.content);
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
 // TODO this should take a "Decoration" directly, not a Border
 pub struct DecoratedBox<D, W> {
     pub decoration: D,

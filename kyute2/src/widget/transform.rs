@@ -3,8 +3,6 @@ use crate::{
     Widget, WidgetId,
 };
 use kurbo::{Affine, Point, Vec2};
-use std::{any::Any, time::Duration};
-use winit::event::WindowEvent;
 
 /// A container for a widget.
 ///
@@ -67,7 +65,7 @@ impl<T: Widget> Widget for TransformNode<T> {
     }
 
     fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
-        self.content.event(cx, event)
+        event.with_transform(&self.transform, |event| self.content.event(cx, event))
     }
 
     fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {

@@ -73,18 +73,27 @@ where
         self.id
     }
 
-    fn visit_child(&mut self, cx: &mut TreeCtx, _id: WidgetId, visitor: &mut WidgetVisitor) {
+    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
         with_ambient(cx, FOCUSED, &mut self.focus, |cx| {
             with_ambient(cx, ACTIVE, &mut self.active, |cx| {
                 with_ambient(cx, HOVERED, &mut self.hovered, |cx| {
-                    visitor(cx, &mut self.content);
+                    if self.content.id() == id {
+                        visitor(cx, &mut self.content);
+                    }
                 });
             });
         });
     }
 
     fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
-        // We don't have anything to update
+        with_ambient(cx, FOCUSED, &mut self.focus, |cx| {
+            with_ambient(cx, ACTIVE, &mut self.active, |cx| {
+                with_ambient(cx, HOVERED, &mut self.hovered, |cx| {
+                    cx.update(&mut self.content);
+                });
+            });
+        });
+
         ChangeFlags::empty()
     }
 
@@ -101,7 +110,14 @@ where
             EventKind::PointerUp(ref _p) => {
                 event.handled = true;
                 self.active.set(cx, false);
-                (self.on_click)(cx);
+                // TODO that's a bit verbose
+                with_ambient(cx, FOCUSED, &mut self.focus, |cx| {
+                    with_ambient(cx, ACTIVE, &mut self.active, |cx| {
+                        with_ambient(cx, HOVERED, &mut self.hovered, |cx| {
+                            (self.on_click)(cx);
+                        });
+                    });
+                });
             }
             EventKind::PointerOver(ref _p) => {
                 self.hovered.set(cx, true);
@@ -127,7 +143,14 @@ where
                     KeyState::Up => {
                         event.handled = true;
                         if *self.active.get() {
-                            (self.on_click)(cx);
+                            // TODO verbosity
+                            with_ambient(cx, FOCUSED, &mut self.focus, |cx| {
+                                with_ambient(cx, ACTIVE, &mut self.active, |cx| {
+                                    with_ambient(cx, HOVERED, &mut self.hovered, |cx| {
+                                        (self.on_click)(cx);
+                                    });
+                                });
+                            });
                             self.active.set(cx, false);
                         }
                     }

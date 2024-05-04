@@ -9,6 +9,7 @@ use std::{
     num::NonZeroU32,
     ops::{Deref, DerefMut, Index, IndexMut},
     rc::Rc,
+    time::Duration,
 };
 
 use kurbo::{Affine, Point};
@@ -16,14 +17,15 @@ use skia_safe as sk;
 use string_cache::Atom;
 use tracing::{trace, warn};
 use usvg::Tree;
-use winit::{event_loop::EventLoopWindowTarget, window::WindowId};
+use winit::{event::WindowEvent, event_loop::EventLoopWindowTarget, window::WindowId};
 
 use crate::{
     application::{AppState, ExtEvent},
     composition::DrawableSurface,
     counter::Counter,
     drawing::ToSkia,
-    widget::{WidgetPaths, WidgetPathsRef, WidgetVisitor},
+    utils::{WidgetSet, WidgetSlice},
+    widget::WidgetVisitor,
     window::UiHostWindowHandler,
     BoxConstraints, ChangeFlags, Event, EventKind, Geometry, Widget, WidgetId,
 };
@@ -120,10 +122,10 @@ pub struct TreeCtx<'a> {
     data: Vec<ContextDataEntry>,
 
     /// Pending updates to widgets (all paths are absolute).
-    pending_updates: RefCell<WidgetPaths>,
+    pending_updates: RefCell<WidgetSet>,
 
     /// Pending events
-    pending_events: RefCell<Vec<(WidgetPaths, EventKind)>>,
+    pending_events: RefCell<Vec<(WidgetSet, EventKind)>>,
 }
 
 impl<'a> TreeCtx<'a> {
@@ -176,7 +178,7 @@ impl<'a> TreeCtx<'a> {
     /// * `subtree` the subtree to visit, rooted at `current_widget`.
     /// * `widget` the widget to propagate the visitor through, and the widget corresponding to the root of `subtree`.
     ///
-    fn dispatch(&mut self, current_widget: &mut dyn Widget, subpaths: WidgetPathsRef, visitor: &mut WidgetVisitor) {
+    fn dispatch(&mut self, current_widget: &mut dyn Widget, subpaths: &WidgetSlice, visitor: &mut WidgetVisitor) {
         for (id, is_leaf, rest) in subpaths.traverse() {
             current_widget.visit_child(self, id, &mut |cx: &mut TreeCtx, widget: &mut dyn Widget| {
                 cx.with_child(widget, |cx, widget| {
@@ -189,7 +191,7 @@ impl<'a> TreeCtx<'a> {
         }
     }
 
-    fn dispatch_root(&mut self, root_widget: &mut dyn Widget, paths: WidgetPathsRef, visitor: &mut WidgetVisitor) {
+    fn dispatch_root(&mut self, root_widget: &mut dyn Widget, paths: &WidgetSlice, visitor: &mut WidgetVisitor) {
         for (id, is_leaf, rest) in paths.traverse() {
             if id != root_widget.id() {
                 warn!("dispatch: path does not start at the root widget");
@@ -204,13 +206,20 @@ impl<'a> TreeCtx<'a> {
     }
 
     /// Adds an update request that will be processed when the current dispatch is finished.
-    pub fn request_update(&self, widgets: WidgetPathsRef) {
+    pub fn request_update(&self, widgets: &WidgetSlice) {
+        trace!("TreeCtx::request_update {:?}", widgets);
         self.pending_updates.borrow_mut().merge_with(widgets);
     }
 
+    pub fn request_update_child(&self, child_widget: WidgetId) {
+        let mut path = self.path.clone();
+        path.push(child_widget);
+        self.pending_updates.borrow_mut().insert(&path);
+    }
+
     /// Schedule an event.
-    pub fn schedule_event(&self, widgets: &WidgetPaths, event_kind: EventKind) {
-        self.pending_events.borrow_mut().push((widgets.clone(), event_kind));
+    pub fn schedule_event(&self, widgets: &WidgetSlice, event_kind: EventKind) {
+        self.pending_events.borrow_mut().push((widgets.to_owned(), event_kind));
     }
 
     pub fn update<T: Widget + ?Sized>(&mut self, child: &mut T) {
@@ -306,7 +315,7 @@ impl<'a> TreeCtx<'a> {
     }
 
     /// Performs hit-testing of a subtree.
-    pub fn hit_test_child(&mut self, child: &mut dyn Widget, position: Point) -> WidgetPaths {
+    pub fn hit_test_child(&mut self, child: &mut dyn Widget, position: Point) -> WidgetSet {
         let mut result = HitTestResult::new();
         result.path = self.path.clone();
         result.hit_test_child(child, position);
@@ -328,7 +337,7 @@ pub(crate) fn root_tree_dispatch(
     app_state: &mut AppState,
     event_loop: &EventLoopWindowTarget<ExtEvent>,
     root: &mut dyn Widget,
-    paths: WidgetPathsRef,
+    paths: &WidgetSlice,
     visitor: &mut WidgetVisitor,
 ) {
     if paths.is_empty() {
@@ -337,15 +346,33 @@ pub(crate) fn root_tree_dispatch(
 
     let mut cx = TreeCtx::new(app_state, event_loop);
     cx.dispatch_root(root, paths, visitor);
+    let pending_events = cx.pending_events.take();
+    let pending_updates = cx.pending_updates.take();
+
+    // Dispatch events
+    for (targets, event_kind) in pending_events.iter() {
+        // TODO remove the need for cloning here
+        let mut event = Event::new(event_kind.clone());
+        root_tree_dispatch(
+            app_state,
+            event_loop,
+            root,
+            targets,
+            &mut |cx: &mut TreeCtx, widget: &mut dyn Widget| {
+                if !event.handled {
+                    widget.event(cx, &mut event);
+                }
+            },
+        );
+    }
 
     // Handle follow-up updates
     // In case there's an infinite update loop, this will end in a stack overflow.
-    let pending_updates = cx.pending_updates.take();
     root_tree_dispatch(
         app_state,
         event_loop,
         root,
-        pending_updates.as_slice(),
+        &pending_updates,
         &mut |cx: &mut TreeCtx, widget: &mut dyn Widget| {
             widget.update(cx);
         },
@@ -353,10 +380,11 @@ pub(crate) fn root_tree_dispatch(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-/*
+
 /// A widget that builds a widget given a TreeCtx
 pub struct WithContext<F, W> {
     f: F,
+    id: WidgetId,
     inner: Option<W>,
 }
 
@@ -365,31 +393,70 @@ impl<F, W> WithContext<F, W> {
     where
         F: FnMut(&mut TreeCtx) -> W,
     {
-        WithContext { f, inner: None }
+        WithContext {
+            f,
+            id: WidgetId::next(),
+            inner: None,
+        }
     }
 }
 
 impl<F, W> Widget for WithContext<F, W>
 where
     F: FnMut(&mut TreeCtx) -> W,
+    W: Widget,
 {
     fn id(&self) -> WidgetId {
-        self.inner.as_ref().map(|w| w.id()).unwrap_or(WidgetId::ANONYMOUS)
+        self.id
+    }
+
+    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
+        if let Some(inner) = self.inner.as_mut() {
+            if inner.id() == id {
+                visitor(cx, inner);
+            }
+        }
     }
 
     fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
         self.inner.replace((self.f)(cx));
+        cx.update(self.inner.as_mut().unwrap());
         ChangeFlags::ALL
     }
 
     fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
-        //self.inner.
+        ChangeFlags::empty()
+    }
+
+    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
+        if let Some(ref inner) = self.inner {
+            result.hit_test_child(inner, position)
+        } else {
+            false
+        }
     }
 
     fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
-        todo!()
+        if let Some(ref mut inner) = self.inner {
+            inner.layout(cx, bc)
+        } else {
+            Geometry::default()
+        }
     }
-}*/
+
+    fn paint(&mut self, cx: &mut PaintCtx) {
+        if let Some(ref mut inner) = self.inner {
+            inner.paint(cx);
+        }
+    }
+}
+
+pub fn with_cx<F, W>(f: F) -> WithContext<F, W>
+where
+    F: FnMut(&mut TreeCtx) -> W,
+{
+    WithContext::new(f)
+}
 
 /// Context passed to `Element::layout`.
 pub struct LayoutCtx {
@@ -435,7 +502,7 @@ impl LayoutCtx {
 
 /// Hit-test context.
 pub struct HitTestResult {
-    hits: WidgetPaths,
+    hits: WidgetSet,
     path: Vec<WidgetId>,
 }
 

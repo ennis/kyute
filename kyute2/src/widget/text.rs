@@ -6,63 +6,10 @@ use tracing::warn;
 use tracy_client::span;
 
 use crate::{
-    debug_util::DebugWriter,
     drawing::ToSkia,
     text::{get_font_collection, ChangeKind, TextSpan, TextStyle},
-    BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry, HitTestResult, LayoutCtx, PaintCtx,
-    Point, TreeCtx, Widget,
+    BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, TreeCtx, Widget, WidgetId,
 };
-
-/// A simple text label.
-#[derive(Clone, Default)]
-pub struct Text {
-    text: Option<TextSpan>,
-}
-
-impl Text {
-    pub fn new(text: TextSpan) -> Text {
-        Text { text: Some(text) }
-    }
-}
-
-impl Widget for Text {
-    type Element = TextElement;
-
-    fn build(self, _cx: &mut TreeCtx, _element_id: ElementId) -> Self::Element {
-        let text = self.text.unwrap_or_default();
-        let paragraph = build_paragraph(&text);
-        TextElement {
-            text,
-            available_width: 0.0,
-            available_height: 0.0,
-            scale_factor: 0.0,
-            relayout: true,
-            paragraph,
-        }
-    }
-
-    fn update(self, _cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        if let Some(text) = self.text {
-            let change = text.compare_to(&element.text);
-            match change {
-                ChangeKind::Identical | ChangeKind::Metadata => ChangeFlags::NONE,
-                ChangeKind::Paint => {
-                    element.paragraph = build_paragraph(&text);
-                    element.text = text;
-                    ChangeFlags::PAINT
-                }
-                ChangeKind::Layout => {
-                    element.relayout = true;
-                    element.paragraph = build_paragraph(&text);
-                    element.text = text;
-                    ChangeFlags::GEOMETRY
-                }
-            }
-        } else {
-            ChangeFlags::NONE
-        }
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -112,7 +59,7 @@ fn build_paragraph(text: &TextSpan) -> sk::textlayout::Paragraph {
     builder.build()
 }
 
-pub struct TextElement {
+pub struct Text {
     text: TextSpan,
     available_width: f64,
     available_height: f64,
@@ -121,23 +68,43 @@ pub struct TextElement {
     paragraph: sk::textlayout::Paragraph,
 }
 
-impl TextElement {
-    /*fn ensure_paragraph(&mut self) {
-        if self.paragraph.is_none() {
-            let font_collection = get_font_collection();
-            let mut builder = sk::textlayout::ParagraphBuilder::new(
-                &sk::textlayout::ParagraphStyle::new(),
-                font_collection,
-            );
-            add_text_span(&self.text, &mut builder);
-            self.paragraph = Some(builder.build());
+impl Text {
+    pub fn new(text: TextSpan) -> Text {
+        let paragraph = build_paragraph(&text);
+        Text {
+            text,
+            available_width: 0.0,
+            available_height: 0.0,
+            scale_factor: 0.0,
+            relayout: false,
+            paragraph,
         }
-    }*/
+    }
 }
 
-impl Element for TextElement {
-    fn id(&self) -> ElementId {
-        ElementId::ANONYMOUS
+impl Widget for Text {
+    fn id(&self) -> WidgetId {
+        WidgetId::ANONYMOUS
+    }
+
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        ChangeFlags::NONE
+    }
+
+    fn event(&mut self, _ctx: &mut TreeCtx, _event: &mut Event) -> ChangeFlags {
+        // this might change if there's dynamic text (e.g. hyperlinks)
+        ChangeFlags::NONE
+    }
+
+    fn hit_test(&self, _ctx: &mut HitTestResult, position: Point) -> bool {
+        if self.relayout {
+            warn!("hit_test called before layout");
+        }
+        let paragraph_size = Size {
+            width: self.paragraph.longest_line() as f64,
+            height: self.paragraph.height() as f64,
+        };
+        paragraph_size.to_rect().contains(position)
     }
 
     fn layout(&mut self, _ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
@@ -192,55 +159,10 @@ impl Element for TextElement {
         }
     }
 
-    fn event(&mut self, _ctx: &mut EventCtx, _event: &mut Event) -> ChangeFlags {
-        // this might change if there's dynamic text (e.g. hyperlinks)
-        ChangeFlags::NONE
-    }
-
-    fn natural_width(&mut self, _height: f64) -> f64 {
-        self.paragraph.max_intrinsic_width() as f64
-    }
-
-    fn natural_height(&mut self, _width: f64) -> f64 {
-        warn!("unimplemented: text element intrinsic height");
-        dbg!(self.paragraph.alphabetic_baseline()) as f64
-    }
-
-    fn natural_baseline(&mut self, _params: &BoxConstraints) -> f64 {
-        // this should work even before layout() is called
-        // FIXME: yeah no it doesn't
-        self.paragraph.alphabetic_baseline() as f64
-    }
-
-    fn hit_test(&self, _ctx: &mut HitTestResult, position: Point) -> bool {
-        if self.relayout {
-            warn!("hit_test called before layout");
-        }
-        let paragraph_size = Size {
-            width: self.paragraph.longest_line() as f64,
-            height: self.paragraph.height() as f64,
-        };
-        paragraph_size.to_rect().contains(position)
-    }
-
     fn paint(&mut self, ctx: &mut PaintCtx) {
         span!("text paint");
         ctx.with_canvas(|canvas| {
             self.paragraph.paint(canvas, Point::ZERO.to_skia());
         })
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn debug(&self, w: &mut DebugWriter) {
-        w.type_name("TextElement");
-        w.property("id", self.id());
-        w.property("baseline", self.paragraph.alphabetic_baseline());
-        w.property("longest_line", self.paragraph.longest_line());
-        w.property("max_width", self.paragraph.max_width());
-        w.property("height", self.paragraph.height());
-        w.str_property("text", &self.text.text);
     }
 }

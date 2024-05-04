@@ -1,9 +1,14 @@
 //! Widget tree manipulation and traversal.
+mod align;
+mod button;
 pub mod clickable;
+pub mod constrained;
 pub mod decoration;
 pub mod frame;
 pub mod null;
+mod padding;
 mod stateful;
+pub mod text;
 mod transform;
 
 use std::{
@@ -16,10 +21,14 @@ use std::{
 use bitflags::bitflags;
 use kurbo::Affine;
 
+pub use button::button;
 pub use clickable::Clickable;
+pub use constrained::Constrained;
 pub use decoration::{BorderStyle, Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration};
 pub use frame::Frame;
 pub use null::Null;
+pub use padding::Padding;
+pub use text::Text;
 pub use transform::TransformNode;
 
 /*pub use align::Align;
@@ -40,7 +49,7 @@ use crate::{
     context::TreeCtx, Alignment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, WidgetId,
 };
 
-use crate::utils::{PathSet, PathSubset};
+use crate::utils::{WidgetSet, WidgetSlice};
 use crate::{
     context::ContextDataHandle,
     //debug_util::DebugWriter,
@@ -108,8 +117,8 @@ bitflags! {
     }
 }
 
-pub type WidgetPaths = PathSet<WidgetId>;
-pub type WidgetPathsRef<'a> = PathSubset<'a, WidgetId>;
+//pub type WidgetPaths = WidgetSet<WidgetId>;
+//pub type WidgetPathsRef<'a> = PathSubset<'a, WidgetId>;
 pub type WidgetVisitor<'a> = dyn FnMut(&mut TreeCtx, &mut dyn Widget) + 'a;
 
 /// Widget types.
@@ -281,10 +290,9 @@ impl Default for WidgetState {
     }
 }
 
-/*
 /// Extension methods on widgets.
 pub trait WidgetExt: Widget + Sized + 'static {
-    /// Sets the background paint of the widget.
+    /*/// Sets the background paint of the widget.
     #[must_use]
     fn background(self, paint: impl Into<Paint>) -> Overlay<Self, Background> {
         Overlay::new(self, Background::new(paint.into()), ZOrder::Below)
@@ -294,7 +302,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
     #[must_use]
     fn overlay<W: Widget + 'static>(self, overlay: W) -> Overlay<Self, W> {
         Overlay::new(self, overlay, ZOrder::Above)
-    }
+    }*/
 
     /// Makes the widget clickable.
     ///
@@ -306,7 +314,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
         Clickable::new(self)
     }
 
-    #[must_use]
+    /*#[must_use]
     fn provide_with<T, F>(self, f: F) -> ProvideWith<T, F, Self> {
         ProvideWith::new(f, self)
     }
@@ -361,10 +369,10 @@ pub trait WidgetExt: Widget + Sized + 'static {
             },
             self,
         )
-    }
+    }*/
 }
 
-impl<W: Widget + 'static> WidgetExt for W {}*/
+impl<W: Widget + 'static> WidgetExt for W {}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 /*pub struct Provide<T, W> {

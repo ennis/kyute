@@ -8,7 +8,7 @@ use std::{fmt, num::NonZeroU32};
 #[repr(transparent)]
 pub struct WidgetId(NonZeroU32);
 
-const WIDGET_ID_COUNTER: Counter = Counter::new();
+static WIDGET_ID_COUNTER: Counter = Counter::new();
 
 impl Default for WidgetId {
     fn default() -> Self {
@@ -41,6 +41,6 @@ impl WidgetId {
 
 impl fmt::Debug for WidgetId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:08X}", self.to_u32())
+        write!(f, "{:04X}", self.to_u32())
     }
 }

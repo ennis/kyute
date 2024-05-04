@@ -1,49 +1,53 @@
-use std::ops::Deref;
+use crate::WidgetId;
+use std::{borrow::Borrow, fmt, fmt::Formatter, mem, ops::Deref};
 
 /// An entry in a `FlatTree`.
-#[derive(Copy, Clone, Ord, PartialOrd, PartialEq, Eq, Debug)]
-pub enum Entry<I> {
+#[derive(Copy, Clone, Ord, PartialOrd, PartialEq, Eq)]
+pub enum Entry {
     /// Inner node.
-    Node(I),
+    Node(WidgetId),
     /// Leaf node.
-    Leaf(I),
+    Leaf(WidgetId),
     Enter,
     Exit,
 }
 
-/// Represents a set of paths in a tree structure.
-///
-/// TODO: de-genericize this if we only use it for WidgetIds
+/// Represents a subset of widgets in a tree structure.
 #[derive(Clone)]
-pub struct PathSet<I> {
-    entries: Vec<Entry<I>>,
+pub struct WidgetSet {
+    entries: Vec<Entry>,
 }
 
-impl<I> Default for PathSet<I> {
+impl fmt::Debug for WidgetSet {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.deref())
+    }
+}
+
+impl Default for WidgetSet {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<I> PathSet<I> {
+impl WidgetSet {
     /// Creates a new empty tree.
     pub fn new() -> Self {
         Self { entries: vec![] }
     }
 }
 
-impl<I> PathSet<I>
-where
-    I: Copy + Eq + Ord + Default,
-{
-    /// Creates a new tree from the specified path.
-    pub fn from_path(path: &[I]) -> Self {
+impl WidgetSet {
+    /// Creates a new set with a single path to the specified widget.
+    pub fn from_path(path: &[WidgetId]) -> Self {
         let mut tree = Self::new();
         tree.insert(path);
         tree
     }
 
-    pub fn from_path_bubbling(path: &[I]) -> Self {
+    /// Creates a new set containing the path to the specified widget, along with all the widgets
+    /// between it and the root.
+    pub fn all_along_path(path: &[WidgetId]) -> Self {
         let mut tree = Self::new();
         for i in 0..path.len() {
             tree.insert(&path[0..=i]);
@@ -51,32 +55,32 @@ where
         tree
     }
 
-    /// Returns the entry at the specified path, creating it if it does not exist.
-    pub fn insert(&mut self, path: &[I]) {
+    ///
+    pub fn insert(&mut self, path: &[WidgetId]) {
         /*if path.is_empty() {
             return;
         }*/
         self.insert_inner(0, path)
     }
 
-    /// Returns an iterator over each subtree of the tree.
-    pub fn traverse(&self) -> PathTraversalIter<I> {
+    /*/// Returns an iterator over each subtree of the tree.
+    pub fn traverse(&self) -> W<I> {
         PathTraversalIter(&self.entries)
-    }
+    }*/
 
-    pub fn merge_with(&mut self, other: PathSubset<I>) {
+    pub fn merge_with(&mut self, other: &WidgetSlice) {
         // TODO make something more efficient
         for path in other.iter() {
             self.insert(&path);
         }
     }
 
-    /// Borrows this path set as a slice.
+    /*/// Borrows this path set as a slice.
     pub fn as_slice(&self) -> PathSubset<I> {
         PathSubset(&self.entries)
-    }
+    }*/
 
-    fn insert_inner(&mut self, subtree: usize, path: &[I]) {
+    fn insert_inner(&mut self, subtree: usize, path: &[WidgetId]) {
         let Some((head, rest)) = path.split_first() else {
             panic!("ids must not be empty");
         };
@@ -184,40 +188,80 @@ where
 }
 
 /// A subset of paths in a `PathSet`, sharing a common root element (i.e. a subtree within a `PathSet`).
-pub struct PathSubset<'a, I>(&'a [Entry<I>]);
+#[repr(transparent)]
+pub struct WidgetSlice([Entry]);
 
-impl<'a, I> Default for PathSubset<'a, I> {
-    fn default() -> Self {
-        PathSubset(&[])
+impl fmt::Debug for WidgetSlice {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut first = true;
+        for (id, leaf, children) in self.traverse() {
+            if !first {
+                write!(f, ",")?;
+                first = false;
+            }
+            if leaf {
+                write!(f, "[{:04X}]", id.to_u32())?;
+            } else {
+                write!(f, "{:04X}", id.to_u32())?;
+            }
+            let child_count = children.traverse().count();
+            if child_count > 0 {
+                if child_count > 1 {
+                    write!(f, ".(")?;
+                    write!(f, "{:?}", children)?;
+                    write!(f, ")")?;
+                } else {
+                    write!(f, ".{:?}", children)?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
-impl<'a, I> Clone for PathSubset<'a, I> {
-    fn clone(&self) -> Self {
-        PathSubset(self.0)
+impl Borrow<WidgetSlice> for WidgetSet {
+    fn borrow(&self) -> &WidgetSlice {
+        self.deref()
     }
 }
 
-impl<'a, I> Copy for PathSubset<'a, I> {}
+impl ToOwned for WidgetSlice {
+    type Owned = WidgetSet;
 
-impl<'a, I> PathSubset<'a, I>
-where
-    I: Copy + Default,
-{
+    fn to_owned(&self) -> Self::Owned {
+        let mut set = WidgetSet::new();
+        set.entries = self.0.to_vec();
+        set
+    }
+}
+
+impl Deref for WidgetSet {
+    type Target = WidgetSlice;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { mem::transmute(&self.entries[..]) }
+    }
+}
+
+impl WidgetSlice {
     /// Returns an iterator over each subtree.
-    pub fn traverse(&self) -> PathTraversalIter<I> {
-        PathTraversalIter(self.0)
+    pub fn traverse(&self) -> WidgetSliceIter {
+        WidgetSliceIter(&self.0)
     }
 
-    pub fn iter(&self) -> PathSetIter<I> {
-        PathSetIter {
-            rest: self.0,
+    pub fn iter(&self) -> WidgetPathIter {
+        WidgetPathIter {
+            rest: &self.0,
             path: vec![Default::default()],
         }
     }
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    fn subslice(&self, start: usize) -> &WidgetSlice {
+        unsafe { mem::transmute(&self.0[start..]) }
     }
 
     /*
@@ -236,13 +280,10 @@ where
 }
 
 /// An iterator over the subtrees of a path set.
-pub struct PathTraversalIter<'a, I>(&'a [Entry<I>]);
+pub struct WidgetSliceIter<'a>(&'a [Entry]);
 
-impl<'a, I> Iterator for PathTraversalIter<'a, I>
-where
-    I: Copy,
-{
-    type Item = (I, bool, PathSubset<'a, I>);
+impl<'a> Iterator for WidgetSliceIter<'a> {
+    type Item = (WidgetId, bool, &'a WidgetSlice);
 
     fn next(&mut self) -> Option<Self::Item> {
         let Some((cur, mut rest)) = self.0.split_first() else {
@@ -270,11 +311,11 @@ where
                     }
                     i += 1;
                 }
-                let (first, after) = self.0.split_at(i);
+                let (first, after) = rest.split_at(i);
                 rest = after;
-                PathSubset(&first[1..])
+                unsafe { mem::transmute::<&[Entry], _>(&first[1..]) }
             }
-            _ => PathSubset(&[]),
+            _ => unsafe { mem::transmute::<&[Entry], _>(&[]) },
         };
 
         self.0 = rest;
@@ -282,16 +323,13 @@ where
     }
 }
 
-pub struct PathSetIter<'a, I> {
-    rest: &'a [Entry<I>],
-    path: Vec<I>,
+pub struct WidgetPathIter<'a> {
+    rest: &'a [Entry],
+    path: Vec<WidgetId>,
 }
 
-impl<'a, I> Iterator for PathSetIter<'a, I>
-where
-    I: Copy + Default,
-{
-    type Item = Vec<I>;
+impl<'a> Iterator for WidgetPathIter<'a> {
+    type Item = Vec<WidgetId>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while !self.rest.is_empty() {
@@ -303,8 +341,6 @@ where
                 Entry::Leaf(id) => {
                     let len = self.path.len();
                     self.path[len - 1] = *id;
-                    let (_, rest) = self.rest.split_at(1);
-                    self.rest = rest;
                     return Some(self.path.clone());
                 }
                 Entry::Node(id) => {
@@ -318,9 +354,6 @@ where
                     self.path.pop();
                 }
             }
-
-            let (_, rest) = self.rest.split_at(1);
-            self.rest = rest;
         }
         return None;
     }
@@ -328,7 +361,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Entry, PathSet};
+    use super::{Entry, WidgetSet};
 
     fn node(id: u32) -> Entry<u32> {
         Entry::Node(id)
@@ -346,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_id_tree() {
-        let mut tree = PathSet::new();
+        let mut tree = WidgetSet::new();
         tree.insert(&[1, 2, 3]);
         tree.insert(&[1, 2, 4]);
         tree.insert(&[1, 5]);

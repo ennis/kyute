@@ -4,45 +4,49 @@ use kurbo::{Insets, Vec2};
 use smallvec::smallvec;
 
 use crate::{
-    context::Ambient,
     drawing::BoxShadow,
     text::{TextSpan, TextStyle},
     theme,
     theme::Theme,
     widget::{
-        prelude::*, Align, BorderStyle, Clickable, Constrained, DecoratedBox, Padding, RoundedRectBorder,
-        ShapeDecoration, Text, WidgetExt, WidgetState,
+        align::Align,
+        clickable::{ACTIVE, FOCUSED, HOVERED},
+        decoration::DecoratedBox,
+        prelude::*,
+        BorderStyle, Clickable, Constrained, Padding, RoundedRectBorder, ShapeDecoration, Text, WidgetExt, WidgetState,
     },
-    Alignment, Color, Widget,
+    with_cx, Alignment, Color, Widget,
 };
 
 pub fn button(label: &str) -> Clickable<impl Widget> {
     // FIXME: annoyingly we need to allocate to move the string in the closure
     // in that case it's not too bad because we're already allocating for the TextSpan
     let label = label.to_string();
-    (move |cx: &mut TreeCtx| {
-        let theme = Theme::ambient(cx).unwrap_or(&theme::DARK_THEME);
+    with_cx(move |cx: &mut TreeCtx| {
+        let theme = &theme::DARK_THEME;
         let text_style = Arc::new(
             TextStyle::new()
                 .font_size(theme.font_size)
                 .font_family(theme.font_family)
                 .color(theme.text_color),
         );
-        let text = TextSpan::new(label, text_style);
+        let text = TextSpan::new(label.clone(), text_style);
 
-        let state = WidgetState::ambient(cx).unwrap();
+        let hovered = *HOVERED.get(cx);
+        let active = *ACTIVE.get(cx);
+        let focused = *FOCUSED.get(cx);
 
         let decoration = if theme.dark_mode {
             ShapeDecoration {
-                fill: if state.hovered {
+                fill: if hovered {
                     Color::from_rgb_u8(100, 100, 100).into()
-                } else if state.active {
+                } else if active {
                     Color::from_rgb_u8(60, 60, 60).into()
                 } else {
                     Color::from_rgb_u8(88, 88, 88).into()
                 },
                 border: RoundedRectBorder {
-                    color: if state.focused {
+                    color: if focused {
                         theme.accent_color
                     } else {
                         Color::from_rgb_u8(49, 49, 49)
@@ -51,7 +55,7 @@ pub fn button(label: &str) -> Clickable<impl Widget> {
                     dimensions: Insets::uniform(1.0),
                     style: BorderStyle::Solid,
                 },
-                shadows: if !state.active {
+                shadows: if !active {
                     smallvec![
                         BoxShadow {
                             color: Color::from_rgb_u8(115, 115, 115),
@@ -74,15 +78,15 @@ pub fn button(label: &str) -> Clickable<impl Widget> {
             }
         } else {
             ShapeDecoration {
-                fill: if state.hovered {
+                fill: if hovered {
                     Color::from_rgb_u8(240, 240, 240).into()
-                } else if state.active {
+                } else if active {
                     Color::from_rgb_u8(240, 240, 240).into()
                 } else {
                     Color::from_rgb_u8(255, 255, 255).into()
                 },
                 border: RoundedRectBorder {
-                    color: if state.focused {
+                    color: if focused {
                         theme.accent_color
                     } else {
                         Color::from_rgb_u8(180, 180, 180)
@@ -100,25 +104,19 @@ pub fn button(label: &str) -> Clickable<impl Widget> {
                 }],
             }
         };
-        DecoratedBox {
+        DecoratedBox::new(
             decoration,
-            content: Padding {
-                padding: Insets::uniform(3.0),
-                content: Constrained {
+            Padding::new(
+                Insets::uniform(3.0),
+                Constrained {
                     constraints: BoxConstraints {
                         min: Size::new(72.0, 22.0),
                         ..Default::default()
                     },
-                    content: Align {
-                        x: Alignment::CENTER,
-                        y: Alignment::CENTER,
-                        width_factor: Some(0.0),
-                        height_factor: Some(0.0),
-                        content: Text::new(text),
-                    },
+                    content: Align::new(Alignment::CENTER, Alignment::CENTER, Text::new(text)),
                 },
-            },
-        }
+            ),
+        )
     })
     .clickable()
 }

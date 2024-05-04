@@ -44,7 +44,7 @@ pub use app_globals::AppGlobals;
 pub use application::AppLauncher;
 //pub use asset::{Asset, AssetId};
 pub use color::Color;
-pub use context::{ContextDataHandle, HitTestResult, LayoutCtx, PaintCtx, TreeCtx};
+pub use context::{with_cx, ContextDataHandle, HitTestResult, LayoutCtx, PaintCtx, TreeCtx};
 //pub use element::{Element, TransformNode};
 //pub use environment::{EnvKey, EnvValue, Environment};
 pub use event::{Event, EventKind};

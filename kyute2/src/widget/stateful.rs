@@ -64,6 +64,7 @@ where
         // rebuild the inner widget
         cx.with_data(&mut self.state, |cx, handle| {
             self.inner.replace((self.builder)(cx, StateHandle(handle)));
+            cx.update(self.inner.as_mut().unwrap());
         });
 
         // assume everything changed

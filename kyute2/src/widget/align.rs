@@ -1,26 +1,82 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-use crate::{element::TransformNode, layout::place_into, widget::prelude::*, Alignment};
+use crate::{
+    layout::place_into,
+    widget::{prelude::*, TransformNode, WidgetVisitor},
+    Alignment,
+};
 use kurbo::Insets;
-use std::any::Any;
-use tracing::warn;
 
-pub struct AlignElement<E> {
-    x: Alignment,
-    y: Alignment,
-    width_factor: Option<f64>,
-    height_factor: Option<f64>,
+pub struct Align<W> {
+    pub x: Alignment,
+    pub y: Alignment,
+    pub width_factor: Option<f64>,
+    pub height_factor: Option<f64>,
     // TODO a simple offset would be enough
-    content: TransformNode<E>,
+    pub content: TransformNode<W>,
 }
 
-impl<E> Element for AlignElement<E>
+impl<W> Align<W> {
+    pub fn new(x: Alignment, y: Alignment, content: W) -> Self {
+        Self {
+            x,
+            y,
+            width_factor: None,
+            height_factor: None,
+            content: TransformNode::new(content),
+        }
+    }
+}
+
+impl<W> Widget for Align<W>
 where
-    E: Element,
+    W: Widget,
 {
-    fn id(&self) -> ElementId {
+    fn id(&self) -> WidgetId {
         self.content.id()
     }
+
+    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
+        self.content.visit_child(cx, id, visitor)
+    }
+
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        self.content.update(cx)
+    }
+
+    /*fn natural_width(&mut self, height: f64) -> f64 {
+        self.content.natural_width(height)
+    }
+
+    fn natural_height(&mut self, width: f64) -> f64 {
+        self.content.natural_height(width)
+    }
+
+    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
+        warn!("AlignElement::natural_baseline is unimplemented");
+        self.content.natural_baseline(params)
+    }*/
+
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+        self.content.event(ctx, event)
+    }
+
+    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
+        self.content.hit_test(ctx, position)
+    }
+
+    /* fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn debug(&self, w: &mut DebugWriter) {
+        w.type_name("AlignElement");
+        w.property("x", self.x);
+        w.property("y", self.y);
+        w.property("width_factor", self.width_factor);
+        w.property("height_factor", self.height_factor);
+        w.child("", &self.content);
+    }*/
 
     fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
         let child_geometry = ctx.layout(&mut self.content, &constraints.loosen());
@@ -71,45 +127,12 @@ where
         }
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        ctx.event(&mut self.content, event)
-    }
-
-    fn natural_width(&mut self, height: f64) -> f64 {
-        self.content.natural_width(height)
-    }
-
-    fn natural_height(&mut self, width: f64) -> f64 {
-        self.content.natural_height(width)
-    }
-
-    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
-        warn!("AlignElement::natural_baseline is unimplemented");
-        self.content.natural_baseline(params)
-    }
-
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.content.hit_test(ctx, position)
-    }
-
     fn paint(&mut self, ctx: &mut PaintCtx) {
         ctx.paint(&mut self.content);
     }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn debug(&self, w: &mut DebugWriter) {
-        w.type_name("AlignElement");
-        w.property("x", self.x);
-        w.property("y", self.y);
-        w.property("width_factor", self.width_factor);
-        w.property("height_factor", self.height_factor);
-        w.child("", &self.content);
-    }
 }
 
+/*
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct Align<W> {
@@ -163,4 +186,4 @@ where
         }
         flags | cx.update(self.content, &mut element.content.content)
     }
-}
+}*/

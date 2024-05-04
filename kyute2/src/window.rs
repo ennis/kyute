@@ -24,7 +24,8 @@ use crate::{
     drawing::ToSkia,
     event::{KeyboardEvent, PointerButton, PointerButtons, PointerEvent},
     theme,
-    widget::{WidgetPaths, WidgetPathsRef, WidgetVisitor},
+    utils::WidgetSet,
+    widget::WidgetVisitor,
     window::key::{key_code_from_winit, modifiers_from_winit},
     AppGlobals, BoxConstraints, ChangeFlags, Color, Event, EventKind, Geometry, HitTestResult, LayoutCtx, PaintCtx,
     Point, Rect, Size, TreeCtx, Widget, WidgetId,
@@ -247,6 +248,8 @@ impl UiHostWindowState {
                     // mark the geometry and the visuals dirty
                     self.change_flags |= ChangeFlags::GEOMETRY | ChangeFlags::PAINT;
                 }
+                self.update_layout(content);
+                self.window.request_redraw();
             }
             WindowEvent::Moved(_) => { /*self.dismiss_popups()*/ }
             WindowEvent::KeyboardInput {
@@ -496,12 +499,13 @@ impl UiHostWindowState {
             // if there's one.
             // Furthermore, it is sent to every node in the propagation path, starting from
             // the deepest one (unless the event is marked as handled).
-            let propagation_path = WidgetPaths::from_path_bubbling(pointer_grab);
+            let propagation_path = WidgetSet::all_along_path(pointer_grab);
             cx.schedule_event(&propagation_path, event_kind);
         } else {
             // If nothing is grabbing the pointer, the pointer event is delivered to a widget
             // that passes the hit-test, and their parents.
             let propagation_paths = cx.hit_test_child(content, position);
+            eprintln!("propagation_paths {:?}", propagation_paths);
             cx.schedule_event(&propagation_paths, event_kind);
         };
     }
