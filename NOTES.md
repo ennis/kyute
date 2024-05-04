@@ -1209,6 +1209,7 @@ See also: [Possible Deprecation / Removal of D3D Backend](https://groups.google.
 "container-owns":
 (+) straightforward regarding ownership
 (-) event delivery is complicated:
+
 - need participation of widgets for event delivery
 - need to maintain a bloom filter to avoid unnecessary traversals
 
@@ -2248,4 +2249,31 @@ Need to maintain it, store it somewhere, next to the UI element tree. Would
 
 A more convenient/less verbose way of creating grids and putting elements in them.
 
-# Remove the 
+# Track uses of state in a subtree
+
+Efficiently encode a subtree (of u32 nodes) representing the widgets that need the state.
+Prefix tree:
+
+- efficient insertion of new elements
+- batch removal (retain)
+- mark leaf nodes as expired
+- space-efficient (compact)
+
+# Next two steps
+
+- hit-testing the GUI tree
+- translating winit window events to our events
+
+## Hit-testing
+
+Explicit recursive traversal. Call `cx.hit_test()` on child widget to maintain the ID tree.
+Issue: too easy to call `widget.hit_test()` directly, and impossible to prevent
+(other than maybe a dummy parameter on `Widget::hit_test` that prevents it from being called directly;
+problem is that you can just pass that dummy parameter to the child, so this doesn't work).
+
+Solutions?
+
+* allow calling widget methods on children directly
+    * need another way to track the current widget path
+* hit-test the children instead
+    * then when control flows back to the caller of hit-test, it will visit the children 

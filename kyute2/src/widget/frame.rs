@@ -1,22 +1,21 @@
 //! Frame containers
+use kurbo::Affine;
 use std::any::Any;
 
 use tracing::trace;
 
 use crate::{
-    debug_util::DebugWriter,
-    element::TransformNode,
     layout::place_into,
     widget::{
         decoration::{Decoration, ShapeBorder, ShapeDecoration},
-        RoundedRectBorder,
+        RoundedRectBorder, TransformNode,
     },
-    Alignment, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry, HitTestResult, Insets,
-    LayoutCtx, LengthOrPercentage, PaintCtx, Point, Rect, Size, TreeCtx, Widget,
+    Alignment, BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, Insets, LayoutCtx, LengthOrPercentage,
+    PaintCtx, Point, Rect, Size, TreeCtx, Widget, WidgetId,
 };
 
-/// A container with a fixed width and height, into which an unique widget is placed.
-pub struct FrameElement<T, B> {
+/// A container with a fixed width and height, into which a unique widget is placed.
+pub struct Frame<T, B> {
     width: LengthOrPercentage,
     height: LengthOrPercentage,
     change_flags: ChangeFlags,
@@ -38,7 +37,28 @@ pub struct FrameElement<T, B> {
     content: TransformNode<T>,
 }
 
-impl<T, B> FrameElement<T, B> {
+impl<T> Frame<T, RoundedRectBorder> {
+    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, content: T) -> Frame<T, RoundedRectBorder> {
+        Frame {
+            width,
+            height,
+            change_flags: ChangeFlags::all(),
+            x_align: Default::default(),
+            y_align: Default::default(),
+            padding_left: Default::default(),
+            padding_right: Default::default(),
+            padding_top: Default::default(),
+            padding_bottom: Default::default(),
+            size: Default::default(),
+            bounding_rect: Default::default(),
+            paint_bounding_rect: Default::default(),
+            decoration: ShapeDecoration::new(),
+            content: TransformNode::new(content),
+        }
+    }
+}
+
+impl<T, B> Frame<T, B> {
     /// Updates this element's change flags given the changes reported by
     /// the content element.
     ///
@@ -60,8 +80,8 @@ impl<T, B> FrameElement<T, B> {
     }
 }
 
-impl<T: Element + 'static, B: ShapeBorder + 'static> Element for FrameElement<T, B> {
-    fn id(&self) -> ElementId {
+impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
+    fn id(&self) -> WidgetId {
         self.content.id()
     }
 
@@ -127,9 +147,8 @@ impl<T: Element + 'static, B: ShapeBorder + 'static> Element for FrameElement<T,
         }
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        let flags = ctx.event(&mut self.content, event);
-        self.update_change_flags(flags)
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+        ChangeFlags::empty()
     }
 
     /*fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
@@ -138,7 +157,7 @@ impl<T: Element + 'static, B: ShapeBorder + 'static> Element for FrameElement<T,
         self.update_change_flags(flags)
     }*/
 
-    fn natural_width(&mut self, height: f64) -> f64 {
+    /*fn natural_width(&mut self, height: f64) -> f64 {
         let w = self.width.resolve(f64::INFINITY);
         if !w.is_finite() {
             self.content.natural_width(height)
@@ -159,17 +178,13 @@ impl<T: Element + 'static, B: ShapeBorder + 'static> Element for FrameElement<T,
     fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
         // TODO: welp, we'd need to take alignment and padding into account here
         self.content.natural_baseline(params)
-    }
+    }*/
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        if self.bounding_rect.contains(position) {
-            self.content.hit_test(ctx, position);
-            if self.size.to_rect().contains(position) {
-                ctx.add(self.id());
-                return true;
-            }
+        if !self.bounding_rect.contains(position) {
+            return false;
         }
-        false
+        self.content.hit_test(ctx, position)
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
@@ -178,27 +193,12 @@ impl<T: Element + 'static, B: ShapeBorder + 'static> Element for FrameElement<T,
         ctx.paint(&mut self.content);
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn debug(&self, visitor: &mut DebugWriter) {
-        visitor.type_name("FrameElement");
-        visitor.property("width", self.width);
-        visitor.property("height", self.height);
-        visitor.property("x_align", self.x_align);
-        visitor.property("y_align", self.y_align);
-        visitor.property("padding_left", self.padding_left);
-        visitor.property("padding_right", self.padding_right);
-        visitor.property("padding_top", self.padding_top);
-        visitor.property("padding_bottom", self.padding_bottom);
-        visitor.property("size", self.size);
-        visitor.property("bounding_rect", self.bounding_rect);
-        visitor.property("paint_bounding_rect", self.paint_bounding_rect);
-        visitor.child("content", &self.content);
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        self.content.update(cx)
     }
 }
 
+/*
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct Frame<T, B> {
@@ -321,3 +321,4 @@ impl<T: Widget, B: ShapeBorder + 'static> Widget for Frame<T, B> {
         flags
     }
 }
+*/

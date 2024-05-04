@@ -1,8 +1,8 @@
 use crate::{
-    debug_util,
-    debug_util::{DebugSnapshot, SnapshotCause},
-    window::{WindowHandler, WindowPaintOptions},
-    AppGlobals, ChangeFlags, TreeCtx,
+    context::root_tree_dispatch,
+    widget::{WidgetPaths, WidgetPathsRef},
+    window::WindowPaintOptions,
+    AppGlobals, ChangeFlags, TreeCtx, Widget, WidgetId,
 };
 use std::{
     collections::HashMap,
@@ -10,6 +10,7 @@ use std::{
     rc::{Rc, Weak},
     sync::{Arc, Mutex},
     task::Wake,
+    time::Instant,
 };
 use tracing::{error, trace, warn};
 use tracy_client::{set_thread_name, span};
@@ -34,49 +35,10 @@ impl fmt::Debug for ExtEvent {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Application context passed to the main UI function.
-///
-/// Manages the event loop and open windows.
-/// TODO remove and fuse with TreeCtx
-pub struct AppCtx<'a> {
-    pub(crate) app_state: &'a mut AppState,
-    pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
-}
-
-impl<'a> AppCtx<'a> {
-    pub fn quit(&mut self) {
-        self.event_loop.exit();
-    }
-
-    pub fn register_window(&mut self, window_id: WindowId, handler: &Rc<dyn WindowHandler>) {
-        trace!("registering window {:016X}", u64::from(window_id));
-        if self
-            .app_state
-            .windows
-            .insert(window_id, Rc::downgrade(handler))
-            .is_some()
-        {
-            panic!("window already registered");
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 /// Holds the windows and the application logic.
 pub(crate) struct AppState {
-    /// All open windows by ID.
-    ///
-    /// TODO this could be replaced by a WeakMap
-    pub(crate) windows: HashMap<WindowId, Weak<dyn WindowHandler>>,
-}
-
-impl AppState {
-    pub(crate) fn window_handler(&self, id: WindowId) -> Option<Rc<dyn WindowHandler>> {
-        self.windows.get(&id).and_then(|handler| handler.upgrade())
-    }
+    /// Widget paths to open windows.
+    pub(crate) windows: HashMap<WindowId, Vec<WidgetId>>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -110,6 +72,49 @@ impl Wake for AppWaker {
     }
 }
 
+/// Holds the UI root widget + the application state.
+struct App {
+    root: Box<dyn Widget>,
+    app_state: AppState,
+}
+
+impl App {
+    fn update(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>) {
+        let mut tree_ctx = TreeCtx::new(&mut self.app_state, event_loop);
+        tree_ctx.update(&mut *self.root);
+    }
+
+    /// Dispatches the specified closure
+    fn dispatch<'a>(
+        &mut self,
+        event_loop: &EventLoopWindowTarget<ExtEvent>,
+        paths: WidgetPathsRef,
+        mut f: impl FnMut(&mut TreeCtx, &mut dyn Widget) + 'a,
+    ) {
+        root_tree_dispatch(&mut self.app_state, event_loop, &mut *self.root, paths, &mut f);
+    }
+
+    fn dispatch_one<R>(
+        &mut self,
+        event_loop: &EventLoopWindowTarget<ExtEvent>,
+        widget_path: &[WidgetId],
+        f: impl FnOnce(&mut TreeCtx, &mut dyn Widget) -> R,
+    ) -> Option<R> {
+        let mut result = None;
+        {
+            let mut result = &mut None;
+            let mut f = Some(f);
+            let mut f_mut = move |tree_ctx: &mut TreeCtx, widget: &mut dyn Widget| {
+                if let Some(f) = f.take() {
+                    *result = Some(f(tree_ctx, widget));
+                }
+            };
+            self.dispatch(event_loop, WidgetPaths::from_path(widget_path).as_slice(), &mut f_mut);
+        }
+        result
+    }
+}
+
 /// Application launcher.
 ///
 /// # Example
@@ -119,8 +124,8 @@ pub struct AppLauncher {
     tracy_client: tracy_client::Client,
     app_state: AppState,
     event_loop: EventLoop<ExtEvent>,
-    #[cfg(feature = "debug_window")]
-    debug_window: crate::debug_window::DebugWindow,
+    //#[cfg(feature = "debug_window")]
+    //debug_window: crate::debug_window::DebugWindow,
 }
 
 impl AppLauncher {
@@ -138,8 +143,8 @@ impl AppLauncher {
         // which will remove any existing device (notably the one used by the compositor in AppGlobals).
         //
         // This is OK if we create the compositor device after.
-        #[cfg(feature = "debug_window")]
-        let debug_window = crate::debug_window::DebugWindow::new(&event_loop);
+        //#[cfg(feature = "debug_window")]
+        //let debug_window = crate::debug_window::DebugWindow::new(&event_loop);
 
         AppGlobals::new();
 
@@ -149,8 +154,8 @@ impl AppLauncher {
             tracy_client,
             app_state,
             event_loop,
-            #[cfg(feature = "debug_window")]
-            debug_window,
+            //#[cfg(feature = "debug_window")]
+            //debug_window,
         }
     }
 
@@ -162,49 +167,57 @@ impl AppLauncher {
         f(&mut tree_ctx)
     }
 
-    pub fn run<F>(self, mut logic: F)
-    where
-        F: FnMut(&mut TreeCtx) -> ChangeFlags + 'static,
-    {
+    pub fn run(self, root_widget: impl Widget + 'static) {
+        self.run_inner(Box::new(root_widget))
+    }
+
+    fn run_inner(self, mut root: Box<dyn Widget>) {
         let event_loop = self.event_loop;
-        let mut app_state = self.app_state;
-        let mut debug_window = self.debug_window;
+        //let mut debug_window = self.debug_window;
         let _tracy_client = self.tracy_client;
         set_thread_name!("UI thread");
 
-        // run UI at least once to create the initial windows
-        //app_state.run_ui(&event_loop, &mut ui_fn);
+        // initial UI update
+        let mut app = App {
+            root,
+            app_state: self.app_state,
+        };
+        app.update(&event_loop);
 
         // run the event loop
         event_loop.set_control_flow(ControlFlow::Wait);
-        let event_loop_start_time = std::time::Instant::now();
-        let mut app_logic_dirty = false;
+        let event_loop_start_time = Instant::now();
 
         event_loop
             .run(move |event, elwt| {
-                let event_time = std::time::Instant::now().duration_since(event_loop_start_time);
+                let event_time = Instant::now().duration_since(event_loop_start_time);
 
-                #[cfg(feature = "debug_window")]
+                /*#[cfg(feature = "debug_window")]
                 if debug_window.event(elwt, &event, &mut app_state) {
                     return;
-                }
+                }*/
 
                 match event {
                     winit::event::Event::WindowEvent { window_id, event } => {
-                        eprintln!("Window {:016X} -> {:?}", u64::from(window_id), event);
+                        eprintln!("Window {:08X} -> {:?}", u64::from(window_id), event);
+
                         // dispatch to the appropriate window handler
-                        if let Some(win_handler) = app_state.windows.get_mut(&window_id) {
-                            if let Some(win_handler) = win_handler.upgrade() {
+                        if let Some(window_widget_path) = app.app_state.windows.get(&window_id).cloned() {
+                            app.dispatch_one(elwt, &window_widget_path, move |cx, widget| {
+                                widget.window_event(cx, &event, event_time);
+                            });
+
+                            /*if let Some(win_handler) = win_handler.upgrade() {
                                 match event {
                                     WindowEvent::RedrawRequested => {
                                         #[allow(unused_assignments)]
                                         let mut options = WindowPaintOptions::default();
-                                        #[cfg(feature = "debug_window")]
+                                        /*#[cfg(feature = "debug_window")]
                                         {
                                             // get special paint options (debug overlays) from the
                                             // debug state
                                             options = debug_window.window_paint_options(window_id);
-                                        }
+                                        }*/
                                         win_handler.paint(event_time, &options);
                                     }
                                     _ => {
@@ -213,7 +226,7 @@ impl AppLauncher {
                                 }
                             } else {
                                 warn!("received event for expired window {:?}", window_id);
-                            }
+                            }*/
                         } else {
                             warn!("received event for unknown window {:?}", window_id);
                         }
@@ -223,14 +236,14 @@ impl AppLauncher {
 
                         eprintln!("AboutToWait");
 
-                        // Call "before_app_logic" on all windows.
+                        /*// Call "before_app_logic" on all windows.
                         for handler in app_state.windows.values() {
                             if let Some(handler) = handler.upgrade() {
                                 handler.before_app_logic();
                             }
-                        }
+                        }*/
 
-                        // Once we've processed all incoming window events and propagated them to
+                        /*// Once we've processed all incoming window events and propagated them to
                         // the elements, run the application logic.
                         // It can call `elwt.exit()` to exit the event loop, and request window repaints.
                         let mut change_flags = ChangeFlags::APP_LOGIC;
@@ -240,7 +253,7 @@ impl AppLauncher {
                         // maximum number of iterations, or the application requests to exit.
                         while change_flags.contains(ChangeFlags::APP_LOGIC) && !elwt.exiting() {
                             let _span = span!("app logic");
-                            let mut cx = TreeCtx::new(&mut app_state, elwt);
+                            let mut cx = TreeCtx::new(elwt);
                             change_flags = logic(&mut cx);
                             iterations += 1;
                             if iterations > max_iterations {
@@ -250,16 +263,16 @@ impl AppLauncher {
                                 );
                                 break;
                             }
-                        }
+                        }*/
 
-                        // Call "after_app_logic" on all windows.
+                        /*// Call "after_app_logic" on all windows.
                         for handler in app_state.windows.values() {
                             if let Some(handler) = handler.upgrade() {
                                 handler.after_app_logic();
                             }
-                        }
+                        }*/
 
-                        // Debug window maintenance
+                        /*// Debug window maintenance
                         #[cfg(feature = "debug_window")]
                         {
                             // The debug window redraws continuously. Don't bother with trying to
@@ -294,7 +307,7 @@ impl AppLauncher {
                                     }
                                 }
                             }
-                        }
+                        }*/
 
                         eprintln!("------ end event cycle ------");
                     }

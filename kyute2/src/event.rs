@@ -1,7 +1,7 @@
 use std::fmt;
 
 pub use crate::keyboard_types::KeyboardEvent;
-use crate::{keyboard_types::Modifiers, Affine, ElementId, Point};
+use crate::{keyboard_types::Modifiers, Affine, Point, WidgetId};
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -96,7 +96,7 @@ impl Default for PointerButtons {
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct PointerEvent {
     /// The widget for which this event is intended. Can be `None` if the target is not known, and determined on the fly by hit-testing.
-    pub target: Option<ElementId>,
+    pub target: Option<WidgetId>,
     /// Position in device-independent (logical) pixels, relative to the parent window.
     pub position: Point,
     /// State of the keyboard modifiers when this event was emitted.
@@ -180,39 +180,15 @@ pub enum EventKind {
     //Internal(InternalEvent<'a>),
 }
 
-pub struct Event<'a> {
-    pub route: &'a [ElementId],
+pub struct Event {
     pub handled: bool,
     pub kind: EventKind,
 }
 
-impl<'a> Event<'a> {
-    pub fn new(route: &'a [ElementId], kind: EventKind) -> Event<'a> {
-        Event {
-            route,
-            handled: false,
-            kind,
-        }
+impl Event {
+    pub fn new(kind: EventKind) -> Event {
+        Event { handled: false, kind }
     }
-
-    pub fn next_target(&mut self) -> Option<ElementId> {
-        let (next, rest) = self.route.split_first()?;
-        self.route = rest;
-        Some(*next)
-    }
-
-    /*pub fn set_handled(&mut self) {
-        if self.handled {
-            warn!("Event::set_handled: event already handled");
-        }
-        self.handled = true;
-    }*/
-
-    //pub fn propagate(&mut self) {}
-
-    /*pub fn kind(&self) -> &EventKind {
-        &self.kind
-    }*/
 
     fn set_transform(&mut self, transform: &Affine, append: bool) -> Option<Affine> {
         match self.kind {

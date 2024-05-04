@@ -17,7 +17,7 @@ use kurbo::{Affine, Rect};
 use once_cell::sync::OnceCell;
 use winit::window::WindowId;
 
-use crate::{context::ElementIdTree, BoxConstraints, ChangeFlags, Element, ElementId, EventKind, Geometry};
+use crate::{BoxConstraints, ChangeFlags, ElementId, EventKind, Geometry};
 
 pub trait PropertyValue: Any + Debug + Send + Sync {
     fn as_any(&self) -> &dyn Any;
@@ -43,6 +43,7 @@ impl dyn PropertyValue {
 
 pub type ElementPtrId = u64;
 
+/*
 /// Returns a unique ID based on memory address of the element.
 ///
 /// The ID is stable as long as the address of the element stays the same.
@@ -55,7 +56,7 @@ pub fn elem_ptr_id(elem: &dyn Element) -> ElementPtrId {
     ptr::hash(elem as *const _ as *const (), &mut hasher);
     elem.type_id().hash(&mut hasher);
     hasher.finish()
-}
+}*/
 
 /*
 #[derive(Debug)]
@@ -191,10 +192,10 @@ impl<'a> DebugWriter<'a> {
         self.arena.alloc_str(s)
     }
 
-    pub fn child(&mut self, name: &'a str, inner: &dyn Element) {
+    /*pub fn child(&mut self, name: &'a str, inner: &dyn Element) {
         let node = dump_ui_tree_inner(self.arena, name, inner);
         self.children.push(node);
-    }
+    }*/
 }
 
 pub type DebugArena = bumpalo::Bump;

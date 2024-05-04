@@ -1,9 +1,5 @@
 //! Wrapper around skia images.
-use crate::{
-    asset::{AssetLoadError, AssetLoader},
-    drawing::ToSkia,
-    Asset, Data, Size,
-};
+use crate::{drawing::ToSkia, Data, Size};
 use std::{
     collections::HashMap,
     ffi::c_void,
@@ -46,6 +42,7 @@ impl ToSkia for Image {
     }
 }
 
+/*
 impl Asset for Image {
     type LoadError = io::Error;
 
@@ -66,7 +63,7 @@ impl Asset for Image {
             Ok(Image(sk_image))
         }
     }
-}
+}*/
 
 /// Image cache entry.
 #[derive(Clone)]
@@ -79,6 +76,7 @@ struct Inner {
     entries: HashMap<String, Entry>,
 }
 
+/*
 /// Loads and caches images by URI.
 #[derive(Clone)]
 pub struct ImageCache {
@@ -108,6 +106,7 @@ impl ImageCache {
         Ok(image)
     }
 }
+*/
 
 //impl_env_value!(ImageCache);
 

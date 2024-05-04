@@ -8,27 +8,26 @@ use std::{
 
 use keyboard_types::KeyState;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
-use tracing::trace;
+use tracing::{trace, warn};
 use tracy_client::span;
 use winit::{
     event::{DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent},
+    event_loop::EventLoopWindowTarget,
     keyboard::{KeyLocation, NamedKey},
     platform::windows::WindowBuilderExtWindows,
     window::{Window, WindowBuilder},
 };
 
 use crate::{
+    application::ExtEvent,
     composition::{ColorType, LayerID},
-    context::ElementIdTree,
-    debug_util,
-    debug_util::{DebugWriter, EventDebugInfo, LayoutDebugInfo, PaintDebugInfo, WindowSnapshot},
     drawing::ToSkia,
     event::{KeyboardEvent, PointerButton, PointerButtons, PointerEvent},
     theme,
-    widget::{null::NullElement, WidgetExt},
+    widget::{WidgetPaths, WidgetPathsRef, WidgetVisitor},
     window::key::{key_code_from_winit, modifiers_from_winit},
-    AppGlobals, BoxConstraints, ChangeFlags, Color, Element, ElementId, Event, EventCtx, EventKind, Geometry,
-    HitTestResult, LayoutCtx, PaintCtx, Point, Rect, Size, TreeCtx, Widget,
+    AppGlobals, BoxConstraints, ChangeFlags, Color, Event, EventKind, Geometry, HitTestResult, LayoutCtx, PaintCtx,
+    Point, Rect, Size, TreeCtx, Widget, WidgetId,
 };
 
 mod key;
@@ -42,23 +41,6 @@ pub struct WindowPaintOptions {
     pub debug_overlay: Option<DebugOverlay>,
     /// Force a relayout before painting the window.
     pub force_relayout: bool,
-}
-
-pub trait WindowHandler {
-    /// Returns true if the app logic should be re-run as a result.
-    fn event(&self, event: &winit::event::WindowEvent, time: Duration) -> bool;
-    /// Called after all input events in the queue have been processed, but
-    /// before the app logic is run.
-    fn before_app_logic(&self) {}
-    /// Called after the app logic is run and the event loop is about to wait for more events.
-    fn after_app_logic(&self) {}
-    fn as_any(&self) -> &dyn Any;
-    fn request_redraw(&self);
-    fn paint(&self, time: Duration, options: &WindowPaintOptions);
-    /// Requests a debug snapshot of the window state.
-    fn snapshot(&self) -> Option<debug_util::WindowSnapshot> {
-        None
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -111,10 +93,10 @@ struct InputState {
     /// Pointer button state.
     pointer_buttons: PointerButtons,
     last_click: Option<LastClick>,
-    /// Element currently grabbing the pointer.
-    pointer_grab: Option<ElementId>,
-    /// Element that has the focus for keyboard events.
-    focus: Option<ElementId>,
+    /// The widget currently grabbing the pointer.
+    pointer_grab: Option<Vec<WidgetId>>,
+    /// The widget that has the focus for keyboard events.
+    focus: Option<Vec<WidgetId>>,
 }
 
 /// Options for UI host windows.
@@ -135,9 +117,8 @@ pub struct UiHostWindowOptions {
     /// Create a popup window.
     pub popup: bool,
 
-    /// The owner window for popups.
-    pub owner: Option<Rc<UiHostWindowHandler>>,
-
+    // The owner window for popups.
+    //pub owner: Option<Rc<UiHostWindowHandler>>,
     /// Initial inner size
     pub inner_size: Option<Size>,
 
@@ -153,7 +134,7 @@ impl Default for UiHostWindowOptions {
             resizable: true,
             decorations: true,
             popup: false,
-            owner: None,
+            //owner: None,
             inner_size: None,
             position: None,
         }
@@ -163,46 +144,532 @@ impl Default for UiHostWindowOptions {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // UiHostWindowHandler
 
+pub struct UiHostWindowState {
+    window: Window,
+    input_state: InputState,
+    close_requested: Cell<bool>,
+    dismissed: Cell<bool>,
+    layer: LayerID,
+    hidden_before_first_draw: Cell<bool>,
+    scale_factor: Cell<f64>,
+    change_flags: ChangeFlags,
+}
+
+impl UiHostWindowState {
+    pub fn new(options: &UiHostWindowOptions, event_loop: &EventLoopWindowTarget<ExtEvent>) -> UiHostWindowState {
+        //
+        // Create window
+        //
+        let mut window_builder = WindowBuilder::new()
+            .with_visible(false) // Initially invisible
+            .with_decorations(options.decorations) // No decorations
+            .with_resizable(options.resizable);
+
+        // popup stuff
+        /*if self.options.popup {
+            // set owner window
+            let parent_window_handle = options
+                .owner
+                .as_ref()
+                .expect("a popup window must have an owner window")
+                .raw_window_handle();
+            match parent_window_handle {
+                RawWindowHandle::Win32(parent_hwnd) => {
+                    window_builder = window_builder.with_owner_window(parent_hwnd.hwnd.into())
+                }
+                _ => panic!("Come back later for non-windows support"),
+            };
+            window_builder = window_builder.with_active(false).with_no_focus();
+        }*/
+
+        if let Some(size) = options.inner_size {
+            window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(size.width, size.height));
+        }
+        if let Some(position) = options.position {
+            window_builder = window_builder.with_position(winit::dpi::LogicalPosition::new(position.x, position.y));
+        }
+
+        let window = window_builder.build(event_loop).expect("failed to create popup window");
+
+        //
+        // Create the compositor layer for the window
+        //
+        let size = window.inner_size();
+        let app = AppGlobals::get();
+        let layer = app
+            .compositor
+            .create_surface_layer(Size::new(size.width as f64, size.height as f64), ColorType::RGBAF16);
+
+        let raw_window_handle = window.raw_window_handle().expect("failed to get raw window handle");
+        unsafe {
+            // Bind the layer to the window
+            // SAFETY: idk? the window handle is valid?
+            app.compositor.bind_layer(layer, raw_window_handle);
+        }
+
+        // On windows, the initial wait is important:
+        // see https://learn.microsoft.com/en-us/windows/uwp/gaming/reduce-latency-with-dxgi-1-3-swap-chains#step-4-wait-before-rendering-each-frame
+        app.compositor.wait_for_surface(layer);
+
+        UiHostWindowState {
+            window,
+            input_state: InputState {
+                cursor_pos: Default::default(),
+                modifiers: Default::default(),
+                pointer_buttons: Default::default(),
+                last_click: None,
+                pointer_grab: None,
+                focus: None,
+            },
+            close_requested: Cell::new(false),
+            dismissed: Cell::new(false),
+            layer,
+            hidden_before_first_draw: Cell::new(true),
+            scale_factor: Cell::new(1.0),
+            change_flags: ChangeFlags::empty(),
+        }
+    }
+
+    /// Handles `WindowEvent`s sent to this window.
+    ///
+    /// It updates the last known input state (`input_state`), and resizes the compositor layer
+    /// if needed.
+    fn handle_window_event(&mut self, cx: &mut TreeCtx, content: &mut dyn Widget, event: &WindowEvent, time: Duration) {
+        //eprintln!("handle_window_event {:?}", event);
+        match event {
+            WindowEvent::Resized(new_size) => {
+                //self.dismiss_popups();
+                if new_size.width != 0 && new_size.height != 0 {
+                    // resize the compositor layer
+                    let size = Size::new(new_size.width as f64, new_size.height as f64);
+                    let app = AppGlobals::get();
+                    app.compositor.set_surface_layer_size(self.layer, size);
+                    // mark the geometry and the visuals dirty
+                    self.change_flags |= ChangeFlags::GEOMETRY | ChangeFlags::PAINT;
+                }
+            }
+            WindowEvent::Moved(_) => { /*self.dismiss_popups()*/ }
+            WindowEvent::KeyboardInput {
+                device_id: _,
+                event,
+                is_synthetic: _,
+            } => {
+                self.handle_keyboard_input(cx, content, event, time);
+            }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.input_state.modifiers = modifiers_from_winit(*modifiers);
+            }
+            WindowEvent::CursorMoved { position, device_id: _ } => {
+                let pointer_event = {
+                    // the scope is there to avoid
+                    let logical_position = position.to_logical(self.scale_factor.get());
+                    self.input_state.cursor_pos.x = logical_position.x;
+                    self.input_state.cursor_pos.y = logical_position.y;
+                    PointerEvent {
+                        target: None,
+                        position: self.input_state.cursor_pos,
+                        modifiers: self.input_state.modifiers,
+                        buttons: self.input_state.pointer_buttons,
+                        button: None, // Dummy
+                        repeat_count: 0,
+                        transform: Default::default(),
+                    }
+                };
+                /*self.propagate_pointer_event(
+                    input_state,
+                    EventKind::PointerMove(pointer_event),
+                    input_state.cursor_pos,
+                    time,
+                );*/
+            }
+            WindowEvent::MouseInput {
+                button,
+                state,
+                device_id,
+            } => {
+                //self.dismiss_popups();
+                self.handle_mouse_input(cx, content, *device_id, *button, *state, time);
+            }
+            WindowEvent::RedrawRequested => {
+                self.paint(time, &WindowPaintOptions::default(), content);
+            }
+            WindowEvent::CloseRequested => {
+                self.close_requested.set(true);
+                //self.merge_change_flags(ChangeFlags::APP_LOGIC);
+            }
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.scale_factor.set(*scale_factor);
+                //self.merge_change_flags(ChangeFlags::GEOMETRY);
+            }
+            WindowEvent::Focused(focused) => {
+                /*if !*focused {
+                    // dismiss all popups when the parent window loses focus
+                    self.dismiss_popups();
+                }*/
+            }
+
+            _ => {}
+        };
+
+        // return whether the app logic should run again
+        //self.change_flags.get().intersects(ChangeFlags::APP_LOGIC)
+    }
+
+    /// Handles mouse input.
+    fn handle_mouse_input(
+        &mut self,
+        cx: &mut TreeCtx,
+        content: &mut dyn Widget,
+        device_id: DeviceId,
+        button: MouseButton,
+        state: ElementState,
+        time: Duration,
+    ) {
+        let button = match button {
+            MouseButton::Left => PointerButton::LEFT,
+            MouseButton::Right => PointerButton::RIGHT,
+            MouseButton::Middle => PointerButton::MIDDLE,
+            MouseButton::Back => PointerButton::X1,
+            MouseButton::Forward => PointerButton::X2,
+            MouseButton::Other(_) => {
+                // FIXME ignore extended buttons for now, but they should really be propagated as well
+                return;
+            }
+        };
+        if state.is_pressed() {
+            self.input_state.pointer_buttons.set(button);
+        } else {
+            self.input_state.pointer_buttons.reset(button);
+        }
+        let click_time = Instant::now();
+
+        // implicit pointer ungrab
+        if !state.is_pressed() {
+            self.input_state.pointer_grab = None;
+        }
+
+        // determine the repeat count (double-click, triple-click, etc.) for button down event
+        let repeat_count = match &mut self.input_state.last_click {
+            Some(ref mut last)
+                if last.device_id == device_id
+                    && last.button == button
+                    && last.position == self.input_state.cursor_pos
+                    && (click_time - last.time) < AppGlobals::get().double_click_time() =>
+            {
+                // same device, button, position, and within the platform specified double-click time
+                if state.is_pressed() {
+                    last.repeat_count += 1;
+                    last.repeat_count
+                } else {
+                    // no repeat for release events (although that could be possible?)
+                    1
+                }
+            }
+            other => {
+                // no match, reset
+                if state.is_pressed() {
+                    *other = Some(LastClick {
+                        device_id,
+                        button,
+                        position: self.input_state.cursor_pos,
+                        time: click_time,
+                        repeat_count: 1,
+                    });
+                } else {
+                    *other = None;
+                };
+                1
+            }
+        };
+        let pe = PointerEvent {
+            target: None,
+            position: self.input_state.cursor_pos,
+            modifiers: self.input_state.modifiers,
+            buttons: self.input_state.pointer_buttons,
+            button: Some(button),
+            repeat_count: repeat_count as u8,
+            transform: Default::default(),
+        };
+
+        if state.is_pressed() {
+            self.propagate_pointer_event(
+                cx,
+                content,
+                EventKind::PointerDown(pe),
+                self.input_state.cursor_pos,
+                time,
+            )
+        } else {
+            self.propagate_pointer_event(cx, content, EventKind::PointerUp(pe), self.input_state.cursor_pos, time)
+        }
+    }
+
+    /// Handles keyboard input.
+    ///
+    /// Returns whether the keyboard input was handled
+    fn handle_keyboard_input(&self, cx: &mut TreeCtx, content: &mut dyn Widget, event: &KeyEvent, time: Duration) {
+        /*let mut popups = self.popups.borrow();
+        // If there are active popups, keyboard events are delivered to the popups.
+        // TODO there should be only one popup active at a time.
+        // TODO the terminology is misleading. What we call "popups" are specifically
+        // non-activable popup windows (popups that don't deactivate the parent window), like
+        // contextual menus. We should probably call them "menus" instead.
+        if !popups.is_empty() {
+            for popup in popups.iter() {
+                if let Some(popup) = popup.upgrade() {
+                    popup.handle_keyboard_input(input_state, event, time);
+                    return;
+                }
+            }
+        }*/
+
+        // keyboard events are delivered to the widget that has the focus.
+        // if no widget has focus, the event is dropped.
+        let mut handled = false;
+        if let Some(ref focus) = self.input_state.focus {
+            let (key, code) = key_code_from_winit(event);
+            let state = match event.state {
+                ElementState::Pressed => KeyState::Down,
+                ElementState::Released => KeyState::Up,
+            };
+            let location = match event.location {
+                KeyLocation::Standard => keyboard_types::Location::Standard,
+                KeyLocation::Left => keyboard_types::Location::Left,
+                KeyLocation::Right => keyboard_types::Location::Right,
+                KeyLocation::Numpad => keyboard_types::Location::Numpad,
+            };
+
+            /*// determine route to focused widget and send the event to it
+            let route = self.get_propagation_path(focus);
+            let mut event = Event::new(
+                &route,
+                EventKind::Keyboard(KeyboardEvent {
+                    state,
+                    key,
+                    location,
+                    modifiers: input_state.modifiers,
+                    repeat: event.repeat,
+                    is_composing: false, //TODO
+                    code,
+                }),
+            );
+            self.send_event(input_state, &mut event, time);
+            handled = event.handled;*/
+        }
+
+        if !handled {
+            // if nothing handled the event, do default handling at the window level
+            match event.logical_key {
+                winit::keyboard::Key::Named(NamedKey::Escape) => {
+                    /*// if we're a popup, dismiss ourselves
+                    if self.popup_owner.is_some() {
+                        self.dismissed.set(true);
+                        // re-run app logic because it detains the popup
+                        self.merge_change_flags(ChangeFlags::APP_LOGIC);
+                    }*/
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Propagates a pointer event in the UI tree.
+    ///
+    /// It first determines the target of the event (i.e. either the pointer-capturing element or
+    /// the deepest element that passes the hit-test), then propagates the event to the target with `send_event`.
+    ///
+    /// TODO It should also handle focus and hover update events (FocusGained/Lost, PointerOver/Out).
+    ///
+    /// # Return value
+    ///
+    /// Returns true if the app logic should re-run in response of the event.
+    fn propagate_pointer_event(
+        &mut self,
+        cx: &mut TreeCtx,
+        content: &mut dyn Widget,
+        event_kind: EventKind,
+        position: Point,
+        time: Duration,
+    ) {
+        if let Some(ref pointer_grab) = self.input_state.pointer_grab {
+            // Pointer events are delivered to the node that is currently grabbing the pointer
+            // if there's one.
+            // Furthermore, it is sent to every node in the propagation path, starting from
+            // the deepest one (unless the event is marked as handled).
+            let propagation_path = WidgetPaths::from_path_bubbling(pointer_grab);
+            cx.schedule_event(&propagation_path, event_kind);
+        } else {
+            // If nothing is grabbing the pointer, the pointer event is delivered to a widget
+            // that passes the hit-test, and their parents.
+            let propagation_paths = cx.hit_test_child(content, position);
+            cx.schedule_event(&propagation_paths, event_kind);
+        };
+    }
+
+    fn update_layout(&self, content: &mut dyn Widget) {
+        let _span = span!("update_layout");
+        //span.emit_text(&format!("Window ID: {:016X}", u64::from(self.window.id())));
+        //span.emit_text(&format!("Window title: {:?}", self.window.title()));
+
+        let scale_factor = self.scale_factor.get();
+        let window_size = self.window.inner_size().to_logical(scale_factor);
+        let mut ctx = LayoutCtx::new(scale_factor);
+        let layout_params = BoxConstraints {
+            min: Size::ZERO,
+            max: Size::new(window_size.width, window_size.height),
+        };
+        ctx.layout(content, &layout_params);
+        /*let geometry = ctx.layout(&mut *self.root_element.borrow_mut(), &layout_params);
+        trace!(
+            "update_layout window_size:{:?}, result geometry:{:?}",
+            window_size,
+            geometry
+        );*/
+        // Layout is clean now.
+        //self.clear_change_flags(ChangeFlags::GEOMETRY);
+        /*#[cfg(debug_assertions)]
+        {
+            self.layout_debug_info.replace(ctx.debug_info);
+        }*/
+    }
+
+    fn set_title(&self, title: &str) {
+        self.window.set_title(title);
+    }
+
+    /// Returns the position of the window on the desktop.
+    ///
+    /// The returned value is in logical pixels.
+    fn outer_position(&self) -> Point {
+        // Querying the window position should succeed on all platforms that we support.
+        let scale_factor = self.window.scale_factor();
+        let pos = self
+            .window
+            .outer_position()
+            .expect("failed to get window position (unsupported platform?)")
+            .to_logical(scale_factor);
+        Point::new(pos.x, pos.y)
+    }
+
+    fn set_outer_position(&self, position: Point) {
+        self.window
+            .set_outer_position(winit::dpi::LogicalPosition::new(position.x, position.y));
+    }
+
+    fn outer_size(&self) -> Size {
+        let scale_factor = self.window.scale_factor();
+        let size = self.window.outer_size().to_logical(scale_factor);
+        Size::new(size.width, size.height)
+    }
+
+    fn close_requested(&self) -> bool {
+        self.close_requested.get()
+    }
+
+    /// Paints the window.
+    ///
+    /// This doesn't call `layout` on the content, the caller must to that themselves before calling
+    /// this method.
+    ///
+    /// # Arguments
+    ///
+    /// * `time` - The current time.
+    /// * `options` - Options for painting the window.
+    /// * `widget` - The root widget to paint into the window.
+    ///
+    fn paint(&mut self, _time: Duration, options: &WindowPaintOptions, content: &mut dyn Widget) {
+        let _span = span!("paint");
+        eprintln!("paint");
+
+        //span.emit_text(&format!("Window ID: {:016X}", u64::from(self.window.id())));
+        //span.emit_text(&format!("Window title: {:?}", self.window.title()));
+
+        /*// Recalculate layout if asked to.
+        //
+        // For now it's only used for debugging.
+        if self.change_flags.get().intersects(ChangeFlags::GEOMETRY) || options.force_relayout {
+            self.update_layout();
+        }*/
+
+        // Acquire a drawing surface and clear it.
+        let app = AppGlobals::get();
+        let surface = app.compositor.acquire_drawing_surface(self.layer);
+        // FIXME: only clear and flip invalid regions
+        {
+            let mut skia_surface = surface.surface();
+            skia_surface.canvas().clear(Color::from_hex("#111111").to_skia());
+        }
+
+        // Now paint the UI tree.
+        {
+            let mut paint_ctx = PaintCtx {
+                scale_factor: self.scale_factor.get(),
+                window_transform: Default::default(),
+                id: None,
+                surface: &surface,
+                //debug_info: Default::default(),
+            };
+            paint_ctx.paint(content);
+
+            // Paint the debug overlay if there's one.
+            if let Some(ref debug_overlay) = options.debug_overlay {
+                debug_overlay.paint(&mut paint_ctx);
+            }
+
+            // Save debug information after painting.
+            //self.paint_debug_info.replace(paint_ctx.debug_info);
+        }
+
+        // Nothing more to paint, release the surface.
+        //
+        // This flushes the skia command buffers, and presents the surface to the compositor.
+        app.compositor.release_drawing_surface(self.layer, surface);
+
+        // Windows are initially created hidden, and are only shown after the first frame is painted.
+        // Now that we've rendered the first frame, we can reveal it.
+        if self.hidden_before_first_draw.get() {
+            self.hidden_before_first_draw.set(false);
+            self.window.set_visible(true);
+        }
+
+        //self.clear_change_flags(ChangeFlags::PAINT);
+
+        // Wait for the compositor to be ready to render another frame (this is to reduce latency)
+        // FIXME: this assumes that there aren't any other windows waiting to be painted!
+        app.compositor.wait_for_surface(self.layer);
+    }
+}
+
 /// A window handler that hosts a UI tree.
 pub struct UiHostWindowHandler {
-    // RefCells are needed because some of them are accessed recursively during
-    // `UiHostWindowHandler::update, during which `root_element` and `element_id_tree` are borrowed.
-    //
-    // TODO There are a lot of RefCell fields. Some of these could be grouped,
-    // but it's not obvious what groups would work.
-    /// The root of the UI tree on this window.
-    root_element: RefCell<Box<dyn Element>>,
-    /// A tree mapping each element ID to its parent and owner window.
-    element_id_tree: RefCell<ElementIdTree>,
-    window: RefCell<Window>,
+    /// Gui widgets
+    content: Box<dyn Widget>,
+    id: WidgetId,
+    options: UiHostWindowOptions,
+    window: Option<UiHostWindowState>,
     /// Damage regions to be repainted.
     damage_regions: DamageRegions,
-    input_state: RefCell<InputState>,
-    close_requested: Cell<bool>,
-    /// For popups, true if the popup has been dismissed (e.g. by pressing Escape)
-    dismissed: Cell<bool>,
-    /// Debug info collected during the last call to update_layout.
+
+    /*/// Debug info collected during the last call to update_layout.
     layout_debug_info: RefCell<LayoutDebugInfo>,
     /// Debug info collected during the last event propagation.
     event_debug_info: RefCell<EventDebugInfo>,
     /// Debug info collected during the last repaint.
-    paint_debug_info: RefCell<PaintDebugInfo>,
+    paint_debug_info: RefCell<PaintDebugInfo>,*/
     /// Root composition layer for the window.
-    layer: LayerID,
-    hidden_before_first_draw: Cell<bool>,
+
     /// If the contents need to be laid out.
     change_flags: Cell<ChangeFlags>,
     // If the contents need to be repainted.
     //repaint: Cell<bool>,
-    scale_factor: Cell<f64>,
-    /// List of active popups owned by this window.
-    popups: RefCell<Vec<Weak<UiHostWindowHandler>>>,
-    /// If this is a popup, the owner window & the ID of the popup.
-    popup_owner: Option<Weak<UiHostWindowHandler>>,
+    // List of active popups owned by this window.
+    //popups: RefCell<Vec<Weak<UiHostWindowHandler>>>,
+    // If this is a popup, the owner window & the ID of the popup.
+    //popup_owner: Option<Weak<UiHostWindowHandler>>,
 }
 
 impl UiHostWindowHandler {
-    /// Cleans the popup list of all expired popups.
+    /*/// Cleans the popup list of all expired popups.
     fn clean_expired_popups(&self) {
         self.popups.borrow_mut().retain(|popup| popup.upgrade().is_some());
     }
@@ -216,20 +683,7 @@ impl UiHostWindowHandler {
             }
         }
         self.merge_change_flags(ChangeFlags::APP_LOGIC);
-    }
-
-    /// Returns the event propagation path (as a sequence of Element IDs) to the specified target.
-    // FIXME: return a smallvec?
-    fn get_propagation_path(&self, target: ElementId) -> Vec<ElementId> {
-        let mut path = self.element_id_tree.borrow().id_path(target);
-        path.reverse();
-        assert_eq!(
-            path[0],
-            self.root_element.borrow().id(),
-            "expected root element ID in propagation path"
-        );
-        path
-    }
+    }*/
 
     /// Updates internal dirty flags from ChangeFlags reported by the UI tree.
     fn merge_change_flags(&self, mut change_flags: ChangeFlags) {
@@ -237,7 +691,7 @@ impl UiHostWindowHandler {
         change_flags = change_flags.difference(ChangeFlags::LAYOUT_FLAGS);
         let old = self.change_flags.get();
         let new = old | change_flags;
-        let window_id: u64 = self.window.borrow().id().into();
+        /*let window_id: u64 = self.window.borrow().id().into();
         if old != new {
             eprintln!("Window {window_id:016X}: merge_change_flags {:?} -> {:?}", old, new);
             /*if let Some(client) = tracy_client::Client::running() {
@@ -246,11 +700,11 @@ impl UiHostWindowHandler {
                     0,
                 );
             }*/
-        }
+        }*/
         self.change_flags.set(new)
     }
 
-    fn clear_change_flags(&self, change_flags_to_clear: ChangeFlags) {
+    /*fn clear_change_flags(&self, change_flags_to_clear: ChangeFlags) {
         let old = self.change_flags.get();
         let new = old & !change_flags_to_clear;
         let window_id: u64 = self.window.borrow().id().into();
@@ -264,9 +718,9 @@ impl UiHostWindowHandler {
             }
         }
         self.change_flags.set(new)
-    }
+    }*/
 
-    /// Propagates an event in the UI tree.
+    /*/// Propagates an event in the UI tree.
     fn send_event(&self, input_state: &mut InputState, event: &mut Event, _time: Duration) {
         let mut ctx = EventCtx {
             focus: &mut input_state.focus,
@@ -285,325 +739,7 @@ impl UiHostWindowHandler {
         self.event_debug_info.replace(ctx.debug_info);
         // TODO follow-up events
         self.merge_change_flags(change_flags);
-    }
-
-    /// Propagates a pointer event in the UI tree.
-    ///
-    /// It first determines the target of the event (i.e. either the pointer-capturing element or
-    /// the deepest element that passes the hit-test), then propagates the event to the target with `send_event`.
-    ///
-    /// TODO It should also handle focus and hover update events (FocusGained/Lost, PointerOver/Out).
-    ///
-    /// # Return value
-    ///
-    /// Returns true if the app logic should re-run in response of the event.
-    fn propagate_pointer_event(
-        &self,
-        input_state: &mut InputState,
-        event_kind: EventKind,
-        position: Point,
-        time: Duration,
-    ) -> bool {
-        let handled = if let Some(pointer_grab) = input_state.pointer_grab {
-            // Pointer events are delivered to the node that is currently grabbing the pointer
-            // if there's one.
-            let route = self.get_propagation_path(pointer_grab);
-            let mut event = Event::new(&route[..], event_kind);
-            self.send_event(input_state, &mut event, time);
-            event.handled
-        } else {
-            // If nothing is grabbing the pointer, the pointer event is delivered to a widget
-            // that passes the hit-test.
-            let mut htr = HitTestResult::new();
-            let hit = self.root_element.borrow().hit_test(&mut htr, position);
-            if hit {
-                // send to "most specific" (deepest) hit in the stack that is not anonymous
-                let target = htr.hits.iter().find(|id| !id.is_anonymous()).cloned();
-                let Some(target) = target else {
-                    // There were hits, but only on anonymous elements, which don't receive events.
-                    return false;
-                };
-                let route = self.get_propagation_path(target);
-                //eprintln!("hit-test @ {:?} target={:?} route={:?}", position, target, &route[..]);
-                let mut event = Event::new(&route[..], event_kind);
-                self.send_event(input_state, &mut event, time);
-                event.handled
-            } else {
-                // no grab, no hit, drop the pointer event
-                //trace!("hit-test @ {:?} failed", event.pos);
-                false
-            }
-        };
-
-        // If we reach this point, the event was handled, so the app logic may need to re-run
-        // TODO: follow-up events (focus update, hover update)
-        handled
-    }
-
-    /// Handles mouse input.
-    fn handle_mouse_input(
-        &self,
-        input_state: &mut InputState,
-        device_id: DeviceId,
-        button: MouseButton,
-        state: ElementState,
-        time: Duration,
-    ) -> bool {
-        let button = match button {
-            MouseButton::Left => PointerButton::LEFT,
-            MouseButton::Right => PointerButton::RIGHT,
-            MouseButton::Middle => PointerButton::MIDDLE,
-            MouseButton::Back => PointerButton::X1,
-            MouseButton::Forward => PointerButton::X2,
-            MouseButton::Other(_) => {
-                // FIXME ignore extended buttons for now, but they should really be propagated as well
-                return false;
-            }
-        };
-        if state.is_pressed() {
-            input_state.pointer_buttons.set(button);
-        } else {
-            input_state.pointer_buttons.reset(button);
-        }
-        let click_time = Instant::now();
-
-        // implicit pointer ungrab
-        if !state.is_pressed() {
-            input_state.pointer_grab = None;
-        }
-
-        // determine the repeat count (double-click, triple-click, etc.) for button down event
-        let repeat_count = match &mut input_state.last_click {
-            Some(ref mut last)
-                if last.device_id == device_id
-                    && last.button == button
-                    && last.position == input_state.cursor_pos
-                    && (click_time - last.time) < AppGlobals::get().double_click_time() =>
-            {
-                // same device, button, position, and within the platform specified double-click time
-                if state.is_pressed() {
-                    last.repeat_count += 1;
-                    last.repeat_count
-                } else {
-                    // no repeat for release events (although that could be possible?)
-                    1
-                }
-            }
-            other => {
-                // no match, reset
-                if state.is_pressed() {
-                    *other = Some(LastClick {
-                        device_id,
-                        button,
-                        position: input_state.cursor_pos,
-                        time: click_time,
-                        repeat_count: 1,
-                    });
-                } else {
-                    *other = None;
-                };
-                1
-            }
-        };
-        let pe = PointerEvent {
-            target: None,
-            position: input_state.cursor_pos,
-            modifiers: input_state.modifiers,
-            buttons: input_state.pointer_buttons,
-            button: Some(button),
-            repeat_count: repeat_count as u8,
-            transform: Default::default(),
-        };
-
-        if state.is_pressed() {
-            self.propagate_pointer_event(input_state, EventKind::PointerDown(pe), input_state.cursor_pos, time)
-        } else {
-            self.propagate_pointer_event(input_state, EventKind::PointerUp(pe), input_state.cursor_pos, time)
-        }
-    }
-
-    /// Handles keyboard input.
-    ///
-    /// Returns whether the keyboard input was handled
-    fn handle_keyboard_input(&self, input_state: &mut InputState, event: &KeyEvent, time: Duration) {
-        let mut popups = self.popups.borrow();
-        // If there are active popups, keyboard events are delivered to the popups.
-        // TODO there should be only one popup active at a time.
-        // TODO the terminology is misleading. What we call "popups" are specifically
-        // non-activable popup windows (popups that don't deactivate the parent window), like
-        // contextual menus. We should probably call them "menus" instead.
-        if !popups.is_empty() {
-            for popup in popups.iter() {
-                if let Some(popup) = popup.upgrade() {
-                    popup.handle_keyboard_input(input_state, event, time);
-                    return;
-                }
-            }
-        }
-
-        // keyboard events are delivered to the widget that has the focus.
-        // if no widget has focus, the event is dropped.
-        let mut handled = false;
-        if let Some(focus) = input_state.focus {
-            let (key, code) = key_code_from_winit(event);
-            let state = match event.state {
-                ElementState::Pressed => KeyState::Down,
-                ElementState::Released => KeyState::Up,
-            };
-            let location = match event.location {
-                KeyLocation::Standard => keyboard_types::Location::Standard,
-                KeyLocation::Left => keyboard_types::Location::Left,
-                KeyLocation::Right => keyboard_types::Location::Right,
-                KeyLocation::Numpad => keyboard_types::Location::Numpad,
-            };
-
-            // determine route to focused widget and send the event to it
-            let route = self.get_propagation_path(focus);
-            let mut event = Event::new(
-                &route,
-                EventKind::Keyboard(KeyboardEvent {
-                    state,
-                    key,
-                    location,
-                    modifiers: input_state.modifiers,
-                    repeat: event.repeat,
-                    is_composing: false, //TODO
-                    code,
-                }),
-            );
-            self.send_event(input_state, &mut event, time);
-            handled = event.handled;
-        }
-
-        if !handled {
-            // if nothing handled the event, do default handling at the window level
-            match event.logical_key {
-                winit::keyboard::Key::Named(NamedKey::Escape) => {
-                    // if we're a popup, dismiss ourselves
-                    if self.popup_owner.is_some() {
-                        self.dismissed.set(true);
-                        // re-run app logic because it detains the popup
-                        self.merge_change_flags(ChangeFlags::APP_LOGIC);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    /// Handles `WindowEvent`s sent to this window.
-    fn handle_window_event(&self, event: &WindowEvent, time: Duration) -> bool {
-        let mut input_state = self.input_state.borrow_mut();
-        let input_state = &mut *input_state;
-
-        match event {
-            WindowEvent::Resized(new_size) => {
-                self.dismiss_popups();
-                if new_size.width != 0 && new_size.height != 0 {
-                    // resize the compositor layer
-                    let size = Size::new(new_size.width as f64, new_size.height as f64);
-                    let app = AppGlobals::get();
-                    app.compositor.set_surface_layer_size(self.layer, size);
-                    // request a redraw
-                    self.merge_change_flags(ChangeFlags::GEOMETRY | ChangeFlags::PAINT);
-                    // re-run the app logic since some widgets may need to read back the new layout
-                    //should_update_ui = true;
-                }
-            }
-            WindowEvent::Moved(_) => self.dismiss_popups(),
-            WindowEvent::KeyboardInput {
-                device_id: _,
-                event,
-                is_synthetic: _,
-            } => {
-                self.handle_keyboard_input(input_state, event, time);
-            }
-            WindowEvent::ModifiersChanged(modifiers) => {
-                input_state.modifiers = modifiers_from_winit(*modifiers);
-            }
-            WindowEvent::CursorMoved { position, device_id: _ } => {
-                let pointer_event = {
-                    // the scope is there to avoid
-                    let logical_position = position.to_logical(self.scale_factor.get());
-                    input_state.cursor_pos.x = logical_position.x;
-                    input_state.cursor_pos.y = logical_position.y;
-                    PointerEvent {
-                        target: None,
-                        position: input_state.cursor_pos,
-                        modifiers: input_state.modifiers,
-                        buttons: input_state.pointer_buttons,
-                        button: None, // Dummy
-                        repeat_count: 0,
-                        transform: Default::default(),
-                    }
-                };
-                self.propagate_pointer_event(
-                    input_state,
-                    EventKind::PointerMove(pointer_event),
-                    input_state.cursor_pos,
-                    time,
-                );
-            }
-            WindowEvent::MouseInput {
-                button,
-                state,
-                device_id,
-            } => {
-                self.dismiss_popups();
-                self.handle_mouse_input(input_state, *device_id, *button, *state, time);
-            }
-            WindowEvent::RedrawRequested => {
-                // this is handled in paint
-            }
-            WindowEvent::CloseRequested => {
-                self.close_requested.set(true);
-                self.merge_change_flags(ChangeFlags::APP_LOGIC);
-            }
-            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                self.scale_factor.set(*scale_factor);
-                self.merge_change_flags(ChangeFlags::GEOMETRY);
-            }
-            WindowEvent::Focused(focused) => {
-                if !*focused {
-                    // dismiss all popups when the parent window loses focus
-                    self.dismiss_popups();
-                }
-            }
-
-            _ => {}
-        };
-
-        // return whether the app logic should run again
-        self.change_flags.get().intersects(ChangeFlags::APP_LOGIC)
-    }
-
-    fn update_layout(&self) {
-        let _span = span!("update_layout");
-        //span.emit_text(&format!("Window ID: {:016X}", u64::from(self.window.id())));
-        //span.emit_text(&format!("Window title: {:?}", self.window.title()));
-
-        let scale_factor = self.scale_factor.get();
-        let window_size = self.window.borrow().inner_size().to_logical(scale_factor);
-        let mut ctx = LayoutCtx::new(scale_factor);
-        let layout_params = BoxConstraints {
-            min: Size::ZERO,
-            max: Size::new(window_size.width, window_size.height),
-        };
-        let geometry = ctx.layout(&mut *self.root_element.borrow_mut(), &layout_params);
-        trace!(
-            "update_layout window_size:{:?}, result geometry:{:?}",
-            window_size,
-            geometry
-        );
-
-        // Layout is clean now.
-        self.clear_change_flags(ChangeFlags::GEOMETRY);
-
-        #[cfg(debug_assertions)]
-        {
-            self.layout_debug_info.replace(ctx.debug_info);
-        }
-    }
+    }*/
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -611,119 +747,42 @@ impl UiHostWindowHandler {
 
 impl UiHostWindowHandler {
     /// Creates a new window and registers it with the event loop.
-    pub fn new(cx: &mut TreeCtx, options: &UiHostWindowOptions) -> Rc<UiHostWindowHandler> {
-        //------------------------------------------------
-        // Setup window options
-        let mut window_builder = WindowBuilder::new()
-            .with_visible(false) // Initially invisible
-            .with_decorations(options.decorations) // No decorations
-            .with_resizable(options.resizable);
-
-        if options.popup {
-            // set owner window
-            let parent_window_handle = options
-                .owner
-                .as_ref()
-                .expect("a popup window must have an owner window")
-                .raw_window_handle();
-            match parent_window_handle {
-                RawWindowHandle::Win32(parent_hwnd) => {
-                    window_builder = window_builder.with_owner_window(parent_hwnd.hwnd.into())
-                }
-                _ => panic!("Come back later for non-windows support"),
-            };
-            window_builder = window_builder.with_active(false).with_no_focus();
-        }
-        if let Some(size) = options.inner_size {
-            window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(size.width, size.height));
-        }
-        if let Some(position) = options.position {
-            window_builder = window_builder.with_position(winit::dpi::LogicalPosition::new(position.x, position.y));
-        }
-
-        //------------------------------------------------
-        // build the window
-        let window = window_builder
-            .build(cx.event_loop)
-            .expect("failed to create popup window");
-        let window_id = window.id();
-
-        //------------------------------------------------
-        // create a compositor layer for the window
-        let size = window.inner_size();
-        let app = AppGlobals::get();
-        let layer = app
-            .compositor
-            .create_surface_layer(Size::new(size.width as f64, size.height as f64), ColorType::RGBAF16);
-
-        let raw_window_handle = window.raw_window_handle().expect("failed to get raw window handle");
-        unsafe {
-            // Bind the layer to the window
-            // SAFETY: idk? the window handle is valid?
-            app.compositor.bind_layer(layer, raw_window_handle);
-        }
-
-        // On windows, the initial wait is important:
-        // see https://learn.microsoft.com/en-us/windows/uwp/gaming/reduce-latency-with-dxgi-1-3-swap-chains#step-4-wait-before-rendering-each-frame
-        app.compositor.wait_for_surface(layer);
-
+    pub fn new(inner: Box<dyn Widget>, options: UiHostWindowOptions) -> UiHostWindowHandler {
         //------------------------------------------------
         // build the window handler
-        let handler = Rc::new(UiHostWindowHandler {
-            root_element: RefCell::new(Box::new(NullElement)),
-            element_id_tree: Default::default(),
-            window: RefCell::new(window),
-            layer,
+        UiHostWindowHandler {
+            id: WidgetId::next(),
+            content: inner,
+            options,
+            window: None, // created later
             damage_regions: DamageRegions::default(),
-            // FIXME: initial value? pray that winit sends a cursor move event immediately after creation
-            input_state: RefCell::new(InputState {
-                cursor_pos: Default::default(),
-                modifiers: Default::default(),
-                pointer_buttons: Default::default(),
-                last_click: None,
-                pointer_grab: None,
-                focus: None,
-            }),
-            close_requested: Cell::new(false),
-            dismissed: Cell::new(false),
-            layout_debug_info: Default::default(),
-            event_debug_info: Default::default(),
-            paint_debug_info: Default::default(),
-            hidden_before_first_draw: Cell::new(true),
-            scale_factor: Cell::new(1.0),
-            popups: RefCell::new(vec![]),
-            popup_owner: options.owner.as_ref().map(|owner| Rc::downgrade(owner)),
+            //popups: RefCell::new(vec![]),
+            //popup_owner: options.owner.as_ref().map(|owner| Rc::downgrade(owner)),
             change_flags: Cell::new(ChangeFlags::GEOMETRY | ChangeFlags::PAINT),
-        });
-
-        //------------------------------------------------
-        // register ourselves to the application and owner window
-
-        // register ourselves to the application so that we may receive WindowEvents
-        let handler2: Rc<dyn WindowHandler> = handler.clone(); // dyn coercion
-        cx.register_window(window_id, &handler2);
-
-        // If this is a popup, register ourselves with the owner window.
-        if options.popup {
-            options
-                .owner
-                .as_ref()
-                .expect("a popup window must have an owner window")
-                .register_popup(&handler);
         }
-
-        handler
     }
 
-    /// Gets the raw window handle of the window.
+    fn open_window(&mut self, cx: &mut TreeCtx) {
+        eprintln!("open_window");
+        let window = UiHostWindowState::new(&self.options, &cx.event_loop);
+        // associate this widget to the window so that window events are sent to this widget
+        cx.register_window(window.window.id());
+        window.window.set_visible(true);
+        window.window.request_redraw();
+        self.window = Some(window);
+    }
+
+    /*/// Gets the raw window handle of the window.
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         self.window
+            .as_ref()
+            .unwrap()
             .borrow()
             .raw_window_handle()
             .expect("failed to get raw window handle, maybe the current platform is not supported?")
-    }
+    }*/
 
-    /// Registers a popup window.
+    /*/// Registers a popup window.
     pub fn register_popup(&self, popup: &Rc<Self>) {
         self.popups.borrow_mut().push(Rc::downgrade(popup))
         /*let mut inner = self.inner.borrow_mut();
@@ -743,9 +802,9 @@ impl UiHostWindowHandler {
     /// For a popup window, whether the popup was dismissed. This resets the flag.
     pub fn dismissed(&self) -> bool {
         self.dismissed.replace(false)
-    }
+    }*/
 
-    /// Updates the contents of the window.
+    /*/// Updates the contents of the window.
     ///
     /// This is called during app logic, and will invariably be followed by a call to `after_app_logic`.
     pub fn update<T>(self: &Rc<Self>, cx: &mut TreeCtx, content: T) -> ChangeFlags
@@ -777,49 +836,56 @@ impl UiHostWindowHandler {
         // Don't merge APP_LOGIC, otherwise we'll run the app logic continuously.
         self.merge_change_flags(change_flags.difference(ChangeFlags::STRUCTURE | ChangeFlags::APP_LOGIC));
         change_flags
-    }
-
-    pub fn set_title(&self, title: &str) {
-        self.window.borrow().set_title(title);
-    }
-
-    /// Returns the position of the window on the desktop.
-    ///
-    /// The returned value is in logical pixels.
-    pub fn outer_position(&self) -> Point {
-        // Querying the window position should succeed on all platforms that we support.
-        let window = self.window.borrow();
-        let scale_factor = window.scale_factor();
-        let pos = window
-            .outer_position()
-            .expect("failed to get window position (unsupported platform?)")
-            .to_logical(scale_factor);
-        Point::new(pos.x, pos.y)
-    }
-
-    pub fn set_outer_position(&self, position: Point) {
-        let window = self.window.borrow();
-        window.set_outer_position(winit::dpi::LogicalPosition::new(position.x, position.y));
-    }
-
-    pub fn outer_size(&self) -> Size {
-        let window = self.window.borrow();
-        let scale_factor = window.scale_factor();
-        let size = window.outer_size().to_logical(scale_factor);
-        Size::new(size.width, size.height)
-    }
-
-    pub fn close_requested(&self) -> bool {
-        self.close_requested.get()
-    }
+    }*/
 }
 
-impl WindowHandler for UiHostWindowHandler {
-    fn event(&self, event: &WindowEvent, time: Duration) -> bool {
-        self.handle_window_event(event, time)
+impl Widget for UiHostWindowHandler {
+    fn id(&self) -> WidgetId {
+        self.id
     }
 
-    fn before_app_logic(&self) {
+    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
+        visitor(cx, &mut *self.content)
+    }
+
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        // on update, open the window
+        self.open_window(cx);
+        // update the content widget
+        cx.update(&mut *self.content);
+        ChangeFlags::ALL
+    }
+
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+        // we don't receive or handle events
+        ChangeFlags::NONE
+    }
+
+    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
+        false
+    }
+
+    fn layout(&mut self, _cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        // We return a null geometry here because window widgets typically don't take any space in the parent window.
+        // If you're looking for where the contents of the window are laid out, that's done in the `window_event` handler.
+        Geometry::ZERO
+    }
+
+    fn window_event(&mut self, cx: &mut TreeCtx, event: &WindowEvent, time: Duration) -> ChangeFlags {
+        if let Some(ref mut window) = self.window {
+            window.handle_window_event(cx, &mut *self.content, event, time);
+        } else {
+            warn!("window_event called before window was created");
+        }
+        ChangeFlags::NONE
+    }
+
+    fn paint(&mut self, cx: &mut PaintCtx) {
+        // We don't paint anything in the parent window.
+        // If you're looking for where the contents of the window are painted, see `UiHostWindowState::window_event`.
+    }
+
+    /* fn before_app_logic(&self) {
         let _span = span!("events_cleared");
         //span.emit_text(&format!("Window ID: {:016X}", u64::from(self.window.borrow().id())));
         //span.emit_text(&format!("Window title: {:?}", self.window.title()));
@@ -847,78 +913,13 @@ impl WindowHandler for UiHostWindowHandler {
         {
             self.window.borrow().request_redraw()
         }
-    }
+    }*/
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn request_redraw(&self) {
+    /*fn request_redraw(&self) {
         self.window.borrow().request_redraw()
-    }
+    }*/
 
-    fn paint(&self, _time: Duration, options: &WindowPaintOptions) {
-        let _span = span!("paint");
-
-        //span.emit_text(&format!("Window ID: {:016X}", u64::from(self.window.id())));
-        //span.emit_text(&format!("Window title: {:?}", self.window.title()));
-
-        // Recalculate layout if asked to.
-        //
-        // For now it's only used for debugging.
-        if self.change_flags.get().intersects(ChangeFlags::GEOMETRY) || options.force_relayout {
-            self.update_layout();
-        }
-
-        // Acquire a drawing surface and clear it.
-        let app = AppGlobals::get();
-        let surface = app.compositor.acquire_drawing_surface(self.layer);
-        // FIXME: only clear and flip invalid regions
-        {
-            let mut skia_surface = surface.surface();
-            skia_surface.canvas().clear(Color::from_hex("#111111").to_skia());
-        }
-
-        // Now paint the UI tree.
-        {
-            let mut paint_ctx = PaintCtx {
-                scale_factor: self.scale_factor.get(),
-                window_transform: Default::default(),
-                id: None,
-                surface: &surface,
-                debug_info: Default::default(),
-            };
-            paint_ctx.paint(&mut *self.root_element.borrow_mut());
-
-            // Paint the debug overlay if there's one.
-            if let Some(ref debug_overlay) = options.debug_overlay {
-                debug_overlay.paint(&mut paint_ctx);
-            }
-
-            // Save debug information after painting.
-            self.paint_debug_info.replace(paint_ctx.debug_info);
-        }
-
-        // Nothing more to paint, release the surface.
-        //
-        // This flushes the skia command buffers, and presents the surface to the compositor.
-        app.compositor.release_drawing_surface(self.layer, surface);
-
-        // Windows are initially created hidden, and are only shown after the first frame is painted.
-        // Now that we've rendered the first frame, we can reveal it.
-        if self.hidden_before_first_draw.get() {
-            self.hidden_before_first_draw.set(false);
-            self.window.borrow().set_visible(true);
-        }
-
-        self.clear_change_flags(ChangeFlags::PAINT);
-
-        // Wait for the compositor to be ready to render another frame (this is to reduce latency)
-        // FIXME: this assumes that there aren't any other windows waiting to be painted!
-        app.compositor.wait_for_surface(self.layer);
-    }
-
-    fn snapshot(&self) -> Option<WindowSnapshot> {
+    /*fn snapshot(&self) -> Option<WindowSnapshot> {
         let root = debug_util::dump_ui_tree(&*self.root_element.borrow());
         let window = self.window.borrow();
         let input_state = self.input_state.borrow();
@@ -933,12 +934,13 @@ impl WindowHandler for UiHostWindowHandler {
             pointer_grab: input_state.pointer_grab,
             element_id_tree: self.element_id_tree.borrow().clone(),
         })
-    }
+    }*/
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Handle to an top-level window.
+/*
+/// Handle to a top-level window.
 ///
 /// To close it, just drop the handle.
 pub struct AppWindowHandle {
@@ -952,15 +954,6 @@ impl AppWindowHandle {
     /// FIXME this is never reset
     pub fn close_requested(&self) -> bool {
         self.close_requested
-    }
-
-    pub fn update<T>(&mut self, cx: &mut TreeCtx, content: T) -> ChangeFlags
-    where
-        T: Widget + Any,
-    {
-        let change_flags = self.handler.update(cx, content);
-        self.close_requested = self.handler.close_requested();
-        change_flags
     }
 
     /// Creates a new top-level window and registers it to the event loop.
@@ -978,7 +971,7 @@ impl AppWindowHandle {
 
         // Initial update & paint
         // Ignore the change flags on the initial update
-        handler.update(ctx, content);
+        //handler.update(ctx, content);
         handler.paint(Duration::ZERO, &WindowPaintOptions::default());
 
         AppWindowHandle {
@@ -986,10 +979,11 @@ impl AppWindowHandle {
             close_requested: false,
         }
     }
-}
+}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
 /// TODO update docs
 ///
 /// The UI element for a child window.
@@ -1252,3 +1246,4 @@ where
         f
     }
 }
+*/

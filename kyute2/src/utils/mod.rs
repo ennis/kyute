@@ -1,3 +1,7 @@
+pub mod path_set;
+
+pub use path_set::{PathSet, PathSubset};
+
 #[derive(Copy, Clone, Debug)]
 pub struct Cached<K, V> {
     key: K,

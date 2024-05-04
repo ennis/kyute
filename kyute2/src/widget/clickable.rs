@@ -5,181 +5,115 @@ use keyboard_types::{Key, KeyState};
 use tracing::trace;
 
 use crate::{
-    context::Ambient,
-    widget::{prelude::*, WidgetState},
+    widget::{prelude::*, WidgetState, WidgetVisitor},
+    with_ambient, AmbientKey, State,
 };
 
 type DefaultClickHandler = fn(&mut TreeCtx);
 
-/// Wraps an inner widget and allows the user to respond to clicks on it.
-#[derive(Clone)]
-pub struct Clickable<T, OnClicked = DefaultClickHandler> {
-    inner: T,
-    on_clicked: OnClicked, // default value?
+pub const ACTIVE: AmbientKey<bool> = AmbientKey::new("kyute.clickable.active");
+pub const FOCUSED: AmbientKey<bool> = AmbientKey::new("kyute.clickable.focused");
+pub const HOVERED: AmbientKey<bool> = AmbientKey::new("kyute.clickable.hovered");
+
+pub struct Clickable<T, OnClick = DefaultClickHandler> {
+    id: WidgetId,
+    content: T,
+    // idea: instead of being relative to the current widget, state entries
+    // could store the path tree relative to the root,
+    // this way, all updates would be dispatched from a single location (the root)
+    //
+    // The flow would be like this:
+    // - dispatch event to widget
+    // - control goes back to root event loop
+    // - root event loop sees that there are pending updates
+    // - root event loop dispatches the updates
+    active: State<bool>,
+    focus: State<bool>,
+    hovered: State<bool>,
+    on_click: OnClick,
 }
 
 impl<T> Clickable<T, DefaultClickHandler> {
-    pub fn new(inner: T) -> Clickable<T, DefaultClickHandler> {
+    /// Creates a new clickable widget.
+    pub fn new(content: T) -> Clickable<T, DefaultClickHandler> {
         Clickable {
-            inner,
-            on_clicked: |_cx| {
+            id: WidgetId::next(),
+            content,
+            active: Default::default(),
+            focus: Default::default(),
+            hovered: Default::default(),
+            on_click: |_cx| {
                 trace!("Clickable::on_clicked");
             },
         }
     }
 
+    /// Sets the click handler.
     #[must_use]
     pub fn on_clicked<OnClicked>(self, on_clicked: OnClicked) -> Clickable<T, OnClicked>
     where
         OnClicked: FnOnce(&mut TreeCtx),
     {
         Clickable {
-            inner: self.inner,
-            on_clicked,
+            id: self.id,
+            content: self.content,
+            active: Default::default(),
+            focus: Default::default(),
+            hovered: Default::default(),
+            on_click: on_clicked,
         }
     }
 }
 
-impl<T, OnClicked> Widget for Clickable<T, OnClicked>
+impl<T: Widget, OnClick> Widget for Clickable<T, OnClick>
 where
-    T: Widget,
-    OnClicked: FnOnce(&mut TreeCtx),
+    OnClick: FnMut(&mut TreeCtx),
 {
-    type Element = ClickableElement<T::Element>;
-
-    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
-        eprintln!("clickable rebuilt");
-        let inner = cx.with_ambient(&WidgetState::default(), |cx| cx.build(self.inner));
-        ClickableElement {
-            id,
-            content: inner,
-            state: Default::default(),
-            events: Default::default(),
-            hovered: false,
-        }
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        //eprintln!("clickable update");
-        let mut change_flags = ChangeFlags::empty();
-        let events = mem::take(&mut element.events);
-
-        if events.clicked {
-            (self.on_clicked)(cx);
-            // FIXME: whenever there's a click, assume that the application state might have changed
-            // and re-run the app logic again
-            change_flags |= ChangeFlags::APP_LOGIC;
-        }
-
-        let prev_state = WidgetState::ambient(cx).cloned().unwrap_or_default();
-        change_flags |= cx.with_ambient(
-            &WidgetState {
-                hovered: element.state.hovered,
-                active: element.state.active,
-                ..prev_state
-            },
-            |cx| cx.update(self.inner, &mut element.content),
-        );
-        change_flags
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
-struct ClickableState {
-    active: bool,
-    focus: bool,
-    hovered: bool,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
-struct ClickableEvents {
-    focused: Option<bool>,
-    clicked: bool,
-    activated: Option<bool>,
-}
-
-pub struct ClickableElement<Inner> {
-    id: ElementId,
-    content: Inner,
-    state: ClickableState,
-    events: ClickableEvents,
-    hovered: bool,
-}
-
-impl<Inner: Element> Element for ClickableElement<Inner> {
-    fn id(&self) -> ElementId {
+    fn id(&self) -> WidgetId {
         self.id
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
-        ctx.layout(&mut self.content, constraints)
+    fn visit_child(&mut self, cx: &mut TreeCtx, _id: WidgetId, visitor: &mut WidgetVisitor) {
+        with_ambient(cx, FOCUSED, &mut self.focus, |cx| {
+            with_ambient(cx, ACTIVE, &mut self.active, |cx| {
+                with_ambient(cx, HOVERED, &mut self.hovered, |cx| {
+                    visitor(cx, &mut self.content);
+                });
+            });
+        });
     }
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        // We don't have anything to update
+        ChangeFlags::empty()
+    }
+
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
         let mut change_flags = ChangeFlags::empty();
-
-        // We don't capture anything, so forward to children first.
-        if let Some(target) = event.next_target() {
-            assert_eq!(self.content.id(), target);
-            change_flags |= ctx.event(&mut self.content, event);
-        }
-
-        if event.handled {
-            return change_flags;
-        }
 
         match event.kind {
             EventKind::PointerDown(ref _p) => {
                 eprintln!("clickable PointerDown");
-                ctx.request_focus(self.id);
-                ctx.request_pointer_capture(self.id);
                 event.handled = true;
-
-                self.state.active = true;
-                self.events.activated = Some(true);
-
-                // TODO: for now return "PAINT" because we make the assumption that the only
-                // thing affected by widget state is the painting. Notably, we assume that layout
-                // doesn't depend on the widget state.
-
-                // FIXME: the RedrawRequested event happens before the UI has the chance to be updated:
-                // 1. the MouseEvent is received
-                // 2. clickable returns ChangeFlags::PAINT
-                // 3. parent window requests redraw
-                // 4. RedrawRequested is handled by the window
-                // 5. AboutToWait
-                // 6. the app logic is re-run, but it's too late
-                //
-                // (6.) should come before (4.) so that the UI is updated before the window is redrawn.
-                //
-                // Proposal: when an event is handled and results in a repaint, the repaint should be
-                // deferred to after the app logic is run
-                //
-
-                change_flags |= ChangeFlags::APP_LOGIC;
+                // this will notify anything that depends on the active flag
+                self.active.set(cx, true);
             }
             EventKind::PointerUp(ref _p) => {
                 event.handled = true;
-                self.state.active = false;
-                self.events.activated = Some(false);
-                self.events.clicked = true;
-                change_flags |= ChangeFlags::APP_LOGIC;
+                self.active.set(cx, false);
+                (self.on_click)(cx);
             }
             EventKind::PointerOver(ref _p) => {
-                //eprintln!("clickable PointerOver");
-                self.state.hovered = true;
-                // FIXME: should be APP_LOGIC but i'm not sure if we should do it all the time
-                // change_flags |= ChangeFlags::APP_LOGIC;
+                self.hovered.set(cx, true);
             }
             EventKind::PointerOut(ref _p) => {
-                //eprintln!("clickable PointerOut");
-                self.state.hovered = false;
-                // change_flags |= ChangeFlags::APP_LOGIC;
+                self.hovered.set(cx, false);
             }
             EventKind::Keyboard(ref key) => {
                 match key.state {
                     KeyState::Down => {
+                        // activate a clickable with Enter or the space bar
+                        // but delay the click until the key is released
                         let press = match key.key {
                             Key::Enter => true,
                             Key::Character(ref s) if s == " " => true,
@@ -187,50 +121,37 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
                         };
 
                         if press {
-                            event.handled = true;
-                            self.state.active = true;
-                            self.events.activated = Some(true);
-                            self.events.clicked = true;
-                            change_flags |= ChangeFlags::APP_LOGIC;
+                            self.active.set(cx, true);
                         }
-
-                        /*if key.key == Key::Tab {
-                            if key.modifiers.contains(Modifiers::SHIFT) {
-                                ctx.focus_prev();
-                            } else {
-                                ctx.focus_next();
-                            }
-                        }*/
                     }
                     KeyState::Up => {
-                        if self.state.active {
-                            self.events.activated = Some(false);
-                            self.events.clicked = true;
-                            self.state.active = false;
-                            change_flags |= ChangeFlags::APP_LOGIC;
+                        event.handled = true;
+                        if *self.active.get() {
+                            (self.on_click)(cx);
+                            self.active.set(cx, false);
                         }
                     }
                 }
             }
-            /*EventKind::FocusGained => {
-                eprintln!("clickable FocusGained");
-                self.focus.set(true);
-                self.focused.signal(true);
-                ctx.request_relayout();
-            }
-            EventKind::FocusLost => {
-                eprintln!("clickable FocusLost");
-                self.focus.set(false);
-                self.focused.signal(false);
-                ctx.request_relayout();
-            }*/
             _ => {}
         }
 
         change_flags
     }
 
-    fn natural_width(&mut self, height: f64) -> f64 {
+    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
+        result.hit_test_child(&self.content, position)
+    }
+
+    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+        ctx.layout(&mut self.content, constraints)
+    }
+
+    fn paint(&mut self, cx: &mut PaintCtx) {
+        cx.paint(&mut self.content);
+    }
+
+    /*fn natural_width(&mut self, height: f64) -> f64 {
         self.content.natural_width(height)
     }
 
@@ -264,5 +185,5 @@ impl<Inner: Element> Element for ClickableElement<Inner> {
         visitor.property("state", self.state);
         visitor.property("events", self.events);
         visitor.child("inner", &self.content);
-    }
+    }*/
 }

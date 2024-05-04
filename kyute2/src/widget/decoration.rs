@@ -10,7 +10,7 @@ use crate::{
     drawing,
     drawing::{BoxShadow, Paint, Shape, ToSkia},
     skia,
-    widget::{padding::PaddingElement, prelude::*},
+    widget::prelude::*,
     Color, PaintCtx,
 };
 
@@ -258,6 +258,7 @@ impl<B: ShapeBorder> Decoration for ShapeDecoration<B> {
     }
 }
 
+/*
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct DecoratedBoxElement<D, E> {
@@ -385,3 +386,4 @@ where
         flags | cx.update(self.content, &mut element.content.content)
     }
 }
+*/

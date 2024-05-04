@@ -5,7 +5,7 @@ use skia_safe as sk;
 
 pub use border::{Border, BorderStyle};
 pub use box_shadow::{draw_box_shadow, BoxShadow};
-pub use image::{Image, ImageCache};
+pub use image::Image;
 pub use paint::{ColorStop, LinearGradient, Paint, RepeatMode, UniformData};
 pub use path::Path;
 #[cfg(feature = "svg")]

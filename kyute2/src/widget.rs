@@ -1,35 +1,55 @@
 //! Widget tree manipulation and traversal.
+pub mod clickable;
+pub mod decoration;
+pub mod frame;
+pub mod null;
+mod stateful;
+mod transform;
+
 use std::{
     any::{Any, TypeId},
     marker::PhantomData,
     ops::DerefMut,
+    time::Duration,
 };
 
 use bitflags::bitflags;
-use kurbo::Size;
+use kurbo::Affine;
 
-pub use align::Align;
+pub use clickable::Clickable;
+pub use decoration::{BorderStyle, Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration};
+pub use frame::Frame;
+pub use null::Null;
+pub use transform::TransformNode;
+
+/*pub use align::Align;
 pub use background::Background;
 pub use button::button;
 pub use clickable::Clickable;
-pub use constrained::Constrained;
-pub use decoration::{BorderStyle, DecoratedBox, Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration};
+pub use constrained::Constrained;*/
 //pub use flex::{Flex, FlexElement};
-pub use frame::Frame;
+
+/*
 pub use grid::{Grid, GridTemplate};
 pub use null::Null;
 pub use overlay::Overlay;
 pub use padding::Padding;
-pub use text::Text;
+pub use text::Text;*/
 
 use crate::{
-    context::TreeCtx, Alignment, BoxConstraints, Element, ElementId, Event, EventCtx, Geometry, HitTestResult,
-    LayoutCtx, PaintCtx,
+    context::TreeCtx, Alignment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, WidgetId,
 };
-////////////////////////////////////////////////////////////////////////////////////////////////////
-use crate::{context::State, debug_util::DebugWriter, drawing::Paint, widget::overlay::ZOrder, Insets, Point};
 
-pub mod align;
+use crate::utils::{PathSet, PathSubset};
+use crate::{
+    context::ContextDataHandle,
+    //debug_util::DebugWriter,
+    drawing::Paint,
+    Insets,
+    Point,
+};
+
+/*pub mod align;
 pub mod background;
 pub mod button;
 pub mod clickable;
@@ -43,13 +63,13 @@ pub mod overlay;
 pub mod padding;
 mod relative;
 pub mod shape;
-pub mod text;
+pub mod text;*/
 
 /// Widget prelude.
 pub mod prelude {
     pub use crate::{
-        debug_util::DebugWriter, widget::Axis, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx,
-        EventKind, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Rect, Size, State, TreeCtx, Widget,
+        widget::Axis, BoxConstraints, ChangeFlags, ContextDataHandle, Event, EventKind, Geometry, HitTestResult,
+        LayoutCtx, PaintCtx, Point, Rect, Size, TreeCtx, Widget, WidgetId,
     };
 }
 
@@ -88,93 +108,149 @@ bitflags! {
     }
 }
 
+pub type WidgetPaths = PathSet<WidgetId>;
+pub type WidgetPathsRef<'a> = PathSubset<'a, WidgetId>;
+pub type WidgetVisitor<'a> = dyn FnMut(&mut TreeCtx, &mut dyn Widget) + 'a;
+
 /// Widget types.
-///
-/// Widgets can be seen as a "diff"  against an [`Element`] in the UI tree
-/// (a widget represents a change on an element).
-///
-/// Updates to the UI tree of a window are represented as a tree of `Widget`s.
 ///
 /// See the crate documentation for more information.
 pub trait Widget {
-    /// The type of element produced by this widget.
-    type Element: Element;
+    /// Return this widget's ID.
+    fn id(&self) -> WidgetId;
 
-    /// Creates the associated element.
+    /// Visits a child widget.
     ///
-    /// This is called to create the element when a corresponding element cannot be found in the UI tree.
-    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element;
+    /// Container widgets should reimplement this.
+    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {}
 
-    /// Updates an existing element.
+    /// Updates this widget.
     ///
-    /// This is called when a corresponding element was found in the UI tree.
-    /// The function should then update the element with the latest changes, and communicate
-    /// what has changed by returning [`ChangeFlags`].
+    /// This is called when something has determined that this widget needs to update itself somehow.
+    /// This can be because:
+    /// - a state dependency of this widget has changed
+    /// - the widget was just inserted into the widget tree
     ///
-    /// # Return value
+    /// # Guidelines
     ///
-    /// A set of change flags:
-    /// - GEOMETRY: the geometry of the element might have changed
-    /// - TODO
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags;
-}
+    /// You shouldn't have to manually call `update()` on child widgets. Instead, request an update by
+    /// calling `cx.request_update(widgetpaths)`.
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags;
 
-/// Object-safe version of the [`Widget`] trait.
-///
-/// The methods are modified to operate on `dyn Element` rather than a concrete `Element` type.
-pub trait AnyWidget {
-    /// Returns the type of element produced by this widget as a type ID.
-    fn element_type_id(&self) -> TypeId;
+    /// Event handling.
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags;
 
-    /// Creates the associated element.
-    ///
-    /// See [`Widget::build`].
-    fn build(self: Box<Self>, cx: &mut TreeCtx, id: ElementId) -> Box<dyn Element>;
+    /// Hit-testing.
+    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool;
 
-    /// Updates an existing element.
-    ///
-    /// See [`Widget::update`].
-    fn update(self: Box<Self>, cx: &mut TreeCtx, element: &mut Box<dyn Element>) -> ChangeFlags;
-}
+    /// Layout.
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry;
 
-impl<W, T> AnyWidget for W
-where
-    W: Widget<Element = T>,
-    T: Element,
-{
-    fn element_type_id(&self) -> TypeId {
-        TypeId::of::<T>()
+    /// Raw window events.
+    fn window_event(&mut self, _cx: &mut TreeCtx, _event: &winit::event::WindowEvent, _time: Duration) -> ChangeFlags {
+        ChangeFlags::NONE
     }
 
-    fn build(self: Box<Self>, cx: &mut TreeCtx, element_id: ElementId) -> Box<dyn Element> {
-        Box::new(Widget::build(*self, cx, element_id))
+    fn paint(&mut self, cx: &mut PaintCtx);
+}
+
+/////////////////////////////////////////////////////////////////////////
+// Dummy widget to flesh out the Widget trait
+pub struct Container {
+    widgets: Vec<Box<dyn Widget>>,
+}
+
+impl Widget for Container {
+    fn id(&self) -> WidgetId {
+        todo!()
     }
 
-    fn update(self: Box<Self>, cx: &mut TreeCtx, element: &mut Box<dyn Element>) -> ChangeFlags {
-        // Don't forget `deref_mut()` here since `Box<dyn Element>` implements Element as well,
-        // which has a different implementation of `as_any_mut()`.
-        if let Some(element) = element.deref_mut().as_any_mut().downcast_mut::<T>() {
-            cx.update(*self, element)
-        } else {
-            // not the same type, discard and rebuild
-            // FIXME ID change?
-            *element = Box::new(cx.build(*self));
-            ChangeFlags::STRUCTURE
+    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
+        if let Some(widget) = self.widgets.iter_mut().find(|w| w.id() == id) {
+            visitor(cx, widget.deref_mut());
         }
     }
-}
 
-impl Widget for Box<dyn AnyWidget> {
-    type Element = Box<dyn Element>;
-
-    fn build(self, cx: &mut TreeCtx, element_id: ElementId) -> Self::Element {
-        AnyWidget::build(self, cx, element_id)
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        todo!()
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        AnyWidget::update(self, cx, element)
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+        todo!()
+    }
+
+    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
+        todo!()
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        todo!()
+    }
+
+    fn paint(&mut self, cx: &mut PaintCtx) {
+        todo!()
     }
 }
+
+/*
+/// Widget wrappers.
+///
+/// This is a short-hand for widgets that wrap only one another widget (like layout or appearance modifiers).
+/// It has the same methods as the `Widget` trait, but most of them have a default implementation that delegates to the wrapped widget.
+pub trait WidgetWrapper {
+    type Content: Widget;
+    fn id(&self) -> WidgetID;
+    fn content(&self) -> &Self::Content;
+    fn content_mut(&mut self) -> &mut Self::Content;
+
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        self.content_mut().update(cx)
+    }
+
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+        self.content_mut().event(cx, event)
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        self.content_mut().layout(cx, bc)
+    }
+}
+
+impl<T: WidgetWrapper> Widget for T {
+    fn id(&self) -> WidgetID {
+        WidgetWrapper::id(self)
+    }
+
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        WidgetWrapper::update(self, cx)
+    }
+
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+        WidgetWrapper::event(self, cx, event)
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        WidgetWrapper::layout(self, cx, bc)
+    }
+}
+
+impl<T: Widget + ?Sized> Widget for Box<T> {
+    fn id(&self) -> WidgetID {
+        Widget::id(&**self)
+    }
+
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        Widget::update(&mut **self, cx)
+    }
+
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+        Widget::event(&mut **self, cx, event)
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        Widget::layout(&mut **self, cx, bc)
+    }
+}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -205,6 +281,7 @@ impl Default for WidgetState {
     }
 }
 
+/*
 /// Extension methods on widgets.
 pub trait WidgetExt: Widget + Sized + 'static {
     /// Sets the background paint of the widget.
@@ -287,10 +364,10 @@ pub trait WidgetExt: Widget + Sized + 'static {
     }
 }
 
-impl<W: Widget + 'static> WidgetExt for W {}
+impl<W: Widget + 'static> WidgetExt for W {}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-pub struct Provide<T, W> {
+/*pub struct Provide<T, W> {
     value: T,
     inner: W,
 }
@@ -306,17 +383,16 @@ where
     T: 'static,
     W: Widget,
 {
-    type Element = W::Element;
-
-    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
-        cx.with_ambient(&self.value, move |cx| cx.build(self.inner))
+    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+        cx.with_state(&mut self.value, |cx, _state_handle| self.inner.update(cx))
     }
 
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        cx.with_ambient(&self.value, move |cx| cx.update(self.inner, element))
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+        cx.with_state(&mut self.value, |cx, _state_handle| self.inner.event(cx, event))
     }
-}
+}*/
 
+/*
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 pub struct ProvideWith<T, F, W> {
     f: F,
@@ -353,103 +429,16 @@ where
         let value = (self.f)(prev);
         cx.with_ambient(&value, move |cx| cx.update(self.inner, element))
     }
-}
+}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct StatefulElement<T, E> {
+/*pub struct StatefulElement<T, E> {
     state: T,
     inner: E,
-}
+}*/
 
-pub struct Stateful<Init, F> {
-    init: Init,
-    inner: F,
-}
-
-impl<Init, F> Stateful<Init, F> {
-    pub fn new<T, W>(init: Init, inner: F) -> Stateful<Init, F>
-    where
-        Init: FnOnce() -> T,
-        F: FnOnce(&mut TreeCtx, State<T>) -> W,
-        W: Widget,
-    {
-        Stateful { init, inner }
-    }
-}
-
-impl<Init, T, F, W> Widget for Stateful<Init, F>
-where
-    Init: FnOnce() -> T,
-    F: FnOnce(&mut TreeCtx, State<T>) -> W,
-    W: Widget,
-    T: Any + Default,
-{
-    type Element = StatefulElement<T, W::Element>;
-
-    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
-        //eprintln!("Stateful::build");
-        let mut state = (self.init)();
-        let inner = cx.with_state(&mut state, move |cx, state_handle| {
-            let widget = (self.inner)(cx, state_handle);
-            cx.build(widget)
-        });
-        StatefulElement { state, inner }
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        //eprintln!("Stateful::update");
-        let inner_element = &mut element.inner;
-        cx.with_state(&mut element.state, move |cx, state_handle| {
-            let widget = (self.inner)(cx, state_handle);
-            cx.update(widget, inner_element)
-        })
-    }
-}
-
-impl<T: 'static, E: Element> Element for StatefulElement<T, E> {
-    fn id(&self) -> ElementId {
-        self.inner.id()
-    }
-
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
-        ctx.layout(&mut self.inner, params)
-    }
-
-    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        ctx.event(&mut self.inner, event)
-    }
-
-    fn natural_width(&mut self, height: f64) -> f64 {
-        self.inner.natural_width(height)
-    }
-
-    fn natural_height(&mut self, width: f64) -> f64 {
-        self.inner.natural_height(width)
-    }
-
-    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
-        self.inner.natural_baseline(params)
-    }
-
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.inner.hit_test(ctx, position)
-    }
-
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        ctx.paint(&mut self.inner)
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn debug(&self, w: &mut DebugWriter) {
-        w.type_name("StatefulElement");
-        w.child("", &self.inner);
-    }
-}
-
+/*
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 impl<F, W> Widget for F
@@ -469,3 +458,15 @@ where
         cx.update(widget, element)
     }
 }
+
+(|cx| {
+    if cx.get(Disabled) {
+        Text::new("Disabled")
+    } else {
+        Text::new("Enabled")
+    }
+}).into()
+
+// the closure by itself isn't a widget, but it can be turned into one
+
+*/
