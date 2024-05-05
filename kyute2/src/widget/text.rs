@@ -76,7 +76,7 @@ impl Text {
             available_width: 0.0,
             available_height: 0.0,
             scale_factor: 0.0,
-            relayout: false,
+            relayout: true,
             paragraph,
         }
     }

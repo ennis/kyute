@@ -205,6 +205,21 @@ impl<'a> TreeCtx<'a> {
         }
     }
 
+    /// Dispatches an event to child widgets.
+    pub fn dispatch_event(&mut self, current_widget: &mut dyn Widget, paths: &WidgetSlice, event: EventKind) -> bool {
+        let mut event = Event::new(event);
+        self.dispatch(
+            current_widget,
+            paths,
+            &mut |cx: &mut TreeCtx, widget: &mut dyn Widget| {
+                if !event.handled {
+                    widget.event(cx, &mut event);
+                }
+            },
+        );
+        event.handled
+    }
+
     /// Adds an update request that will be processed when the current dispatch is finished.
     pub fn request_update(&self, widgets: &WidgetSlice) {
         trace!("TreeCtx::request_update {:?}", widgets);
@@ -317,7 +332,6 @@ impl<'a> TreeCtx<'a> {
     /// Performs hit-testing of a subtree.
     pub fn hit_test_child(&mut self, child: &mut dyn Widget, position: Point) -> WidgetSet {
         let mut result = HitTestResult::new();
-        result.path = self.path.clone();
         result.hit_test_child(child, position);
         result.hits
     }

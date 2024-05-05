@@ -91,6 +91,11 @@ impl<T: 'static> AmbientKey<T> {
         data.set_dependency(cx);
         &data.data
     }
+
+    pub fn get_mut_untracked<'a>(self, cx: &'a mut TreeCtx) -> &'a mut T {
+        let data = cx.keyed_data(self.0);
+        &mut data.data
+    }
 }
 
 impl<T> Clone for AmbientKey<T> {

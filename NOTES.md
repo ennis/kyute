@@ -2276,4 +2276,45 @@ Solutions?
 * allow calling widget methods on children directly
     * need another way to track the current widget path
 * hit-test the children instead
-    * then when control flows back to the caller of hit-test, it will visit the children 
+    * then when control flows back to the caller of hit-test, it will visit the children
+
+## Issue: traversal is complicated because children are visited in multiple places, and the parent widget must not forget
+
+to make its local state available in scope.
+Also some widgets are just wrappers that don't have a separate identity. Those call the child methods directly.
+
+- visit_child is the generic mechanism
+- but sometimes the parent wants to call `cx.update(&mut child)` directly
+- parent widget must not forget `cx.with_state` in those two places
+
+Tentative: even more generic `visit` method that puts the local state of the widget in scope when visiting.
+Problem: since the local state and the child widget are in the same struct, setting the local state and looking up a
+child widget by ID must be in the same method (to allow split borrows)
+
+## Issue: widget-relative paths VS absolute paths
+
+## Addressable widgets?
+
+"Addressable" is not the right term. In the current design they are addressable already (with `WidgetIds`), but
+the fact that widgets hold local state that must be put in scope means that they need to be traversed.
+Also, the address is a sequence of IDs. It's not stored in the widgets, the path from the root to the current
+widget must be maintained during traversal.
+=> It makes things more complicated; traversal/dispatch requires careful cooperation from the widget trait
+
+Q: Traversal-less GUI tree?
+
+Widget trait methods are still `&mut self` but containers store `WidgetPtr<W>` which is basically `Rc<RefCell<W>>`.
+Widget references (hit-test results) are `WidgetPtr<dyn Widget>` (or just `WidgetPtr` with the default argument).
+Widget methods still receive a `Context` which gives access to available state at this position in the tree.
+When calling a method on a `WidgetPtr`, the correct context containing all state entries visible in scope is
+reconstructed (_how?_).
+
+Alternatively, we could also store Rc pointers to state in the event callbacks. The main issue with that is the lack of
+auto-cloning when the state is used in a closure.
+Ideally, the "pointers to state" should be Copy, but then you'd need a context to access the state.
+=> just store them in TLS, like leptos does.
+
+The only things that the widget tree needs to do are:
+
+- deliver events to a specific widget
+- keep a list of dirty widgets and call `update()` on them
