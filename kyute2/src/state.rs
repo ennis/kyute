@@ -46,7 +46,6 @@ impl<T: 'static> State<T> {
     }
 
     fn notify(&self, cx: &TreeCtx) {
-        // TODO merge sets instead of adding them one-by-one
         for dep in self.0.dependents.borrow().iter() {
             cx.mark_needs_update(dep);
         }
@@ -59,8 +58,9 @@ impl<T: 'static> State<T> {
     }
 
     /// Modifies the state and notify the dependents.
-    pub fn replace_with(&self, cx: &mut TreeCtx, f: impl FnOnce(&mut T) -> T) -> T {
-        let r = self.0.data.replace_with(f);
+    pub fn update<R>(&self, cx: &mut TreeCtx, f: impl FnOnce(&mut T) -> R) -> R {
+        let mut data = self.0.data.borrow_mut();
+        let r = f(&mut *data);
         self.notify(cx);
         r
     }
@@ -68,6 +68,10 @@ impl<T: 'static> State<T> {
     /// Returns the current value of the state, setting a dependency on the current widget.
     pub fn get(&self, cx: &mut TreeCtx) -> Ref<T> {
         self.set_dependency(cx);
+        self.0.data.borrow()
+    }
+
+    pub fn get_untracked(&self) -> Ref<T> {
         self.0.data.borrow()
     }
 }

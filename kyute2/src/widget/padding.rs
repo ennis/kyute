@@ -3,26 +3,26 @@ use std::any::Any;
 use crate::widget::prelude::*;
 use kurbo::{Affine, Insets, Point, Size, Vec2};
 
-pub struct Padding<E> {
+pub struct Padding {
     pub padding: Insets,
-    pub content: E,
+    pub content: WidgetPtr,
 }
 
-impl<W> Padding<W> {
-    pub fn new(padding: Insets, content: W) -> Self {
-        Self { padding, content }
+impl Padding {
+    pub fn new(padding: Insets, content: impl Widget + 'static) -> Self {
+        Self {
+            padding,
+            content: WidgetPod::new(content),
+        }
     }
 }
 
-impl<E: Widget> Widget for Padding<E> {
+impl Widget for Padding {
     fn update(&self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {
-        let offset = Vec2::new(self.padding.x0, self.padding.y0);
-        event.with_transform(&Affine::translate(offset), |event| self.content.event(ctx, event))
-    }
+    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {}
 
     /*fn natural_width(&mut self, height: f64) -> f64 {
         self.content.natural_width((height - self.padding.y_value()).max(0.0))
@@ -37,9 +37,11 @@ impl<E: Widget> Widget for Padding<E> {
     }*/
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        let offset = Vec2::new(self.padding.x0, self.padding.y0);
-        let local_position = position - offset;
-        self.content.hit_test(ctx, local_position)
+        ctx.test_with_offset(
+            Vec2::new(self.padding.x0, self.padding.y0),
+            position,
+            |result, position| self.content.hit_test(result, position),
+        )
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
@@ -59,7 +61,7 @@ impl<E: Widget> Widget for Padding<E> {
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
-        ctx.with_transform(&Affine::translate(Vec2::new(self.padding.x0, self.padding.y0)), |ctx| {
+        ctx.with_offset(Vec2::new(self.padding.x0, self.padding.y0), |ctx| {
             self.content.paint(ctx)
         });
     }

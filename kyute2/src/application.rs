@@ -81,7 +81,7 @@ struct App {
 impl App {
     fn update(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>) {
         let mut tree_ctx = TreeCtx::new(&mut self.app_state, event_loop, self.root.clone());
-        self.root.update(&mut tree_ctx);
+        self.root.widget.update(&mut tree_ctx);
     }
 }
 
@@ -166,7 +166,7 @@ impl AppLauncher {
                         // dispatch to the appropriate window handler
                         if let Some(window_widget) = app.app_state.windows.get(&window_id).cloned() {
                             let mut tree_ctx = TreeCtx::new(&mut app.app_state, elwt, window_widget.clone());
-                            window_widget.window_event(&mut tree_ctx, &event, event_time)
+                            window_widget.window_event(&mut tree_ctx, &event, event_time);
                         } else {
                             warn!("received event for unknown window {:?}", window_id);
                         }

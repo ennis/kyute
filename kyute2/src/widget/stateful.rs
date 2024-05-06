@@ -31,7 +31,7 @@ where
 impl<T, W, F> Widget for Stateful<T, F>
 where
     W: Widget + 'static,
-    F: Fn(&mut TreeCtx, State<T>) -> W,
+    F: Fn(&mut TreeCtx, State<T>) -> W + 'static,
     T: 'static,
 {
     fn update(&self, cx: &mut TreeCtx) {

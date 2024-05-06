@@ -15,8 +15,7 @@ use core::fmt;
 use std::{
     any::{Any, TypeId},
     cell::{Cell, RefCell},
-    fmt::Formatter,
-    marker::PhantomData,
+    hash::{Hash, Hasher},
     mem,
     ops::DerefMut,
     rc::{Rc, Weak},
@@ -24,7 +23,7 @@ use std::{
 };
 
 use bitflags::bitflags;
-use kurbo::Affine;
+use kurbo::{Affine, Vec2};
 use skia_safe as sk;
 use tracing::{trace, warn};
 use weak_table::PtrWeakHashSet;
@@ -59,15 +58,7 @@ use crate::{Alignment, BoxConstraints, Event, Geometry, WidgetId};
 use crate::{
     application::{AppState, ExtEvent},
     composition::DrawableSurface,
-    context::ContextDataKey,
     drawing::ToSkia,
-    utils::{WidgetSet, WidgetSlice},
-};
-use crate::{
-    context::ContextDataHandle,
-    //debug_util::DebugWriter,
-    drawing::Paint,
-    Insets,
     Point,
 };
 
@@ -191,6 +182,13 @@ pub struct PaintCtx<'a> {
 }
 
 impl<'a> PaintCtx<'a> {
+    pub fn with_offset<F, R>(&mut self, offset: Vec2, f: F) -> R
+    where
+        F: FnOnce(&mut PaintCtx<'a>) -> R,
+    {
+        self.with_transform(&Affine::translate(offset), f)
+    }
+
     pub fn with_transform<F, R>(&mut self, transform: &Affine, f: F) -> R
     where
         F: FnOnce(&mut PaintCtx<'a>) -> R,
@@ -236,7 +234,7 @@ impl<'a> PaintCtx<'a> {
 /// Widget types.
 ///
 /// See the crate documentation for more information.
-pub trait Widget {
+pub trait Widget: Any {
     // On pointer down
     // If widget declares grab, also set the transform (coordinate space)
     // then the widget receives all subsequent pointer events in the specified coordinate space
@@ -276,12 +274,8 @@ pub trait Widget {
 
 pub struct WidgetPod<T: ?Sized = dyn Widget> {
     mounted: Cell<bool>,
-    /// Transform relative to the parent widget.
-    transform: Cell<Affine>,
-    /// Transform relative to the parent window.
-    window_transform: Cell<Affine>,
-    parent: WeakWidgetPtr,
-    widget: T,
+    parent: RefCell<WeakWidgetPtr>,
+    pub widget: T,
 }
 
 pub type WidgetPtr<T = dyn Widget> = Rc<WidgetPod<T>>;
@@ -291,10 +285,8 @@ impl<T> WidgetPod<T> {
     pub fn new(widget: T) -> WidgetPtr<T> {
         Rc::new(WidgetPod {
             mounted: Cell::new(false),
-            transform: Default::default(),
-            window_transform: Default::default(),
             // Weak::new() doesn't work with unsized types, so use the dummy Null widget (https://github.com/rust-lang/rust/issues/50513)
-            parent: WeakWidgetPtr::<Null>::new(),
+            parent: RefCell::new(WeakWidgetPtr::<Null>::new()),
             widget,
         })
     }
@@ -317,15 +309,19 @@ impl WidgetPod {
         Rc::downgrade(&self.0))
     }*/
 
-    pub fn set_transform(&self, transform: Affine) {
-        self.transform.set(transform);
-    }
-
     /// Sends an event to the specified widget.
     pub fn event(self: &Rc<Self>, cx: &mut TreeCtx, event: &mut Event) {
         cx.with_widget(self, |cx, widget| {
             widget.event(cx, event);
         })
+    }
+
+    pub fn downcast<T: Widget + 'static>(self: Rc<Self>) -> Result<WidgetPtr<T>, WidgetPtr> {
+        if self.widget.type_id() == TypeId::of::<T>() {
+            unsafe { Ok(Rc::from_raw(Rc::into_raw(self) as *const WidgetPod<T>)) }
+        } else {
+            Err(self)
+        }
     }
 
     /*/// Dispatches a pointer event.
@@ -339,17 +335,17 @@ impl WidgetPod {
     pub fn window_event(self: &Rc<Self>, cx: &mut TreeCtx, event: &winit::event::WindowEvent, time: Duration) {
         cx.with_widget(self, |cx, widget| {
             widget.window_event(cx, event, time);
-        })
+        });
     }
 
     pub fn update(self: &Rc<Self>, cx: &mut TreeCtx) {
         if !self.mounted.get() {
-            // TODO: do something?
             self.mounted.set(true);
+            self.parent.replace(Rc::downgrade(&cx.current()));
         }
         cx.with_widget(self, |cx, widget| {
             widget.update(cx);
-        })
+        });
     }
 
     pub fn hit_test(self: &Rc<Self>, result: &mut HitTestResult, position: Point) -> bool {
@@ -364,34 +360,21 @@ impl WidgetPod {
         self.widget.layout(cx, bc)
     }
 
-    /*/// Find context data in the parent chain.
-    pub fn provides(&self, key: &'static str) -> Option<&dyn Any> {
-        if let Some(data) = self.widget.provide(key) {
-            return Some(data);
-        }
-        self.parent.upgrade()?.provides(key)
-    }*/
-
     pub fn paint(&self, cx: &mut PaintCtx) {
         self.widget.paint(cx);
     }
-}
-
-/// Context passed during tree traversals.
-pub struct TreeCtx<'a> {
-    pub(crate) app_state: &'a mut AppState,
-    pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
-    /// Pointer to the current widget.
-    current_widget: WidgetPtr,
-    /// Widgets that need updating after the current dispatch.
-    /// XXX do we need RefCell here?
-    need_update: RefCell<PtrWeakHashSet<WeakWidgetPtr>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct HitTestEntry {
     pub widget: WidgetPtr,
     pub transform: Affine,
+}
+
+impl HitTestEntry {
+    pub fn same(&self, other: &HitTestEntry) -> bool {
+        Rc::ptr_eq(&self.widget, &other.widget)
+    }
 }
 
 /// Hit-test context.
@@ -407,6 +390,15 @@ impl HitTestResult {
             current_transform: Default::default(),
             hits: Default::default(),
         }
+    }
+
+    pub fn test_with_offset(
+        &mut self,
+        offset: Vec2,
+        position: Point,
+        f: impl FnOnce(&mut Self, Point) -> bool,
+    ) -> bool {
+        self.test_with_transform(&Affine::translate(offset), position, f)
     }
 
     pub fn test_with_transform(
@@ -430,6 +422,19 @@ impl HitTestResult {
     }
 }
 
+/// Context passed during tree traversals.
+pub struct TreeCtx<'a> {
+    pub(crate) app_state: &'a mut AppState,
+    pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
+    /// Pointer to the current widget.
+    current_widget: WidgetPtr,
+    /// Widgets that need updating after the current dispatch.
+    /// XXX do we need RefCell here?
+    need_update: RefCell<PtrWeakHashSet<WeakWidgetPtr>>,
+    /// Whether relayout is necessary.
+    relayout: bool,
+}
+
 impl<'a> TreeCtx<'a> {
     /// Creates the root TreeCtx.
     pub(crate) fn new(
@@ -442,6 +447,7 @@ impl<'a> TreeCtx<'a> {
             event_loop,
             current_widget: target,
             need_update: RefCell::new(Default::default()),
+            relayout: false,
         }
     }
 
@@ -473,13 +479,20 @@ impl<'a> TreeCtx<'a> {
         self.current_widget.clone()
     }
 
-    /*fn dispatch_pending_updates(&mut self, widget: &mut dyn Widget) {
-        let pending = mem::take(&mut self.pending_updates);
-        // FIXME: pending should be a subtree, not a PathSet, `as_slice` is dubious here
-        self.dispatch(widget, pending.as_slice(), &mut |cx, widget| {
-            widget.update(cx);
-        });
-    }*/
+    pub fn dispatch_pending_updates(&mut self) {
+        while self.need_update.borrow().len() > 0 {
+            let mut need_update = self.need_update.take();
+            for widget in need_update.drain() {
+                assert!(widget.mounted.get());
+                widget.update(self);
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn needs_layout(&self) -> bool {
+        self.relayout
+    }
 
     /*/// Propagates a visitor through the specified widget and its children.
     ///
@@ -532,6 +545,10 @@ impl<'a> TreeCtx<'a> {
     /// Adds an update request that will be processed when the current dispatch is finished.
     pub fn mark_needs_update(&self, widget: WidgetPtr) {
         self.need_update.borrow_mut().insert(widget);
+    }
+
+    pub fn mark_needs_layout(&mut self) {
+        self.relayout = true;
     }
 
     fn with_widget<R>(&mut self, child: &WidgetPtr, f: impl FnOnce(&mut TreeCtx, &dyn Widget) -> R) -> R {
@@ -628,36 +645,58 @@ impl<'a> TreeCtx<'a> {
         result.hit_test_child(child, position);
         result.hits
     }*/
+
+    // FIXME: this is completely unreliable, because widget types are almost always wrapped
+    // in modifiers like `Frame` or `Padding`, so we almost never find the type we're looking for
+    // (e.g. we can't find `Clickable` because it's wrapped in `Frame<Clickable>`).
+
+    // Solutions:
+    // - return state in a separate method, which wrapper widgets would forward to
+    // - all widgets (even simple wrappers) have associated nodes (Padding, Frame, Transform, Constrained, Decoration)
+    //    -> *** probably the best option; it's best to not be too clever with this
+    pub fn find_ancestor<T: Widget + 'static>(&self) -> Option<WidgetPtr<T>> {
+        let mut current = self.current_widget.clone();
+
+        loop {
+            match current.downcast::<T>() {
+                Ok(v) => return Some(v),
+                Err(v) => {
+                    current = v.parent.borrow().upgrade()?;
+                }
+            }
+        }
+    }
 }
 
 /// A widget that builds a widget given a TreeCtx
-pub struct WithContext<F> {
+pub struct Builder<F> {
     f: F,
     inner: RefCell<Option<WidgetPtr>>,
 }
 
-impl<F> WithContext<F> {
-    pub fn new<W>(f: F) -> WithContext<F>
+impl<F> Builder<F> {
+    pub fn new<W>(f: F) -> Builder<F>
     where
         W: Widget,
         F: Fn(&mut TreeCtx) -> W,
     {
-        WithContext {
+        Builder {
             f,
             inner: RefCell::new(None),
         }
     }
 }
 
-impl<F, W> Widget for WithContext<F>
+impl<F, W> Widget for Builder<F>
 where
-    F: Fn(&mut TreeCtx) -> W,
+    F: Fn(&mut TreeCtx) -> W + 'static,
     W: Widget + 'static,
 {
     fn update(&self, cx: &mut TreeCtx) {
         self.inner.replace_with(|inner| {
             let widget: WidgetPtr = WidgetPod::new((self.f)(cx));
             widget.update(cx);
+            cx.mark_needs_layout();
             Some(widget)
         });
     }
@@ -687,13 +726,58 @@ where
     }
 }
 
-pub fn with_cx<F, W>(f: F) -> WithContext<F>
+pub fn builder<F, W>(f: F) -> Builder<F>
 where
     W: Widget,
     F: Fn(&mut TreeCtx) -> W,
 {
-    WithContext::new(f)
+    Builder::new(f)
 }
+
+/////////////////////////////////////////////////////////////////////////
+
+/*
+pub struct Inherits<State> {
+    state: State,
+    dependencies: RefCell<PtrWeakHashSet<WeakWidgetPtr>>,
+    content: WidgetPtr,
+}
+
+impl<State: 'static> Inherits<State> {
+    pub fn new(state: State, content: WidgetPtr) -> Inherits<State> {
+        Inherits {
+            state,
+            dependencies: RefCell::new(Default::default()),
+            content,
+        }
+    }
+
+    pub fn depend_on(&self, cx: &mut TreeCtx) {
+        self.dependencies.borrow_mut().insert(cx.current());
+    }
+}
+
+impl<State: 'static> Widget for Inherits<State> {
+    fn update(&self, cx: &mut TreeCtx) {
+        for dep in self.dependencies.borrow().iter() {
+            cx.mark_needs_update(dep)
+        }
+    }
+
+    fn event(&self, cx: &mut TreeCtx, event: &mut Event) {}
+
+    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
+        self.content.hit_test(result, position)
+    }
+
+    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        self.content.layout(cx, bc)
+    }
+
+    fn paint(&self, cx: &mut PaintCtx) {
+        self.content.paint(cx)
+    }
+}*/
 
 /////////////////////////////////////////////////////////////////////////
 // Dummy widget to flesh out the Widget trait

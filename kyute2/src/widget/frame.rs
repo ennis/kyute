@@ -1,5 +1,5 @@
 //! Frame containers
-use kurbo::Affine;
+use kurbo::{Affine, Vec2};
 use std::{any::Any, cell::Cell};
 
 use tracing::trace;
@@ -11,11 +11,11 @@ use crate::{
         RoundedRectBorder, TransformNode,
     },
     Alignment, BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, Insets, LayoutCtx, LengthOrPercentage,
-    PaintCtx, Point, Rect, Size, TreeCtx, Widget, WidgetId,
+    PaintCtx, Point, Rect, Size, TreeCtx, Widget, WidgetId, WidgetPod, WidgetPtr,
 };
 
 /// A container with a fixed width and height, into which a unique widget is placed.
-pub struct Frame<T, B> {
+pub struct Frame<B> {
     width: LengthOrPercentage,
     height: LengthOrPercentage,
     change_flags: Cell<ChangeFlags>,
@@ -28,17 +28,22 @@ pub struct Frame<T, B> {
     padding_right: LengthOrPercentage,
     padding_top: LengthOrPercentage,
     padding_bottom: LengthOrPercentage,
+    decoration: ShapeDecoration<B>,
     /// Computed size
     size: Cell<Size>,
+    offset: Cell<Vec2>,
     /// Computed bounds
     bounding_rect: Cell<Rect>,
     paint_bounding_rect: Cell<Rect>,
-    decoration: ShapeDecoration<B>,
-    content: TransformNode<T>,
+    content: WidgetPtr, // TransformNode<T>,
 }
 
-impl<T> Frame<T, RoundedRectBorder> {
-    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, content: T) -> Frame<T, RoundedRectBorder> {
+impl Frame<RoundedRectBorder> {
+    pub fn new(
+        width: LengthOrPercentage,
+        height: LengthOrPercentage,
+        content: impl Widget + 'static,
+    ) -> Frame<RoundedRectBorder> {
         Frame {
             width,
             height,
@@ -50,10 +55,11 @@ impl<T> Frame<T, RoundedRectBorder> {
             padding_top: Default::default(),
             padding_bottom: Default::default(),
             size: Default::default(),
+            offset: Cell::new(Default::default()),
             bounding_rect: Default::default(),
             paint_bounding_rect: Default::default(),
             decoration: ShapeDecoration::new(),
-            content: TransformNode::new(content),
+            content: WidgetPod::new(content),
         }
     }
 }
@@ -81,7 +87,7 @@ impl<T, B> Frame<T, B> {
     }
 }*/
 
-impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
+impl<B: ShapeBorder + 'static> Widget for Frame<B> {
     fn layout(&self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         // First, determine the size of this frame.
         // If any lengths are specified as percentages, resolve them:
@@ -121,23 +127,13 @@ impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
                 self.y_align,
                 &Insets::new(padding_left, padding_top, padding_right, padding_bottom),
             );
-            self.content.set_offset(offset);
+            let transform = Affine::translate(offset);
+            self.bounding_rect
+                .set(transform.transform_rect_bbox(content_geom.bounding_rect));
+            self.paint_bounding_rect
+                .set(transform.transform_rect_bbox(content_geom.paint_bounding_rect));
+            self.offset.set(offset);
         }
-
-        // update our bounding rectangles
-        self.bounding_rect.set(
-            self.content
-                .transform
-                .get()
-                .transform_rect_bbox(content_geom.bounding_rect),
-        );
-        self.paint_bounding_rect.set(
-            self.content
-                .transform
-                .get()
-                .transform_rect_bbox(content_geom.paint_bounding_rect),
-        );
-        //}
 
         self.size.set(size);
 
@@ -150,17 +146,19 @@ impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
         }
     }
 
-    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {
-        self.content.event(ctx, event)
-    }
+    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {}
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.content.hit_test(ctx, position) || self.bounding_rect.get().contains(position)
+        ctx.test_with_offset(self.offset.get(), position, |result, position| {
+            self.content.hit_test(result, position)
+        }) || self.bounding_rect.get().contains(position)
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
         self.decoration.paint(ctx, self.size.get().to_rect());
-        self.content.paint(ctx);
+        ctx.with_offset(self.offset.get(), |ctx| {
+            self.content.paint(ctx);
+        });
     }
 
     fn update(&self, cx: &mut TreeCtx) {

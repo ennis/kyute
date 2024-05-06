@@ -5,43 +5,43 @@ use crate::{
     widget::{prelude::*, TransformNode},
     Alignment,
 };
-use kurbo::Insets;
+use kurbo::{Affine, Insets, Vec2};
+use std::cell::Cell;
 
-pub struct Align<W> {
+pub struct Align {
     pub x: Alignment,
     pub y: Alignment,
     pub width_factor: Option<f64>,
     pub height_factor: Option<f64>,
     // TODO a simple offset would be enough
-    pub content: TransformNode<W>,
+    offset: Cell<Vec2>,
+    pub content: WidgetPtr,
 }
 
-impl<W> Align<W> {
-    pub fn new(x: Alignment, y: Alignment, content: W) -> Self {
+impl Align {
+    pub fn new(x: Alignment, y: Alignment, content: impl Widget + 'static) -> Self {
         Self {
             x,
             y,
             width_factor: None,
             height_factor: None,
-            content: TransformNode::new(content),
+            offset: Cell::new(Default::default()),
+            content: WidgetPod::new(content),
         }
     }
 }
 
-impl<W> Widget for Align<W>
-where
-    W: Widget,
-{
+impl Widget for Align {
     fn update(&self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {
-        self.content.event(ctx, event)
-    }
+    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {}
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.content.hit_test(ctx, position)
+        ctx.test_with_offset(self.offset.get(), position, |result, position| {
+            self.content.hit_test(result, position)
+        })
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
@@ -84,7 +84,8 @@ where
             self.y,
             &Insets::ZERO,
         );
-        self.content.set_offset(offset);
+        self.offset.set(offset);
+
         Geometry {
             size,
             baseline: child_geometry.baseline.map(|baseline| baseline + offset.y),
@@ -94,7 +95,7 @@ where
     }
 
     fn paint(&self, ctx: &mut PaintCtx) {
-        self.content.paint(ctx)
+        ctx.with_offset(self.offset.get(), |ctx| self.content.paint(ctx))
     }
 }
 

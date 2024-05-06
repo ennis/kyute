@@ -20,7 +20,7 @@ fn main_window_contents() -> impl Widget {
             .color(theme::palette::PINK_200),
     );
     //let text = TextSpan::new("Hello, world!", text_style);
-    Frame::new(100.percent(), 100.percent(), button("hello"))
+    Frame::new(20.percent(), 20.percent(), button("hello"))
 }
 
 fn main() {

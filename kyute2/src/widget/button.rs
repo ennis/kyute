@@ -9,8 +9,8 @@ use crate::{
     theme,
     theme::Theme,
     widget::{
-        align::Align, decoration::DecoratedBox, prelude::*, with_cx, BorderStyle, Clickable, Constrained, Padding,
-        RoundedRectBorder, ShapeDecoration, Text, WidgetExt,
+        align::Align, builder, clickable::ClickableState, decoration::DecoratedBox, prelude::*, BorderStyle, Clickable,
+        Constrained, Padding, RoundedRectBorder, ShapeDecoration, Text, WidgetExt,
     },
     Alignment, Color, Widget,
 };
@@ -20,7 +20,7 @@ pub fn button(label: &str) -> Clickable {
     // in that case it's not too bad because we're already allocating for the TextSpan
     let label = label.to_string();
 
-    with_cx(move |cx: &mut TreeCtx| {
+    builder(move |cx: &mut TreeCtx| {
         let theme = &theme::DARK_THEME;
         let text_style = Arc::new(
             TextStyle::new()
@@ -30,21 +30,20 @@ pub fn button(label: &str) -> Clickable {
         );
         let text = TextSpan::new(label.clone(), text_style);
 
-        let hovered = false; //cx.current().provides("kyute.clickable.hovered");
-        let active = false; //cx.current().provides("kyute.clickable.active");
-        let focused = false; //cx.current().provides("kyute.clickable.focused");
+        // finds the clickable widget, adds current widget to the list of dependents of the clickable
+        let state = ClickableState::at(cx);
 
         let decoration = if theme.dark_mode {
             ShapeDecoration {
-                fill: if hovered {
+                fill: if state.hovered {
                     Color::from_rgb_u8(100, 100, 100).into()
-                } else if active {
+                } else if state.active {
                     Color::from_rgb_u8(60, 60, 60).into()
                 } else {
                     Color::from_rgb_u8(88, 88, 88).into()
                 },
                 border: RoundedRectBorder {
-                    color: if focused {
+                    color: if state.focus {
                         theme.accent_color
                     } else {
                         Color::from_rgb_u8(49, 49, 49)
@@ -53,7 +52,7 @@ pub fn button(label: &str) -> Clickable {
                     dimensions: Insets::uniform(1.0),
                     style: BorderStyle::Solid,
                 },
-                shadows: if !active {
+                shadows: if !state.active {
                     smallvec![
                         BoxShadow {
                             color: Color::from_rgb_u8(115, 115, 115),
@@ -76,15 +75,15 @@ pub fn button(label: &str) -> Clickable {
             }
         } else {
             ShapeDecoration {
-                fill: if hovered {
+                fill: if state.hovered {
                     Color::from_rgb_u8(240, 240, 240).into()
-                } else if active {
+                } else if state.active {
                     Color::from_rgb_u8(240, 240, 240).into()
                 } else {
                     Color::from_rgb_u8(255, 255, 255).into()
                 },
                 border: RoundedRectBorder {
-                    color: if focused {
+                    color: if state.focus {
                         theme.accent_color
                     } else {
                         Color::from_rgb_u8(180, 180, 180)
@@ -106,13 +105,13 @@ pub fn button(label: &str) -> Clickable {
             decoration,
             Padding::new(
                 Insets::uniform(3.0),
-                Constrained {
-                    constraints: BoxConstraints {
+                Constrained::new(
+                    BoxConstraints {
                         min: Size::new(72.0, 22.0),
                         ..Default::default()
                     },
-                    content: Align::new(Alignment::CENTER, Alignment::CENTER, Text::new(text)),
-                },
+                    Align::new(Alignment::CENTER, Alignment::CENTER, Text::new(text)),
+                ),
             ),
         )
     })

@@ -9,7 +9,7 @@ use std::{
 
 use keyboard_types::KeyState;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
-use tracing::{trace, warn};
+use tracing::{info, trace, warn};
 use tracy_client::span;
 use winit::{
     event::{DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent},
@@ -99,6 +99,8 @@ struct InputState {
     pointer_grab: Vec<HitTestEntry>,
     /// The widget that has the focus for keyboard events.
     focus: Option<WidgetPtr>,
+    /// Result of the previous hit-test
+    prev_hit_test_result: Vec<HitTestEntry>,
 }
 
 /// Options for UI host windows.
@@ -207,6 +209,7 @@ impl UiHostWindowState {
                 last_click: None,
                 pointer_grab: vec![],
                 focus: None,
+                prev_hit_test_result: vec![],
             },
             close_requested: Cell::new(false),
             dismissed: Cell::new(false),
@@ -234,7 +237,7 @@ impl UiHostWindowState {
                     // mark the geometry and the visuals dirty
                     self.change_flags |= ChangeFlags::GEOMETRY | ChangeFlags::PAINT;
                 }
-                self.update_layout(content);
+                self.update_layout(content.clone());
                 self.window.request_redraw();
             }
             WindowEvent::Moved(_) => { /*self.dismiss_popups()*/ }
@@ -243,7 +246,7 @@ impl UiHostWindowState {
                 event,
                 is_synthetic: _,
             } => {
-                self.handle_keyboard_input(cx, content, event, time);
+                self.handle_keyboard_input(cx, content.clone(), event, time);
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.input_state.modifiers = modifiers_from_winit(*modifiers);
@@ -265,7 +268,7 @@ impl UiHostWindowState {
                 };
                 self.dispatch_pointer_event(
                     cx,
-                    content,
+                    content.clone(),
                     Event::PointerMove(pointer_event),
                     self.input_state.cursor_pos,
                     time,
@@ -277,10 +280,10 @@ impl UiHostWindowState {
                 device_id,
             } => {
                 //self.dismiss_popups();
-                self.handle_mouse_input(cx, content, *device_id, *button, *state, time);
+                self.handle_mouse_input(cx, content.clone(), *device_id, *button, *state, time);
             }
             WindowEvent::RedrawRequested => {
-                self.paint(time, &WindowPaintOptions::default(), content);
+                self.paint(time, &WindowPaintOptions::default(), content.clone());
             }
             WindowEvent::CloseRequested => {
                 self.close_requested.set(true);
@@ -300,8 +303,18 @@ impl UiHostWindowState {
             _ => {}
         };
 
-        // return whether the app logic should run again
-        //self.change_flags.get().intersects(ChangeFlags::APP_LOGIC)
+        // When we reach that point, all events have been dispatched to widgets, which may have
+        // requested updates and/or relayouts. We need to process these now.
+        // First process pending updates.
+        cx.dispatch_pending_updates();
+
+        // Then if something requested a relayout, do it now.
+        if cx.needs_layout() {
+            info!("layout requested");
+            self.update_layout(content.clone());
+            // also request a repaint, even though it may be pessimistic
+            self.window.request_redraw();
+        }
     }
 
     /// Handles mouse input.
@@ -486,6 +499,65 @@ impl UiHostWindowState {
             hit_test_result.hits
         };
 
+        self.dispatch_pointer_event_inner(cx, &path, event);
+
+        // Send pointerover/pointerout events
+        // Compare the result of the hit-test with the previous hit-test result
+        let over: Vec<_> = path
+            .iter()
+            .filter(|item| {
+                !self
+                    .input_state
+                    .prev_hit_test_result
+                    .iter()
+                    .find(|x| x.same(item))
+                    .is_some()
+            })
+            .cloned()
+            .collect();
+        let out: Vec<_> = self
+            .input_state
+            .prev_hit_test_result
+            .iter()
+            .filter(|item| !path.iter().find(|x| x.same(item)).is_some())
+            .cloned()
+            .collect();
+        //dbg!(&over);
+        //dbg!(&out);
+        self.input_state.prev_hit_test_result = path;
+        if !over.is_empty() {
+            self.dispatch_pointer_event_inner(
+                cx,
+                &over,
+                Event::PointerOver(PointerEvent {
+                    position,
+                    modifiers: self.input_state.modifiers,
+                    buttons: self.input_state.pointer_buttons,
+                    button: None,
+                    repeat_count: 0,
+                    transform: Default::default(),
+                    request_capture: false,
+                }),
+            );
+        }
+        if !out.is_empty() {
+            self.dispatch_pointer_event_inner(
+                cx,
+                &out,
+                Event::PointerOut(PointerEvent {
+                    position,
+                    modifiers: self.input_state.modifiers,
+                    buttons: self.input_state.pointer_buttons,
+                    button: None,
+                    repeat_count: 0,
+                    transform: Default::default(),
+                    request_capture: false,
+                }),
+            );
+        }
+    }
+
+    fn dispatch_pointer_event_inner(&mut self, cx: &mut TreeCtx, path: &[HitTestEntry], mut event: Event) {
         for entry in path.iter() {
             event.set_transform(&entry.transform);
             entry.widget.event(cx, &mut event);
@@ -493,7 +565,7 @@ impl UiHostWindowState {
 
         if event.capture_requested() {
             // someone in the path requested capture
-            self.input_state.pointer_grab = path;
+            self.input_state.pointer_grab = path.into();
         }
     }
 

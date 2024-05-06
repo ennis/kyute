@@ -260,31 +260,26 @@ impl<B: ShapeBorder> Decoration for ShapeDecoration<B> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct DecoratedBox<D, W> {
+pub struct DecoratedBox<D> {
     decoration: D,
     size: Cell<Size>,
-    content: Padding<W>,
+    content: WidgetPtr,
 }
 
-impl<D: Decoration, W> DecoratedBox<D, W> {
-    pub fn new(decoration: D, content: W) -> Self {
+impl<D: Decoration> DecoratedBox<D> {
+    pub fn new(decoration: D, content: impl Widget + 'static) -> Self {
         let padding = decoration.insets();
         Self {
             decoration,
             size: Default::default(),
-            content: Padding {
-                padding,
-                // size: Default::default(),
-                content,
-            },
+            content: WidgetPod::new(Padding::new(padding, content)),
         }
     }
 }
 
-impl<D, W> Widget for DecoratedBox<D, W>
+impl<D> Widget for DecoratedBox<D>
 where
     D: Decoration + 'static,
-    W: Widget,
 {
     fn update(&self, cx: &mut TreeCtx) {
         self.content.update(cx)
@@ -307,7 +302,7 @@ where
     }
 
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.content.hit_test(ctx, position)
+        self.content.hit_test(ctx, position) || self.size.get().to_rect().contains(position)
     }
 
     fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
