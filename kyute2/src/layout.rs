@@ -93,6 +93,13 @@ impl BoxConstraints {
         }
     }
 
+    pub fn loose(size: Size) -> BoxConstraints {
+        BoxConstraints {
+            min: Size::ZERO,
+            max: size,
+        }
+    }
+
     pub fn loosen(&self) -> BoxConstraints {
         BoxConstraints {
             min: Size::ZERO,

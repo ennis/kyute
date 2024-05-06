@@ -2,7 +2,7 @@
 
 use crate::{
     layout::place_into,
-    widget::{prelude::*, TransformNode, WidgetVisitor},
+    widget::{prelude::*, TransformNode},
     Alignment,
 };
 use kurbo::Insets;
@@ -32,32 +32,11 @@ impl<W> Widget for Align<W>
 where
     W: Widget,
 {
-    fn id(&self) -> WidgetId {
-        self.content.id()
-    }
-
-    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
-        self.content.visit_child(cx, id, visitor)
-    }
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+    fn update(&self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    /*fn natural_width(&mut self, height: f64) -> f64 {
-        self.content.natural_width(height)
-    }
-
-    fn natural_height(&mut self, width: f64) -> f64 {
-        self.content.natural_height(width)
-    }
-
-    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
-        warn!("AlignElement::natural_baseline is unimplemented");
-        self.content.natural_baseline(params)
-    }*/
-
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {
         self.content.event(ctx, event)
     }
 
@@ -65,21 +44,8 @@ where
         self.content.hit_test(ctx, position)
     }
 
-    /* fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn debug(&self, w: &mut DebugWriter) {
-        w.type_name("AlignElement");
-        w.property("x", self.x);
-        w.property("y", self.y);
-        w.property("width_factor", self.width_factor);
-        w.property("height_factor", self.height_factor);
-        w.child("", &self.content);
-    }*/
-
-    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
-        let child_geometry = ctx.layout(&mut self.content, &constraints.loosen());
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+        let child_geometry = self.content.layout(ctx, &constraints.loosen());
 
         // first, size to max available width/height
         let mut size = Size {
@@ -127,8 +93,8 @@ where
         }
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        ctx.paint(&mut self.content);
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.content.paint(ctx)
     }
 }
 

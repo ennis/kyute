@@ -1,44 +1,35 @@
 //! Clickable widget wrapper
-use std::mem;
+use std::{any::Any, mem};
 
 use keyboard_types::{Key, KeyState};
 use tracing::trace;
 
 use crate::{
-    widget::{prelude::*, WidgetState, WidgetVisitor},
-    with_ambient, AmbientKey, State,
+    widget::{prelude::*, TreeCtx, WidgetPod, WidgetPtr},
+    State,
 };
 
 type DefaultClickHandler = fn(&mut TreeCtx);
 
+/*
 pub const ACTIVE: AmbientKey<bool> = AmbientKey::new("kyute.clickable.active");
 pub const FOCUSED: AmbientKey<bool> = AmbientKey::new("kyute.clickable.focused");
 pub const HOVERED: AmbientKey<bool> = AmbientKey::new("kyute.clickable.hovered");
+*/
 
-pub struct Clickable<T, OnClick = DefaultClickHandler> {
-    id: WidgetId,
-    content: T,
-    // idea: instead of being relative to the current widget, state entries
-    // could store the path tree relative to the root,
-    // this way, all updates would be dispatched from a single location (the root)
-    //
-    // The flow would be like this:
-    // - dispatch event to widget
-    // - control goes back to root event loop
-    // - root event loop sees that there are pending updates
-    // - root event loop dispatches the updates
+pub struct Clickable<OnClick = DefaultClickHandler> {
+    content: WidgetPtr,
     active: State<bool>,
     focus: State<bool>,
     hovered: State<bool>,
     on_click: OnClick,
 }
 
-impl<T> Clickable<T, DefaultClickHandler> {
+impl Clickable<DefaultClickHandler> {
     /// Creates a new clickable widget.
-    pub fn new(content: T) -> Clickable<T, DefaultClickHandler> {
+    pub fn new(content: impl Widget + 'static) -> Clickable<DefaultClickHandler> {
         Clickable {
-            id: WidgetId::next(),
-            content,
+            content: WidgetPod::new(content),
             active: Default::default(),
             focus: Default::default(),
             hovered: Default::default(),
@@ -50,12 +41,11 @@ impl<T> Clickable<T, DefaultClickHandler> {
 
     /// Sets the click handler.
     #[must_use]
-    pub fn on_clicked<OnClicked>(self, on_clicked: OnClicked) -> Clickable<T, OnClicked>
+    pub fn on_clicked<OnClicked>(self, on_clicked: OnClicked) -> Clickable<OnClicked>
     where
         OnClicked: FnOnce(&mut TreeCtx),
     {
         Clickable {
-            id: self.id,
             content: self.content,
             active: Default::default(),
             focus: Default::default(),
@@ -65,67 +55,41 @@ impl<T> Clickable<T, DefaultClickHandler> {
     }
 }
 
-impl<T: Widget, OnClick> Widget for Clickable<T, OnClick>
+impl<OnClick> Widget for Clickable<OnClick>
 where
-    OnClick: FnMut(&mut TreeCtx),
+    OnClick: Fn(&mut TreeCtx),
 {
-    fn id(&self) -> WidgetId {
-        self.id
+    fn update(&self, cx: &mut TreeCtx) {
+        self.content.update(cx);
     }
 
-    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
-        with_ambient(cx, FOCUSED, &mut self.focus, |cx| {
-            with_ambient(cx, ACTIVE, &mut self.active, |cx| {
-                with_ambient(cx, HOVERED, &mut self.hovered, |cx| {
-                    if self.content.id() == id {
-                        visitor(cx, &mut self.content);
-                    }
-                });
-            });
-        });
+    fn provide(&self, key: &'static str) -> Option<&dyn Any> {
+        match key {
+            "kyute.clickable.active" => Some(&self.active),
+            "kyute.clickable.focused" => Some(&self.focus),
+            "kyute.clickable.hovered" => Some(&self.hovered),
+            _ => None,
+        }
     }
 
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
-        with_ambient(cx, FOCUSED, &mut self.focus, |cx| {
-            with_ambient(cx, ACTIVE, &mut self.active, |cx| {
-                with_ambient(cx, HOVERED, &mut self.hovered, |cx| {
-                    cx.update(&mut self.content);
-                });
-            });
-        });
-
-        ChangeFlags::empty()
-    }
-
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
-        let mut change_flags = ChangeFlags::empty();
-
-        match event.kind {
-            EventKind::PointerDown(ref _p) => {
+    fn event(&self, cx: &mut TreeCtx, event: &mut Event) {
+        match event {
+            Event::PointerDown(ref _p) => {
                 eprintln!("clickable PointerDown");
-                event.handled = true;
                 // this will notify anything that depends on the active flag
                 self.active.set(cx, true);
             }
-            EventKind::PointerUp(ref _p) => {
-                event.handled = true;
+            Event::PointerUp(ref _p) => {
                 self.active.set(cx, false);
-                // TODO that's a bit verbose
-                with_ambient(cx, FOCUSED, &mut self.focus, |cx| {
-                    with_ambient(cx, ACTIVE, &mut self.active, |cx| {
-                        with_ambient(cx, HOVERED, &mut self.hovered, |cx| {
-                            (self.on_click)(cx);
-                        });
-                    });
-                });
+                (self.on_click)(cx);
             }
-            EventKind::PointerOver(ref _p) => {
+            Event::PointerOver(ref _p) => {
                 self.hovered.set(cx, true);
             }
-            EventKind::PointerOut(ref _p) => {
+            Event::PointerOut(ref _p) => {
                 self.hovered.set(cx, false);
             }
-            EventKind::Keyboard(ref key) => {
+            Event::Keyboard(ref key) => {
                 match key.state {
                     KeyState::Down => {
                         // activate a clickable with Enter or the space bar
@@ -141,16 +105,9 @@ where
                         }
                     }
                     KeyState::Up => {
-                        event.handled = true;
-                        if *self.active.get() {
-                            // TODO verbosity
-                            with_ambient(cx, FOCUSED, &mut self.focus, |cx| {
-                                with_ambient(cx, ACTIVE, &mut self.active, |cx| {
-                                    with_ambient(cx, HOVERED, &mut self.hovered, |cx| {
-                                        (self.on_click)(cx);
-                                    });
-                                });
-                            });
+                        //event.handled = true;
+                        if *self.active.get(cx) {
+                            (self.on_click)(cx);
                             self.active.set(cx, false);
                         }
                     }
@@ -158,20 +115,18 @@ where
             }
             _ => {}
         }
-
-        change_flags
     }
 
     fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
-        result.hit_test_child(&self.content, position)
+        self.content.hit_test(result, position)
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
-        ctx.layout(&mut self.content, constraints)
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+        self.content.layout(ctx, constraints)
     }
 
-    fn paint(&mut self, cx: &mut PaintCtx) {
-        cx.paint(&mut self.content);
+    fn paint(&self, cx: &mut PaintCtx) {
+        self.content.paint(cx)
     }
 
     /*fn natural_width(&mut self, height: f64) -> f64 {

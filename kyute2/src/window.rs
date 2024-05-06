@@ -2,6 +2,7 @@
 use std::{
     any::Any,
     cell::{Cell, RefCell},
+    mem,
     rc::{Rc, Weak},
     time::{Duration, Instant},
 };
@@ -25,10 +26,10 @@ use crate::{
     event::{KeyboardEvent, PointerButton, PointerButtons, PointerEvent},
     theme,
     utils::{WidgetSet, WidgetSlice},
-    widget::WidgetVisitor,
+    widget::HitTestEntry,
     window::key::{key_code_from_winit, modifiers_from_winit},
-    with_ambient, AmbientKey, AppGlobals, BoxConstraints, ChangeFlags, Color, Event, EventKind, Geometry,
-    HitTestResult, LayoutCtx, PaintCtx, Point, Rect, Size, State, TreeCtx, Widget, WidgetId,
+    AppGlobals, BoxConstraints, ChangeFlags, Color, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Rect,
+    Size, State, TreeCtx, Widget, WidgetId, WidgetPod, WidgetPtr,
 };
 
 mod key;
@@ -95,9 +96,9 @@ struct InputState {
     pointer_buttons: PointerButtons,
     last_click: Option<LastClick>,
     /// The widget currently grabbing the pointer.
-    pointer_grab: Option<Vec<WidgetId>>,
+    pointer_grab: Vec<HitTestEntry>,
     /// The widget that has the focus for keyboard events.
-    focus: Option<Vec<WidgetId>>,
+    focus: Option<WidgetPtr>,
 }
 
 /// Options for UI host windows.
@@ -145,7 +146,7 @@ impl Default for UiHostWindowOptions {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // UiHostWindowHandler
 
-const WINDOW_FOCUS: AmbientKey<Vec<WidgetId>> = AmbientKey::new("kyute.window.focus");
+//const WINDOW_FOCUS: AmbientKey<Vec<WidgetId>> = AmbientKey::new("kyute.window.focus");
 
 pub struct UiHostWindowState {
     window: Window,
@@ -156,7 +157,6 @@ pub struct UiHostWindowState {
     hidden_before_first_draw: Cell<bool>,
     scale_factor: Cell<f64>,
     change_flags: ChangeFlags,
-    focus: State<Vec<WidgetId>>,
 }
 
 impl UiHostWindowState {
@@ -205,7 +205,7 @@ impl UiHostWindowState {
                 modifiers: Default::default(),
                 pointer_buttons: Default::default(),
                 last_click: None,
-                pointer_grab: None,
+                pointer_grab: vec![],
                 focus: None,
             },
             close_requested: Cell::new(false),
@@ -221,7 +221,7 @@ impl UiHostWindowState {
     ///
     /// It updates the last known input state (`input_state`), and resizes the compositor layer
     /// if needed.
-    fn handle_window_event(&mut self, cx: &mut TreeCtx, content: &mut dyn Widget, event: &WindowEvent, time: Duration) {
+    fn handle_window_event(&mut self, cx: &mut TreeCtx, content: WidgetPtr, event: &WindowEvent, time: Duration) {
         //eprintln!("handle_window_event {:?}", event);
         match event {
             WindowEvent::Resized(new_size) => {
@@ -254,22 +254,22 @@ impl UiHostWindowState {
                     self.input_state.cursor_pos.x = logical_position.x;
                     self.input_state.cursor_pos.y = logical_position.y;
                     PointerEvent {
-                        target: None,
                         position: self.input_state.cursor_pos,
                         modifiers: self.input_state.modifiers,
                         buttons: self.input_state.pointer_buttons,
                         button: None, // Dummy
                         repeat_count: 0,
                         transform: Default::default(),
+                        request_capture: false,
                     }
                 };
-                let paths = if let Some(ref pointer_grab) = self.input_state.pointer_grab {
-                    WidgetSet::all_along_path(pointer_grab)
-                } else {
-                    cx.hit_test_child(content, self.input_state.cursor_pos)
-                };
-                //eprintln!("propagation_paths {:?}", propagation_paths);
-                cx.schedule_event(&paths, EventKind::PointerMove(pointer_event));
+                self.dispatch_pointer_event(
+                    cx,
+                    content,
+                    Event::PointerMove(pointer_event),
+                    self.input_state.cursor_pos,
+                    time,
+                );
             }
             WindowEvent::MouseInput {
                 button,
@@ -308,7 +308,7 @@ impl UiHostWindowState {
     fn handle_mouse_input(
         &mut self,
         cx: &mut TreeCtx,
-        content: &mut dyn Widget,
+        content: WidgetPtr,
         device_id: DeviceId,
         button: MouseButton,
         state: ElementState,
@@ -332,10 +332,10 @@ impl UiHostWindowState {
         }
         let click_time = Instant::now();
 
-        // implicit pointer ungrab
+        /*// implicit pointer ungrab
         if !state.is_pressed() {
             self.input_state.pointer_grab = None;
-        }
+        }*/
 
         // determine the repeat count (double-click, triple-click, etc.) for button down event
         let repeat_count = match &mut self.input_state.last_click {
@@ -371,41 +371,28 @@ impl UiHostWindowState {
             }
         };
         let pe = PointerEvent {
-            target: None,
             position: self.input_state.cursor_pos,
             modifiers: self.input_state.modifiers,
             buttons: self.input_state.pointer_buttons,
             button: Some(button),
             repeat_count: repeat_count as u8,
             transform: Default::default(),
+            request_capture: false,
         };
 
         let event = if state.is_pressed() {
-            EventKind::PointerDown(pe)
+            Event::PointerDown(pe)
         } else {
-            EventKind::PointerUp(pe)
+            Event::PointerUp(pe)
         };
 
-        let paths = if let Some(ref pointer_grab) = self.input_state.pointer_grab {
-            // Pointer events are delivered to the node that is currently grabbing the pointer
-            // if there's one.
-            // Furthermore, it is sent to every node in the propagation path, starting from
-            // the deepest one (unless the event is marked as handled).
-            WidgetSet::all_along_path(pointer_grab)
-        } else {
-            // If nothing is grabbing the pointer, the pointer event is delivered to a widget
-            // that passes the hit-test, and their parents.
-            cx.hit_test_child(content, self.input_state.cursor_pos)
-        };
-
-        //eprintln!("propagation_paths {:?}", propagation_paths);
-        cx.schedule_event(&paths, event);
+        self.dispatch_pointer_event(cx, content, event, self.input_state.cursor_pos, time);
     }
 
     /// Handles keyboard input.
     ///
     /// Returns whether the keyboard input was handled
-    fn handle_keyboard_input(&self, cx: &mut TreeCtx, content: &mut dyn Widget, event: &KeyEvent, time: Duration) {
+    fn handle_keyboard_input(&self, cx: &mut TreeCtx, content: WidgetPtr, event: &KeyEvent, time: Duration) {
         /*let mut popups = self.popups.borrow();
         // If there are active popups, keyboard events are delivered to the popups.
         // TODO there should be only one popup active at a time.
@@ -481,43 +468,46 @@ impl UiHostWindowState {
     /// # Return value
     ///
     /// Returns true if the app logic should re-run in response of the event.
-    fn propagate_pointer_event(
+    fn dispatch_pointer_event(
         &mut self,
         cx: &mut TreeCtx,
-        content: &mut dyn Widget,
-        event_kind: EventKind,
+        content: WidgetPtr,
+        mut event: Event,
         position: Point,
         time: Duration,
     ) {
-        let paths = if let Some(ref pointer_grab) = self.input_state.pointer_grab {
-            // Pointer events are delivered to the node that is currently grabbing the pointer
-            // if there's one.
-            // Furthermore, it is sent to every node in the propagation path, starting from
-            // the deepest one (unless the event is marked as handled).
-            WidgetSet::all_along_path(pointer_grab)
+        // Pointer events are delivered in priority to the node that is currently grabbing the pointer.
+        // If nothing is grabbing the pointer, then the event is delivered to a widget that passes the hit-test.
+        let path = if !self.input_state.pointer_grab.is_empty() {
+            mem::take(&mut self.input_state.pointer_grab)
         } else {
-            // If nothing is grabbing the pointer, the pointer event is delivered to a widget
-            // that passes the hit-test, and their parents.
-            cx.hit_test_child(content, position)
+            let mut hit_test_result = HitTestResult::new();
+            content.hit_test(&mut hit_test_result, position);
+            hit_test_result.hits
         };
 
-        //eprintln!("propagation_paths {:?}", propagation_paths);
-        cx.dispatch_event(self, &paths, event_kind);
+        for entry in path.iter() {
+            event.set_transform(&entry.transform);
+            entry.widget.event(cx, &mut event);
+        }
+
+        if event.capture_requested() {
+            // someone in the path requested capture
+            self.input_state.pointer_grab = path;
+        }
     }
 
-    fn update_layout(&self, content: &mut dyn Widget) {
+    fn update_layout(&self, content: WidgetPtr) {
         let _span = span!("update_layout");
         //span.emit_text(&format!("Window ID: {:016X}", u64::from(self.window.id())));
         //span.emit_text(&format!("Window title: {:?}", self.window.title()));
 
         let scale_factor = self.scale_factor.get();
-        let window_size = self.window.inner_size().to_logical(scale_factor);
+        let size = self.window.inner_size().to_logical(scale_factor);
+
         let mut ctx = LayoutCtx::new(scale_factor);
-        let layout_params = BoxConstraints {
-            min: Size::ZERO,
-            max: Size::new(window_size.width, window_size.height),
-        };
-        ctx.layout(content, &layout_params);
+        content.layout(&mut ctx, &BoxConstraints::loose(Size::new(size.width, size.height)));
+
         /*let geometry = ctx.layout(&mut *self.root_element.borrow_mut(), &layout_params);
         trace!(
             "update_layout window_size:{:?}, result geometry:{:?}",
@@ -576,7 +566,7 @@ impl UiHostWindowState {
     /// * `options` - Options for painting the window.
     /// * `widget` - The root widget to paint into the window.
     ///
-    fn paint(&mut self, _time: Duration, options: &WindowPaintOptions, content: &mut dyn Widget) {
+    fn paint(&mut self, _time: Duration, options: &WindowPaintOptions, content: WidgetPtr) {
         let _span = span!("paint");
         eprintln!("paint");
 
@@ -608,12 +598,12 @@ impl UiHostWindowState {
                 surface: &surface,
                 //debug_info: Default::default(),
             };
-            paint_ctx.paint(content);
+            content.paint(&mut paint_ctx);
 
-            // Paint the debug overlay if there's one.
+            /*// Paint the debug overlay if there's one.
             if let Some(ref debug_overlay) = options.debug_overlay {
                 debug_overlay.paint(&mut paint_ctx);
-            }
+            }*/
 
             // Save debug information after painting.
             //self.paint_debug_info.replace(paint_ctx.debug_info);
@@ -642,94 +632,11 @@ impl UiHostWindowState {
 /// A window handler that hosts a UI tree.
 pub struct UiHostWindowHandler {
     /// Gui widgets
-    content: Box<dyn Widget>,
-    id: WidgetId,
+    content: WidgetPtr,
     options: UiHostWindowOptions,
-    window: Option<UiHostWindowState>,
+    window: RefCell<Option<UiHostWindowState>>,
     /// Damage regions to be repainted.
     damage_regions: DamageRegions,
-    /// If the contents need to be laid out.
-    change_flags: Cell<ChangeFlags>,
-    // If the contents need to be repainted.
-    //repaint: Cell<bool>,
-    // List of active popups owned by this window.
-    //popups: RefCell<Vec<Weak<UiHostWindowHandler>>>,
-    // If this is a popup, the owner window & the ID of the popup.
-    //popup_owner: Option<Weak<UiHostWindowHandler>>,
-}
-
-impl UiHostWindowHandler {
-    /*/// Cleans the popup list of all expired popups.
-    fn clean_expired_popups(&self) {
-        self.popups.borrow_mut().retain(|popup| popup.upgrade().is_some());
-    }
-
-    /// Dismisses all popups on this window.
-    fn dismiss_popups(&self) {
-        for popup in self.popups.borrow().iter() {
-            if let Some(popup) = popup.upgrade() {
-                popup.window.borrow().set_visible(false);
-                popup.dismissed.set(true);
-            }
-        }
-        self.merge_change_flags(ChangeFlags::APP_LOGIC);
-    }*/
-
-    /// Updates internal dirty flags from ChangeFlags reported by the UI tree.
-    fn merge_change_flags(&self, mut change_flags: ChangeFlags) {
-        // don't care about internal flags
-        change_flags = change_flags.difference(ChangeFlags::LAYOUT_FLAGS);
-        let old = self.change_flags.get();
-        let new = old | change_flags;
-        /*let window_id: u64 = self.window.borrow().id().into();
-        if old != new {
-            eprintln!("Window {window_id:016X}: merge_change_flags {:?} -> {:?}", old, new);
-            /*if let Some(client) = tracy_client::Client::running() {
-                client.message(
-                    &format!("Window {window_id:016X}: merge_change_flags {:?} -> {:?}", old, new),
-                    0,
-                );
-            }*/
-        }*/
-        self.change_flags.set(new)
-    }
-
-    /*fn clear_change_flags(&self, change_flags_to_clear: ChangeFlags) {
-        let old = self.change_flags.get();
-        let new = old & !change_flags_to_clear;
-        let window_id: u64 = self.window.borrow().id().into();
-        if old != new {
-            if let Some(client) = tracy_client::Client::running() {
-                //eprintln!("Window {window_id:016X}: clear_change_flags {:?} -> {:?}", old, new);
-                client.message(
-                    &format!("Window {window_id:016X}: clear_change_flags {:?} -> {:?}", old, new),
-                    0,
-                );
-            }
-        }
-        self.change_flags.set(new)
-    }*/
-
-    /*/// Propagates an event in the UI tree.
-    fn send_event(&self, input_state: &mut InputState, event: &mut Event, _time: Duration) {
-        let mut ctx = EventCtx {
-            focus: &mut input_state.focus,
-            pointer_capture: &mut input_state.pointer_grab,
-            window_transform: Default::default(),
-            id: None,
-            change_flags: ChangeFlags::NONE,
-            debug_info: Default::default(),
-        };
-
-        let root = event.next_target().expect("route should have at least one element");
-        assert_eq!(root, self.root_element.borrow().id());
-
-        let change_flags = ctx.event(&mut *self.root_element.borrow_mut(), event);
-        // save debug information
-        self.event_debug_info.replace(ctx.debug_info);
-        // TODO follow-up events
-        self.merge_change_flags(change_flags);
-    }*/
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -737,156 +644,57 @@ impl UiHostWindowHandler {
 
 impl UiHostWindowHandler {
     /// Creates a new window and registers it with the event loop.
-    pub fn new(inner: Box<dyn Widget>, options: UiHostWindowOptions) -> UiHostWindowHandler {
+    pub fn new(content: impl Widget + 'static, options: UiHostWindowOptions) -> UiHostWindowHandler {
         //------------------------------------------------
         // build the window handler
         UiHostWindowHandler {
-            id: WidgetId::next(),
-            content: inner,
+            content: WidgetPod::new(content),
             options,
-            window: None, // created later
+            window: RefCell::new(None),
             damage_regions: DamageRegions::default(),
-            //popups: RefCell::new(vec![]),
-            //popup_owner: options.owner.as_ref().map(|owner| Rc::downgrade(owner)),
-            change_flags: Cell::new(ChangeFlags::GEOMETRY | ChangeFlags::PAINT),
         }
     }
 
-    fn open_window(&mut self, cx: &mut TreeCtx) {
+    fn open_window(&self, cx: &mut TreeCtx) {
         eprintln!("open_window");
         let window = UiHostWindowState::new(&self.options, &cx.event_loop);
         // associate this widget to the window so that window events are sent to this widget
         cx.register_window(window.window.id());
         window.window.set_visible(true);
         window.window.request_redraw();
-        self.window = Some(window);
-    }
-
-    /*/// Gets the raw window handle of the window.
-    pub fn raw_window_handle(&self) -> RawWindowHandle {
-        self.window
-            .as_ref()
-            .unwrap()
-            .borrow()
-            .raw_window_handle()
-            .expect("failed to get raw window handle, maybe the current platform is not supported?")
-    }*/
-
-    /*/// Registers a popup window.
-    pub fn register_popup(&self, popup: &Rc<Self>) {
-        self.popups.borrow_mut().push(Rc::downgrade(popup))
-        /*let mut inner = self.inner.borrow_mut();
-        trace!(
-            "window {:016x}: registering popup window {:016X}",
-            u64::from(inner.window.id()),
-            u64::from(popup.inner.borrow().window.id())
-        );
-        inner.popups.push();*/
-    }
-
-    /// Returns the owner window (for popups).
-    pub fn popup_owner(&self) -> Option<Rc<UiHostWindowHandler>> {
-        self.popup_owner.as_ref().and_then(|owner| owner.upgrade())
-    }
-
-    /// For a popup window, whether the popup was dismissed. This resets the flag.
-    pub fn dismissed(&self) -> bool {
-        self.dismissed.replace(false)
-    }*/
-
-    /*/// Updates the contents of the window.
-    ///
-    /// This is called during app logic, and will invariably be followed by a call to `after_app_logic`.
-    pub fn update<T>(self: &Rc<Self>, cx: &mut TreeCtx, content: T) -> ChangeFlags
-    where
-        T: Widget + 'static,
-    {
-        let _span = span!("update");
-        //span.emit_text(&format!("Window ID: {:016X}", u64::from(inner.window.id())));
-        //span.emit_text(&format!("Window title: {:?}", inner.window.title()));
-
-        // provide default theme values
-        let content = content.provide(theme::DARK_THEME);
-        // update the UI tree
-        let change_flags = cx.with_parent_window(self.clone(), |cx| {
-            cx.update_with_id_tree(
-                content,
-                &mut *self.root_element.borrow_mut(),
-                &mut *self.element_id_tree.borrow_mut(),
-            )
-        });
-
-        // TODO: if widget update returns APP_LOGIC in the change flags, we should run it again
-        // until the flag is clear.
-
-        // new popups may have popped up
-        // this is as good a time as any to clean the list of expired ones
-        self.clean_expired_popups();
-
-        // Don't merge APP_LOGIC, otherwise we'll run the app logic continuously.
-        self.merge_change_flags(change_flags.difference(ChangeFlags::STRUCTURE | ChangeFlags::APP_LOGIC));
-        change_flags
-    }*/
-}
-
-pub trait WindowStateExt {
-    fn request_focus(&mut self);
-}
-
-impl WindowStateExt for TreeCtx {
-    fn request_focus(&mut self) {
-        WINDOW_FOCUS
+        self.window.replace(Some(window));
     }
 }
 
 impl Widget for UiHostWindowHandler {
-    fn id(&self) -> WidgetId {
-        self.id
-    }
-
-    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
-        if self.content.id() == id {
-            if let Some(ref mut window) = self.window {
-                with_ambient(cx, WINDOW_FOCUS, &mut window.focus, |cx| {
-                    visitor(cx, &mut *self.content);
-                });
-            } else {
-                warn!("visit_child called before window was created");
-            }
-        }
-    }
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+    fn update(&self, cx: &mut TreeCtx) {
         self.open_window(cx);
-        cx.update(&mut *self.content);
-        ChangeFlags::ALL
+        self.content.update(cx);
     }
 
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&self, _cx: &mut TreeCtx, _event: &mut Event) {
         // we don't receive or handle events
-        ChangeFlags::NONE
     }
 
-    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
+    fn hit_test(&self, _result: &mut HitTestResult, _position: Point) -> bool {
         false
     }
 
-    fn layout(&mut self, _cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+    fn layout(&self, _cx: &mut LayoutCtx, _bc: &BoxConstraints) -> Geometry {
         // We return a null geometry here because window widgets typically don't take any space in the parent window.
         // If you're looking for where the contents of the window are laid out, that's done in the `window_event` handler.
         Geometry::ZERO
     }
 
-    fn window_event(&mut self, cx: &mut TreeCtx, event: &WindowEvent, time: Duration) -> ChangeFlags {
-        if let Some(ref mut window) = self.window {
-            window.handle_window_event(cx, &mut *self.content, event, time);
+    fn window_event(&self, cx: &mut TreeCtx, event: &WindowEvent, time: Duration) {
+        if let Some(ref mut window) = &mut *self.window.borrow_mut() {
+            window.handle_window_event(cx, self.content.clone(), event, time);
         } else {
             warn!("window_event called before window was created");
         }
-        ChangeFlags::NONE
     }
 
-    fn paint(&mut self, cx: &mut PaintCtx) {
+    fn paint(&self, cx: &mut PaintCtx) {
         // We don't paint anything in the parent window.
         // If you're looking for where the contents of the window are painted, see `UiHostWindowState::window_event`.
     }

@@ -11,15 +11,24 @@ mod stateful;
 pub mod text;
 mod transform;
 
+use core::fmt;
 use std::{
     any::{Any, TypeId},
+    cell::{Cell, RefCell},
+    fmt::Formatter,
     marker::PhantomData,
+    mem,
     ops::DerefMut,
+    rc::{Rc, Weak},
     time::Duration,
 };
 
 use bitflags::bitflags;
 use kurbo::Affine;
+use skia_safe as sk;
+use tracing::{trace, warn};
+use weak_table::PtrWeakHashSet;
+use winit::{event_loop::EventLoopWindowTarget, window::WindowId};
 
 pub use button::button;
 pub use clickable::Clickable;
@@ -45,11 +54,15 @@ pub use overlay::Overlay;
 pub use padding::Padding;
 pub use text::Text;*/
 
-use crate::{
-    context::TreeCtx, Alignment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, WidgetId,
-};
+use crate::{Alignment, BoxConstraints, Event, Geometry, WidgetId};
 
-use crate::utils::{WidgetSet, WidgetSlice};
+use crate::{
+    application::{AppState, ExtEvent},
+    composition::DrawableSurface,
+    context::ContextDataKey,
+    drawing::ToSkia,
+    utils::{WidgetSet, WidgetSlice},
+};
 use crate::{
     context::ContextDataHandle,
     //debug_util::DebugWriter,
@@ -77,8 +90,8 @@ pub mod text;*/
 /// Widget prelude.
 pub mod prelude {
     pub use crate::{
-        widget::Axis, BoxConstraints, ChangeFlags, ContextDataHandle, Event, EventKind, Geometry, HitTestResult,
-        LayoutCtx, PaintCtx, Point, Rect, Size, TreeCtx, Widget, WidgetId,
+        BoxConstraints, ChangeFlags, ContextDataHandle, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point,
+        Rect, Size, TreeCtx, Widget, WidgetId, WidgetPod, WidgetPtr,
     };
 }
 
@@ -117,21 +130,117 @@ bitflags! {
     }
 }
 
-//pub type WidgetPaths = WidgetSet<WidgetId>;
-//pub type WidgetPathsRef<'a> = PathSubset<'a, WidgetId>;
-pub type WidgetVisitor<'a> = dyn FnMut(&mut TreeCtx, &mut dyn Widget) + 'a;
+/// Context passed to `Element::layout`.
+pub struct LayoutCtx {
+    /// Parent window handle.
+    pub scale_factor: f64,
+
+    /// Transform from window area to the current element.
+    pub(crate) window_transform: Affine,
+
+    /// ID of the parent element
+    pub(crate) id: Option<WidgetId>,
+    //pub(crate) debug_info: LayoutDebugInfo,
+}
+
+impl LayoutCtx {
+    pub(crate) fn new(scale_factor: f64) -> LayoutCtx {
+        LayoutCtx {
+            scale_factor,
+            window_transform: Default::default(),
+            id: None,
+            //debug_info: Default::default(),
+        }
+    }
+
+    /*pub fn layout<T: ?Sized>(&mut self, child_widget: &mut T, constraints: &BoxConstraints) -> Geometry
+    where
+        T: Widget,
+    {
+        //let geometry = child_element.layout(self, constraints);
+        /*#[cfg(debug_assertions)]
+        {
+            self.debug_info.add(ElementLayoutDebugInfo {
+                element_ptr: elem_ptr_id(child_element),
+                constraints: *constraints,
+                geometry: geometry.clone(),
+            });
+        }*/
+        child_widget.layout(self, constraints)
+    }*/
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Paint context.
+pub struct PaintCtx<'a> {
+    /// Scale factor.
+    pub(crate) scale_factor: f64,
+
+    /// Transform from window area to the current element.
+    pub(crate) window_transform: Affine,
+
+    /// ID of the parent element
+    pub(crate) id: Option<WidgetId>,
+
+    /// Drawable surface.
+    pub surface: &'a DrawableSurface,
+    //pub(crate) debug_info: PaintDebugInfo,
+}
+
+impl<'a> PaintCtx<'a> {
+    pub fn with_transform<F, R>(&mut self, transform: &Affine, f: F) -> R
+    where
+        F: FnOnce(&mut PaintCtx<'a>) -> R,
+    {
+        let scale = self.scale_factor as sk::scalar;
+        let prev_transform = self.window_transform;
+        self.window_transform *= *transform;
+        let mut surface = self.surface.surface();
+        surface.canvas().save();
+        surface.canvas().reset_matrix();
+        surface.canvas().scale((scale, scale));
+        surface.canvas().concat(&self.window_transform.to_skia());
+        // TODO clip
+        let result = f(self);
+        let mut surface = self.surface.surface();
+        surface.canvas().restore();
+        self.window_transform = prev_transform;
+
+        result
+    }
+
+    pub fn paint(&mut self, widget: &mut dyn Widget) {
+        /*#[cfg(debug_assertions)]
+        {
+            self.debug_info.add(PaintElementDebugInfo {
+                element_ptr: elem_ptr_id(child_element),
+                transform: self.window_transform,
+            });
+        }*/
+        widget.paint(self)
+    }
+
+    pub fn with_canvas<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut sk::Canvas) -> R,
+    {
+        let mut surface = self.surface.surface();
+        let result = f(surface.canvas());
+        result
+    }
+}
 
 /// Widget types.
 ///
 /// See the crate documentation for more information.
 pub trait Widget {
-    /// Return this widget's ID.
-    fn id(&self) -> WidgetId;
-
-    /// Visits a child widget.
-    ///
-    /// Container widgets should reimplement this.
-    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {}
+    // On pointer down
+    // If widget declares grab, also set the transform (coordinate space)
+    // then the widget receives all subsequent pointer events in the specified coordinate space
+    // (even if somehow the widget has moved in the meantime)
 
     /// Updates this widget.
     ///
@@ -144,47 +253,460 @@ pub trait Widget {
     ///
     /// You shouldn't have to manually call `update()` on child widgets. Instead, request an update by
     /// calling `cx.request_update(widgetpaths)`.
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags;
+    fn update(&self, cx: &mut TreeCtx);
+
+    fn provide(&self, _key: &'static str) -> Option<&dyn Any> {
+        None
+    }
 
     /// Event handling.
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags;
+    fn event(&self, cx: &mut TreeCtx, event: &mut Event);
 
     /// Hit-testing.
     fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool;
 
     /// Layout.
-    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry;
+    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry;
 
     /// Raw window events.
-    fn window_event(&mut self, _cx: &mut TreeCtx, _event: &winit::event::WindowEvent, _time: Duration) -> ChangeFlags {
-        ChangeFlags::NONE
+    fn window_event(&self, _cx: &mut TreeCtx, _event: &winit::event::WindowEvent, _time: Duration) {}
+
+    fn paint(&self, cx: &mut PaintCtx);
+}
+
+pub struct WidgetPod<T: ?Sized = dyn Widget> {
+    mounted: Cell<bool>,
+    /// Transform relative to the parent widget.
+    transform: Cell<Affine>,
+    /// Transform relative to the parent window.
+    window_transform: Cell<Affine>,
+    parent: WeakWidgetPtr,
+    widget: T,
+}
+
+pub type WidgetPtr<T = dyn Widget> = Rc<WidgetPod<T>>;
+pub type WeakWidgetPtr<T = dyn Widget> = Weak<WidgetPod<T>>;
+
+impl<T> WidgetPod<T> {
+    pub fn new(widget: T) -> WidgetPtr<T> {
+        Rc::new(WidgetPod {
+            mounted: Cell::new(false),
+            transform: Default::default(),
+            window_transform: Default::default(),
+            // Weak::new() doesn't work with unsized types, so use the dummy Null widget (https://github.com/rust-lang/rust/issues/50513)
+            parent: WeakWidgetPtr::<Null>::new(),
+            widget,
+        })
+    }
+}
+
+impl<T: Widget + 'static> WidgetPod<T> {
+    pub fn as_dyn(self: &Rc<Self>) -> WidgetPtr {
+        self.clone()
+    }
+}
+
+impl<T: ?Sized> fmt::Debug for WidgetPod<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WidgetPod").finish_non_exhaustive()
+    }
+}
+
+impl WidgetPod {
+    /*pub fn weak(self: &Rc<self>) -> WeakWidgetPtr<T> {
+        Rc::downgrade(&self.0))
+    }*/
+
+    pub fn set_transform(&self, transform: Affine) {
+        self.transform.set(transform);
     }
 
-    fn paint(&mut self, cx: &mut PaintCtx);
+    /// Sends an event to the specified widget.
+    pub fn event(self: &Rc<Self>, cx: &mut TreeCtx, event: &mut Event) {
+        cx.with_widget(self, |cx, widget| {
+            widget.event(cx, event);
+        })
+    }
+
+    /*/// Dispatches a pointer event.
+    pub fn dispatch_pointer_event(self: &Rc<Self>, cx: &mut TreeCtx, path: &[HitTestEntry], event: &mut Event) {
+        for entry in path {
+            event.set_transform(&entry.transform);
+            entry.widget.event(cx, event);
+        }
+    }*/
+
+    pub fn window_event(self: &Rc<Self>, cx: &mut TreeCtx, event: &winit::event::WindowEvent, time: Duration) {
+        cx.with_widget(self, |cx, widget| {
+            widget.window_event(cx, event, time);
+        })
+    }
+
+    pub fn update(self: &Rc<Self>, cx: &mut TreeCtx) {
+        if !self.mounted.get() {
+            // TODO: do something?
+            self.mounted.set(true);
+        }
+        cx.with_widget(self, |cx, widget| {
+            widget.update(cx);
+        })
+    }
+
+    pub fn hit_test(self: &Rc<Self>, result: &mut HitTestResult, position: Point) -> bool {
+        let hit = self.widget.hit_test(result, position);
+        if hit {
+            result.add(self.clone());
+        }
+        hit
+    }
+
+    pub fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        self.widget.layout(cx, bc)
+    }
+
+    /*/// Find context data in the parent chain.
+    pub fn provides(&self, key: &'static str) -> Option<&dyn Any> {
+        if let Some(data) = self.widget.provide(key) {
+            return Some(data);
+        }
+        self.parent.upgrade()?.provides(key)
+    }*/
+
+    pub fn paint(&self, cx: &mut PaintCtx) {
+        self.widget.paint(cx);
+    }
+}
+
+/// Context passed during tree traversals.
+pub struct TreeCtx<'a> {
+    pub(crate) app_state: &'a mut AppState,
+    pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
+    /// Pointer to the current widget.
+    current_widget: WidgetPtr,
+    /// Widgets that need updating after the current dispatch.
+    /// XXX do we need RefCell here?
+    need_update: RefCell<PtrWeakHashSet<WeakWidgetPtr>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct HitTestEntry {
+    pub widget: WidgetPtr,
+    pub transform: Affine,
+}
+
+/// Hit-test context.
+#[derive(Clone, Debug)]
+pub struct HitTestResult {
+    current_transform: Affine,
+    pub hits: Vec<HitTestEntry>,
+}
+
+impl HitTestResult {
+    pub fn new() -> HitTestResult {
+        HitTestResult {
+            current_transform: Default::default(),
+            hits: Default::default(),
+        }
+    }
+
+    pub fn test_with_transform(
+        &mut self,
+        transform: &Affine,
+        position: Point,
+        f: impl FnOnce(&mut Self, Point) -> bool,
+    ) -> bool {
+        let prev_transform = self.current_transform;
+        self.current_transform *= *transform;
+        let hit = f(self, transform.inverse() * position);
+        self.current_transform = prev_transform;
+        hit
+    }
+
+    pub fn add(&mut self, widget: WidgetPtr) {
+        self.hits.push(HitTestEntry {
+            widget,
+            transform: self.current_transform,
+        });
+    }
+}
+
+impl<'a> TreeCtx<'a> {
+    /// Creates the root TreeCtx.
+    pub(crate) fn new(
+        app_state: &'a mut AppState,
+        event_loop: &'a EventLoopWindowTarget<ExtEvent>,
+        target: WidgetPtr,
+    ) -> TreeCtx<'a> {
+        TreeCtx {
+            app_state,
+            event_loop,
+            current_widget: target,
+            need_update: RefCell::new(Default::default()),
+        }
+    }
+
+    /// Associates the current widget with a window with the specified ID.
+    ///
+    /// The widget will receive window events from the specified window (via `window_event`).
+    ///
+    /// # Arguments
+    ///
+    /// - `window_id`: The ID of the window to associate with the widget.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the window is already associated with another widget.
+    pub fn register_window(&mut self, window_id: WindowId) {
+        //trace!("registering window {:016X}", u64::from(window_id));
+        //eprintln!("register window {window_id:?} on path {:?}", &self.path[..]);
+        if self
+            .app_state
+            .windows
+            .insert(window_id, self.current_widget.clone())
+            .is_some()
+        {
+            panic!("window {window_id:?} already registered");
+        }
+    }
+
+    pub fn current(&self) -> WidgetPtr {
+        self.current_widget.clone()
+    }
+
+    /*fn dispatch_pending_updates(&mut self, widget: &mut dyn Widget) {
+        let pending = mem::take(&mut self.pending_updates);
+        // FIXME: pending should be a subtree, not a PathSet, `as_slice` is dubious here
+        self.dispatch(widget, pending.as_slice(), &mut |cx, widget| {
+            widget.update(cx);
+        });
+    }*/
+
+    /*/// Propagates a visitor through the specified widget and its children.
+    ///
+    /// # Arguments
+    /// * `subtree` the subtree to visit, rooted at `current_widget`.
+    /// * `widget` the widget to propagate the visitor through, and the widget corresponding to the root of `subtree`.
+    ///
+    fn dispatch(&mut self, current_widget: &mut dyn Widget, subpaths: &WidgetSlice, visitor: &mut WidgetVisitor) {
+        for (id, is_leaf, rest) in subpaths.traverse() {
+            current_widget.visit_child(self, id, &mut |cx: &mut TreeCtx, widget: &mut dyn Widget| {
+                cx.with_child(widget, |cx, widget| {
+                    if is_leaf {
+                        visitor(cx, widget);
+                    }
+                    cx.dispatch(widget, rest, visitor);
+                });
+            });
+        }
+    }
+
+    fn dispatch_root(&mut self, root_widget: &mut dyn Widget, paths: &WidgetSlice, visitor: &mut WidgetVisitor) {
+        for (id, is_leaf, rest) in paths.traverse() {
+            if id != root_widget.id() {
+                warn!("dispatch: path does not start at the root widget");
+            }
+            self.with_child(root_widget, |cx, widget| {
+                if is_leaf {
+                    visitor(cx, widget);
+                }
+                cx.dispatch(widget, rest, visitor);
+            });
+        }
+    }
+
+    /// Dispatches an event to child widgets.
+    pub fn dispatch_event(&mut self, current_widget: &mut dyn Widget, paths: &WidgetSlice, event: EventKind) -> bool {
+        let mut event = Event::new(event);
+        self.dispatch(
+            current_widget,
+            paths,
+            &mut |cx: &mut TreeCtx, widget: &mut dyn Widget| {
+                if !event.handled {
+                    widget.event(cx, &mut event);
+                }
+            },
+        );
+        event.handled
+    }*/
+
+    /// Adds an update request that will be processed when the current dispatch is finished.
+    pub fn mark_needs_update(&self, widget: WidgetPtr) {
+        self.need_update.borrow_mut().insert(widget);
+    }
+
+    fn with_widget<R>(&mut self, child: &WidgetPtr, f: impl FnOnce(&mut TreeCtx, &dyn Widget) -> R) -> R {
+        let prev_widget = mem::replace(&mut self.current_widget, child.clone());
+        let r = f(self, &child.widget);
+        self.current_widget = prev_widget;
+        r
+    }
+
+    /*/// Pushes the specified state value on the context and calls the specified closure.
+    ///
+    /// # Return value
+    /// A tuple `(result, depends_on)`, where `result` is the result of the closure, and
+    /// `depends_on` is `true` if the closure depends on the state value (i.e. if it accessed the state).
+    ///
+    /// # Example
+    pub fn with_data<T: 'static, F, R>(&mut self, data: &mut T, f: F) -> R
+    where
+        F: FnOnce(&mut TreeCtx, ContextDataHandle<T>) -> R,
+    {
+        let entry = crate::context::ContextDataEntry {
+            data: data as *mut _ as *mut dyn Any,
+            key: None,
+            path_depth: self.path.len(),
+        };
+        self.data.push(entry);
+        let handle = ContextDataHandle {
+            index: self.data.len() - 1,
+            _phantom: PhantomData,
+        };
+        let result = f(self, handle);
+        self.data.pop().unwrap();
+        result
+    }
+
+    pub fn with_keyed_data<T: 'static, F, R>(&mut self, key: ContextDataKey<T>, data: &mut T, f: F) -> R
+    where
+        F: FnOnce(&mut TreeCtx) -> R,
+    {
+        let entry = crate::context::ContextDataEntry {
+            data: data as *mut _ as *mut dyn Any,
+            key: Some(key.0),
+            path_depth: self.path.len(),
+        };
+        self.data.push(entry);
+        let result = f(self);
+        self.data.pop().unwrap();
+        result
+    }
+
+    /// Returns a state entry by index.
+    pub fn data<T: 'static>(&self, handle: ContextDataHandle<T>) -> &T {
+        let entry = self.data.get(handle.index).expect("invalid state handle");
+        // SAFETY: we bind the resulting lifetime to the lifetime of TreeCtx
+        // and all the references in the stack are guaranteed to outlive
+        // TreeCtx since they are added and removed in only one function: TreeCtx::with_state,
+        // and access to the reference can only be done via the closure passed to with_state.
+        unsafe { &*entry.data }.downcast_ref::<T>().expect("invalid state type")
+    }
+
+    /// Returns a mutable state entry by index.
+    pub fn data_mut<T: 'static>(&mut self, handle: ContextDataHandle<T>) -> &mut T {
+        let entry = self.data.get_mut(handle.index).expect("invalid state handle");
+        // SAFETY: we bind the resulting lifetime to the lifetime of TreeCtx
+        // and all the references in the stack are guaranteed to outlive
+        // TreeCtx since they are added and removed in only one function: TreeCtx::with_state,
+        // and access to the reference can only be done via the closure passed to with_state.
+        unsafe { &mut *entry.data }
+            .downcast_mut::<T>()
+            .expect("invalid state type")
+    }
+
+    /// Returns context data by key.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the key is not found in the context or if it is of the wrong type.
+    pub fn keyed_data<T: 'static>(&self, key: ContextDataKey<T>) -> &T {
+        for entry in self.data.iter().rev() {
+            if let Some(entry_key) = entry.key {
+                if entry_key == key.0 {
+                    // SAFETY: same as `data` and `data_mut`
+                    return unsafe { &*entry.data }.downcast_ref::<T>().expect("invalid state type");
+                }
+            }
+        }
+        panic!("key not found in context");
+    }*/
+
+    /*
+    /// Performs hit-testing of a subtree.
+    pub fn hit_test_child(&mut self, child: &mut dyn Widget, position: Point) -> Vec<WidgetPtr> {
+        let mut result = HitTestResult::new();
+        result.hit_test_child(child, position);
+        result.hits
+    }*/
+}
+
+/// A widget that builds a widget given a TreeCtx
+pub struct WithContext<F> {
+    f: F,
+    inner: RefCell<Option<WidgetPtr>>,
+}
+
+impl<F> WithContext<F> {
+    pub fn new<W>(f: F) -> WithContext<F>
+    where
+        W: Widget,
+        F: Fn(&mut TreeCtx) -> W,
+    {
+        WithContext {
+            f,
+            inner: RefCell::new(None),
+        }
+    }
+}
+
+impl<F, W> Widget for WithContext<F>
+where
+    F: Fn(&mut TreeCtx) -> W,
+    W: Widget + 'static,
+{
+    fn update(&self, cx: &mut TreeCtx) {
+        self.inner.replace_with(|inner| {
+            let widget: WidgetPtr = WidgetPod::new((self.f)(cx));
+            widget.update(cx);
+            Some(widget)
+        });
+    }
+
+    fn event(&self, cx: &mut TreeCtx, event: &mut Event) {}
+
+    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
+        if let Some(ref inner) = &*self.inner.borrow() {
+            inner.hit_test(result, position)
+        } else {
+            false
+        }
+    }
+
+    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        if let Some(ref inner) = &*self.inner.borrow() {
+            inner.layout(cx, bc)
+        } else {
+            Geometry::default()
+        }
+    }
+
+    fn paint(&self, cx: &mut PaintCtx) {
+        if let Some(ref inner) = &*self.inner.borrow() {
+            inner.paint(cx);
+        }
+    }
+}
+
+pub fn with_cx<F, W>(f: F) -> WithContext<F>
+where
+    W: Widget,
+    F: Fn(&mut TreeCtx) -> W,
+{
+    WithContext::new(f)
 }
 
 /////////////////////////////////////////////////////////////////////////
 // Dummy widget to flesh out the Widget trait
 pub struct Container {
-    widgets: Vec<Box<dyn Widget>>,
+    widgets: Vec<WidgetPtr>,
 }
 
 impl Widget for Container {
-    fn id(&self) -> WidgetId {
+    fn update(&self, cx: &mut TreeCtx) {
         todo!()
     }
 
-    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
-        if let Some(widget) = self.widgets.iter_mut().find(|w| w.id() == id) {
-            visitor(cx, widget.deref_mut());
-        }
-    }
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
-        todo!()
-    }
-
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&self, cx: &mut TreeCtx, event: &mut Event) {
         todo!()
     }
 
@@ -192,101 +714,12 @@ impl Widget for Container {
         todo!()
     }
 
-    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
         todo!()
     }
 
-    fn paint(&mut self, cx: &mut PaintCtx) {
+    fn paint(&self, cx: &mut PaintCtx) {
         todo!()
-    }
-}
-
-/*
-/// Widget wrappers.
-///
-/// This is a short-hand for widgets that wrap only one another widget (like layout or appearance modifiers).
-/// It has the same methods as the `Widget` trait, but most of them have a default implementation that delegates to the wrapped widget.
-pub trait WidgetWrapper {
-    type Content: Widget;
-    fn id(&self) -> WidgetID;
-    fn content(&self) -> &Self::Content;
-    fn content_mut(&mut self) -> &mut Self::Content;
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
-        self.content_mut().update(cx)
-    }
-
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
-        self.content_mut().event(cx, event)
-    }
-
-    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
-        self.content_mut().layout(cx, bc)
-    }
-}
-
-impl<T: WidgetWrapper> Widget for T {
-    fn id(&self) -> WidgetID {
-        WidgetWrapper::id(self)
-    }
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
-        WidgetWrapper::update(self, cx)
-    }
-
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
-        WidgetWrapper::event(self, cx, event)
-    }
-
-    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
-        WidgetWrapper::layout(self, cx, bc)
-    }
-}
-
-impl<T: Widget + ?Sized> Widget for Box<T> {
-    fn id(&self) -> WidgetID {
-        Widget::id(&**self)
-    }
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
-        Widget::update(&mut **self, cx)
-    }
-
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
-        Widget::event(&mut **self, cx, event)
-    }
-
-    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
-        Widget::layout(&mut **self, cx, bc)
-    }
-}*/
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Axis.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum Axis {
-    Horizontal,
-    Vertical,
-}
-
-/// Widget state ambient value.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct WidgetState {
-    pub disabled: bool,
-    pub hovered: bool,
-    pub active: bool,
-    pub focused: bool,
-}
-
-impl Default for WidgetState {
-    fn default() -> Self {
-        WidgetState {
-            disabled: false,
-            hovered: false,
-            active: false,
-            focused: false,
-        }
     }
 }
 
@@ -310,7 +743,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
     ///
     /// TODO
     #[must_use]
-    fn clickable(self) -> Clickable<Self> {
+    fn clickable(self) -> Clickable {
         Clickable::new(self)
     }
 
@@ -373,108 +806,3 @@ pub trait WidgetExt: Widget + Sized + 'static {
 }
 
 impl<W: Widget + 'static> WidgetExt for W {}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-/*pub struct Provide<T, W> {
-    value: T,
-    inner: W,
-}
-
-impl<T, W> Provide<T, W> {
-    pub fn new(value: T, inner: W) -> Provide<T, W> {
-        Provide { value, inner }
-    }
-}
-
-impl<T, W> Widget for Provide<T, W>
-where
-    T: 'static,
-    W: Widget,
-{
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
-        cx.with_state(&mut self.value, |cx, _state_handle| self.inner.update(cx))
-    }
-
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
-        cx.with_state(&mut self.value, |cx, _state_handle| self.inner.event(cx, event))
-    }
-}*/
-
-/*
-////////////////////////////////////////////////////////////////////////////////////////////////////
-pub struct ProvideWith<T, F, W> {
-    f: F,
-    inner: W,
-    _phantom: PhantomData<fn() -> T>,
-}
-
-impl<T, F, W> ProvideWith<T, F, W> {
-    pub fn new(f: F, inner: W) -> ProvideWith<T, F, W> {
-        ProvideWith {
-            f,
-            inner,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<T, F, W> Widget for ProvideWith<T, F, W>
-where
-    F: FnOnce(T) -> T,
-    T: Clone + Default + 'static,
-    W: Widget,
-{
-    type Element = W::Element;
-
-    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
-        let prev = cx.ambient::<T>().cloned().unwrap_or_default();
-        let value = (self.f)(prev);
-        cx.with_ambient(&value, move |cx| cx.build(self.inner))
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        let prev = cx.ambient::<T>().cloned().unwrap_or_default();
-        let value = (self.f)(prev);
-        cx.with_ambient(&value, move |cx| cx.update(self.inner, element))
-    }
-}*/
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*pub struct StatefulElement<T, E> {
-    state: T,
-    inner: E,
-}*/
-
-/*
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-impl<F, W> Widget for F
-where
-    F: FnOnce(&mut TreeCtx) -> W,
-    W: Widget,
-{
-    type Element = W::Element;
-
-    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
-        let widget = (self)(cx);
-        cx.build(widget)
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        let widget = (self)(cx);
-        cx.update(widget, element)
-    }
-}
-
-(|cx| {
-    if cx.get(Disabled) {
-        Text::new("Disabled")
-    } else {
-        Text::new("Enabled")
-    }
-}).into()
-
-// the closure by itself isn't a widget, but it can be turned into one
-
-*/

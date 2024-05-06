@@ -37,7 +37,7 @@ fn main() {
     let mut launcher = AppLauncher::new();
 
     launcher.run(UiHostWindowHandler::new(
-        Box::new(main_window_contents()),
+        main_window_contents(),
         UiHostWindowOptions::default(),
     ));
 }

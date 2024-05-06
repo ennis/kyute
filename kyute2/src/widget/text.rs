@@ -1,4 +1,7 @@
-use std::any::Any;
+use std::{
+    any::Any,
+    cell::{Cell, RefCell},
+};
 
 use kurbo::Size;
 use skia_safe as sk;
@@ -64,8 +67,8 @@ pub struct Text {
     available_width: f64,
     available_height: f64,
     scale_factor: f64,
-    relayout: bool,
-    paragraph: sk::textlayout::Paragraph,
+    relayout: Cell<bool>,
+    paragraph: RefCell<sk::textlayout::Paragraph>,
 }
 
 impl Text {
@@ -76,38 +79,30 @@ impl Text {
             available_width: 0.0,
             available_height: 0.0,
             scale_factor: 0.0,
-            relayout: true,
-            paragraph,
+            relayout: Cell::new(true),
+            paragraph: RefCell::new(paragraph),
         }
     }
 }
 
 impl Widget for Text {
-    fn id(&self) -> WidgetId {
-        WidgetId::ANONYMOUS
-    }
+    fn update(&self, cx: &mut TreeCtx) {}
 
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
-        ChangeFlags::NONE
-    }
-
-    fn event(&mut self, _ctx: &mut TreeCtx, _event: &mut Event) -> ChangeFlags {
-        // this might change if there's dynamic text (e.g. hyperlinks)
-        ChangeFlags::NONE
-    }
+    fn event(&self, _ctx: &mut TreeCtx, _event: &mut Event) {}
 
     fn hit_test(&self, _ctx: &mut HitTestResult, position: Point) -> bool {
-        if self.relayout {
+        if self.relayout.get() {
             warn!("hit_test called before layout");
         }
+        let paragraph = self.paragraph.borrow();
         let paragraph_size = Size {
-            width: self.paragraph.longest_line() as f64,
-            height: self.paragraph.height() as f64,
+            width: paragraph.longest_line() as f64,
+            height: paragraph.height() as f64,
         };
         paragraph_size.to_rect().contains(position)
     }
 
-    fn layout(&mut self, _ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+    fn layout(&self, _ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         // layout paragraph in available space
         let _span = span!("text layout");
 
@@ -119,27 +114,29 @@ impl Widget for Text {
         // - the new available width is >= the current paragraph width (otherwise new line breaks are necessary)
         // - the current layout is still valid (i.e. it hasn't been previously invalidated)
 
-        if !self.relayout && self.paragraph.longest_line() <= available_width as f32 {
+        let mut paragraph = self.paragraph.borrow_mut();
+
+        if !self.relayout.get() && paragraph.longest_line() <= available_width as f32 {
             let paragraph_size = Size {
-                width: self.paragraph.longest_line() as f64,
-                height: self.paragraph.height() as f64,
+                width: paragraph.longest_line() as f64,
+                height: paragraph.height() as f64,
             };
             let size = params.constrain(paragraph_size);
             return Geometry {
                 size,
-                baseline: Some(self.paragraph.alphabetic_baseline() as f64),
+                baseline: Some(paragraph.alphabetic_baseline() as f64),
                 bounding_rect: paragraph_size.to_rect(),
                 paint_bounding_rect: paragraph_size.to_rect(),
             };
         }
 
-        self.paragraph.layout(available_width as sk::scalar);
-        let w = self.paragraph.longest_line() as f64;
-        let h = self.paragraph.height() as f64;
-        let alphabetic_baseline = self.paragraph.alphabetic_baseline();
+        paragraph.layout(available_width as sk::scalar);
+        let w = paragraph.longest_line() as f64;
+        let h = paragraph.height() as f64;
+        let alphabetic_baseline = paragraph.alphabetic_baseline();
         let unconstrained_size = Size::new(w, h);
         let size = params.constrain(unconstrained_size);
-        self.relayout = false;
+        self.relayout.set(false);
 
         /*self.paragraph.max_width();
         self.paragraph.max_intrinsic_width();
@@ -159,10 +156,10 @@ impl Widget for Text {
         }
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx) {
+    fn paint(&self, ctx: &mut PaintCtx) {
         span!("text paint");
         ctx.with_canvas(|canvas| {
-            self.paragraph.paint(canvas, Point::ZERO.to_skia());
+            self.paragraph.borrow_mut().paint(canvas, Point::ZERO.to_skia());
         })
     }
 }

@@ -1,65 +1,80 @@
-use crate::{context::ContextDataKey, utils::WidgetSet, ContextDataHandle, TreeCtx, WidgetId};
+use crate::{
+    context::ContextDataKey,
+    utils::WidgetSet,
+    widget::{TreeCtx, WeakWidgetPtr, WidgetPtr},
+    ContextDataHandle, WidgetId,
+};
 use std::{
     any::Any,
-    cell::{Cell, RefCell},
+    cell::{Cell, Ref, RefCell},
+    collections::HashSet,
     hash::{Hash, Hasher},
+    rc::Rc,
 };
+use weak_table::PtrWeakHashSet;
 
-pub struct State<T: ?Sized> {
-    /// The subtree of the UI that depends on this state, either for reading or writing.
-    /// The tree is rooted at the UI root.
-    dependents: RefCell<WidgetSet>,
-    /// The state data
-    pub data: T,
+struct StateInner<T: ?Sized> {
+    dependents: RefCell<PtrWeakHashSet<WeakWidgetPtr>>,
+    data: RefCell<T>,
 }
 
-impl<T: Default> Default for State<T> {
+pub struct State<T: ?Sized>(Rc<StateInner<T>>);
+
+impl<T: Default + 'static> Default for State<T> {
     fn default() -> Self {
-        State {
-            dependents: Default::default(),
-            data: Default::default(),
-        }
+        State::new(T::default())
+    }
+}
+
+impl<T> Clone for State<T> {
+    fn clone(&self) -> Self {
+        State(Rc::clone(&self.0))
     }
 }
 
 impl<T: 'static> State<T> {
     /// Creates a new state with the specified data.
     pub fn new(data: T) -> Self {
-        State {
+        State(Rc::new(StateInner {
             dependents: Default::default(),
-            data,
-        }
+            data: RefCell::new(data),
+        }))
     }
 
     pub fn set_dependency(&self, cx: &TreeCtx) {
-        self.dependents.borrow_mut().insert(cx.current_path())
+        self.0.dependents.borrow_mut().insert(cx.current());
     }
 
-    pub fn request_update(&self, cx: &TreeCtx) {
-        cx.request_update(&self.dependents.borrow());
-    }
-
-    /// Modifies the state and notify the dependents.
-    pub fn set(&mut self, cx: &mut TreeCtx, value: T) {
-        self.data = value;
-        self.request_update(cx);
+    fn notify(&self, cx: &TreeCtx) {
+        // TODO merge sets instead of adding them one-by-one
+        for dep in self.0.dependents.borrow().iter() {
+            cx.mark_needs_update(dep);
+        }
     }
 
     /// Modifies the state and notify the dependents.
-    pub fn modify(&mut self, cx: &mut TreeCtx, f: impl FnOnce(&mut T)) {
-        f(&mut self.data);
-        self.request_update(cx);
+    pub fn set(&self, cx: &mut TreeCtx, value: T) {
+        self.0.data.replace(value);
+        self.notify(cx);
     }
 
-    /// Returns the current value of the state.
-    pub fn get(&self) -> &T {
-        &self.data
+    /// Modifies the state and notify the dependents.
+    pub fn replace_with(&self, cx: &mut TreeCtx, f: impl FnOnce(&mut T) -> T) -> T {
+        let r = self.0.data.replace_with(f);
+        self.notify(cx);
+        r
+    }
+
+    /// Returns the current value of the state, setting a dependency on the current widget.
+    pub fn get(&self, cx: &mut TreeCtx) -> Ref<T> {
+        self.set_dependency(cx);
+        self.0.data.borrow()
     }
 }
 
 impl State<dyn Any> {
     pub fn downcast_ref<T: 'static>(&self) -> Option<&State<T>> {
-        if self.data.is::<T>() {
+        if self.0.data.borrow().is::<T>() {
             // SAFETY: the data is of the correct type
             Some(unsafe { &*(self as *const _ as *const State<T>) })
         } else {
@@ -68,7 +83,7 @@ impl State<dyn Any> {
     }
 
     pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut State<T>> {
-        if self.data.is::<T>() {
+        if self.0.data.borrow().is::<T>() {
             // SAFETY: the data is of the correct type
             Some(unsafe { &mut *(self as *mut _ as *mut State<T>) })
         } else {
@@ -77,6 +92,7 @@ impl State<dyn Any> {
     }
 }
 
+/*
 /// Ambient state key.
 #[repr(transparent)]
 pub struct AmbientKey<T>(ContextDataKey<State<T>>);
@@ -130,3 +146,4 @@ pub fn with_ambient<T: 'static>(
         f(cx);
     });
 }
+*/

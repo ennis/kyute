@@ -1,6 +1,6 @@
 //! Frame containers
 use kurbo::Affine;
-use std::any::Any;
+use std::{any::Any, cell::Cell};
 
 use tracing::trace;
 
@@ -18,7 +18,7 @@ use crate::{
 pub struct Frame<T, B> {
     width: LengthOrPercentage,
     height: LengthOrPercentage,
-    change_flags: ChangeFlags,
+    change_flags: Cell<ChangeFlags>,
     /// Horizontal content alignment.
     x_align: Alignment,
     /// Vertical content alignment.
@@ -29,10 +29,10 @@ pub struct Frame<T, B> {
     padding_top: LengthOrPercentage,
     padding_bottom: LengthOrPercentage,
     /// Computed size
-    size: Size,
+    size: Cell<Size>,
     /// Computed bounds
-    bounding_rect: Rect,
-    paint_bounding_rect: Rect,
+    bounding_rect: Cell<Rect>,
+    paint_bounding_rect: Cell<Rect>,
     decoration: ShapeDecoration<B>,
     content: TransformNode<T>,
 }
@@ -42,7 +42,7 @@ impl<T> Frame<T, RoundedRectBorder> {
         Frame {
             width,
             height,
-            change_flags: ChangeFlags::all(),
+            change_flags: Cell::new(ChangeFlags::all()),
             x_align: Default::default(),
             y_align: Default::default(),
             padding_left: Default::default(),
@@ -58,6 +58,7 @@ impl<T> Frame<T, RoundedRectBorder> {
     }
 }
 
+/*
 impl<T, B> Frame<T, B> {
     /// Updates this element's change flags given the changes reported by
     /// the content element.
@@ -78,14 +79,10 @@ impl<T, B> Frame<T, B> {
         }
         self.change_flags
     }
-}
+}*/
 
 impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
-    fn id(&self) -> WidgetId {
-        self.content.id()
-    }
-
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+    fn layout(&self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         // First, determine the size of this frame.
         // If any lengths are specified as percentages, resolve them:
         // consider percentage lengths as relative to the maximum available space.
@@ -112,10 +109,9 @@ impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
         //        .change_flags
         //        .intersects(ChangeFlags::CHILD_GEOMETRY | ChangeFlags::LAYOUT_CHILD_POSITIONS)
         //{
-        let sub = BoxConstraints { max: size, ..*params };
-        let content_geom = ctx.layout(&mut self.content, &sub);
+        let content_geom = self.content.layout(ctx, &BoxConstraints { max: size, ..*params });
 
-        if self.change_flags.contains(ChangeFlags::LAYOUT_CHILD_POSITIONS) {
+        if self.change_flags.get().contains(ChangeFlags::LAYOUT_CHILD_POSITIONS) {
             let offset = place_into(
                 content_geom.size,
                 content_geom.baseline,
@@ -129,70 +125,45 @@ impl<T: Widget + 'static, B: ShapeBorder + 'static> Widget for Frame<T, B> {
         }
 
         // update our bounding rectangles
-        self.bounding_rect = self.content.transform.transform_rect_bbox(content_geom.bounding_rect);
-        self.paint_bounding_rect = self
-            .content
-            .transform
-            .transform_rect_bbox(content_geom.paint_bounding_rect);
+        self.bounding_rect.set(
+            self.content
+                .transform
+                .get()
+                .transform_rect_bbox(content_geom.bounding_rect),
+        );
+        self.paint_bounding_rect.set(
+            self.content
+                .transform
+                .get()
+                .transform_rect_bbox(content_geom.paint_bounding_rect),
+        );
         //}
 
-        self.size = size;
-        self.change_flags = ChangeFlags::empty();
+        self.size.set(size);
+
         // TODO propagate baseline
         Geometry {
             size,
             baseline: None,
-            bounding_rect: self.bounding_rect,
-            paint_bounding_rect: self.paint_bounding_rect,
+            bounding_rect: self.bounding_rect.get(),
+            paint_bounding_rect: self.paint_bounding_rect.get(),
         }
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {
         self.content.event(ctx, event)
     }
 
-    /*fn route_event(&mut self, ctx: &mut RouteEventCtx, event: &mut Event) -> ChangeFlags {
-        // we inherit the ID of the content so forward it
-        let flags = self.content.route_event(ctx, event);
-        self.update_change_flags(flags)
-    }*/
-
-    /*fn natural_width(&mut self, height: f64) -> f64 {
-        let w = self.width.resolve(f64::INFINITY);
-        if !w.is_finite() {
-            self.content.natural_width(height)
-        } else {
-            w
-        }
-    }
-
-    fn natural_height(&mut self, width: f64) -> f64 {
-        let h = self.height.resolve(f64::INFINITY);
-        if !h.is_finite() {
-            self.content.natural_height(width)
-        } else {
-            h
-        }
-    }
-
-    fn natural_baseline(&mut self, params: &BoxConstraints) -> f64 {
-        // TODO: welp, we'd need to take alignment and padding into account here
-        self.content.natural_baseline(params)
-    }*/
-
     fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        // Always test the content to add children that pass the hit-test,
-        // but whether the frame passes or not is unrelated to the content.
-        self.content.hit_test(ctx, position) || self.bounding_rect.contains(position)
+        self.content.hit_test(ctx, position) || self.bounding_rect.get().contains(position)
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.change_flags = ChangeFlags::empty();
-        self.decoration.paint(ctx, self.size.to_rect());
-        ctx.paint(&mut self.content);
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.decoration.paint(ctx, self.size.get().to_rect());
+        self.content.paint(ctx);
     }
 
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+    fn update(&self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 }

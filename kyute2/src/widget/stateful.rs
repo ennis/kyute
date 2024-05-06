@@ -1,99 +1,67 @@
 use crate::{
-    state::State, widget::WidgetVisitor, BoxConstraints, ChangeFlags, ContextDataHandle, Event, Geometry,
-    HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget, WidgetId,
+    state::State, BoxConstraints, ChangeFlags, ContextDataHandle, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx,
+    TreeCtx, Widget, WidgetPod, WidgetPtr,
 };
 use kurbo::Point;
+use std::cell::RefCell;
 
-pub struct Stateful<T, W, F> {
-    id: WidgetId,
+pub struct Stateful<T, F> {
     state: State<T>,
-    inner: Option<W>,
+    inner: RefCell<Option<WidgetPtr>>,
     builder: F,
 }
 
-impl<T, W, F> Stateful<T, W, F>
+impl<T, F, W> Stateful<T, F>
 where
     T: 'static,
-    W: Widget,
-    F: FnMut(&mut TreeCtx, StateHandle<T>) -> W,
+    W: Widget + 'static,
+    F: FnMut(&mut TreeCtx, State<T>) -> W,
 {
-    pub fn new(initial_data: T, builder: F) -> Stateful<T, W, F> {
+    pub fn new(initial_data: T, builder: F) -> Stateful<T, F> {
         Stateful {
-            id: WidgetId::next(),
             state: State::new(initial_data),
-            inner: None,
+            inner: RefCell::new(None),
             builder,
         }
     }
-
-    /* pub fn set_state(&mut self, cx: &mut TreeCtx, data: T) {
-        self.state.data = data;
-    }
-
-    /// Handle a state change event.
-    fn handle_state_changed(&mut self, cx: &mut TreeCtx) {
-        /*// update the dependents (which may include ourselves)
-        let dependents = self.state.dependents.borrow().clone();
-        for subtree in dependents.traverse() {
-            cx.dispatch(self, subtree, &mut |cx, widget| {
-                widget.update(cx);
-            });
-        }*/
-    }*/
 }
 
-impl<T, W, F> Widget for Stateful<T, W, F>
+//
+
+impl<T, W, F> Widget for Stateful<T, F>
 where
-    W: Widget,
-    F: FnMut(&mut TreeCtx, StateHandle<T>) -> W,
+    W: Widget + 'static,
+    F: Fn(&mut TreeCtx, State<T>) -> W,
     T: 'static,
 {
-    fn id(&self) -> WidgetId {
-        self.id
-    }
-
-    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
-        if let Some(ref mut inner) = self.inner {
-            cx.with_data(&mut self.state, |cx, _state_handle| {
-                inner.visit_child(cx, id, visitor);
-            });
-        }
-    }
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
-        // rebuild the inner widget
-        cx.with_data(&mut self.state, |cx, handle| {
-            self.inner.replace((self.builder)(cx, StateHandle(handle)));
-            cx.update(self.inner.as_mut().unwrap());
+    fn update(&self, cx: &mut TreeCtx) {
+        self.inner.replace_with(|inner| {
+            let widget: WidgetPtr = WidgetPod::new((self.builder)(cx, self.state.clone()));
+            widget.update(cx);
+            Some(widget)
         });
-
-        // assume everything changed
-        ChangeFlags::ALL
     }
 
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
-        // We don't do anything with events
-        ChangeFlags::NONE
-    }
+    fn event(&self, cx: &mut TreeCtx, event: &mut Event) {}
 
     fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
-        if let Some(ref inner) = self.inner {
-            result.hit_test_child(inner, position)
+        if let Some(ref inner) = &*self.inner.borrow() {
+            inner.hit_test(result, position)
         } else {
             false
         }
     }
 
-    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
-        if let Some(ref mut inner) = self.inner {
+    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        if let Some(ref inner) = &*self.inner.borrow() {
             inner.layout(cx, bc)
         } else {
             Default::default()
         }
     }
 
-    fn paint(&mut self, cx: &mut PaintCtx) {
-        if let Some(ref mut inner) = self.inner {
+    fn paint(&self, cx: &mut PaintCtx) {
+        if let Some(ref inner) = &*self.inner.borrow() {
             inner.paint(cx);
         }
     }
@@ -101,6 +69,7 @@ where
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
 pub struct StateHandle<T>(ContextDataHandle<State<T>>);
 
 impl<T: 'static> StateHandle<T> {
@@ -119,3 +88,4 @@ impl<T: 'static> StateHandle<T> {
         state.request_update(cx);
     }
 }
+*/

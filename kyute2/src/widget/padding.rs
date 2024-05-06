@@ -1,12 +1,10 @@
 use std::any::Any;
 
+use crate::widget::prelude::*;
 use kurbo::{Affine, Insets, Point, Size, Vec2};
-
-use crate::widget::{prelude::*, WidgetVisitor};
 
 pub struct Padding<E> {
     pub padding: Insets,
-    //pub size: Size,
     pub content: E,
 }
 
@@ -17,19 +15,11 @@ impl<W> Padding<W> {
 }
 
 impl<E: Widget> Widget for Padding<E> {
-    fn id(&self) -> WidgetId {
-        self.content.id()
-    }
-
-    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
-        self.content.visit_child(cx, id, visitor)
-    }
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+    fn update(&self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {
         let offset = Vec2::new(self.padding.x0, self.padding.y0);
         event.with_transform(&Affine::translate(offset), |event| self.content.event(ctx, event))
     }
@@ -52,9 +42,8 @@ impl<E: Widget> Widget for Padding<E> {
         self.content.hit_test(ctx, local_position)
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
-        let child_geometry = ctx.layout(&mut self.content, &constraints.deflate(self.padding));
-
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+        let child_geometry = self.content.layout(ctx, &constraints.deflate(self.padding));
         let offset = Vec2::new(self.padding.x0, self.padding.y0);
         let size = Size {
             width: child_geometry.size.width + self.padding.x_value(),
@@ -69,20 +58,9 @@ impl<E: Widget> Widget for Padding<E> {
         }
     }
 
-    /*fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn debug(&self, w: &mut DebugWriter) {
-        w.type_name("PaddingElement");
-        w.property("padding", self.padding);
-        w.property("size", self.size);
-        w.child("", &self.content);
-    }*/
-
-    fn paint(&mut self, ctx: &mut PaintCtx) {
+    fn paint(&self, ctx: &mut PaintCtx) {
         ctx.with_transform(&Affine::translate(Vec2::new(self.padding.x0, self.padding.y0)), |ctx| {
-            ctx.paint(&mut self.content);
+            self.content.paint(ctx)
         });
     }
 }

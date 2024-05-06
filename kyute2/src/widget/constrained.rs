@@ -1,4 +1,4 @@
-use crate::widget::{prelude::*, WidgetVisitor};
+use crate::widget::prelude::*;
 
 pub struct Constrained<W> {
     pub constraints: BoxConstraints,
@@ -15,18 +15,10 @@ impl<W> Widget for Constrained<W>
 where
     W: Widget,
 {
-    fn id(&self) -> WidgetId {
-        self.content.id()
-    }
-
-    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
-        self.content.visit_child(cx, id, visitor)
-    }
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+    fn update(&self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {
         self.content.event(ctx, event)
     }
 
@@ -34,17 +26,17 @@ where
         self.content.hit_test(ctx, position)
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+    fn layout(&self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         let mut subconstraints = *params;
         subconstraints.min.width = subconstraints.min.width.max(self.constraints.min.width);
         subconstraints.min.height = subconstraints.min.height.max(self.constraints.min.height);
         subconstraints.max.width = subconstraints.max.width.min(self.constraints.max.width);
         subconstraints.max.height = subconstraints.max.height.min(self.constraints.max.height);
-        ctx.layout(&mut self.content, &subconstraints)
+        self.content.layout(ctx, &subconstraints)
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        ctx.paint(&mut self.content);
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.content.paint(ctx)
     }
     /*
     fn as_any_mut(&mut self) -> &mut dyn Any {

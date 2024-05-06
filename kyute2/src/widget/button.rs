@@ -9,19 +9,17 @@ use crate::{
     theme,
     theme::Theme,
     widget::{
-        align::Align,
-        clickable::{ACTIVE, FOCUSED, HOVERED},
-        decoration::DecoratedBox,
-        prelude::*,
-        BorderStyle, Clickable, Constrained, Padding, RoundedRectBorder, ShapeDecoration, Text, WidgetExt, WidgetState,
+        align::Align, decoration::DecoratedBox, prelude::*, with_cx, BorderStyle, Clickable, Constrained, Padding,
+        RoundedRectBorder, ShapeDecoration, Text, WidgetExt,
     },
-    with_cx, Alignment, Color, Widget,
+    Alignment, Color, Widget,
 };
 
-pub fn button(label: &str) -> Clickable<impl Widget> {
+pub fn button(label: &str) -> Clickable {
     // FIXME: annoyingly we need to allocate to move the string in the closure
     // in that case it's not too bad because we're already allocating for the TextSpan
     let label = label.to_string();
+
     with_cx(move |cx: &mut TreeCtx| {
         let theme = &theme::DARK_THEME;
         let text_style = Arc::new(
@@ -32,9 +30,9 @@ pub fn button(label: &str) -> Clickable<impl Widget> {
         );
         let text = TextSpan::new(label.clone(), text_style);
 
-        let hovered = *HOVERED.get(cx);
-        let active = *ACTIVE.get(cx);
-        let focused = *FOCUSED.get(cx);
+        let hovered = false; //cx.current().provides("kyute.clickable.hovered");
+        let active = false; //cx.current().provides("kyute.clickable.active");
+        let focused = false; //cx.current().provides("kyute.clickable.focused");
 
         let decoration = if theme.dark_mode {
             ShapeDecoration {

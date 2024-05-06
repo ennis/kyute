@@ -95,8 +95,6 @@ impl Default for PointerButtons {
 /// Modeled after [W3C's PointerEvent](https://www.w3.org/TR/pointerevents3/#pointerevent-interface)
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct PointerEvent {
-    /// The widget for which this event is intended. Can be `None` if the target is not known, and determined on the fly by hit-testing.
-    pub target: Option<WidgetId>,
     /// Position in device-independent (logical) pixels, relative to the parent window.
     pub position: Point,
     /// State of the keyboard modifiers when this event was emitted.
@@ -110,6 +108,8 @@ pub struct PointerEvent {
     pub repeat_count: u8,
     /// Global-to-local transform
     pub transform: Affine,
+    /// Whether the receiver has captured the pointer.
+    pub request_capture: bool,
 }
 
 impl PointerEvent {
@@ -164,7 +164,7 @@ pub enum InternalEvent<'a> {
 
 /// Events.
 #[derive(Clone, Debug)]
-pub enum EventKind {
+pub enum Event {
     FocusGained,
     FocusLost,
     MenuCommand(usize),
@@ -180,42 +180,57 @@ pub enum EventKind {
     //Internal(InternalEvent<'a>),
 }
 
-pub struct Event {
-    pub handled: bool,
-    pub kind: EventKind,
-}
-
 impl Event {
-    pub fn new(kind: EventKind) -> Event {
-        Event { handled: false, kind }
-    }
-
-    fn set_transform(&mut self, transform: &Affine, append: bool) -> Option<Affine> {
-        match self.kind {
-            EventKind::PointerMove(ref mut pe)
-            | EventKind::PointerUp(ref mut pe)
-            | EventKind::PointerDown(ref mut pe)
-            | EventKind::PointerOver(ref mut pe)
-            | EventKind::PointerOut(ref mut pe)
-            | EventKind::PointerEnter(ref mut pe)
-            | EventKind::PointerExit(ref mut pe) => {
-                let prev_transform = pe.transform;
-                if append {
-                    pe.transform *= *transform;
-                } else {
-                    pe.transform = *transform;
-                }
-                Some(prev_transform)
+    pub fn append_transform(&mut self, transform: &Affine) -> Option<Affine> {
+        match self {
+            Event::PointerMove(ref mut pe)
+            | Event::PointerUp(ref mut pe)
+            | Event::PointerDown(ref mut pe)
+            | Event::PointerOver(ref mut pe)
+            | Event::PointerOut(ref mut pe)
+            | Event::PointerEnter(ref mut pe)
+            | Event::PointerExit(ref mut pe) => {
+                let prev = pe.transform;
+                pe.transform *= *transform;
+                Some(prev)
             }
             _ => None,
         }
     }
 
+    pub fn set_transform(&mut self, transform: &Affine) {
+        match self {
+            Event::PointerMove(ref mut pe)
+            | Event::PointerUp(ref mut pe)
+            | Event::PointerDown(ref mut pe)
+            | Event::PointerOver(ref mut pe)
+            | Event::PointerOut(ref mut pe)
+            | Event::PointerEnter(ref mut pe)
+            | Event::PointerExit(ref mut pe) => {
+                pe.transform = *transform;
+            }
+            _ => {}
+        }
+    }
+
+    pub fn capture_requested(&mut self) -> bool {
+        match self {
+            Event::PointerMove(ref mut pe)
+            | Event::PointerUp(ref mut pe)
+            | Event::PointerDown(ref mut pe)
+            | Event::PointerOver(ref mut pe)
+            | Event::PointerOut(ref mut pe)
+            | Event::PointerEnter(ref mut pe)
+            | Event::PointerExit(ref mut pe) => pe.request_capture,
+            _ => false,
+        }
+    }
+
     pub fn with_transform<R>(&mut self, transform: &Affine, f: impl FnOnce(&mut Event) -> R) -> R {
-        let prev_transform = self.set_transform(transform, true);
+        let prev_transform = self.append_transform(transform);
         let r = f(self);
         if let Some(prev_transform) = prev_transform {
-            self.set_transform(&prev_transform, false);
+            self.set_transform(&prev_transform);
         }
         r
     }

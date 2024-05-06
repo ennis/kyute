@@ -6,6 +6,8 @@
 
 #![feature(const_fn_floating_point_arithmetic)]
 
+extern crate core;
+
 // public modules
 pub mod application;
 pub mod composition;
@@ -44,14 +46,14 @@ pub use app_globals::AppGlobals;
 pub use application::AppLauncher;
 //pub use asset::{Asset, AssetId};
 pub use color::Color;
-pub use context::{with_cx, ContextDataHandle, HitTestResult, LayoutCtx, PaintCtx, TreeCtx};
+pub use context::ContextDataHandle;
 //pub use element::{Element, TransformNode};
 //pub use environment::{EnvKey, EnvValue, Environment};
-pub use event::{Event, EventKind};
+pub use event::Event;
 pub use layout::{Alignment, BoxConstraints, Geometry};
 pub use length::{LengthOrPercentage, UnitExt, IN_TO_DIP, PT_TO_DIP};
-pub use state::{with_ambient, AmbientKey, State};
-pub use widget::{ChangeFlags, Widget};
+pub use state::State;
+pub use widget::{ChangeFlags, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget, WidgetPod, WidgetPtr};
 pub use widget_id::WidgetId;
 //pub use window::{AppWindowHandle, PopupOptions, PopupTarget};
 

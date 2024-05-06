@@ -1,6 +1,6 @@
 //! Frame decorations
 
-use std::any::Any;
+use std::{any::Any, cell::Cell};
 
 use kurbo::{Insets, PathEl, Rect, RoundedRect};
 use smallvec::SmallVec;
@@ -10,7 +10,7 @@ use crate::{
     drawing,
     drawing::{BoxShadow, Paint, Shape, ToSkia},
     skia,
-    widget::{prelude::*, Padding, WidgetVisitor},
+    widget::{prelude::*, Padding},
     Color, PaintCtx,
 };
 
@@ -262,7 +262,7 @@ impl<B: ShapeBorder> Decoration for ShapeDecoration<B> {
 
 pub struct DecoratedBox<D, W> {
     decoration: D,
-    size: Size,
+    size: Cell<Size>,
     content: Padding<W>,
 }
 
@@ -286,15 +286,7 @@ where
     D: Decoration + 'static,
     W: Widget,
 {
-    fn id(&self) -> WidgetId {
-        self.content.id()
-    }
-
-    fn visit_child(&mut self, cx: &mut TreeCtx, id: WidgetId, visitor: &mut WidgetVisitor) {
-        self.content.visit_child(cx, id, visitor)
-    }
-
-    fn update(&mut self, cx: &mut TreeCtx) -> ChangeFlags {
+    fn update(&self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
@@ -310,7 +302,7 @@ where
         self.content.natural_baseline(params)
     }*/
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) -> ChangeFlags {
+    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {
         self.content.event(ctx, event)
     }
 
@@ -318,18 +310,18 @@ where
         self.content.hit_test(ctx, position)
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
-        let mut geometry = ctx.layout(&mut self.content, constraints);
+    fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+        let mut geometry = self.content.layout(ctx, constraints);
         // assume that the decoration expands the paint bounds
         geometry.bounding_rect = geometry.bounding_rect.union(geometry.size.to_rect());
         geometry.paint_bounding_rect = geometry.paint_bounding_rect.union(geometry.size.to_rect());
-        self.size = geometry.size;
+        self.size.set(geometry.size);
         geometry
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.decoration.paint(ctx, self.size.to_rect());
-        ctx.paint(&mut self.content)
+    fn paint(&self, ctx: &mut PaintCtx) {
+        self.decoration.paint(ctx, self.size.get().to_rect());
+        self.content.paint(ctx);
     }
 }
 
