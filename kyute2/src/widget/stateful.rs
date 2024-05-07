@@ -1,13 +1,13 @@
 use crate::{
-    state::State, BoxConstraints, ChangeFlags, ContextDataHandle, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx,
-    TreeCtx, Widget, WidgetPod, WidgetPtr,
+    environment::Environment, state::State, BoxConstraints, ChangeFlags, ContextDataHandle, Event, Geometry,
+    HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget, WidgetPod, WidgetPtr,
 };
 use kurbo::Point;
 use std::cell::RefCell;
 
 pub struct Stateful<T, F> {
     state: State<T>,
-    inner: RefCell<Option<WidgetPtr>>,
+    inner: Option<WidgetPtr>,
     builder: F,
 }
 
@@ -20,7 +20,7 @@ where
     pub fn new(initial_data: T, builder: F) -> Stateful<T, F> {
         Stateful {
             state: State::new(initial_data),
-            inner: RefCell::new(None),
+            inner: None,
             builder,
         }
     }
@@ -34,34 +34,34 @@ where
     F: Fn(&mut TreeCtx, State<T>) -> W + 'static,
     T: 'static,
 {
-    fn update(&self, cx: &mut TreeCtx) {
-        self.inner.replace_with(|inner| {
+    fn update(&mut self, cx: &mut TreeCtx) {
+        self.inner = {
             let widget: WidgetPtr = WidgetPod::new((self.builder)(cx, self.state.clone()));
             widget.update(cx);
             Some(widget)
-        });
+        };
     }
 
-    fn event(&self, cx: &mut TreeCtx, event: &mut Event) {}
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) {}
 
-    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
-        if let Some(ref inner) = &*self.inner.borrow() {
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
+        if let Some(ref inner) = self.inner {
             inner.hit_test(result, position)
         } else {
             false
         }
     }
 
-    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
-        if let Some(ref inner) = &*self.inner.borrow() {
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        if let Some(ref inner) = self.inner {
             inner.layout(cx, bc)
         } else {
             Default::default()
         }
     }
 
-    fn paint(&self, cx: &mut PaintCtx) {
-        if let Some(ref inner) = &*self.inner.borrow() {
+    fn paint(&mut self, cx: &mut PaintCtx) {
+        if let Some(ref inner) = self.inner {
             inner.paint(cx);
         }
     }

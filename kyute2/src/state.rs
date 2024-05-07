@@ -1,5 +1,6 @@
 use crate::{
     context::ContextDataKey,
+    environment::EnvValue,
     utils::WidgetSet,
     widget::{TreeCtx, WeakWidgetPtr, WidgetPtr},
     ContextDataHandle, WidgetId,
@@ -19,6 +20,16 @@ struct StateInner<T: ?Sized> {
 }
 
 pub struct State<T: ?Sized>(Rc<StateInner<T>>);
+
+impl<T: 'static> EnvValue for State<T> {
+    fn into_storage(self) -> Rc<dyn Any> {
+        self.0.clone()
+    }
+
+    fn from_storage(storage: Rc<dyn Any>) -> Self {
+        Self(storage.downcast().unwrap())
+    }
+}
 
 impl<T: Default + 'static> Default for State<T> {
     fn default() -> Self {
@@ -73,6 +84,13 @@ impl<T: 'static> State<T> {
 
     pub fn get_untracked(&self) -> Ref<T> {
         self.0.data.borrow()
+    }
+
+    pub fn at(cx: &mut TreeCtx) -> Option<T>
+    where
+        T: Clone,
+    {
+        cx.env::<State<T>>().map(|state| state.get(cx).clone())
     }
 }
 

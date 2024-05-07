@@ -30,11 +30,11 @@ pub struct Frame<B> {
     padding_bottom: LengthOrPercentage,
     decoration: ShapeDecoration<B>,
     /// Computed size
-    size: Cell<Size>,
-    offset: Cell<Vec2>,
+    size: Size,
+    offset: Vec2,
     /// Computed bounds
-    bounding_rect: Cell<Rect>,
-    paint_bounding_rect: Cell<Rect>,
+    bounding_rect: Rect,
+    paint_bounding_rect: Rect,
     content: WidgetPtr, // TransformNode<T>,
 }
 
@@ -55,7 +55,7 @@ impl Frame<RoundedRectBorder> {
             padding_top: Default::default(),
             padding_bottom: Default::default(),
             size: Default::default(),
-            offset: Cell::new(Default::default()),
+            offset: Default::default(),
             bounding_rect: Default::default(),
             paint_bounding_rect: Default::default(),
             decoration: ShapeDecoration::new(),
@@ -88,7 +88,19 @@ impl<T, B> Frame<T, B> {
 }*/
 
 impl<B: ShapeBorder + 'static> Widget for Frame<B> {
-    fn layout(&self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+    fn update(&mut self, cx: &mut TreeCtx) {
+        self.content.update(cx)
+    }
+
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {}
+
+    fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
+        ctx.test_with_offset(self.offset, position, |result, position| {
+            self.content.hit_test(result, position)
+        }) || self.bounding_rect.contains(position)
+    }
+
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         // First, determine the size of this frame.
         // If any lengths are specified as percentages, resolve them:
         // consider percentage lengths as relative to the maximum available space.
@@ -128,41 +140,27 @@ impl<B: ShapeBorder + 'static> Widget for Frame<B> {
                 &Insets::new(padding_left, padding_top, padding_right, padding_bottom),
             );
             let transform = Affine::translate(offset);
-            self.bounding_rect
-                .set(transform.transform_rect_bbox(content_geom.bounding_rect));
-            self.paint_bounding_rect
-                .set(transform.transform_rect_bbox(content_geom.paint_bounding_rect));
-            self.offset.set(offset);
+            self.bounding_rect = transform.transform_rect_bbox(content_geom.bounding_rect);
+            self.paint_bounding_rect = transform.transform_rect_bbox(content_geom.paint_bounding_rect);
+            self.offset = offset;
         }
 
-        self.size.set(size);
+        self.size = size;
 
         // TODO propagate baseline
         Geometry {
             size,
             baseline: None,
-            bounding_rect: self.bounding_rect.get(),
-            paint_bounding_rect: self.paint_bounding_rect.get(),
+            bounding_rect: self.bounding_rect,
+            paint_bounding_rect: self.paint_bounding_rect,
         }
     }
 
-    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {}
-
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        ctx.test_with_offset(self.offset.get(), position, |result, position| {
-            self.content.hit_test(result, position)
-        }) || self.bounding_rect.get().contains(position)
-    }
-
-    fn paint(&self, ctx: &mut PaintCtx) {
-        self.decoration.paint(ctx, self.size.get().to_rect());
-        ctx.with_offset(self.offset.get(), |ctx| {
+    fn paint(&mut self, ctx: &mut PaintCtx) {
+        self.decoration.paint(ctx, self.size.to_rect());
+        ctx.with_offset(self.offset, |ctx| {
             self.content.paint(ctx);
         });
-    }
-
-    fn update(&self, cx: &mut TreeCtx) {
-        self.content.update(cx)
     }
 }
 

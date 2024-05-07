@@ -1,19 +1,20 @@
-use crate::{Atom, Color};
+use crate::Color;
 use once_cell::sync::Lazy;
 use std::{
-    any::Any,
+    any::{Any, TypeId},
     cell::RefCell,
     collections::HashMap,
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
+    rc::Rc,
     sync::Arc,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // EnvKey
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
+/*
 /// A type that identifies a named value of type `T` in an [`Environment`].
 #[derive(Debug, Eq, PartialEq)]
 pub struct EnvKey<T> {
@@ -61,22 +62,19 @@ macro_rules! builtin_env_key {
         $crate::EnvKey::new(atom!($name))
     };
 }
+*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // EnvValue
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Trait implemented by values that can be stored in an environment.
-pub trait EnvValue: Sized + Any + Clone + Send + Sync {
-    fn as_any(&self) -> &dyn Any;
+pub trait EnvValue: Any {
+    fn into_storage(self) -> Rc<dyn Any>;
+    fn from_storage(storage: Rc<dyn Any>) -> Self;
 }
 
-impl<T: Any + Send + Sync> EnvValue for Arc<T> {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
+/*
 /// Implementation of EnvValue for basic types
 macro_rules! impl_env_value {
     ($t:ty) => {
@@ -91,170 +89,64 @@ macro_rules! impl_env_value {
 impl_env_value!(bool);
 impl_env_value!(f64);
 impl_env_value!(String);
-impl_env_value!(Color);
+impl_env_value!(Color);*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // EnvImpl
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone)]
-struct EnvImpl {
-    parent: Option<Arc<EnvImpl>>,
-    values: HashMap<Atom, Arc<dyn Any + Send + Sync>>,
+pub struct Environment {
+    map: im::HashMap<TypeId, Rc<dyn Any>>,
 }
 
-impl fmt::Debug for EnvImpl {
+impl fmt::Debug for Environment {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // TODO better debug impl
-        f.debug_struct("EnvImpl").finish_non_exhaustive()
+        f.debug_struct("Environment").finish_non_exhaustive()
     }
 }
-
-impl EnvImpl {
-    fn get<T>(&self, key: &Atom) -> Option<T>
-    where
-        T: EnvValue,
-    {
-        self.values
-            .get(key)
-            .map(|v| {
-                v.downcast_ref::<T>()
-                    .expect("unexpected type of environment value")
-                    .clone()
-            })
-            .or_else(|| self.parent.as_ref().and_then(|parent| parent.get(key)))
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Environment
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Clone, Debug)]
-pub struct Environment(Arc<EnvImpl>);
-
-static EMPTY_ENVIRONMENT: Lazy<Environment> = Lazy::new(|| Environment::new());
 
 impl Default for Environment {
     fn default() -> Self {
-        EMPTY_ENVIRONMENT.clone()
-    }
-}
-
-/*impl Data for Environment {
-    fn same(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}*/
-
-impl Hash for Environment {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // reference semantics
-        // FIXME this is wrong (pointer reuse is possible)
-        (&*self.0 as *const EnvImpl).hash(state);
+        Environment::new()
     }
 }
 
 impl Environment {
     /// Creates a new, empty environment.
     pub fn new() -> Environment {
-        Environment(Arc::new(EnvImpl {
-            parent: None,
-            values: HashMap::new(),
-        }))
-    }
-
-    fn set_inner<T>(&mut self, key: Atom, value: T)
-    where
-        T: EnvValue,
-    {
-        // checks that the type is correct
-        self.0.get::<T>(&key);
-
-        match Arc::get_mut(&mut self.0) {
-            Some(env) => {
-                env.values.insert(key, Arc::new(value));
-            }
-            None => {
-                let mut child_env = EnvImpl {
-                    parent: Some(self.0.clone()),
-                    values: HashMap::new(),
-                };
-                child_env.values.insert(key, Arc::new(value));
-                self.0 = Arc::new(child_env);
-            }
+        Environment {
+            map: Default::default(),
         }
     }
 
     /// Creates a new environment that adds or overrides a given key.
-    pub fn add<T>(mut self, key: EnvKey<T>, value: T) -> Environment
-    where
-        T: EnvValue,
-    {
-        self.set_inner(key.key.clone(), value);
+    #[must_use]
+    pub fn add<T: EnvValue>(mut self, value: T) -> Environment {
+        self.set(value);
         self
     }
 
     /// Adds or overrides a given key in the given environment.
-    pub fn set<T>(&mut self, key: &EnvKey<T>, value: T)
-    where
-        T: EnvValue,
-    {
-        self.set_inner(key.key.clone(), value);
+    pub fn set<T: EnvValue>(&mut self, value: T) {
+        self.map.insert(value.type_id(), value.into_storage());
     }
 
     /// Returns the value corresponding to the key.
-    pub fn get<T>(&self, key: &EnvKey<T>) -> Option<T>
-    where
-        T: EnvValue,
-    {
-        self.0.get(&key.key)
+    pub fn get<T: EnvValue>(&self) -> Option<T> {
+        self.map.get(&TypeId::of::<T>()).map(|v| T::from_storage(v.clone()))
     }
 
-    pub fn get_by_name<T, A>(&self, name: A) -> Option<T>
-    where
-        T: EnvValue,
-        A: Into<Atom>,
-    {
-        let name = name.into();
-        self.0.get(&name)
-    }
-
-    pub fn merged(&self, mut with: Environment) -> Environment {
-        let inner = Arc::make_mut(&mut with.0);
-        if let Some(parent) = inner.parent.take() {
-            let tmp = self.merged(Environment(parent));
-            inner.parent = Some(tmp.0);
-        } else {
-            inner.parent = Some(self.0.clone())
+    #[must_use]
+    pub fn union(self, other: Environment) -> Environment {
+        Environment {
+            map: self.map.union(other.map),
         }
-        with
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// with
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// Current environment
-thread_local! {
-    static ENVIRONMENT: RefCell<Environment> = RefCell::new(Environment::new());
-}
-
-//#[composable]
-pub fn with<R>(env: Environment, f: impl FnOnce() -> R) -> R {
-    let prev = ENVIRONMENT.with(move |e| e.replace_with(move |e| e.merged(env)));
-    // FIXME If there's a memoized function in f() that
-    // depends on the environment, it won't be invalidated if the environment changes,
-    // and that's a problem.
-    //
-    // Memoized functions that depend on the environment should thus also memoize the environment value.
-    // Or: memoized functions also memoize the environment => memoized functions are invalidated when the environment changes.
-    let result = f();
-    ENVIRONMENT.with(move |e| e.replace(prev));
-    result
-}
-
+/*
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // EnvRef
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -338,3 +230,4 @@ where
         EnvRef::Inline(T::default())
     }
 }
+*/

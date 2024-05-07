@@ -10,17 +10,17 @@ pub struct Null;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 impl Widget for Null {
-    fn update(&self, _cx: &mut TreeCtx) {}
+    fn update(&mut self, _cx: &mut TreeCtx) {}
 
-    fn event(&self, _cx: &mut TreeCtx, _event: &mut Event) {}
+    fn event(&mut self, _cx: &mut TreeCtx, _event: &mut Event) {}
 
-    fn hit_test(&self, _result: &mut HitTestResult, _position: Point) -> bool {
+    fn hit_test(&mut self, _result: &mut HitTestResult, _position: Point) -> bool {
         false
     }
 
-    fn layout(&self, _cx: &mut LayoutCtx, _bc: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, _cx: &mut LayoutCtx, _bc: &BoxConstraints) -> Geometry {
         Geometry::ZERO
     }
 
-    fn paint(&self, _cx: &mut PaintCtx) {}
+    fn paint(&mut self, _cx: &mut PaintCtx) {}
 }

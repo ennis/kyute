@@ -262,7 +262,7 @@ impl<B: ShapeBorder> Decoration for ShapeDecoration<B> {
 
 pub struct DecoratedBox<D> {
     decoration: D,
-    size: Cell<Size>,
+    size: Size,
     content: WidgetPtr,
 }
 
@@ -281,7 +281,7 @@ impl<D> Widget for DecoratedBox<D>
 where
     D: Decoration + 'static,
 {
-    fn update(&self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
@@ -297,25 +297,25 @@ where
         self.content.natural_baseline(params)
     }*/
 
-    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
         self.content.event(ctx, event)
     }
 
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.content.hit_test(ctx, position) || self.size.get().to_rect().contains(position)
+    fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
+        self.content.hit_test(ctx, position) || self.size.to_rect().contains(position)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
         let mut geometry = self.content.layout(ctx, constraints);
         // assume that the decoration expands the paint bounds
         geometry.bounding_rect = geometry.bounding_rect.union(geometry.size.to_rect());
         geometry.paint_bounding_rect = geometry.paint_bounding_rect.union(geometry.size.to_rect());
-        self.size.set(geometry.size);
+        self.size = geometry.size;
         geometry
     }
 
-    fn paint(&self, ctx: &mut PaintCtx) {
-        self.decoration.paint(ctx, self.size.get().to_rect());
+    fn paint(&mut self, ctx: &mut PaintCtx) {
+        self.decoration.paint(ctx, self.size.to_rect());
         self.content.paint(ctx);
     }
 }

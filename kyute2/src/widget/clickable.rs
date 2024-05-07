@@ -5,6 +5,7 @@ use keyboard_types::{Key, KeyState};
 use tracing::trace;
 
 use crate::{
+    environment::{EnvValue, Environment},
     widget::{prelude::*, TreeCtx, WidgetPod, WidgetPtr},
     State,
 };
@@ -20,9 +21,7 @@ pub struct ClickableState {
 
 impl ClickableState {
     pub fn at(cx: &mut TreeCtx) -> ClickableState {
-        cx.find_ancestor::<Clickable>()
-            .map(|clickable| clickable.widget.state.get(cx).clone())
-            .unwrap_or_default()
+        State::at(cx).unwrap_or_default()
     }
 }
 
@@ -59,11 +58,15 @@ impl Clickable {
 }
 
 impl Widget for Clickable {
-    fn update(&self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx);
     }
 
-    fn event(&self, cx: &mut TreeCtx, event: &mut Event) {
+    fn environment(&self) -> Environment {
+        Environment::new().add(self.state.clone())
+    }
+
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) {
         match event {
             Event::PointerDown(ref _p) => {
                 eprintln!("clickable PointerDown");
@@ -107,15 +110,15 @@ impl Widget for Clickable {
         }
     }
 
-    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         self.content.hit_test(result, position)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
         self.content.layout(ctx, constraints)
     }
 
-    fn paint(&self, cx: &mut PaintCtx) {
+    fn paint(&mut self, cx: &mut PaintCtx) {
         self.content.paint(cx)
     }
 }

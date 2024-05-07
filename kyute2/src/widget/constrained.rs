@@ -15,17 +15,17 @@ impl Constrained {
 }
 
 impl Widget for Constrained {
-    fn update(&self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {}
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {}
 
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
+    fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
         self.content.hit_test(ctx, position)
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         let mut subconstraints = *params;
         subconstraints.min.width = subconstraints.min.width.max(self.constraints.min.width);
         subconstraints.min.height = subconstraints.min.height.max(self.constraints.min.height);
@@ -34,7 +34,7 @@ impl Widget for Constrained {
         self.content.layout(ctx, &subconstraints)
     }
 
-    fn paint(&self, ctx: &mut PaintCtx) {
+    fn paint(&mut self, ctx: &mut PaintCtx) {
         self.content.paint(ctx)
     }
 }

@@ -67,8 +67,8 @@ pub struct Text {
     available_width: f64,
     available_height: f64,
     scale_factor: f64,
-    relayout: Cell<bool>,
-    paragraph: RefCell<sk::textlayout::Paragraph>,
+    relayout: bool,
+    paragraph: sk::textlayout::Paragraph,
 }
 
 impl Text {
@@ -79,22 +79,22 @@ impl Text {
             available_width: 0.0,
             available_height: 0.0,
             scale_factor: 0.0,
-            relayout: Cell::new(true),
-            paragraph: RefCell::new(paragraph),
+            relayout: true,
+            paragraph,
         }
     }
 }
 
 impl Widget for Text {
-    fn update(&self, cx: &mut TreeCtx) {}
+    fn update(&mut self, cx: &mut TreeCtx) {}
 
-    fn event(&self, _ctx: &mut TreeCtx, _event: &mut Event) {}
+    fn event(&mut self, _ctx: &mut TreeCtx, _event: &mut Event) {}
 
-    fn hit_test(&self, _ctx: &mut HitTestResult, position: Point) -> bool {
-        if self.relayout.get() {
+    fn hit_test(&mut self, _ctx: &mut HitTestResult, position: Point) -> bool {
+        if self.relayout {
             warn!("hit_test called before layout");
         }
-        let paragraph = self.paragraph.borrow();
+        let paragraph = &self.paragraph;
         let paragraph_size = Size {
             width: paragraph.longest_line() as f64,
             height: paragraph.height() as f64,
@@ -102,7 +102,7 @@ impl Widget for Text {
         paragraph_size.to_rect().contains(position)
     }
 
-    fn layout(&self, _ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, _ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         // layout paragraph in available space
         let _span = span!("text layout");
 
@@ -114,9 +114,9 @@ impl Widget for Text {
         // - the new available width is >= the current paragraph width (otherwise new line breaks are necessary)
         // - the current layout is still valid (i.e. it hasn't been previously invalidated)
 
-        let mut paragraph = self.paragraph.borrow_mut();
+        let mut paragraph = &mut self.paragraph;
 
-        if !self.relayout.get() && paragraph.longest_line() <= available_width as f32 {
+        if !self.relayout && paragraph.longest_line() <= available_width as f32 {
             let paragraph_size = Size {
                 width: paragraph.longest_line() as f64,
                 height: paragraph.height() as f64,
@@ -136,7 +136,7 @@ impl Widget for Text {
         let alphabetic_baseline = paragraph.alphabetic_baseline();
         let unconstrained_size = Size::new(w, h);
         let size = params.constrain(unconstrained_size);
-        self.relayout.set(false);
+        self.relayout = false;
 
         /*self.paragraph.max_width();
         self.paragraph.max_intrinsic_width();
@@ -156,10 +156,10 @@ impl Widget for Text {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx) {
+    fn paint(&mut self, ctx: &mut PaintCtx) {
         span!("text paint");
         ctx.with_canvas(|canvas| {
-            self.paragraph.borrow_mut().paint(canvas, Point::ZERO.to_skia());
+            self.paragraph.paint(canvas, Point::ZERO.to_skia());
         })
     }
 }

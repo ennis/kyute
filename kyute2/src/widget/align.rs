@@ -13,8 +13,7 @@ pub struct Align {
     pub y: Alignment,
     pub width_factor: Option<f64>,
     pub height_factor: Option<f64>,
-    // TODO a simple offset would be enough
-    offset: Cell<Vec2>,
+    offset: Vec2,
     pub content: WidgetPtr,
 }
 
@@ -25,26 +24,26 @@ impl Align {
             y,
             width_factor: None,
             height_factor: None,
-            offset: Cell::new(Default::default()),
+            offset: Default::default(),
             content: WidgetPod::new(content),
         }
     }
 }
 
 impl Widget for Align {
-    fn update(&self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {}
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {}
 
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
-        ctx.test_with_offset(self.offset.get(), position, |result, position| {
+    fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
+        ctx.test_with_offset(self.offset, position, |result, position| {
             self.content.hit_test(result, position)
         })
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
         let child_geometry = self.content.layout(ctx, &constraints.loosen());
 
         // first, size to max available width/height
@@ -84,7 +83,7 @@ impl Widget for Align {
             self.y,
             &Insets::ZERO,
         );
-        self.offset.set(offset);
+        self.offset = offset;
 
         Geometry {
             size,
@@ -94,63 +93,7 @@ impl Widget for Align {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx) {
-        ctx.with_offset(self.offset.get(), |ctx| self.content.paint(ctx))
+    fn paint(&mut self, ctx: &mut PaintCtx) {
+        ctx.with_offset(self.offset, |ctx| self.content.paint(ctx))
     }
 }
-
-/*
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-pub struct Align<W> {
-    pub x: Alignment,
-    pub y: Alignment,
-    pub width_factor: Option<f64>,
-    pub height_factor: Option<f64>,
-    pub content: W,
-}
-
-impl<W> Align<W> {
-    pub fn new(x: Alignment, y: Alignment, content: W) -> Self {
-        Self {
-            x,
-            y,
-            width_factor: None,
-            height_factor: None,
-            content,
-        }
-    }
-}
-
-impl<W> Widget for Align<W>
-where
-    W: Widget,
-{
-    type Element = AlignElement<W::Element>;
-
-    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
-        AlignElement {
-            x: self.x,
-            y: self.y,
-            width_factor: self.width_factor,
-            height_factor: self.height_factor,
-            content: TransformNode::new(cx.build(self.content)),
-        }
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        let mut flags = ChangeFlags::empty();
-        if element.x != self.x
-            || element.y != self.y
-            || element.width_factor != self.width_factor
-            || element.height_factor != self.height_factor
-        {
-            element.x = self.x;
-            element.y = self.y;
-            element.width_factor = self.width_factor;
-            element.height_factor = self.height_factor;
-            flags |= ChangeFlags::GEOMETRY;
-        }
-        flags | cx.update(self.content, &mut element.content.content)
-    }
-}*/

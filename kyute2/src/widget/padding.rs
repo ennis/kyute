@@ -18,11 +18,11 @@ impl Padding {
 }
 
 impl Widget for Padding {
-    fn update(&self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&self, ctx: &mut TreeCtx, event: &mut Event) {}
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {}
 
     /*fn natural_width(&mut self, height: f64) -> f64 {
         self.content.natural_width((height - self.padding.y_value()).max(0.0))
@@ -36,7 +36,7 @@ impl Widget for Padding {
         self.content.natural_baseline(&params.deflate(self.padding)) + self.padding.y0
     }*/
 
-    fn hit_test(&self, ctx: &mut HitTestResult, position: Point) -> bool {
+    fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
         ctx.test_with_offset(
             Vec2::new(self.padding.x0, self.padding.y0),
             position,
@@ -44,7 +44,7 @@ impl Widget for Padding {
         )
     }
 
-    fn layout(&self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
         let child_geometry = self.content.layout(ctx, &constraints.deflate(self.padding));
         let offset = Vec2::new(self.padding.x0, self.padding.y0);
         let size = Size {
@@ -60,7 +60,7 @@ impl Widget for Padding {
         }
     }
 
-    fn paint(&self, ctx: &mut PaintCtx) {
+    fn paint(&mut self, ctx: &mut PaintCtx) {
         ctx.with_offset(Vec2::new(self.padding.x0, self.padding.y0), |ctx| {
             self.content.paint(ctx)
         });

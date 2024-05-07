@@ -81,7 +81,7 @@ struct App {
 impl App {
     fn update(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>) {
         let mut tree_ctx = TreeCtx::new(&mut self.app_state, event_loop, self.root.clone());
-        self.root.widget.update(&mut tree_ctx);
+        self.root.widget.borrow_mut().update(&mut tree_ctx);
     }
 }
 

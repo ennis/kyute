@@ -739,26 +739,26 @@ impl UiHostWindowHandler {
 }
 
 impl Widget for UiHostWindowHandler {
-    fn update(&self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut TreeCtx) {
         self.open_window(cx);
         self.content.update(cx);
     }
 
-    fn event(&self, _cx: &mut TreeCtx, _event: &mut Event) {
+    fn event(&mut self, _cx: &mut TreeCtx, _event: &mut Event) {
         // we don't receive or handle events
     }
 
-    fn hit_test(&self, _result: &mut HitTestResult, _position: Point) -> bool {
+    fn hit_test(&mut self, _result: &mut HitTestResult, _position: Point) -> bool {
         false
     }
 
-    fn layout(&self, _cx: &mut LayoutCtx, _bc: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, _cx: &mut LayoutCtx, _bc: &BoxConstraints) -> Geometry {
         // We return a null geometry here because window widgets typically don't take any space in the parent window.
         // If you're looking for where the contents of the window are laid out, that's done in the `window_event` handler.
         Geometry::ZERO
     }
 
-    fn window_event(&self, cx: &mut TreeCtx, event: &WindowEvent, time: Duration) {
+    fn window_event(&mut self, cx: &mut TreeCtx, event: &WindowEvent, time: Duration) {
         if let Some(ref mut window) = &mut *self.window.borrow_mut() {
             window.handle_window_event(cx, self.content.clone(), event, time);
         } else {
@@ -766,7 +766,7 @@ impl Widget for UiHostWindowHandler {
         }
     }
 
-    fn paint(&self, cx: &mut PaintCtx) {
+    fn paint(&mut self, cx: &mut PaintCtx) {
         // We don't paint anything in the parent window.
         // If you're looking for where the contents of the window are painted, see `UiHostWindowState::window_event`.
     }

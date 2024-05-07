@@ -19,6 +19,7 @@ use std::{
     mem,
     ops::DerefMut,
     rc::{Rc, Weak},
+    sync::Arc,
     time::Duration,
 };
 
@@ -59,6 +60,7 @@ use crate::{
     application::{AppState, ExtEvent},
     composition::DrawableSurface,
     drawing::ToSkia,
+    environment::{EnvValue, Environment},
     Point,
 };
 
@@ -251,31 +253,35 @@ pub trait Widget: Any {
     ///
     /// You shouldn't have to manually call `update()` on child widgets. Instead, request an update by
     /// calling `cx.request_update(widgetpaths)`.
-    fn update(&self, cx: &mut TreeCtx);
+    fn update(&mut self, cx: &mut TreeCtx);
 
-    fn provide(&self, _key: &'static str) -> Option<&dyn Any> {
-        None
+    fn environment(&self) -> Environment {
+        Environment::new()
     }
 
     /// Event handling.
-    fn event(&self, cx: &mut TreeCtx, event: &mut Event);
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event);
 
     /// Hit-testing.
-    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool;
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool;
 
     /// Layout.
-    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry;
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry;
 
     /// Raw window events.
-    fn window_event(&self, _cx: &mut TreeCtx, _event: &winit::event::WindowEvent, _time: Duration) {}
+    fn window_event(&mut self, _cx: &mut TreeCtx, _event: &winit::event::WindowEvent, _time: Duration) {}
 
-    fn paint(&self, cx: &mut PaintCtx);
+    fn paint(&mut self, cx: &mut PaintCtx);
 }
 
 pub struct WidgetPod<T: ?Sized = dyn Widget> {
     mounted: Cell<bool>,
     parent: RefCell<WeakWidgetPtr>,
-    pub widget: T,
+    environment: RefCell<Environment>,
+    // FIXME: I'd like that to be a RefCell so that Widget methods can be mut, but
+    // that would break recursive update calls that call `find_ancestor` (widget would be already borrowed)
+    // Idea: `widgetptr.update()` doesn't call update immediately, but waits for the end of the current dispatch
+    pub widget: RefCell<T>,
 }
 
 pub type WidgetPtr<T = dyn Widget> = Rc<WidgetPod<T>>;
@@ -287,7 +293,8 @@ impl<T> WidgetPod<T> {
             mounted: Cell::new(false),
             // Weak::new() doesn't work with unsized types, so use the dummy Null widget (https://github.com/rust-lang/rust/issues/50513)
             parent: RefCell::new(WeakWidgetPtr::<Null>::new()),
-            widget,
+            environment: Default::default(),
+            widget: RefCell::new(widget),
         })
     }
 }
@@ -317,7 +324,11 @@ impl WidgetPod {
     }
 
     pub fn downcast<T: Widget + 'static>(self: Rc<Self>) -> Result<WidgetPtr<T>, WidgetPtr> {
-        if self.widget.type_id() == TypeId::of::<T>() {
+        let type_id = {
+            let widget = &*self.widget.borrow();
+            widget.type_id()
+        };
+        if type_id == TypeId::of::<T>() {
             unsafe { Ok(Rc::from_raw(Rc::into_raw(self) as *const WidgetPod<T>)) }
         } else {
             Err(self)
@@ -341,6 +352,13 @@ impl WidgetPod {
     pub fn update(self: &Rc<Self>, cx: &mut TreeCtx) {
         if !self.mounted.get() {
             self.mounted.set(true);
+            let parent = cx.current();
+            let env = self
+                .widget
+                .borrow()
+                .environment()
+                .union(parent.environment.borrow().clone());
+            self.environment.replace(env);
             self.parent.replace(Rc::downgrade(&cx.current()));
         }
         cx.with_widget(self, |cx, widget| {
@@ -349,7 +367,7 @@ impl WidgetPod {
     }
 
     pub fn hit_test(self: &Rc<Self>, result: &mut HitTestResult, position: Point) -> bool {
-        let hit = self.widget.hit_test(result, position);
+        let hit = self.widget.borrow_mut().hit_test(result, position);
         if hit {
             result.add(self.clone());
         }
@@ -357,11 +375,11 @@ impl WidgetPod {
     }
 
     pub fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
-        self.widget.layout(cx, bc)
+        self.widget.borrow_mut().layout(cx, bc)
     }
 
     pub fn paint(&self, cx: &mut PaintCtx) {
-        self.widget.paint(cx);
+        self.widget.borrow_mut().paint(cx);
     }
 }
 
@@ -551,9 +569,9 @@ impl<'a> TreeCtx<'a> {
         self.relayout = true;
     }
 
-    fn with_widget<R>(&mut self, child: &WidgetPtr, f: impl FnOnce(&mut TreeCtx, &dyn Widget) -> R) -> R {
+    fn with_widget<R>(&mut self, child: &WidgetPtr, f: impl FnOnce(&mut TreeCtx, &mut dyn Widget) -> R) -> R {
         let prev_widget = mem::replace(&mut self.current_widget, child.clone());
-        let r = f(self, &child.widget);
+        let r = f(self, &mut *child.widget.borrow_mut());
         self.current_widget = prev_widget;
         r
     }
@@ -650,7 +668,7 @@ impl<'a> TreeCtx<'a> {
     // in modifiers like `Frame` or `Padding`, so we almost never find the type we're looking for
     // (e.g. we can't find `Clickable` because it's wrapped in `Frame<Clickable>`).
 
-    // Solutions:
+    /*// Solutions:
     // - return state in a separate method, which wrapper widgets would forward to
     // - all widgets (even simple wrappers) have associated nodes (Padding, Frame, Transform, Constrained, Decoration)
     //    -> *** probably the best option; it's best to not be too clever with this
@@ -665,13 +683,17 @@ impl<'a> TreeCtx<'a> {
                 }
             }
         }
+    }*/
+
+    pub fn env<T: EnvValue>(&self) -> Option<T> {
+        self.current_widget.environment.borrow().get::<T>()
     }
 }
 
 /// A widget that builds a widget given a TreeCtx
 pub struct Builder<F> {
     f: F,
-    inner: RefCell<Option<WidgetPtr>>,
+    inner: Option<WidgetPtr>,
 }
 
 impl<F> Builder<F> {
@@ -680,10 +702,7 @@ impl<F> Builder<F> {
         W: Widget,
         F: Fn(&mut TreeCtx) -> W,
     {
-        Builder {
-            f,
-            inner: RefCell::new(None),
-        }
+        Builder { f, inner: None }
     }
 }
 
@@ -692,35 +711,36 @@ where
     F: Fn(&mut TreeCtx) -> W + 'static,
     W: Widget + 'static,
 {
-    fn update(&self, cx: &mut TreeCtx) {
-        self.inner.replace_with(|inner| {
+    fn update(&mut self, cx: &mut TreeCtx) {
+        self.inner = {
             let widget: WidgetPtr = WidgetPod::new((self.f)(cx));
             widget.update(cx);
+            // Because we just rebuilt
             cx.mark_needs_layout();
             Some(widget)
-        });
+        };
     }
 
-    fn event(&self, cx: &mut TreeCtx, event: &mut Event) {}
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) {}
 
-    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
-        if let Some(ref inner) = &*self.inner.borrow() {
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
+        if let Some(ref inner) = self.inner {
             inner.hit_test(result, position)
         } else {
             false
         }
     }
 
-    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
-        if let Some(ref inner) = &*self.inner.borrow() {
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        if let Some(ref inner) = self.inner {
             inner.layout(cx, bc)
         } else {
             Geometry::default()
         }
     }
 
-    fn paint(&self, cx: &mut PaintCtx) {
-        if let Some(ref inner) = &*self.inner.borrow() {
+    fn paint(&mut self, cx: &mut PaintCtx) {
+        if let Some(ref inner) = self.inner {
             inner.paint(cx);
         }
     }
@@ -786,23 +806,23 @@ pub struct Container {
 }
 
 impl Widget for Container {
-    fn update(&self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut TreeCtx) {
         todo!()
     }
 
-    fn event(&self, cx: &mut TreeCtx, event: &mut Event) {
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) {
         todo!()
     }
 
-    fn hit_test(&self, result: &mut HitTestResult, position: Point) -> bool {
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         todo!()
     }
 
-    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
         todo!()
     }
 
-    fn paint(&self, cx: &mut PaintCtx) {
+    fn paint(&mut self, cx: &mut PaintCtx) {
         todo!()
     }
 }
