@@ -1,6 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 use crate::{
+    environment::Environment,
     layout::place_into,
     widget::{prelude::*, TransformNode},
     Alignment,
@@ -8,34 +9,40 @@ use crate::{
 use kurbo::{Affine, Insets, Vec2};
 use std::cell::Cell;
 
-pub struct Align {
+pub struct Align<T> {
     pub x: Alignment,
     pub y: Alignment,
     pub width_factor: Option<f64>,
     pub height_factor: Option<f64>,
     offset: Vec2,
-    pub content: WidgetPtr,
+    pub content: T,
 }
 
-impl Align {
-    pub fn new(x: Alignment, y: Alignment, content: impl Widget + 'static) -> Self {
+impl<T: Widget> Align<T> {
+    pub fn new(x: Alignment, y: Alignment, content: T) -> Self {
         Self {
             x,
             y,
             width_factor: None,
             height_factor: None,
             offset: Default::default(),
-            content: WidgetPod::new(content),
+            content,
         }
     }
 }
 
-impl Widget for Align {
+impl<T: Widget> Widget for Align<T> {
     fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {}
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+        event.with_offset(self.offset, |event| self.content.event(ctx, event))
+    }
+
+    fn environment(&self) -> Environment {
+        self.content.environment()
+    }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
         ctx.test_with_offset(self.offset, position, |result, position| {

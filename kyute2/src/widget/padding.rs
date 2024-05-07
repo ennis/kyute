@@ -1,28 +1,35 @@
 use std::any::Any;
 
-use crate::widget::prelude::*;
+use crate::{environment::Environment, widget::prelude::*};
 use kurbo::{Affine, Insets, Point, Size, Vec2};
 
-pub struct Padding {
+pub struct Padding<T> {
     pub padding: Insets,
-    pub content: WidgetPtr,
+    pub content: T,
 }
 
-impl Padding {
-    pub fn new(padding: Insets, content: impl Widget + 'static) -> Self {
-        Self {
-            padding,
-            content: WidgetPod::new(content),
-        }
+impl<T: Widget> Padding<T> {
+    pub fn new(padding: Insets, content: T) -> Self {
+        Self { padding, content }
+    }
+
+    fn offset(&self) -> Vec2 {
+        Vec2::new(self.padding.x0, self.padding.y0)
     }
 }
 
-impl Widget for Padding {
+impl<T: Widget> Widget for Padding<T> {
     fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {}
+    fn environment(&self) -> Environment {
+        self.content.environment()
+    }
+
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+        event.with_offset(self.offset(), |event| self.content.event(ctx, event));
+    }
 
     /*fn natural_width(&mut self, height: f64) -> f64 {
         self.content.natural_width((height - self.padding.y_value()).max(0.0))
@@ -37,16 +44,14 @@ impl Widget for Padding {
     }*/
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
-        ctx.test_with_offset(
-            Vec2::new(self.padding.x0, self.padding.y0),
-            position,
-            |result, position| self.content.hit_test(result, position),
-        )
+        ctx.test_with_offset(self.offset(), position, |result, position| {
+            self.content.hit_test(result, position)
+        })
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
         let child_geometry = self.content.layout(ctx, &constraints.deflate(self.padding));
-        let offset = Vec2::new(self.padding.x0, self.padding.y0);
+        let offset = self.offset();
         let size = Size {
             width: child_geometry.size.width + self.padding.x_value(),
             height: child_geometry.size.height + self.padding.y_value(),
@@ -61,8 +66,6 @@ impl Widget for Padding {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        ctx.with_offset(Vec2::new(self.padding.x0, self.padding.y0), |ctx| {
-            self.content.paint(ctx)
-        });
+        ctx.with_offset(self.offset(), |ctx| self.content.paint(ctx));
     }
 }

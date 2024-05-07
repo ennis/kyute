@@ -1,3 +1,4 @@
+use kurbo::Vec2;
 use std::fmt;
 
 pub use crate::keyboard_types::KeyboardEvent;
@@ -224,6 +225,10 @@ impl Event {
             | Event::PointerExit(ref mut pe) => pe.request_capture,
             _ => false,
         }
+    }
+
+    pub fn with_offset<R>(&mut self, offset: Vec2, f: impl FnOnce(&mut Event) -> R) -> R {
+        self.with_transform(&Affine::translate(offset), f)
     }
 
     pub fn with_transform<R>(&mut self, transform: &Affine, f: impl FnOnce(&mut Event) -> R) -> R {

@@ -9,6 +9,7 @@ use tracing::warn;
 use crate::{
     drawing,
     drawing::{BoxShadow, Paint, Shape, ToSkia},
+    environment::Environment,
     skia,
     widget::{prelude::*, Padding},
     Color, PaintCtx,
@@ -260,25 +261,26 @@ impl<B: ShapeBorder> Decoration for ShapeDecoration<B> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct DecoratedBox<D> {
+pub struct DecoratedBox<D, T> {
     decoration: D,
     size: Size,
-    content: WidgetPtr,
+    content: Padding<T>,
 }
 
-impl<D: Decoration> DecoratedBox<D> {
-    pub fn new(decoration: D, content: impl Widget + 'static) -> Self {
+impl<D: Decoration, T: Widget> DecoratedBox<D, T> {
+    pub fn new(decoration: D, content: T) -> Self {
         let padding = decoration.insets();
         Self {
             decoration,
             size: Default::default(),
-            content: WidgetPod::new(Padding::new(padding, content)),
+            content: Padding::new(padding, content),
         }
     }
 }
 
-impl<D> Widget for DecoratedBox<D>
+impl<D, T> Widget for DecoratedBox<D, T>
 where
+    T: Widget,
     D: Decoration + 'static,
 {
     fn update(&mut self, cx: &mut TreeCtx) {
@@ -297,6 +299,9 @@ where
         self.content.natural_baseline(params)
     }*/
 
+    fn environment(&self) -> Environment {
+        self.content.environment()
+    }
     fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
         self.content.event(ctx, event)
     }

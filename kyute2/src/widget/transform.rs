@@ -1,5 +1,6 @@
 use crate::{
-    BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget, WidgetId,
+    environment::Environment, BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx,
+    TreeCtx, Widget, WidgetId,
 };
 use kurbo::{Affine, Point, Vec2};
 use std::cell::Cell;
@@ -54,6 +55,10 @@ impl<T: ?Sized> TransformNode<T> {
 impl<T: Widget> Widget for TransformNode<T> {
     fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx)
+    }
+
+    fn environment(&self) -> Environment {
+        self.content.environment()
     }
 
     fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) {

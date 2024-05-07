@@ -323,7 +323,7 @@ impl WidgetPod {
         })
     }
 
-    pub fn downcast<T: Widget + 'static>(self: Rc<Self>) -> Result<WidgetPtr<T>, WidgetPtr> {
+    /*pub fn downcast<T: Widget + 'static>(self: Rc<Self>) -> Result<WidgetPtr<T>, WidgetPtr> {
         let type_id = {
             let widget = &*self.widget.borrow();
             widget.type_id()
@@ -333,7 +333,7 @@ impl WidgetPod {
         } else {
             Err(self)
         }
-    }
+    }*/
 
     /*/// Dispatches a pointer event.
     pub fn dispatch_pointer_event(self: &Rc<Self>, cx: &mut TreeCtx, path: &[HitTestEntry], event: &mut Event) {
@@ -715,7 +715,6 @@ where
         self.inner = {
             let widget: WidgetPtr = WidgetPod::new((self.f)(cx));
             widget.update(cx);
-            // Because we just rebuilt
             cx.mark_needs_layout();
             Some(widget)
         };
@@ -847,7 +846,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
     ///
     /// TODO
     #[must_use]
-    fn clickable(self) -> Clickable {
+    fn clickable(self) -> Clickable<Self> {
         Clickable::new(self)
     }
 

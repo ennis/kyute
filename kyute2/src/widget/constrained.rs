@@ -1,25 +1,28 @@
-use crate::widget::prelude::*;
+use crate::{environment::Environment, widget::prelude::*};
 
-pub struct Constrained {
+pub struct Constrained<T> {
     pub constraints: BoxConstraints,
-    pub content: WidgetPtr,
+    pub content: T,
 }
 
-impl Constrained {
-    pub fn new(constraints: BoxConstraints, content: impl Widget + 'static) -> Self {
-        Self {
-            constraints,
-            content: WidgetPod::new(content),
-        }
+impl<T: Widget> Constrained<T> {
+    pub fn new(constraints: BoxConstraints, content: T) -> Self {
+        Self { constraints, content }
     }
 }
 
-impl Widget for Constrained {
+impl<T: Widget> Widget for Constrained<T> {
     fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {}
+    fn environment(&self) -> Environment {
+        self.content.environment()
+    }
+
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+        self.content.event(ctx, event)
+    }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
         self.content.hit_test(ctx, position)

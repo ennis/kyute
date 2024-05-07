@@ -522,8 +522,8 @@ impl UiHostWindowState {
             .filter(|item| !path.iter().find(|x| x.same(item)).is_some())
             .cloned()
             .collect();
-        //dbg!(&over);
-        //dbg!(&out);
+        dbg!(&over);
+        dbg!(&out);
         self.input_state.prev_hit_test_result = path;
         if !over.is_empty() {
             self.dispatch_pointer_event_inner(

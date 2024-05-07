@@ -5,6 +5,7 @@ use std::{any::Any, cell::Cell};
 use tracing::trace;
 
 use crate::{
+    environment::Environment,
     layout::place_into,
     widget::{
         decoration::{Decoration, ShapeBorder, ShapeDecoration},
@@ -15,7 +16,7 @@ use crate::{
 };
 
 /// A container with a fixed width and height, into which a unique widget is placed.
-pub struct Frame<B> {
+pub struct Frame<B, T> {
     width: LengthOrPercentage,
     height: LengthOrPercentage,
     change_flags: Cell<ChangeFlags>,
@@ -35,15 +36,11 @@ pub struct Frame<B> {
     /// Computed bounds
     bounding_rect: Rect,
     paint_bounding_rect: Rect,
-    content: WidgetPtr, // TransformNode<T>,
+    content: T,
 }
 
-impl Frame<RoundedRectBorder> {
-    pub fn new(
-        width: LengthOrPercentage,
-        height: LengthOrPercentage,
-        content: impl Widget + 'static,
-    ) -> Frame<RoundedRectBorder> {
+impl<T: Widget> Frame<RoundedRectBorder, T> {
+    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, content: T) -> Frame<RoundedRectBorder, T> {
         Frame {
             width,
             height,
@@ -59,7 +56,7 @@ impl Frame<RoundedRectBorder> {
             bounding_rect: Default::default(),
             paint_bounding_rect: Default::default(),
             decoration: ShapeDecoration::new(),
-            content: WidgetPod::new(content),
+            content,
         }
     }
 }
@@ -87,12 +84,18 @@ impl<T, B> Frame<T, B> {
     }
 }*/
 
-impl<B: ShapeBorder + 'static> Widget for Frame<B> {
+impl<B: ShapeBorder + 'static, T: Widget> Widget for Frame<B, T> {
     fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx)
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {}
+    fn environment(&self) -> Environment {
+        self.content.environment()
+    }
+
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+        event.with_offset(self.offset, |event| self.content.event(ctx, event))
+    }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
         ctx.test_with_offset(self.offset, position, |result, position| {

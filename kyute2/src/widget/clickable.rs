@@ -21,21 +21,21 @@ pub struct ClickableState {
 
 impl ClickableState {
     pub fn at(cx: &mut TreeCtx) -> ClickableState {
-        State::at(cx).unwrap_or_default()
+        State::at(cx).expect("ClickableState not found")
     }
 }
 
-pub struct Clickable {
-    content: WidgetPtr,
+pub struct Clickable<T> {
+    content: T,
     state: State<ClickableState>,
     on_click: Box<dyn Fn(&mut TreeCtx)>,
 }
 
-impl Clickable {
+impl<T: Widget> Clickable<T> {
     /// Creates a new clickable widget.
-    pub fn new(content: impl Widget + 'static) -> Clickable {
+    pub fn new(content: T) -> Clickable<T> {
         Clickable {
-            content: WidgetPod::new(content),
+            content,
             state: Default::default(),
             on_click: Box::new(|_cx| {
                 trace!("Clickable::on_clicked");
@@ -45,10 +45,7 @@ impl Clickable {
 
     /// Sets the click handler.
     #[must_use]
-    pub fn on_clicked<OnClicked>(self, on_clicked: OnClicked) -> Clickable
-    where
-        OnClicked: Fn(&mut TreeCtx) + 'static,
-    {
+    pub fn on_clicked(self, on_clicked: impl Fn(&mut TreeCtx) + 'static) -> Clickable<T> {
         Clickable {
             content: self.content,
             state: self.state,
@@ -57,12 +54,13 @@ impl Clickable {
     }
 }
 
-impl Widget for Clickable {
+impl<T: Widget> Widget for Clickable<T> {
     fn update(&mut self, cx: &mut TreeCtx) {
         self.content.update(cx);
     }
 
     fn environment(&self) -> Environment {
+        // FIXME this ignores the environment of the content!
         Environment::new().add(self.state.clone())
     }
 

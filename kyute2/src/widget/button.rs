@@ -15,7 +15,7 @@ use crate::{
     Alignment, Color, Widget,
 };
 
-pub fn button(label: &str) -> Clickable {
+pub fn button(label: &str) -> Clickable<impl Widget> {
     // FIXME: annoyingly we need to allocate to move the string in the closure
     // in that case it's not too bad because we're already allocating for the TextSpan
     let label = label.to_string();
