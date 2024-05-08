@@ -1,28 +1,21 @@
 //! Frame decorations
-use kurbo::{Insets, PathEl, Point, Rect, RoundedRect, Size};
-use smallvec::SmallVec;
-use tracing::warn;
+use kurbo::{Point, Size};
 
 use crate::{
-    drawing,
-    drawing::{BoxShadow, Paint, Shape, ToSkia},
-    environment::Environment,
-    skia,
-    widgets::Padding,
-    BoxConstraints, Color, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
+    drawing::Decoration, environment::Environment, widgets::Padding, Binding, BoxConstraints, Event, Geometry,
+    HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
 };
-use crate::drawing::Decoration;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct DecoratedBox<D, T> {
-    decoration: D,
+    decoration: Binding<D>,
     size: Size,
     content: Padding<T>,
 }
 
 impl<D: Decoration, T: Widget> DecoratedBox<D, T> {
-    pub fn new(decoration: D, content: T) -> Self {
+    pub fn new(decoration: impl Into<Binding<D>>, content: T) -> Self {
         let padding = decoration.insets();
         Self {
             decoration,
@@ -38,6 +31,13 @@ where
     D: Decoration + 'static,
 {
     fn update(&mut self, cx: &mut TreeCtx) {
+        if self.decoration.update(cx) {
+            // TODO layout is not always necessary. Depending on what changed,
+            // a repaint might be sufficient.
+            self.content.padding = self.decoration.value_ref().insets();
+            cx.mark_needs_layout();
+        }
+
         self.content.update(cx)
     }
 
@@ -74,57 +74,9 @@ where
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.decoration.paint(ctx, self.size.to_rect());
+        ctx.with_canvas(|canvas| {
+            self.decoration.paint(canvas, self.size.to_rect());
+        });
         self.content.paint(ctx);
     }
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*
-// TODO this should take a "Decoration" directly, not a Border
-pub struct DecoratedBox<D, W> {
-    pub decoration: D,
-    pub content: W,
-}
-
-impl<D, W> DecoratedBox<D, W> {
-    pub fn new(decoration: D, content: W) -> Self {
-        Self { decoration, content }
-    }
-}
-
-impl<D, W> Widget for DecoratedBox<D, W>
-where
-    D: Decoration + 'static,
-    W: Widget,
-{
-    type Element = DecoratedBoxElement<D, W::Element>;
-
-    fn build(self, cx: &mut TreeCtx, _id: ElementId) -> Self::Element {
-        let padding = self.decoration.insets();
-        DecoratedBoxElement {
-            decoration: self.decoration,
-            content: PaddingElement {
-                padding,
-                content: cx.build(self.content),
-                size: Default::default(),
-            },
-        }
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        let mut flags = ChangeFlags::empty();
-        if element.decoration != self.decoration {
-            let padding = self.decoration.insets();
-            if element.content.padding != padding {
-                element.content.padding = padding;
-                flags |= ChangeFlags::GEOMETRY;
-            }
-            element.decoration = self.decoration;
-            flags |= ChangeFlags::PAINT;
-        }
-        flags | cx.update(self.content, &mut element.content.content)
-    }
-}
-*/

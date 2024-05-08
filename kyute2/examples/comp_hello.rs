@@ -1,14 +1,12 @@
-use std::{cell::OnceCell, sync::Arc};
+use std::sync::Arc;
 
-use kurbo::Insets;
 use kyute2::{
-    text::{TextSpan, TextStyle},
+    text::TextStyle,
     theme,
-    widget::{button, Clickable, Frame, Null, Text},
+    widgets::{button, Frame},
     window::{UiHostWindowHandler, UiHostWindowOptions},
-    AppLauncher, UnitExt, Widget,
+    Alignment, AppLauncher, UnitExt, Widget, WidgetExt,
 };
-use tracing_subscriber::layer::SubscriberExt;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -20,7 +18,7 @@ fn main_window_contents() -> impl Widget {
             .color(theme::palette::PINK_200),
     );
     //let text = TextSpan::new("Hello, world!", text_style);
-    Frame::new(20.percent(), 20.percent(), button("hello"))
+    Frame::new(20.percent(), 20.percent(), button("hello")).align(Alignment::CENTER, Alignment::CENTER)
 }
 
 fn main() {

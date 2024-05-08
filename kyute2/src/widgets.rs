@@ -1,20 +1,20 @@
 //! Widgets.
 mod align;
 mod button;
-pub mod clickable;
-pub mod constrained;
-pub mod decoration;
-pub mod frame;
-pub mod null;
+mod clickable;
+mod constrained;
+mod decorated_box;
+mod frame;
+mod null;
 mod padding;
-mod stateful;
 pub mod text;
 mod transform;
 
+pub use align::Align;
 pub use button::button;
 pub use clickable::Clickable;
 pub use constrained::Constrained;
-pub use decoration::{BorderStyle, Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration};
+pub use decorated_box::DecoratedBox;
 pub use frame::Frame;
 pub use null::Null;
 pub use padding::Padding;
@@ -27,7 +27,6 @@ pub use button::button;
 pub use clickable::Clickable;
 pub use constrained::Constrained;*/
 //pub use flex::{Flex, FlexElement};
-
 /*
 pub use grid::{Grid, GridTemplate};
 pub use null::Null;

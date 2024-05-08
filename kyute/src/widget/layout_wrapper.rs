@@ -41,7 +41,7 @@ impl<W> LayoutWrapper<W> {
         &self.inner
     }
 
-    /// Returns a mutable reference to the inner widget.
+    /// Returns a mutable reference to the inner widgets.
     pub fn inner_mut(&mut self) -> &mut W {
         &mut self.inner
     }
@@ -132,7 +132,7 @@ impl<W: Widget> Widget for LayoutWrapper<W> {
     }
 }*/
 
-/// A wrapper around a widget that makes its layout available to the composition step.
+/// A wrapper around a widgets that makes its layout available to the composition step.
 #[derive(Clone)]
 pub struct LayoutInspector<Inner> {
     inner: Inner,
@@ -157,28 +157,28 @@ impl<Inner: Widget + 'static> LayoutInspector<Inner> {
         }
     }
 
-    /// Returns the current size of the inner widget.
+    /// Returns the current size of the inner widgets.
     pub fn size(&self) -> Size {
         self.size
     }
 
-    /// Returns whether the current size of the inner widget has changed since the last composition.
+    /// Returns whether the current size of the inner widgets has changed since the last composition.
     pub fn size_changed(&self) -> Option<Size> {
         self.size_changed.value()
     }
 
-    /// Calls the given closure if the current size of the inner widget has changed since the last composition.
+    /// Calls the given closure if the current size of the inner widgets has changed since the last composition.
     pub fn on_size_changed(self, f: impl FnOnce(Size)) -> Self {
         self.size_changed.map(f);
         self
     }
 
-    /// Returns a reference to the inner widget.
+    /// Returns a reference to the inner widgets.
     pub fn inner(&self) -> &Inner {
         &self.inner
     }
 
-    /// Returns a mutable reference to the inner widget.
+    /// Returns a mutable reference to the inner widgets.
     pub fn inner_mut(&mut self) -> &mut Inner {
         &mut self.inner
     }

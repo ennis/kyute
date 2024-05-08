@@ -610,7 +610,7 @@ impl<T: Widget + ?Sized> Widget for WidgetPod<T> {
         }
 
         if ctx.debug {
-            // print widget ID in the top-right corner
+            // print widgets ID in the top-right corner
             let mut font = sk::Font::default();
             font.set_size(9.0);
             let mut paint = sk::Paint::new(Color::from_hex("#FFFF00").to_skia(), None);
@@ -644,17 +644,17 @@ impl fmt::Debug for WidgetPod {
 }
 
 impl<T: ?Sized> WidgetPod<T> {
-    /// Returns a reference to the wrapped widget.
+    /// Returns a reference to the wrapped widgets.
     pub fn inner(&self) -> &T {
         &self.content
     }
 
-    /// Returns a mutable reference to the wrapped widget.
+    /// Returns a mutable reference to the wrapped widgets.
     pub fn inner_mut(&mut self) -> &mut T {
         &mut self.content
     }
 
-    /// Returns the widget id.
+    /// Returns the widgets id.
     pub fn id(&self) -> Option<WidgetId> {
         self.id
     }

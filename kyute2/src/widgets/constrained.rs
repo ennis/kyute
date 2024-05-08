@@ -1,4 +1,7 @@
-use crate::{environment::Environment, widget::prelude::*};
+use crate::{
+    environment::Environment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
+};
+use kurbo::Point;
 
 pub struct Constrained<T> {
     pub constraints: BoxConstraints,

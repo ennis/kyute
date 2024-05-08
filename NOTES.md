@@ -209,7 +209,7 @@ impl<Content: Widget> Widget for Container<Content> {
             // how do we know if it's necessary?
             // 1. a child might have requested a repaint (ctx.request_repaint()), which sets a bit in the closest parent comp layer
             // how do we reach this place?
-            // 1. we know the ID of the widget with the dirty layer, so send it here
+            // 1. we know the ID of the widgets with the dirty layer, so send it here
         })
     }
 }
@@ -2318,3 +2318,26 @@ The only things that the widget tree needs to do are:
 
 - deliver events to a specific widget
 - keep a list of dirty widgets and call `update()` on them
+
+# Module organization
+
+- unrelated to user-facing organization
+- move related concepts near each other
+- in their own files:
+    - `Environment`
+    - main app event loop (application.rs)
+    - `UiHostWindow` (window.rs)
+    - `Event` (event.rs)
+    - `State`
+    - `WidgetExt` (widget_ext.rs)
+- together:
+    - Widget trait, WidgetPod and various contexts (TreeCtx, LayoutCtx, PaintCtx, builder), `State` and `Stateful`
+      and `builder` (core.rs)
+    - layout types that can be isolated
+- move supplied widgets to `widgets/`, except "basic" ones
+
+# Data model
+
+- like x_bow
+- data stored in `Model<T>`, which is `Rc<RefCell<T>>`, like state; passed to children via environment
+- `Model<T>` tracks changes for each piece, each piece holds pointers to dependent widgets

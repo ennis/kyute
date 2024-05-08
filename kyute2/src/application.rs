@@ -1,21 +1,15 @@
-use crate::{
-    utils::{WidgetSet, WidgetSlice},
-    widget::WidgetPtr,
-    window::WindowPaintOptions,
-    AppGlobals, ChangeFlags, TreeCtx, Widget, WidgetId, WidgetPod,
-};
 use std::{
     collections::HashMap,
     fmt,
-    rc::{Rc, Weak},
     sync::{Arc, Mutex},
     task::Wake,
     time::Instant,
 };
-use tracing::{error, trace, warn};
-use tracy_client::{set_thread_name, span};
+
+use crate::{AppGlobals, TreeCtx, Widget, WidgetPod, WidgetPtr};
+use tracing::warn;
+use tracy_client::set_thread_name;
 use winit::{
-    event::WindowEvent,
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget},
     window::WindowId,
 };
@@ -43,6 +37,7 @@ pub(crate) struct AppState {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
 /// Waker for the application event loop.
 ///
 /// TODO document
@@ -70,7 +65,7 @@ impl Wake for AppWaker {
             .send_event(ExtEvent::UpdateUi)
             .expect("failed to wake event loop");
     }
-}
+}*/
 
 /// Holds the UI root widget + the application state.
 struct App {
@@ -133,7 +128,7 @@ impl AppLauncher {
         self.run_inner(WidgetPod::new(root_widget))
     }
 
-    fn run_inner(self, mut root: WidgetPtr) {
+    fn run_inner(self, root: WidgetPtr) {
         let event_loop = self.event_loop;
         //let mut debug_window = self.debug_window;
         let _tracy_client = self.tracy_client;

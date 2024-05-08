@@ -54,7 +54,7 @@ pub(crate) fn derive_widget_wrapper_impl(input: proc_macro::TokenStream) -> proc
 
     let inner_field = if inner_fields.is_empty() {
         // if no fields were annotated with the `#[inner]` attribute, then assume that the first
-        // field is the inner widget.
+        // field is the inner widgets.
         (0, &input_struct_fields[0])
     } else if inner_fields.len() > 1 {
         let mut diag = Diagnostic::spanned(

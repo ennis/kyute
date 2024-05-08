@@ -28,26 +28,26 @@ use predicate::{parse_predicate, Predicate, Pseudoclass};
 pub use shape::Shape;
 
 bitflags! {
-    /// Encodes the active states of a widget.
+    /// Encodes the active states of a widgets.
     #[derive(Default)]
     pub struct WidgetState: u8 {
         /// Normal state.
         const DEFAULT  = 0;
 
-        /// The widget has focus.
+        /// The widgets has focus.
         ///
-        /// Typically a border or a color highlight is drawn on the widget to signify the focused state.
+        /// Typically a border or a color highlight is drawn on the widgets to signify the focused state.
         const FOCUS    = 1 << 0;
 
-        /// The widget is "active" (e.g. pressed, for a button).
+        /// The widgets is "active" (e.g. pressed, for a button).
         const ACTIVE   = 1 << 1;
 
-        /// A cursor is hovering atop the widget.
+        /// A cursor is hovering atop the widgets.
         const HOVER    = 1 << 2;
 
-        /// The widget is disabled.
+        /// The widgets is disabled.
         ///
-        /// Typically a widget is "greyed-out" when it is disabled.
+        /// Typically a widgets is "greyed-out" when it is disabled.
         const DISABLED = 1 << 3;
     }
 }

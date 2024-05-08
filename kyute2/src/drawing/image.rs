@@ -1,13 +1,7 @@
 //! Wrapper around skia images.
+use std::{collections::HashMap, ffi::c_void, mem};
+
 use crate::{drawing::ToSkia, Data, Size};
-use std::{
-    collections::HashMap,
-    ffi::c_void,
-    io,
-    io::Read,
-    mem,
-    sync::{Arc, Mutex},
-};
 
 /// An image. Paper-thin wrapper around skia images.
 #[derive(Clone, Debug)]

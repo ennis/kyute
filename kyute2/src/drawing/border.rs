@@ -21,6 +21,8 @@ pub enum BorderPosition {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, serde::Deserialize)]
 pub enum BorderStyle {
+    #[serde(rename = "none")]
+    None,
     #[serde(rename = "solid")]
     Solid,
     #[serde(rename = "dotted")]

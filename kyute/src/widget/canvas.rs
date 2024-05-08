@@ -152,7 +152,7 @@ impl Widget for Canvas {
     }
 }
 
-/// A widget that applies an arbitrary transform to its content.
+/// A widgets that applies an arbitrary transform to its content.
 pub struct Viewport<Content> {
     content: WidgetPod<Content>,
     transform: Transform,

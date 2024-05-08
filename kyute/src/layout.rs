@@ -574,7 +574,7 @@ impl Default for Measurements {
 }
 
 impl Measurements {
-    /// Creates new `Measurements` representing a widget with the given size, and no baseline specified.
+    /// Creates new `Measurements` representing a widgets with the given size, and no baseline specified.
     ///
     /// The clip bounds are are equal to the widget bounds.
     pub fn new(size: Size) -> Measurements {
@@ -583,7 +583,7 @@ impl Measurements {
         m
     }
 
-    /// Creates new `Measurements` representing a widget with the given size, and the specified baseline.
+    /// Creates new `Measurements` representing a widgets with the given size, and the specified baseline.
     pub fn with_baseline(size: Size, baseline: f64) -> Measurements {
         Measurements {
             size,
@@ -592,7 +592,7 @@ impl Measurements {
         }
     }
 
-    /// Returns the bounding rectangle of the widget in its local space.
+    /// Returns the bounding rectangle of the widgets in its local space.
     ///
     /// The rectangle's upper-left corner is at the origin (0,0), and its size is `self.size`.
     ///

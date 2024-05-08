@@ -1,8 +1,3 @@
-use std::{
-    any::Any,
-    cell::{Cell, RefCell},
-};
-
 use kurbo::Size;
 use skia_safe as sk;
 use tracing::warn;
@@ -10,8 +5,8 @@ use tracy_client::span;
 
 use crate::{
     drawing::ToSkia,
-    text::{get_font_collection, ChangeKind, TextSpan, TextStyle},
-    BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, TreeCtx, Widget, WidgetId,
+    text::{get_font_collection, TextSpan, TextStyle},
+    Binding, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, TreeCtx, Widget,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -63,22 +58,16 @@ fn build_paragraph(text: &TextSpan) -> sk::textlayout::Paragraph {
 }
 
 pub struct Text {
-    text: TextSpan,
-    available_width: f64,
-    available_height: f64,
-    scale_factor: f64,
+    text: Binding<TextSpan>,
     relayout: bool,
     paragraph: sk::textlayout::Paragraph,
 }
 
 impl Text {
-    pub fn new(text: TextSpan) -> Text {
+    pub fn new(text: impl Into<Binding<TextSpan>>) -> Text {
         let paragraph = build_paragraph(&text);
         Text {
             text,
-            available_width: 0.0,
-            available_height: 0.0,
-            scale_factor: 0.0,
             relayout: true,
             paragraph,
         }
@@ -86,7 +75,13 @@ impl Text {
 }
 
 impl Widget for Text {
-    fn update(&mut self, cx: &mut TreeCtx) {}
+    fn update(&mut self, cx: &mut TreeCtx) {
+        if self.text.update(cx) {
+            self.relayout = true;
+            self.paragraph = build_paragraph(&self.text.value());
+            cx.mark_needs_layout();
+        }
+    }
 
     fn event(&mut self, _ctx: &mut TreeCtx, _event: &mut Event) {}
 
@@ -114,7 +109,7 @@ impl Widget for Text {
         // - the new available width is >= the current paragraph width (otherwise new line breaks are necessary)
         // - the current layout is still valid (i.e. it hasn't been previously invalidated)
 
-        let mut paragraph = &mut self.paragraph;
+        let paragraph = &mut self.paragraph;
 
         if !self.relayout && paragraph.longest_line() <= available_width as f32 {
             let paragraph_size = Size {
@@ -157,7 +152,6 @@ impl Widget for Text {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        span!("text paint");
         ctx.with_canvas(|canvas| {
             self.paragraph.paint(canvas, Point::ZERO.to_skia());
         })

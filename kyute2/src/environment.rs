@@ -1,99 +1,14 @@
-use crate::Color;
-use once_cell::sync::Lazy;
 use std::{
     any::{Any, TypeId},
-    cell::RefCell,
-    collections::HashMap,
     fmt,
-    hash::{Hash, Hasher},
-    marker::PhantomData,
     rc::Rc,
-    sync::Arc,
 };
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// EnvKey
-////////////////////////////////////////////////////////////////////////////////////////////////////
-/*
-/// A type that identifies a named value of type `T` in an [`Environment`].
-#[derive(Debug, Eq, PartialEq)]
-pub struct EnvKey<T> {
-    key: Atom,
-    _type: PhantomData<T>,
-}
-
-impl<T> EnvKey<T> {
-    pub fn name(&self) -> &str {
-        &*self.key
-    }
-    pub fn atom(&self) -> Atom {
-        self.key.clone()
-    }
-}
-
-impl<T> Clone for EnvKey<T> {
-    fn clone(&self) -> Self {
-        EnvKey {
-            key: self.key.clone(),
-            _type: PhantomData,
-        }
-    }
-}
-
-impl<T> EnvKey<T> {
-    pub const fn new(key: Atom) -> EnvKey<T> {
-        EnvKey {
-            key,
-            _type: PhantomData,
-        }
-    }
-}
-
-impl<T: EnvValue> EnvKey<T> {
-    /// Returns the value of the environment variable in the current env.
-    pub fn get(&self, env: &Environment) -> Option<T> {
-        env.get(&self)
-    }
-}
-
-/// Declares an environment key from a static atom.
-macro_rules! builtin_env_key {
-    ($name:tt) => {
-        $crate::EnvKey::new(atom!($name))
-    };
-}
-*/
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// EnvValue
-////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Trait implemented by values that can be stored in an environment.
 pub trait EnvValue: Any {
     fn into_storage(self) -> Rc<dyn Any>;
     fn from_storage(storage: Rc<dyn Any>) -> Self;
 }
-
-/*
-/// Implementation of EnvValue for basic types
-macro_rules! impl_env_value {
-    ($t:ty) => {
-        impl $crate::EnvValue for $t {
-            fn as_any(&self) -> &dyn ::std::any::Any {
-                self
-            }
-        }
-    };
-}
-
-impl_env_value!(bool);
-impl_env_value!(f64);
-impl_env_value!(String);
-impl_env_value!(Color);*/
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// EnvImpl
-////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone)]
 pub struct Environment {

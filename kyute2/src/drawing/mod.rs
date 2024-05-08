@@ -5,6 +5,7 @@ use skia_safe as sk;
 
 pub use border::{Border, BorderStyle};
 pub use box_shadow::{draw_box_shadow, BoxShadow};
+pub use decoration::{CompoundBorder, Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration};
 pub use image::Image;
 pub use paint::{ColorStop, LinearGradient, Paint, RepeatMode, UniformData};
 pub use path::Path;
@@ -15,10 +16,10 @@ use crate::{Affine, Color, Point, Rect, Vec2};
 
 mod border;
 mod box_shadow;
+mod decoration;
 mod image;
 mod paint;
 mod path;
-
 #[cfg(feature = "svg")]
 mod svg_path;
 #[cfg(feature = "svg")]

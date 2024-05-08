@@ -1,35 +1,30 @@
 //! UI host windows
 use std::{
-    any::Any,
     cell::{Cell, RefCell},
     mem,
-    rc::{Rc, Weak},
     time::{Duration, Instant},
 };
 
 use keyboard_types::KeyState;
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
-use tracing::{info, trace, warn};
+use raw_window_handle::HasWindowHandle;
+use tracing::{info, warn};
 use tracy_client::span;
 use winit::{
     event::{DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent},
     event_loop::EventLoopWindowTarget,
     keyboard::{KeyLocation, NamedKey},
-    platform::windows::WindowBuilderExtWindows,
     window::{Window, WindowBuilder},
 };
 
 use crate::{
     application::ExtEvent,
     composition::{ColorType, LayerID},
+    core::HitTestEntry,
     drawing::ToSkia,
-    event::{KeyboardEvent, PointerButton, PointerButtons, PointerEvent},
-    theme,
-    utils::{WidgetSet, WidgetSlice},
-    widget::HitTestEntry,
+    event::{PointerButton, PointerButtons, PointerEvent},
     window::key::{key_code_from_winit, modifiers_from_winit},
     AppGlobals, BoxConstraints, ChangeFlags, Color, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Rect,
-    Size, State, TreeCtx, Widget, WidgetId, WidgetPod, WidgetPtr,
+    Size, TreeCtx, Widget, WidgetPod, WidgetPtr,
 };
 
 mod key;
@@ -189,7 +184,10 @@ impl UiHostWindowState {
             .compositor
             .create_surface_layer(Size::new(size.width as f64, size.height as f64), ColorType::RGBAF16);
 
-        let raw_window_handle = window.raw_window_handle().expect("failed to get raw window handle");
+        let raw_window_handle = window
+            .window_handle()
+            .expect("failed to get raw window handle")
+            .as_raw();
         unsafe {
             // Bind the layer to the window
             // SAFETY: idk? the window handle is valid?
@@ -293,7 +291,7 @@ impl UiHostWindowState {
                 self.scale_factor.set(*scale_factor);
                 //self.merge_change_flags(ChangeFlags::GEOMETRY);
             }
-            WindowEvent::Focused(focused) => {
+            WindowEvent::Focused(_focused) => {
                 /*if !*focused {
                     // dismiss all popups when the parent window loses focus
                     self.dismiss_popups();
@@ -405,7 +403,7 @@ impl UiHostWindowState {
     /// Handles keyboard input.
     ///
     /// Returns whether the keyboard input was handled
-    fn handle_keyboard_input(&self, cx: &mut TreeCtx, content: WidgetPtr, event: &KeyEvent, time: Duration) {
+    fn handle_keyboard_input(&self, _cx: &mut TreeCtx, _content: WidgetPtr, event: &KeyEvent, _time: Duration) {
         /*let mut popups = self.popups.borrow();
         // If there are active popups, keyboard events are delivered to the popups.
         // TODO there should be only one popup active at a time.
@@ -666,7 +664,6 @@ impl UiHostWindowState {
             let mut paint_ctx = PaintCtx {
                 scale_factor: self.scale_factor.get(),
                 window_transform: Default::default(),
-                id: None,
                 surface: &surface,
                 //debug_info: Default::default(),
             };

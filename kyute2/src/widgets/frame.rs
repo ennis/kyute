@@ -4,12 +4,9 @@ use std::cell::Cell;
 use kurbo::{Affine, Vec2};
 
 use crate::{
+    drawing::{Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration},
     environment::Environment,
     layout::place_into,
-    widget::{
-        decoration::{Decoration, ShapeBorder, ShapeDecoration},
-        RoundedRectBorder,
-    },
     Alignment, BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, Insets, LayoutCtx, LengthOrPercentage,
     PaintCtx, Point, Rect, Size, TreeCtx, Widget,
 };
@@ -159,7 +156,9 @@ impl<B: ShapeBorder + 'static, T: Widget> Widget for Frame<B, T> {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        self.decoration.paint(ctx, self.size.to_rect());
+        ctx.with_canvas(|canvas| {
+            self.decoration.paint(canvas, self.size.to_rect());
+        });
         ctx.with_offset(self.offset, |ctx| {
             self.content.paint(ctx);
         });

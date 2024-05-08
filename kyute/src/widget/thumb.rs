@@ -78,7 +78,7 @@ impl<Content: Widget + 'static> Thumb<Content> {
         &self.content
     }
 
-    /// Returns a mutable reference to the inner widget.
+    /// Returns a mutable reference to the inner widgets.
     pub fn content_mut(&mut self) -> &mut Content {
         &mut self.content
     }

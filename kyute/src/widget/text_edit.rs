@@ -69,7 +69,7 @@ fn edit_text(text: &str, selection: Selection, replace_with: &str) -> (Arc<str>,
 }
 
 impl BaseTextEdit {
-    /// Creates a new `TextEditInner` widget displaying the specified `FormattedText`.
+    /// Creates a new `TextEditInner` widgets displaying the specified `FormattedText`.
     #[composable]
     pub fn with_selection(formatted_text: impl Into<FormattedText>, mut selection: Selection) -> BaseTextEdit {
         #[state]
@@ -469,7 +469,7 @@ pub struct TextEdit {
 }
 
 impl TextEdit {
-    /// Creates a new `TextEditInner` widget displaying the specified `FormattedText`.
+    /// Creates a new `TextEditInner` widgets displaying the specified `FormattedText`.
     #[composable]
     pub fn with_selection(formatted_text: impl Into<FormattedText>, mut selection: Selection) -> TextEdit {
         let mut base = BaseTextEdit::with_selection(formatted_text, selection);

@@ -84,7 +84,6 @@ struct PathElem {
 impl PathElem {
     fn from_svg(node: roxmltree::Node) -> anyhow::Result<PathElem> {
         let mut path = None;
-        let mut id = String::new();
         let mut fill = None;
         let mut stroke = None;
         let mut stroke_width = 1.0;
@@ -95,7 +94,7 @@ impl PathElem {
                     path = Some(svg_path_to_skia(attr.value())?);
                 }
                 "id" => {
-                    id = attr.value().to_string();
+                    //id = attr.value().to_string();
                 }
                 "fill" => {
                     fill = if attr.value() == "none" {
@@ -134,11 +133,12 @@ impl PathElem {
         })
     }
 
-    fn draw(&self, ctx: &mut PaintCtx, options: &DrawOptions) {
+    fn draw(&self, ctx: &mut PaintCtx, _options: &DrawOptions) {
         let mut paint = sk::Paint::new(self.fill.unwrap_or_default().to_skia(), None);
         paint.set_anti_alias(true);
         if let Some(fill) = self.fill {
             paint.set_style(sk::PaintStyle::Fill);
+            paint.set_color4f(fill.to_skia(), None);
             ctx.surface.surface().canvas().draw_path(&self.path, &paint);
         }
         if let Some(stroke) = self.stroke {

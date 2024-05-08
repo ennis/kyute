@@ -1,8 +1,9 @@
-use kurbo::Vec2;
 use std::fmt;
 
+use kurbo::Vec2;
+
 pub use crate::keyboard_types::KeyboardEvent;
-use crate::{keyboard_types::Modifiers, Affine, Point, WidgetId};
+use crate::{keyboard_types::Modifiers, Affine, Point};
 
 /// Represents the type of pointer.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

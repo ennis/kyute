@@ -444,7 +444,7 @@ impl<'a> EventCtx<'a> {
         &self.window_transform
     }
 
-    /// Requests a repaint of the widget.
+    /// Requests a repaint of the widgets.
     pub fn request_repaint(&mut self) {
         self.paint_damage = PaintDamage::Repaint;
     }
@@ -466,7 +466,7 @@ impl<'a> EventCtx<'a> {
         }
     }
 
-    /// Returns the bounds of the current widget.
+    /// Returns the bounds of the current widgets.
     // TODO in what space?
     pub fn bounds(&self) -> Rect {
         todo!()
@@ -477,7 +477,7 @@ impl<'a> EventCtx<'a> {
         self.redraw = true;
     }*/
 
-    /// Requests a relayout of the current widget.
+    /// Requests a relayout of the current widgets.
     pub fn request_relayout(&mut self) {
         self.relayout = true;
     }
@@ -525,7 +525,7 @@ impl<'a> EventCtx<'a> {
         }
     }
 
-    /// Returns the current pointer-grabbing widget ID.
+    /// Returns the current pointer-grabbing widgets ID.
     pub fn pointer_capturing_widget(&self) -> Option<WidgetId> {
         self.window_state().focus_state.pointer_grab
     }
@@ -595,7 +595,7 @@ impl<'a> EventCtx<'a> {
         self.handled
     }
 
-    /// Routes an event to a target widget.
+    /// Routes an event to a target widgets.
     // TODO: we could use `dyn Widget` but them we can't call the function
     // in generic contexts (e.g. with `W: Widget + ?Sized`, no way to get a `&dyn Widget` from a `&W`)
     pub fn default_route_event<W: Widget + ?Sized>(
@@ -608,7 +608,7 @@ impl<'a> EventCtx<'a> {
     ) {
         let _span = trace_span!("default_route_event", target = ?widget.widget_id(), target_dbg_name = ?widget.debug_name(), event = ?event).entered();
 
-        // fetch the target widget ID once and for all
+        // fetch the target widgets ID once and for all
         let id = widget.widget_id();
 
         match *event {
@@ -701,7 +701,7 @@ impl<'a> EventCtx<'a> {
             ////////////////////////////////////////////////////////////////////////////////////////
             // Non-propagating pointer events
 
-            // Some pointer events are intended for a specific target widget, identified by ID.
+            // Some pointer events are intended for a specific target widgets, identified by ID.
             // Check that we are propagating to a widget that has the same ID.
             // Otherwise, do not propagate the event.
             Event::Pointer(PointerEvent {
@@ -819,9 +819,9 @@ impl<'a> LayerPaintCtx<'a> {
     }
 }
 
-/// Trait that defines the behavior of a widget.
+/// Trait that defines the behavior of a widgets.
 pub trait Widget {
-    /// Returns the widget identity.
+    /// Returns the widgets identity.
     fn widget_id(&self) -> Option<WidgetId>;
 
     fn speculative_layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Geometry {
@@ -832,13 +832,13 @@ pub trait Widget {
         layout
     }
 
-    /// Measures this widget and layouts the children of this widget.
+    /// Measures this widgets and layouts the children of this widgets.
     fn layout(&self, ctx: &mut LayoutCtx, params: &LayoutParams, env: &Environment) -> Geometry;
 
-    /// Routes an event from a parent widget to this widget.
+    /// Routes an event from a parent widgets to this widgets.
     ///
     /// This method should be called by parent widgets to propagate events to their children, instead of directly
-    /// calling `event` on them. It determines whether the event is targeting the widget, and if so, invokes the `event`
+    /// calling `event` on them. It determines whether the event is targeting the widgets, and if so, invokes the `event`
     /// method. Otherwise it skips propagation.
     ///
     /// It's possible to override it to inhibit event propagation in certain cases (see WidgetPod).
@@ -847,7 +847,7 @@ pub trait Widget {
         ctx.default_route_event(self, event, &Transform::identity(), None, env)
     }
 
-    /// Event callback. Implement to respond to event that target this widget.
+    /// Event callback. Implement to respond to event that target this widgets.
     ///
     /// All events received through this method should be routed to child widgets with `child.route_event()`.
     fn event(&self, ctx: &mut EventCtx, event: &mut Event, env: &Environment);

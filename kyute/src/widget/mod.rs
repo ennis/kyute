@@ -434,7 +434,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
         Modified(VerticalAlignment(alignment), self)
     }
 
-    /// Places this widget to the right of the the other.
+    /// Places this widgets to the right of the the other.
     #[must_use]
     fn right_of<B: Widget + 'static>(self, other: B, vertical_alignment: Alignment) -> RightOf<Self, B> {
         // == "align left edge of self with right edge of other"
@@ -447,7 +447,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
         )
     }
 
-    /// Places this widget to the left of the the other.
+    /// Places this widgets to the left of the the other.
     #[must_use]
     fn left_of<B: Widget + 'static>(self, other: B, vertical_alignment: Alignment) -> LeftOf<Self, B> {
         // == "align right edge of self with left edge of other"
@@ -460,7 +460,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
         )
     }
 
-    /// Places this widget above the other (vertically).
+    /// Places this widgets above the other (vertically).
     #[must_use]
     fn above<B: Widget + 'static>(self, other: B, horizontal_alignment: Alignment) -> Above<Self, B> {
         // == "align bottom edge of self with top edge of other"
@@ -473,7 +473,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
         )
     }
 
-    /// Places this widget below the other (vertically).
+    /// Places this widgets below the other (vertically).
     #[must_use]
     fn below<B: Widget + 'static>(self, other: B, horizontal_alignment: Alignment) -> Below<Self, B> {
         // == "align left edge of self with right edge of other"
@@ -486,51 +486,51 @@ pub trait WidgetExt: Widget + Sized + 'static {
         )
     }
 
-    /// Centers the widget in the available space.
+    /// Centers the widgets in the available space.
     #[must_use]
     fn centered(self) -> Modified<VerticalAlignment, Modified<HorizontalAlignment, Self>> {
         self.horizontal_alignment(Alignment::CENTER)
             .vertical_alignment(Alignment::CENTER)
     }
 
-    // Aligns the widget in the available space.
+    // Aligns the widgets in the available space.
     //#[must_use]
     //fn aligned(self, alignment: Alignment) -> Align<Self> {
     //    Align::new(alignment, self)
     //}
 
-    // Adds padding around the widget.
+    // Adds padding around the widgets.
     #[must_use]
     fn padding_left(self, left: impl Into<Length>) -> Modified<Padding, Self> {
         Modified(Padding::new(0.dip(), 0.dip(), 0.dip(), left), self)
     }
 
-    /// Adds padding around the widget.
+    /// Adds padding around the widgets.
     #[must_use]
     fn padding_right(self, right: impl Into<Length>) -> Modified<Padding, Self> {
         Modified(Padding::new(0.dip(), right, 0.dip(), 0.dip()), self)
     }
 
-    /// Adds padding around the widget.
+    /// Adds padding around the widgets.
     #[must_use]
     fn padding_top(self, top: impl Into<Length>) -> Modified<Padding, Self> {
         Modified(Padding::new(top, 0.dip(), 0.dip(), 0.dip()), self)
     }
 
-    /// Adds padding around the widget.
+    /// Adds padding around the widgets.
     #[must_use]
     fn padding_bottom(self, bottom: impl Into<Length>) -> Modified<Padding, Self> {
         Modified(Padding::new(0.dip(), 0.dip(), bottom, 0.dip()), self)
     }
 
-    /// Adds padding around the widget.
+    /// Adds padding around the widgets.
     #[must_use]
     fn padding(self, padding: impl Into<Length>) -> Modified<Padding, Self> {
         let padding = padding.into();
         Modified(Padding::new(padding, padding, padding, padding), self)
     }
 
-    /// Adds padding around the widget.
+    /// Adds padding around the widgets.
     #[must_use]
     fn padding_trbl(
         self,
@@ -548,7 +548,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
         StyledBox::new(self, style)
     }
 
-    /// Makes this widget clickable.
+    /// Makes this widgets clickable.
     ///
     /// See `Clickable`.
     #[must_use]
@@ -569,13 +569,13 @@ pub trait WidgetExt: Widget + Sized + 'static {
         Modified(FontSize(size.into()), self)
     }
 
-    /// Sets the color of the text within this widget.
+    /// Sets the color of the text within this widgets.
     #[must_use]
     fn text_color(self, color: impl Into<Color>) -> Modified<EnvironmentOverride<Color>, Self> {
         self.env_override(theme::TEXT_COLOR, color.into())
     }
 
-    /// Wraps this widget in a `WidgetPod`.
+    /// Wraps this widgets in a `WidgetPod`.
     ///
     /// The resulting `WidgetPod` is not backed by a surface or layer.
     #[must_use]
@@ -584,9 +584,9 @@ pub trait WidgetExt: Widget + Sized + 'static {
         WidgetPod::new(self)
     }
 
-    /// Wraps this widget in an `Arc<WidgetPod>`.
+    /// Wraps this widgets in an `Arc<WidgetPod>`.
     ///
-    /// This is typically used with a `composable(cached)` function to get a cacheable object for a widget.
+    /// This is typically used with a `composable(cached)` function to get a cacheable object for a widgets.
     ///
     /// The resulting `WidgetPod` is not backed by a surface or layer.
     #[must_use]
@@ -595,7 +595,7 @@ pub trait WidgetExt: Widget + Sized + 'static {
         Arc::new(WidgetPod::new(self))
     }
 
-    /// Wraps this widget in an `Arc<WidgetPod>` and erases the widget type.
+    /// Wraps this widgets in an `Arc<WidgetPod>` and erases the widgets type.
     ///
     /// The resulting `WidgetPod` is not backed by a surface or layer.
     #[must_use]

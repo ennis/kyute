@@ -1,10 +1,7 @@
 //! Clickable widget wrapper
+use crate::prelude::*;
 use keyboard_types::{Key, KeyState};
 use tracing::trace;
-
-use crate::prelude::*;
-
-type DefaultClickHandler = fn(&mut TreeCtx);
 
 #[derive(Copy, Clone, Default)]
 pub struct ClickableState {
@@ -20,9 +17,9 @@ impl ClickableState {
 }
 
 pub struct Clickable<T> {
-    content: T,
     state: State<ClickableState>,
     on_click: Box<dyn Fn(&mut TreeCtx)>,
+    content: T,
 }
 
 impl<T: Widget> Clickable<T> {

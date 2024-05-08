@@ -112,7 +112,7 @@ impl WindowState {
     /// - the current pointer position
     /// - information about the last click, for double-click handling
     ///
-    /// Returns the event that should be propagated to the content widget as a result of the window event.
+    /// Returns the event that should be propagated to the content widgets as a result of the window event.
     fn process_window_event(&mut self, window_event: &winit::event::WindowEvent) -> Option<Event<'static>> {
         //let _span = trace_span!("process_window_event").entered();
 
@@ -384,7 +384,7 @@ struct ContentEventCtx<'a, 'b> {
 }
 
 impl<'a, 'b> ContentEventCtx<'a, 'b> {
-    /// Propagates an event to the content widget.
+    /// Propagates an event to the content widgets.
     ///
     /// Returns possible focus change requested emitted by widgets in this window.
     fn send_event(&mut self, event: &mut Event) -> EventResult {
@@ -399,9 +399,9 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
         self.send_event(&mut event)
     }
 
-    /// Sends a "targeting pointer event" to a widget.
+    /// Sends a "targeting pointer event" to a widgets.
     ///
-    /// They are pointer events that are intended for one widget only.
+    /// They are pointer events that are intended for one widgets only.
     /// Unlike other pointer events, they *do not* propagate to descendants on a successful hit-test.
     ///
     /// This is used for sending `Pointer{Out,Over,Enter,Exit}` events.
@@ -449,7 +449,7 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
                 //pointer_device_id = Some(pointer_event.pointer_id);
 
                 // Pointer and wheel events are delivered to the node that is currently grabbing the pointer.
-                // If nothing is grabbing the pointer, the pointer event is delivered to a widget
+                // If nothing is grabbing the pointer, the pointer event is delivered to a widgets
                 // that passes the hit-test
                 if let Some(target) = self.state.focus_state.pointer_grab {
                     trace!("routing pointer event to pointer-capturing widget {:?}", target);
@@ -484,7 +484,7 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
                         position: pointer_event.position,
                     }));*/
 
-                    // signal hot widget changes (PointerOver/PointerOut)
+                    // signal hot widgets changes (PointerOver/PointerOut)
                     if old_hot != new_hot {
                         trace!("Old hot: {:?}, new hot: {:?}", old_hot, new_hot);
                         if let Some(old_and_busted) = old_hot {
@@ -513,8 +513,8 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
                 }
             }
             Event::Keyboard(_) => {
-                // keyboard events are delivered to the widget that has the focus.
-                // if no widget has focus, the event is dropped.
+                // keyboard events are delivered to the widgets that has the focus.
+                // if no widgets has focus, the event is dropped.
                 if let Some(focus) = self.state.focus_state.focus {
                     event_result = self.send_routed_event(focus, event);
                 }
@@ -560,8 +560,8 @@ impl<'a, 'b> ContentEventCtx<'a, 'b> {
                             self.state.focus_state.focus = Some(new_focus);
                             self.send_routed_event(new_focus, Event::FocusGained);
                         }
-                        // if we can't find the widget in the focus chain, that's not a bug,
-                        // it's just that the widget is not part of the focus chain, but can still be focused
+                        // if we can't find the widgets in the focus chain, that's not a bug,
+                        // it's just that the widgets is not part of the focus chain, but can still be focused
                         // by clicking on it directly
                     }
                 }
@@ -603,7 +603,7 @@ fn forward_event_to_content(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Window widget
+// Window widgets
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// A window managed by kyute.
@@ -726,7 +726,7 @@ impl Widget for Window {
                     )
                     .expect("failed to create window");
 
-                    // register it to the AppCtx, necessary so that the event loop can route window events to this widget
+                    // register it to the AppCtx, necessary so that the event loop can route window events to this widgets
                     ctx.register_window(window.id());
 
                     window.set_root_composition_layer(self.content.layer().unwrap());

@@ -6,12 +6,9 @@
 
 #![feature(const_fn_floating_point_arithmetic)]
 
-extern crate core;
-
 // public modules
 pub mod application;
 pub mod composition;
-//pub mod debug_util;
 pub mod drawing;
 pub mod event;
 pub mod layout;
@@ -19,7 +16,7 @@ pub mod platform;
 pub mod text;
 pub mod theme;
 pub mod utils;
-pub mod widget;
+pub mod widgets;
 pub mod window;
 
 // internal modules
@@ -27,36 +24,38 @@ mod app_globals;
 //mod asset;
 mod backend;
 mod color;
-mod context;
-//mod counter;
 //#[cfg(feature = "debug_window")]
 //mod debug_window;
-//mod element;
-//mod environment;
-mod counter;
+mod core;
 mod environment;
 mod length;
 mod skia_backend;
-mod state;
 mod style;
-mod vec_diff;
-mod widget_id;
+mod widget_ext;
 
 // public exports
 pub use app_globals::AppGlobals;
 pub use application::AppLauncher;
+pub use environment::Environment;
 //pub use asset::{Asset, AssetId};
 pub use color::Color;
-pub use context::ContextDataHandle;
 //pub use element::{Element, TransformNode};
 //pub use environment::{EnvKey, EnvValue, Environment};
+pub use core::{
+    Binding, Builder, ChangeFlags, HitTestResult, LayoutCtx, PaintCtx, State, TreeCtx, Widget, WidgetPod, WidgetPtr,
+};
 pub use event::Event;
 pub use layout::{Alignment, BoxConstraints, Geometry};
 pub use length::{LengthOrPercentage, UnitExt, IN_TO_DIP, PT_TO_DIP};
-pub use state::State;
-pub use widget::{ChangeFlags, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget, WidgetPod, WidgetPtr};
-pub use widget_id::WidgetId;
-//pub use window::{AppWindowHandle, PopupOptions, PopupTarget};
+pub use widget_ext::WidgetExt;
+
+/// Widget implementor prelude.
+pub mod prelude {
+    pub use crate::{
+        BoxConstraints, ChangeFlags, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Rect,
+        Size, State, TreeCtx, Widget, WidgetPod, WidgetPtr,
+    };
+}
 
 // macro reexports
 pub use kyute2_macros::grid_template;
