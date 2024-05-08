@@ -7,7 +7,6 @@ use crate::{
     drawing::BoxShadow,
     text::{TextSpan, TextStyle},
     theme,
-    theme::Theme,
     widget::{
         align::Align, builder, clickable::ClickableState, decoration::DecoratedBox, prelude::*, BorderStyle, Clickable,
         Constrained, Padding, RoundedRectBorder, ShapeDecoration, Text, WidgetExt,

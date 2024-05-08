@@ -1,14 +1,8 @@
 //! Clickable widget wrapper
-use std::{any::Any, mem};
-
 use keyboard_types::{Key, KeyState};
 use tracing::trace;
 
-use crate::{
-    environment::{EnvValue, Environment},
-    widget::{prelude::*, TreeCtx, WidgetPod, WidgetPtr},
-    State,
-};
+use crate::prelude::*;
 
 type DefaultClickHandler = fn(&mut TreeCtx);
 

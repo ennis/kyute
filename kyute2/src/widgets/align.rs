@@ -1,13 +1,6 @@
-////////////////////////////////////////////////////////////////////////////////////////////////////
+use kurbo::{Insets, Vec2};
 
-use crate::{
-    environment::Environment,
-    layout::place_into,
-    widget::{prelude::*, TransformNode},
-    Alignment,
-};
-use kurbo::{Affine, Insets, Vec2};
-use std::cell::Cell;
+use crate::{layout::place_into, prelude::*, Alignment};
 
 pub struct Align<T> {
     pub x: Alignment,
@@ -36,12 +29,12 @@ impl<T: Widget> Widget for Align<T> {
         self.content.update(cx)
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
-        event.with_offset(self.offset, |event| self.content.event(ctx, event))
-    }
-
     fn environment(&self) -> Environment {
         self.content.environment()
+    }
+
+    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+        event.with_offset(self.offset, |event| self.content.event(ctx, event))
     }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {

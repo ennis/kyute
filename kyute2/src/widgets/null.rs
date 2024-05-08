@@ -1,7 +1,6 @@
-use crate::{
-    BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget, WidgetId,
-};
 use kurbo::Point;
+
+use crate::{BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget};
 
 /// A widget that does nothing.
 #[derive(Copy, Clone, Default)]

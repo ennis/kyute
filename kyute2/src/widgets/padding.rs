@@ -1,7 +1,6 @@
-use std::any::Any;
+use kurbo::{Insets, Point, Size, Vec2};
 
 use crate::{environment::Environment, widget::prelude::*};
-use kurbo::{Affine, Insets, Point, Size, Vec2};
 
 pub struct Padding<T> {
     pub padding: Insets,

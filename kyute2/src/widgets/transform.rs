@@ -1,9 +1,8 @@
-use crate::{
-    environment::Environment, BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx,
-    TreeCtx, Widget, WidgetId,
-};
 use kurbo::{Affine, Point, Vec2};
-use std::cell::Cell;
+
+use crate::{
+    environment::Environment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
+};
 
 /// A container for a widget.
 ///
