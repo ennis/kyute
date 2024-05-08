@@ -154,15 +154,11 @@ pub struct KeyboardEvent {
     pub is_composing: bool,
 }*/
 
-/*#[derive(Debug)]
-pub enum InternalEvent<'a> {
+#[derive(Clone, Debug)]
+pub enum InternalEvent {
     /// Hit-test results
-    HitTest {
-        position: Point,
-        hovered: &'a RefCell<HashSet<WidgetId>>,
-        hot: &'a RefCell<Option<WidgetId>>,
-    },
-}*/
+    Unmount,
+}
 
 /// Events.
 #[derive(Clone, Debug)]
@@ -179,7 +175,7 @@ pub enum Event {
     PointerExit(PointerEvent),
     /// A keyboard event.
     Keyboard(KeyboardEvent),
-    //Internal(InternalEvent<'a>),
+    Internal(InternalEvent),
 }
 
 impl Event {

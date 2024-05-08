@@ -58,13 +58,13 @@ fn build_paragraph(text: &TextSpan) -> sk::textlayout::Paragraph {
 }
 
 pub struct Text {
-    text: Binding<TextSpan>,
+    text: TextSpan,
     relayout: bool,
     paragraph: sk::textlayout::Paragraph,
 }
 
 impl Text {
-    pub fn new(text: impl Into<Binding<TextSpan>>) -> Text {
+    pub fn new(text: TextSpan) -> Text {
         let paragraph = build_paragraph(&text);
         Text {
             text,
@@ -76,11 +76,11 @@ impl Text {
 
 impl Widget for Text {
     fn update(&mut self, cx: &mut TreeCtx) {
-        if self.text.update(cx) {
+        /*if self.text.update(cx) {
             self.relayout = true;
             self.paragraph = build_paragraph(&self.text.value());
             cx.mark_needs_layout();
-        }
+        }*/
     }
 
     fn event(&mut self, _ctx: &mut TreeCtx, _event: &mut Event) {}

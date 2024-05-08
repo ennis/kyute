@@ -9,13 +9,13 @@ use crate::{
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct DecoratedBox<D, T> {
-    decoration: Binding<D>,
+    decoration: D,
     size: Size,
     content: Padding<T>,
 }
 
 impl<D: Decoration, T: Widget> DecoratedBox<D, T> {
-    pub fn new(decoration: impl Into<Binding<D>>, content: T) -> Self {
+    pub fn new(decoration: D, content: T) -> Self {
         let padding = decoration.insets();
         Self {
             decoration,
@@ -31,12 +31,12 @@ where
     D: Decoration + 'static,
 {
     fn update(&mut self, cx: &mut TreeCtx) {
-        if self.decoration.update(cx) {
+        /*if self.decoration.update(cx) {
             // TODO layout is not always necessary. Depending on what changed,
             // a repaint might be sufficient.
             self.content.padding = self.decoration.value_ref().insets();
             cx.mark_needs_layout();
-        }
+        }*/
 
         self.content.update(cx)
     }

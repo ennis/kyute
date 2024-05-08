@@ -244,11 +244,7 @@ fn non_zero_flex_child_constraints(
     main_axis.constraints(0.0, f64::INFINITY, cross_min, cross_max)
 }
 
-impl Element for FlexElement {
-    fn id(&self) -> ElementId {
-        self.id
-    }
-
+impl Widget for Flex {
     fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
         // Quoting the flutter docs:
         //
@@ -265,7 +261,7 @@ impl Element for FlexElement {
         //      The main axis extent of the Flex is determined by the mainAxisSize property. If the mainAxisSize property is MainAxisSize.max, then the main axis extent of the Flex is the max extent of the incoming main axis constraints. If the mainAxisSize property is MainAxisSize.min, then the main axis extent of the Flex is the sum of the main axis extents of the children (subject to the incoming constraints).
         //      Determine the position for each child according to the mainAxisAlignment and the crossAxisAlignment. For example, if the mainAxisAlignment is MainAxisAlignment.spaceBetween, any main axis space that has not been allocated to children is divided evenly and placed between the children.
 
-        let main_axis_natural_size = move |e: &mut dyn Element| match self.axis {
+        let main_axis_natural_size = move |e: &mut dyn Widget| match self.axis {
             Axis::Horizontal => e.natural_height(params.max.width),
             Axis::Vertical => e.natural_width(params.max.height),
         };

@@ -157,7 +157,6 @@ impl ShapeDecoration<RoundedRectBorder> {
 
 impl<B: ShapeBorder> ShapeDecoration<B> {
     /// Changes the border of this `ShapeDecoration`.
-    #[must_use]
     pub fn border<C>(self, border: C) -> ShapeDecoration<CompoundBorder<B, C>> {
         ShapeDecoration {
             fill: self.fill,
@@ -171,7 +170,6 @@ impl<B: ShapeBorder> ShapeDecoration<B> {
     }
 
     /// Adds a box shadow to this `ShapeDecoration`.
-    #[must_use]
     pub fn box_shadow(mut self, shadow: BoxShadow) -> Self {
         self.shadows.push(shadow);
         self

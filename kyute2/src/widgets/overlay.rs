@@ -1,10 +1,5 @@
 //! Stacking widget.
-use crate::widget::prelude::*;
-use std::any::Any;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Widget definition
-////////////////////////////////////////////////////////////////////////////////////////////////////
+use crate::{IntoWidgetPod, Widget, WidgetPtr};
 
 #[derive(Copy, Clone, Debug)]
 pub enum ZOrder {
@@ -15,64 +10,24 @@ pub enum ZOrder {
 }
 
 /// Overlays one widget on top of the other.
-///
-/// The widget's layout and identity is defined by `A`, events are only forwarded to A.
-pub struct Overlay<A, B> {
-    a: A,
-    b: B,
-    z_order: ZOrder,
+pub struct Overlay {
+    above: WidgetPtr,
+    below: WidgetPtr,
+    //z_order: ZOrder,
 }
 
-impl<A: Widget + 'static, B: Widget + 'static> Overlay<A, B> {
-    pub fn new(a: A, b: B, z_order: ZOrder) -> Overlay<A, B> {
-        Overlay { a, b, z_order }
-    }
+// Overlay is a wrapper over both A and B; in practice, they'll both be considered as children of the widget owning the overlay.
+// I.e. when something changes inside, both A and B will be rebuilt
 
-    /// Returns a reference to the inner widget (A).
-    pub fn inner(&self) -> &A {
-        &self.a
-    }
+// Builders are not considered widget wrappers, but
 
-    /// Returns a mutable reference to the inner widget.
-    pub fn inner_mut(&mut self) -> &mut A {
-        &mut self.a
+impl Overlay {
+    pub fn new(above: impl Widget + 'static, below: impl Widget + 'static) -> Self {
+        Overlay { above, below }
     }
 }
 
-impl<A: Widget, B: Widget> Widget for Overlay<A, B> {
-    type Element = OverlayElement<A::Element, B::Element>;
-
-    fn build(self, cx: &mut TreeCtx, _element_id: ElementId) -> Self::Element {
-        OverlayElement {
-            a: cx.build(self.a),
-            b: cx.build(self.b),
-            z_order: self.z_order,
-        }
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        let mut flags = ChangeFlags::empty();
-        flags |= cx.update(self.a, &mut element.a);
-        flags |= cx.update(self.b, &mut element.b);
-        flags
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Element
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-pub struct OverlayElement<A, B> {
-    a: A,
-    b: B,
-    z_order: ZOrder,
-}
-
-impl<A: Element, B: Element> Element for OverlayElement<A, B> {
-    fn id(&self) -> ElementId {
-        self.a.id()
-    }
-
+impl Widget for Overlay {
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
         let sublayout = ctx.layout(&mut self.a, params);
         let b_constraints = BoxConstraints {
@@ -115,17 +70,5 @@ impl<A: Element, B: Element> Element for OverlayElement<A, B> {
                 ctx.paint(&mut self.a);
             }
         }
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-
-    fn debug(&self, visitor: &mut DebugWriter) {
-        visitor.type_name("OverlayElement");
-        visitor.property("id", self.id());
-        visitor.property("z_order", self.z_order);
-        visitor.child("a", &self.a);
-        visitor.child("b", &self.b);
     }
 }

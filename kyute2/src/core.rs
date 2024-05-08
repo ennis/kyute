@@ -227,6 +227,22 @@ impl<T> WidgetPod<T> {
     }
 }
 
+pub trait IntoWidgetPod {
+    fn into_widget_pod(self) -> WidgetPtr;
+}
+
+impl IntoWidgetPod for WidgetPtr {
+    fn into_widget_pod(self) -> WidgetPtr {
+        self
+    }
+}
+
+impl<T: Widget> IntoWidgetPod for T {
+    fn into_widget_pod(self) -> WidgetPtr {
+        WidgetPod::new(self)
+    }
+}
+
 impl<T: Widget + 'static> WidgetPod<T> {
     pub fn as_dyn(self: &Rc<Self>) -> WidgetPtr {
         self.clone()
@@ -673,13 +689,51 @@ where
     }
 }
 
+/*
+
+// An alternative Builder that passes a child widget to the builder closures.
+// This is useful if the widget returned by the builder changes often, but a subtree of it remains the same.
+
+pub struct Rebuilder<F, W> {
+    builder: F,
+    child: Option<W>,
+    inner: Option<WidgetPtr>,
+}
+
+impl<F, W, ParentWidget> Widget for Rebuilder<F, W>
+where
+    F: FnMut(&mut TreeCtx, W) -> ParentWidget,
+    W: Widget,
+{
+    fn update(&mut self, cx: &mut TreeCtx) {
+        //if let Some(cl)
+        //todo!()
+    }
+
+    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) {
+        todo!()
+    }
+
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
+        todo!()
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        todo!()
+    }
+
+    fn paint(&mut self, cx: &mut PaintCtx) {
+        todo!()
+    }
+}
+
 pub fn builder<F, W>(f: F) -> Builder<F>
 where
     W: Widget,
     F: Fn(&mut TreeCtx) -> W,
 {
     Builder::new(f)
-}
+}*/
 
 pub struct State<T: ?Sized>(Rc<StateInner<T>>);
 

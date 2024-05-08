@@ -301,7 +301,7 @@ impl GridItemAlignment {
 pub struct GridItem {
     pub area: GridArea,
     pub alignment: GridItemAlignment,
-    pub content: Box<dyn AnyWidget>,
+    pub content: WidgetPtr,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -333,151 +333,6 @@ impl Default for GridOptions {
     }
 }
 
-/// A widget that layouts its content on a grid.
-pub struct Grid<Style = DefaultGridStyle> {
-    pub options: GridOptions,
-    pub style: Style,
-    pub items: Vec<GridItem>,
-}
-
-impl Grid {
-    /*/// Creates a new grid widget from the specified template.
-    ///
-    /// See `grid_template!`.
-    pub fn from_template(template: &GridTemplate) -> Grid {
-        Grid {
-            flow: FlowDirection::Column,
-            items: vec![],
-            template: template.clone(),
-            row_gap: 0.0,
-            column_gap: 0.0,
-            row_background: Default::default(),
-            alternate_row_background: Default::default(),
-            row_gap_background: Default::default(),
-            column_gap_background: Default::default(),
-        }
-    }*/
-
-    /*/// Inserts an element into the grid.
-    pub fn add(&mut self, area: GridArea, x_align: Alignment, y_align: Alignment, content: impl AnyWidget + 'static) {
-        self.items.push(GridItem {
-            area,
-            x_align,
-            y_align,
-            content: Box::new(content),
-        })
-    }*/
-}
-
-impl<S: GridStyle + 'static> Widget for Grid<S> {
-    type Element = GridElement<S>;
-
-    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
-        let content: Vec<_> = self
-            .items
-            .into_iter()
-            .enumerate()
-            .map(|(i, item)| GridItemElement {
-                // FIXME: ID shouldn't be derived from index
-                content: TransformNode::new(cx.build_with_id(&i, item.content)),
-                area: item.area,
-                alignment: item.alignment,
-                row_range: Default::default(),
-                column_range: Default::default(),
-                natural_baseline: 0.0,
-            })
-            .collect();
-
-        GridElement {
-            id,
-            style: self.style,
-            items: content,
-            options: self.options,
-            layout: Default::default(),
-        }
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        let mut f = ChangeFlags::empty();
-
-        fn update<T: PartialEq>(orig: &mut T, new: T, flags: &mut ChangeFlags, change: ChangeFlags) {
-            if *orig != new {
-                *orig = new;
-                *flags |= change;
-            }
-        }
-
-        update(&mut element.options, self.options, &mut f, ChangeFlags::GEOMETRY);
-        update(&mut element.style, self.style, &mut f, ChangeFlags::PAINT);
-
-        let num_items = self.items.len();
-        let num_items_in_element = element.items.len();
-        if num_items != num_items_in_element {
-            f |= ChangeFlags::GEOMETRY;
-        }
-
-        for (i, item) in self.items.into_iter().enumerate() {
-            // TODO: match by item identity
-            if i < num_items_in_element {
-                //eprintln!("update grid item");
-                f |= cx.update_with_id(&i, item.content, &mut element.items[i].content.content);
-                update(&mut element.items[i].area, item.area, &mut f, ChangeFlags::GEOMETRY);
-                update(
-                    &mut element.items[i].alignment,
-                    item.alignment,
-                    &mut f,
-                    ChangeFlags::GEOMETRY,
-                );
-            } else {
-                let elem = GridItemElement {
-                    content: TransformNode::new(cx.build_with_id(&i, item.content)),
-                    area: item.area,
-                    alignment: item.alignment,
-                    row_range: Default::default(),
-                    column_range: Default::default(),
-                    natural_baseline: 0.0,
-                };
-                element.items.push(elem);
-            }
-        }
-
-        element.items.truncate(num_items);
-        f
-
-        /*reconcile_elements(
-            cx,
-            self.content,
-            &mut element.content,
-            env,
-            |w| &w.content,
-            |item| &mut item.content,
-            |cx, item, env| GridItemElement {
-                content: TransformNode::new(item.content.build(cx, env)),
-                area: item.area,
-                x_align: item.x_align,
-                y_align: item.y_align,
-                row_range: Default::default(),
-                column_range: Default::default(),
-                natural_baseline: 0.0,
-            },
-            |cx, item, item_elem, env| {
-                let mut change_flags = ChangeFlags::empty();
-                change_flags |= Widget::update(item.content, cx, &mut item_elem.content.content, env);
-
-                if item.area != item_elem.area || item.x_align != item_elem.x_align || item.y_align != item_elem.y_align
-                {
-                    item_elem.area = item.area;
-                    item_elem.x_align = item.x_align;
-                    item_elem.y_align = item.y_align;
-                    change_flags |= ChangeFlags::GEOMETRY;
-                }
-
-                change_flags
-            },
-        );*/
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // ELEMENT
 
@@ -503,8 +358,7 @@ impl GridLayout {
 }
 
 /// Grid layout element.
-pub struct GridElement<S> {
-    id: ElementId,
+pub struct Grid<S> {
     style: S,
     /// Child elements.
     items: Vec<GridItemElement>,
@@ -513,11 +367,7 @@ pub struct GridElement<S> {
     layout: GridLayout,
 }
 
-impl<S: GridStyle + 'static> Element for GridElement<S> {
-    fn id(&self) -> ElementId {
-        self.id
-    }
-
+impl<S: GridStyle + 'static> Widget for Grid<S> {
     fn layout(&mut self, ctx: &mut LayoutCtx, box_constraints: &BoxConstraints) -> Geometry {
         let _span = span!("Grid layout");
 
@@ -932,7 +782,7 @@ fn items_in_track_mut(
     })
 }
 
-impl<S> GridElement<S> {
+impl<S> Grid<S> {
     /*fn items_in_track_mut(&mut self, axis: GridAxis, index: u32) -> impl Iterator<Item = &mut GridItemElement> {
         self.content.iter_mut().filter(move |item| {
             // "grid line" items (those with row_range.len() == 0 or column_range.len() == 0)
