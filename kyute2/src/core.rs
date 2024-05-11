@@ -23,7 +23,7 @@ use bitflags::bitflags;
 use kurbo::{Affine, Point, Vec2};
 use skia_safe as sk;
 use weak_table::PtrWeakHashSet;
-use winit::{event_loop::EventLoopWindowTarget, window::WindowId};
+use winit::{event::WindowEvent, event_loop::EventLoopWindowTarget, window::WindowId};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -181,14 +181,14 @@ pub trait Widget: Any {
     ///
     /// You shouldn't have to manually call `update()` on child widgets. Instead, request an update by
     /// calling `cx.request_update(widgetpaths)`.
-    fn update(&mut self, cx: &mut TreeCtx);
+    fn update(&mut self, cx: &mut WidgetCtx);
 
     fn environment(&self) -> Environment {
         Environment::new()
     }
 
     /// Event handling.
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event);
+    fn event(&mut self, cx: &mut WidgetCtx, event: &mut Event);
 
     /// Hit-testing.
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool;
@@ -197,18 +197,51 @@ pub trait Widget: Any {
     fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry;
 
     /// Raw window events.
-    fn window_event(&mut self, _cx: &mut TreeCtx, _event: &winit::event::WindowEvent, _time: Duration) {}
+    fn window_event(&mut self, _cx: &mut WidgetCtx, _event: &winit::event::WindowEvent, _time: Duration) {}
 
     fn paint(&mut self, cx: &mut PaintCtx);
+}
+
+pub trait ProxyWidget: Any {
+    type Inner: Widget;
+    fn inner(&self) -> &Self::Inner;
+    fn inner_mut(&mut self) -> &mut Self::Inner;
+}
+
+impl<T: ProxyWidget> Widget for T {
+    fn update(&mut self, cx: &mut WidgetCtx) {
+        self.inner_mut().update(cx);
+    }
+
+    fn environment(&self) -> Environment {
+        self.inner().environment()
+    }
+
+    fn event(&mut self, cx: &mut WidgetCtx, event: &mut Event) {
+        self.inner_mut().event(cx, event);
+    }
+
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
+        self.inner_mut().hit_test(result, position)
+    }
+
+    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
+        self.inner_mut().layout(cx, bc)
+    }
+
+    fn window_event(&mut self, cx: &mut WidgetCtx, event: &WindowEvent, time: Duration) {
+        self.inner_mut().window_event(cx, event, time);
+    }
+
+    fn paint(&mut self, cx: &mut PaintCtx) {
+        self.inner_mut().paint(cx);
+    }
 }
 
 pub struct WidgetPod<T: ?Sized = dyn Widget> {
     mounted: Cell<bool>,
     parent: RefCell<WeakWidgetPtr>,
     environment: RefCell<Environment>,
-    // FIXME: I'd like that to be a RefCell so that Widget methods can be mut, but
-    // that would break recursive update calls that call `find_ancestor` (widgets would be already borrowed)
-    // Idea: `widgetptr.update()` doesn't call update immediately, but waits for the end of the current dispatch
     pub widget: RefCell<T>,
 }
 
@@ -261,7 +294,7 @@ impl WidgetPod {
     }*/
 
     /// Sends an event to the specified widgets.
-    pub fn event(self: &Rc<Self>, cx: &mut TreeCtx, event: &mut Event) {
+    pub fn event(self: &Rc<Self>, cx: &mut WidgetCtx, event: &mut Event) {
         cx.with_widget(self, |cx, widget| {
             widget.event(cx, event);
         })
@@ -287,13 +320,13 @@ impl WidgetPod {
         }
     }*/
 
-    pub fn window_event(self: &Rc<Self>, cx: &mut TreeCtx, event: &winit::event::WindowEvent, time: Duration) {
+    pub fn window_event(self: &Rc<Self>, cx: &mut WidgetCtx, event: &winit::event::WindowEvent, time: Duration) {
         cx.with_widget(self, |cx, widget| {
             widget.window_event(cx, event, time);
         });
     }
 
-    pub fn update(self: &Rc<Self>, cx: &mut TreeCtx) {
+    pub fn update(self: &Rc<Self>, cx: &mut WidgetCtx) {
         if !self.mounted.get() {
             self.mounted.set(true);
             let parent = cx.current();
@@ -385,7 +418,7 @@ impl HitTestResult {
 }
 
 /// Context passed during tree traversals.
-pub struct TreeCtx<'a> {
+pub struct WidgetCtx<'a> {
     pub(crate) app_state: &'a mut AppState,
     pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
     /// Pointer to the current widgets.
@@ -397,14 +430,14 @@ pub struct TreeCtx<'a> {
     relayout: bool,
 }
 
-impl<'a> TreeCtx<'a> {
+impl<'a> WidgetCtx<'a> {
     /// Creates the root TreeCtx.
     pub(crate) fn new(
         app_state: &'a mut AppState,
         event_loop: &'a EventLoopWindowTarget<ExtEvent>,
         target: WidgetPtr,
-    ) -> TreeCtx<'a> {
-        TreeCtx {
+    ) -> WidgetCtx<'a> {
+        WidgetCtx {
             app_state,
             event_loop,
             current_widget: target,
@@ -513,7 +546,7 @@ impl<'a> TreeCtx<'a> {
         self.relayout = true;
     }
 
-    fn with_widget<R>(&mut self, child: &WidgetPtr, f: impl FnOnce(&mut TreeCtx, &mut dyn Widget) -> R) -> R {
+    fn with_widget<R>(&mut self, child: &WidgetPtr, f: impl FnOnce(&mut WidgetCtx, &mut dyn Widget) -> R) -> R {
         let prev_widget = mem::replace(&mut self.current_widget, child.clone());
         let r = f(self, &mut *child.widget.borrow_mut());
         self.current_widget = prev_widget;
@@ -644,7 +677,7 @@ impl<F> Builder<F> {
     pub fn new<W>(f: F) -> Builder<F>
     where
         W: Widget,
-        F: Fn(&mut TreeCtx) -> W,
+        F: Fn(&mut WidgetCtx) -> W,
     {
         Builder { f, inner: None }
     }
@@ -652,10 +685,10 @@ impl<F> Builder<F> {
 
 impl<F, W> Widget for Builder<F>
 where
-    F: Fn(&mut TreeCtx) -> W + 'static,
+    F: Fn(&mut WidgetCtx) -> W + 'static,
     W: Widget + 'static,
 {
-    fn update(&mut self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx) {
         self.inner = {
             let widget: WidgetPtr = WidgetPod::new((self.f)(cx));
             widget.update(cx);
@@ -664,7 +697,7 @@ where
         };
     }
 
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) {}
+    fn event(&mut self, cx: &mut WidgetCtx, event: &mut Event) {}
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         if let Some(ref inner) = self.inner {
@@ -768,24 +801,24 @@ impl<T: 'static> State<T> {
         }))
     }
 
-    pub fn set_dependency(&self, cx: &TreeCtx) {
+    pub fn set_dependency(&self, cx: &WidgetCtx) {
         self.0.dependents.borrow_mut().insert(cx.current());
     }
 
-    fn notify(&self, cx: &TreeCtx) {
+    fn notify(&self, cx: &WidgetCtx) {
         for dep in self.0.dependents.borrow().iter() {
             cx.mark_needs_update(dep);
         }
     }
 
     /// Modifies the state and notify the dependents.
-    pub fn set(&self, cx: &mut TreeCtx, value: T) {
+    pub fn set(&self, cx: &mut WidgetCtx, value: T) {
         self.0.data.replace(value);
         self.notify(cx);
     }
 
     /// Modifies the state and notify the dependents.
-    pub fn update<R>(&self, cx: &mut TreeCtx, f: impl FnOnce(&mut T) -> R) -> R {
+    pub fn update<R>(&self, cx: &mut WidgetCtx, f: impl FnOnce(&mut T) -> R) -> R {
         let mut data = self.0.data.borrow_mut();
         let r = f(&mut *data);
         self.notify(cx);
@@ -793,7 +826,7 @@ impl<T: 'static> State<T> {
     }
 
     /// Returns the current value of the state, setting a dependency on the current widget.
-    pub fn get(&self, cx: &mut TreeCtx) -> Ref<T> {
+    pub fn get(&self, cx: &mut WidgetCtx) -> Ref<T> {
         self.set_dependency(cx);
         self.0.data.borrow()
     }
@@ -802,7 +835,7 @@ impl<T: 'static> State<T> {
         self.0.data.borrow()
     }
 
-    pub fn at(cx: &mut TreeCtx) -> Option<T>
+    pub fn at(cx: &mut WidgetCtx) -> Option<T>
     where
         T: Clone,
     {
@@ -839,7 +872,7 @@ pub enum Binding<T> {
     Constant(T),
     Func {
         result: T,
-        update: Box<dyn Fn(&mut TreeCtx, &mut T) -> bool>,
+        update: Box<dyn Fn(&mut WidgetCtx, &mut T) -> bool>,
     },
 }
 
@@ -862,7 +895,7 @@ impl<T: Clone> Binding<T> {
         }
     }
 
-    pub fn update(&mut self, cx: &mut TreeCtx) -> bool {
+    pub fn update(&mut self, cx: &mut WidgetCtx) -> bool {
         match self {
             Binding::Constant(_) => false,
             Binding::Func { result, update } => update(cx, result),
@@ -895,7 +928,7 @@ where
 impl<T, F> From<F> for Binding<T>
 where
     T: Clone + Default,
-    F: Fn(&mut TreeCtx) -> T + 'static,
+    F: Fn(&mut WidgetCtx) -> T + 'static,
 {
     fn from(update: F) -> Self {
         Binding::Func {

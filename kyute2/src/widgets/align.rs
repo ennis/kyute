@@ -25,7 +25,7 @@ impl<T: Widget> Align<T> {
 }
 
 impl<T: Widget> Widget for Align<T> {
-    fn update(&mut self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx)
     }
 
@@ -33,7 +33,7 @@ impl<T: Widget> Widget for Align<T> {
         self.content.environment()
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
         event.with_offset(self.offset, |event| self.content.event(ctx, event))
     }
 

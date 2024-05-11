@@ -2341,3 +2341,86 @@ The only things that the widget tree needs to do are:
 - like x_bow
 - data stored in `Model<T>`, which is `Rc<RefCell<T>>`, like state; passed to children via environment
 - `Model<T>` tracks changes for each piece, each piece holds pointers to dependent widgets
+
+# mounting
+
+Widget mounting should be done separately (`Widget::mount`)
+
+# Passing child widgets to containers
+
+Option 1: `impl Widget` -> must pass something that implements the interface
+
+`IntoWidget` should return WidgetPtr so that `WidgetPtr` can directly implement `IntoWidget`
+
+Option 2: a separate trait `impl IntoWidget -> WidgetPtr` for stuff that can be turned into a `WidgetPtr`.
+This means no wrapper widgets ()
+
+- Containers: they take something that can be turned into `WidgetPtr` (Rc<WidgetPod>)
+- Wrappers: they take `impl Widget`
+
+Tentative:
+
+- Widgets implement `Widget`, and `IntoWidgetPod`
+- Wrappers take impl Widget
+- Containers take impl IntoWidgetPod
+
+Alternative:
+
+- User creates the `WidgetPod`, gets a pointer, can type-erase it to pass it to containers (via impl Into<WidgetPtr>)
+
+Q: is there any benefit in separating the configuration of the widget from its instantiation in the tree?
+i.e. have something like xilem or flutter where widgets are pure description?
+
+# Arguments for splitting Widgets and Elements (like flutter)?
+
+* ~~The main argument is being able to create Widgets using struct initialization syntax instead of `new(...)`
+  constructors.
+  This is because Widgets would have no persistent state, instead it would be stored in the Element returned
+  by `Widget::build`.~~
+    * In fact, this is severely limited because we can't use `Default::default()` on anything with a generic parameter
+      (which most modifier widgets have)
+    * We would need https://github.com/rust-lang/rust/issues/86555 , which is nowhere near stabilized
+* ~~We wouldn't need the "first update" call to mount the widget and set the parent and environment. This would be
+  done
+  in `Widget::build(self, &mut Element) -> ElementPtr`, with the parent `element` containing all the necessary context
+  for building the child element.~~
+    * We still need to do that in two steps to establish the parent-child relationship
+* Also, custom widget types would be easier. No need to implement the complex element interface, just implement
+  the `Widget::build()` method and delegate to other concrete widgets here.
+    * currently you would do that by calling a function, it's simpler, although there's a discrepancy between built-in
+      widgets and user compositions
+    * dubious
+
+But also issues:
+
+* struct initialization syntax is meh for stuff with generics (e.g. many event handlers) -> can't
+  use `Default::default()` when the closure param type is ambiguous. This may be an issue for things with many closures.
+* Each widget now builds its own ElementPtr, so we have more Rcs flying around
+
+Not certain this is worth the hassle of having two separate trees (although struct initialization syntax for widgets is
+sexy).
+
+# Remove widget wrappers?
+
+They modify layout and hit-test behaviors of a "child" widget, but from the POV of the framework
+both wrapper and child are the same widget (same WidgetPod).
+
+Main reason for existence: composing layout modifiers (padding, alignment, etc.) without allocating too many nodes for
+the UI tree
+(i.e. reduce overhead of allocating WidgetPods).
+
+Reasons to remove:
+
+- harder to reason about: it splits widget impls in two categories:
+    - wrappers that should forward `event` and `update` to a child widget
+    - non-wrappers that should do nothing
+- harder to introspect: a tool to inspect the WidgetPod tree wouldn't see them
+- confusing/inconsistent hit-test behavior: e.g. padding hit-tests the child rectangle, not its own rect returned by
+  layout(), whereas `DecoratedBox` hit-tests the returned rectangle including decorations
+
+They tend to make things more complicated (they wrap another `Widget` impl)
+
+# Issue: consistent syntax to define widgets
+
+The `ProxyWidget` trait solution requires "type-alias impl trait" (TAIT) which is not stable. Otherwise, need to spell
+out the full type of the widget in the proxy struct, or wrap in WidgetPtr.

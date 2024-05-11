@@ -1,10 +1,7 @@
-use std::any::Any;
-
-use kurbo::Point;
+use kurbo::{Point, Rect, Vec2};
 
 use crate::{
-    element::TransformNode, AnyWidget, BoxConstraints, ChangeFlags, Element, ElementId, Event, EventCtx, Geometry,
-    HitTestResult, LayoutCtx, LengthOrPercentage, PaintCtx, Size, TreeCtx, Widget,
+    BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Size, Widget, WidgetCtx, WidgetPod, WidgetPtr,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -28,101 +25,57 @@ pub enum CrossAxisAlignment {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 pub struct Flex {
-    pub items: Vec<FlexItem>,
-    pub orientation: Axis,
+    pub axis: Axis,
     pub main_axis_alignment: MainAxisAlignment,
     pub cross_axis_alignment: CrossAxisAlignment,
+    items: Vec<FlexItem>,
+}
+
+impl Flex {
+    pub fn new(axis: Axis) -> Flex {
+        Flex {
+            axis,
+            main_axis_alignment: MainAxisAlignment::Start,
+            cross_axis_alignment: CrossAxisAlignment::Start,
+            items: Vec::new(),
+        }
+    }
+
+    pub fn row() -> Flex {
+        Flex::new(Axis::Horizontal)
+    }
+
+    pub fn column() -> Flex {
+        Flex::new(Axis::Vertical)
+    }
+
+    pub fn push(&mut self, item: impl Widget) {
+        self.items.push(FlexItem {
+            flex: 0.0,
+            alignment: None,
+            offset: Vec2::ZERO,
+            size: Size::ZERO,
+            content: WidgetPod::new(item),
+        });
+    }
+
+    pub fn push_flex(&mut self, item: impl Widget, flex: f64) {
+        self.items.push(FlexItem {
+            flex,
+            alignment: None,
+            offset: Vec2::ZERO,
+            size: Size::ZERO,
+            content: WidgetPod::new(item),
+        });
+    }
 }
 
 pub struct FlexItem {
-    pub flex: f64,
-    pub alignment: Option<CrossAxisAlignment>,
-    pub content: Box<dyn AnyWidget>,
-}
-
-impl Flex {}
-
-impl Widget for Flex {
-    type Element = FlexElement;
-
-    fn build(self, cx: &mut TreeCtx, id: ElementId) -> Self::Element {
-        let items: Vec<_> = self
-            .items
-            .into_iter()
-            .enumerate()
-            .map(|(i, item)|
-                // FIXME: ID shouldn't be derived from index
-                FlexElementItem {
-                    alignment: item.alignment,
-                    flex: item.flex,
-                    content:TransformNode::new(cx.build_with_id(&i, item.content))
-                })
-            .collect();
-
-        FlexElement {
-            id,
-            items,
-            axis: self.orientation,
-            main_axis_alignment: self.main_axis_alignment,
-            cross_axis_alignment: self.cross_axis_alignment,
-        }
-    }
-
-    fn update(self, cx: &mut TreeCtx, element: &mut Self::Element) -> ChangeFlags {
-        let mut f = ChangeFlags::empty();
-
-        fn update<T: PartialEq>(orig: &mut T, new: T, flags: &mut ChangeFlags, change: ChangeFlags) {
-            if *orig != new {
-                *orig = new;
-                *flags |= change;
-            }
-        }
-        update(&mut element.axis, self.orientation, &mut f, ChangeFlags::GEOMETRY);
-        update(
-            &mut element.main_axis_alignment,
-            self.main_axis_alignment,
-            &mut f,
-            ChangeFlags::GEOMETRY,
-        );
-        update(
-            &mut element.cross_axis_alignment,
-            self.cross_axis_alignment,
-            &mut f,
-            ChangeFlags::GEOMETRY,
-        );
-        //update(&mut element.options, self.options, &mut f, ChangeFlags::GEOMETRY);
-        //update(&mut element.style, self.style, &mut f, ChangeFlags::PAINT);
-
-        let num_items = self.items.len();
-        let num_items_in_element = element.items.len();
-        if num_items != num_items_in_element {
-            f |= ChangeFlags::GEOMETRY;
-        }
-
-        for (i, item) in self.items.into_iter().enumerate() {
-            // TODO: match by item identity
-            if i < num_items_in_element {
-                //eprintln!("update grid item");
-                update(&mut element.items[i].flex, item.flex, &mut f, ChangeFlags::GEOMETRY);
-                update(
-                    &mut element.items[i].alignment,
-                    item.alignment,
-                    &mut f,
-                    ChangeFlags::GEOMETRY,
-                );
-                f |= cx.update_with_id(&i, item, &mut element.items[i].content);
-            } else {
-                element.items.push(FlexElementItem {
-                    flex: item.flex,
-                    alignment: item.alignment,
-                    content: TransformNode::new(cx.build_with_id(&i, item.content)),
-                });
-            }
-        }
-
-        element.items.truncate(num_items);
-        f
-    }
+    flex: f64,
+    alignment: Option<CrossAxisAlignment>,
+    offset: Vec2,
+    size: Size,
+    content: WidgetPtr,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -134,19 +87,6 @@ pub enum Axis {
 }
 
 impl Axis {
-    fn main_size(&self, size: Size) -> f64 {
-        match self {
-            Axis::Horizontal => size.width,
-            Axis::Vertical => size.height,
-        }
-    }
-    fn cross_size(&self, size: Size) -> f64 {
-        match self {
-            Axis::Horizontal => size.height,
-            Axis::Vertical => size.width,
-        }
-    }
-
     fn constraints(
         &self,
         main_axis_min: f64,
@@ -177,161 +117,244 @@ impl Axis {
             },
         }
     }
+}
 
-    fn main_axis_constraints(&self, box_constraints: &BoxConstraints) -> (f64, f64) {
-        match self {
-            Axis::Horizontal => (box_constraints.min.width, box_constraints.max.width),
-            Axis::Vertical => (box_constraints.min.height, box_constraints.max.height),
+/// Helper trait for main axis/cross axis sizes
+trait AxisSizeHelper {
+    fn main_length(&self, main_axis: Axis) -> f64;
+    fn cross_length(&self, main_axis: Axis) -> f64;
+
+    fn from_main_cross(main_axis: Axis, main: f64, cross: f64) -> Self;
+}
+
+impl AxisSizeHelper for Size {
+    fn main_length(&self, main_axis: Axis) -> f64 {
+        match main_axis {
+            Axis::Horizontal => self.width,
+            Axis::Vertical => self.height,
         }
     }
 
-    fn cross_axis_constraints(&self, box_constraints: &BoxConstraints) -> (f64, f64) {
-        match self {
-            Axis::Horizontal => (box_constraints.min.height, box_constraints.max.height),
-            Axis::Vertical => (box_constraints.min.width, box_constraints.max.width),
+    fn cross_length(&self, main_axis: Axis) -> f64 {
+        match main_axis {
+            Axis::Horizontal => self.height,
+            Axis::Vertical => self.width,
+        }
+    }
+
+    fn from_main_cross(main_axis: Axis, main: f64, cross: f64) -> Self {
+        match main_axis {
+            Axis::Horizontal => Size {
+                width: main,
+                height: cross,
+            },
+            Axis::Vertical => Size {
+                width: cross,
+                height: main,
+            },
         }
     }
 }
 
-pub struct FlexElementItem {
-    flex: f64,
-    alignment: Option<CrossAxisAlignment>,
-    content: TransformNode<Box<dyn Element>>,
+trait AxisOffsetHelper {
+    fn set_main_axis_offset(&mut self, main_axis: Axis, offset: f64);
+    fn set_cross_axis_offset(&mut self, main_axis: Axis, offset: f64);
 }
 
-pub struct FlexElement {
-    id: ElementId,
-    axis: Axis,
-    main_axis_alignment: MainAxisAlignment,
-    cross_axis_alignment: CrossAxisAlignment,
-    items: Vec<FlexElementItem>,
-}
+impl AxisOffsetHelper for Vec2 {
+    fn set_main_axis_offset(&mut self, main_axis: Axis, offset: f64) {
+        match main_axis {
+            Axis::Horizontal => self.x = offset,
+            Axis::Vertical => self.y = offset,
+        }
+    }
 
-fn cross_axis_natural_size(
-    orientation: Axis,
-    alignment: CrossAxisAlignment,
-    item: FlexElementItem,
-    max_size: Size,
-) -> f64 {
-    match orientation {
-        Axis::Horizontal => e.natural_height(params.max.width),
-        Axis::Vertical => e.natural_width(params.max.height),
+    fn set_cross_axis_offset(&mut self, main_axis: Axis, offset: f64) {
+        match main_axis {
+            Axis::Horizontal => self.y = offset,
+            Axis::Vertical => self.x = offset,
+        }
     }
 }
 
-fn zero_flex_child_constraints(
-    main_axis: Axis,
-    cross_axis_alignment: CrossAxisAlignment,
-    constraints: &BoxConstraints,
-) -> BoxConstraints {
-    let (mut cross_min, cross_max) = main_axis.cross_axis_constraints(constraints);
-    if cross_axis_alignment == CrossAxisAlignment::Stretch {
-        cross_min = cross_max;
+fn main_cross_constraints(axis: Axis, min_main: f64, max_main: f64, min_cross: f64, max_cross: f64) -> BoxConstraints {
+    match axis {
+        Axis::Horizontal => BoxConstraints {
+            min: Size {
+                width: min_main,
+                height: min_cross,
+            },
+            max: Size {
+                width: max_main,
+                height: max_cross,
+            },
+        },
+        Axis::Vertical => BoxConstraints {
+            min: Size {
+                width: min_cross,
+                height: min_main,
+            },
+            max: Size {
+                width: max_cross,
+                height: max_main,
+            },
+        },
     }
-    main_axis.constraints(0.0, f64::INFINITY, cross_min, cross_max)
-}
-
-fn non_zero_flex_child_constraints(
-    main_axis: Axis,
-    flex: f64,
-    cross_axis_alignment: CrossAxisAlignment,
-    constraints: &BoxConstraints,
-) -> BoxConstraints {
-    let (mut cross_min, cross_max) = main_axis.cross_axis_constraints(constraints);
-    if cross_axis_alignment == CrossAxisAlignment::Stretch {
-        cross_min = cross_max;
-    }
-    main_axis.constraints(0.0, f64::INFINITY, cross_min, cross_max)
 }
 
 impl Widget for Flex {
-    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
-        // Quoting the flutter docs:
-        //
-        //      Layout for a Flex proceeds in six steps:
-        //
-        //      1.Layout each child with a null or zero flex factor (e.g., those that are not Expanded) with unbounded main axis constraints and the incoming cross axis constraints.
-        // If the crossAxisAlignment is CrossAxisAlignment.stretch, instead use tight cross axis constraints that match the incoming max extent in the cross axis.
-        //      Divide the remaining main axis space among the children with non-zero flex factors (e.g., those that are Expanded) according to their flex factor.
-        // For example, a child with a flex factor of 2.0 will receive twice the amount of main axis space as a child with a flex factor of 1.0.
-        //      Layout each of the remaining children with the same cross axis constraints as in step 1, but instead of using unbounded main axis constraints,
-        // use max axis constraints based on the amount of space allocated in step 2. Children with Flexible.fit properties that are FlexFit.tight are given tight constraints
-        // (i.e., forced to fill the allocated space), and children with Flexible.fit properties that are FlexFit.loose are given loose constraints (i.e., not forced to fill the allocated space).
-        //      The cross axis extent of the Flex is the maximum cross axis extent of the children (which will always satisfy the incoming constraints).
-        //      The main axis extent of the Flex is determined by the mainAxisSize property. If the mainAxisSize property is MainAxisSize.max, then the main axis extent of the Flex is the max extent of the incoming main axis constraints. If the mainAxisSize property is MainAxisSize.min, then the main axis extent of the Flex is the sum of the main axis extents of the children (subject to the incoming constraints).
-        //      Determine the position for each child according to the mainAxisAlignment and the crossAxisAlignment. For example, if the mainAxisAlignment is MainAxisAlignment.spaceBetween, any main axis space that has not been allocated to children is divided evenly and placed between the children.
+    fn update(&mut self, cx: &mut WidgetCtx) {
+        for item in &mut self.items {
+            item.content.update(cx);
+        }
+    }
 
-        let main_axis_natural_size = move |e: &mut dyn Widget| match self.axis {
-            Axis::Horizontal => e.natural_height(params.max.width),
-            Axis::Vertical => e.natural_width(params.max.height),
+    fn event(&mut self, _cx: &mut WidgetCtx, _event: &mut Event) {}
+
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
+        for item in &mut self.items {
+            if result.test_with_offset(item.offset, position, |result, position| {
+                item.content.hit_test(result, position)
+            }) {
+                return true;
+            }
+        }
+        // we don't hit-test the blank space
+        false
+    }
+
+    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
+        let axis = self.axis;
+        let (main_axis_min, main_axis_max, mut cross_axis_min, cross_axis_max) = if axis == Axis::Horizontal {
+            (
+                constraints.min.width,
+                constraints.max.width,
+                constraints.min.height,
+                constraints.max.height,
+            )
+        } else {
+            (
+                constraints.min.height,
+                constraints.max.height,
+                constraints.min.width,
+                constraints.max.width,
+            )
         };
 
-        let (main_axis_min, main_axis_max) = self.axis.main_axis_constraints(constraints);
+        // stretch constraints
+        if self.cross_axis_alignment == CrossAxisAlignment::Stretch {
+            cross_axis_min = cross_axis_max;
+        }
 
-        let mut flex_sum = 0.0;
-        let mut non_flex_main_total = 0.0;
-
+        let flex_sum: f64 = self.items.iter().map(|e| e.flex).sum(); // sum of flex factors
+        let mut non_flex_main_total = 0.0; // total size of inflexible children
         let mut child_geoms = vec![Geometry::ZERO; self.items.len()];
-
+        // Layout each child with a zero flex factor (i.e. they don't expand along the main axis, they get their natural size instead)
         for (i, c) in self.items.iter_mut().enumerate() {
             if c.flex == 0.0 {
-                let child_cstr = zero_flex_child_constraints(
-                    self.axis,
-                    c.alignment.unwrap_or(self.cross_axis_alignment),
-                    constraints,
-                );
-                let child_geom = ctx.layout(&mut c.content, &child_cstr);
-                non_flex_main_total += child_geom.size.width;
-                child_geoms[i] = child_geom;
-            } else {
-                flex_sum += c.flex;
+                // layout child with unbounded main axis constraints and the incoming cross axis constraints
+                let child_constraints =
+                    main_cross_constraints(axis, 0.0, f64::INFINITY, cross_axis_min, cross_axis_max);
+                child_geoms[i] = c.content.layout(ctx, &child_constraints);
+                non_flex_main_total += child_geoms[i].size.main_length(axis);
             }
         }
 
         // Divide the remaining main axis space among the children with non-zero flex factors
         let remaining_main = main_axis_max - non_flex_main_total;
         for (i, c) in self.items.iter_mut().enumerate() {
-            if c.flex != 0.0 {}
+            if c.flex != 0.0 {
+                let main_size = remaining_main * c.flex / flex_sum;
+                // pass loose constraints along the main axis; it's the child's job to decide whether to fill the space or not
+                let child_constraints = main_cross_constraints(axis, 0.0, main_size, cross_axis_min, cross_axis_max);
+                child_geoms[i] = c.content.layout(ctx, &child_constraints);
+            }
         }
 
-        Geometry::ZERO
-    }
+        // Determine the main-axis extent.
+        // This is the sum of main-axis sizes of children, subject to the incoming constraints.
+        // If you want the flex to take all the available space along the main axis, pass tight constraints as input.
+        let main_axis_size: f64 = child_geoms.iter().map(|g| g.size.main_length(axis)).sum();
+        let main_axis_size_constrained = main_axis_size.max(main_axis_min).min(main_axis_max);
+        let blank_space = main_axis_size_constrained - main_axis_size;
 
-    fn event(&mut self, ctx: &mut EventCtx, event: &mut Event) -> ChangeFlags {
-        if let Some(next_target) = event.next_target() {
-            let child = self
-                .items
-                .iter_mut()
-                .find(|e| e.id() == next_target)
-                .expect("invalid child specified");
-            child.event(ctx, event)
-        } else {
-            // Nothing
-            ChangeFlags::NONE
+        // Position the children, depending on main axis alignment
+        let space = match self.main_axis_alignment {
+            MainAxisAlignment::SpaceBetween => blank_space / (self.items.len() - 1) as f64,
+            MainAxisAlignment::SpaceAround => blank_space / self.items.len() as f64,
+            MainAxisAlignment::SpaceEvenly => blank_space / (self.items.len() + 1) as f64,
+            MainAxisAlignment::Center | MainAxisAlignment::Start | MainAxisAlignment::End => 0.0,
+        };
+        let mut offset = match self.main_axis_alignment {
+            MainAxisAlignment::SpaceBetween => 0.0,
+            MainAxisAlignment::SpaceAround => space / 2.0,
+            MainAxisAlignment::SpaceEvenly => space,
+            MainAxisAlignment::Center => blank_space / 2.0,
+            MainAxisAlignment::Start => 0.0,
+            MainAxisAlignment::End => blank_space,
+        };
+
+        for (i, c) in self.items.iter_mut().enumerate() {
+            c.offset.set_main_axis_offset(axis, offset);
+            offset += child_geoms[i].size.main_length(axis) + space;
+        }
+
+        // Determine the cross-axis extent (maximum of cross-axis sizes of children)
+        let max_cross_axis_size = child_geoms
+            .iter()
+            .map(|g| g.size.cross_length(axis))
+            .reduce(f64::max)
+            .unwrap();
+
+        let mut max_baseline: f64 = 0.0;
+        for c in child_geoms.iter() {
+            let cb = c.baseline.unwrap_or(c.size.cross_length(axis));
+            max_baseline = max_baseline.max(cb);
+        }
+
+        let max_cross_axis_size_baseline_aligned = child_geoms
+            .iter()
+            .map(|g| {
+                let size = g.size.cross_length(axis);
+                size + (max_baseline - g.baseline.unwrap_or(size))
+            })
+            .reduce(f64::max)
+            .unwrap();
+
+        let cross_axis_size = match self.cross_axis_alignment {
+            CrossAxisAlignment::Baseline => max_cross_axis_size_baseline_aligned,
+            _ => max_cross_axis_size,
+        };
+        let cross_axis_size = cross_axis_size.max(cross_axis_min).min(cross_axis_max);
+
+        // Position the children on the cross axis
+        for (i, c) in self.items.iter_mut().enumerate() {
+            let size = c.size.cross_length(axis);
+            let offset = match self.cross_axis_alignment {
+                CrossAxisAlignment::Start => 0.0,
+                CrossAxisAlignment::End => cross_axis_size - size,
+                CrossAxisAlignment::Center => (cross_axis_size - size) / 2.0,
+                CrossAxisAlignment::Stretch => 0.0,
+                CrossAxisAlignment::Baseline => {
+                    let baseline = child_geoms[i].baseline.unwrap_or(size);
+                    max_baseline - baseline
+                }
+            };
+            c.offset.set_cross_axis_offset(axis, offset);
+        }
+
+        let size = Size::from_main_cross(axis, main_axis_size_constrained, cross_axis_size);
+        Geometry {
+            size,
+            baseline: Some(max_baseline),
+            bounding_rect: Rect::from_origin_size(Point::ORIGIN, size),
+            paint_bounding_rect: Rect::from_origin_size(Point::ORIGIN, size),
         }
     }
 
-    fn natural_width(&mut self, _height: f64) -> f64 {
-        todo!()
-    }
-
-    fn natural_height(&mut self, _width: f64) -> f64 {
-        todo!()
-    }
-
-    fn natural_baseline(&mut self, _params: &BoxConstraints) -> f64 {
-        todo!()
-    }
-
-    fn hit_test(&self, _ctx: &mut HitTestResult, _position: Point) -> bool {
-        todo!()
-    }
-
-    fn paint(&mut self, _ctx: &mut PaintCtx) {
-        todo!()
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
+    fn paint(&mut self, cx: &mut PaintCtx) {
+        for item in self.items.iter_mut() {
+            cx.with_offset(item.offset, |cx| item.content.paint(cx));
+        }
     }
 }

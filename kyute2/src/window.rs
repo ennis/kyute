@@ -24,7 +24,7 @@ use crate::{
     event::{PointerButton, PointerButtons, PointerEvent},
     window::key::{key_code_from_winit, modifiers_from_winit},
     AppGlobals, BoxConstraints, ChangeFlags, Color, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Rect,
-    Size, TreeCtx, Widget, WidgetPod, WidgetPtr,
+    Size, Widget, WidgetCtx, WidgetPod, WidgetPtr,
 };
 
 mod key;
@@ -222,7 +222,7 @@ impl UiHostWindowState {
     ///
     /// It updates the last known input state (`input_state`), and resizes the compositor layer
     /// if needed.
-    fn handle_window_event(&mut self, cx: &mut TreeCtx, content: WidgetPtr, event: &WindowEvent, time: Duration) {
+    fn handle_window_event(&mut self, cx: &mut WidgetCtx, content: WidgetPtr, event: &WindowEvent, time: Duration) {
         //eprintln!("handle_window_event {:?}", event);
         match event {
             WindowEvent::Resized(new_size) => {
@@ -318,7 +318,7 @@ impl UiHostWindowState {
     /// Handles mouse input.
     fn handle_mouse_input(
         &mut self,
-        cx: &mut TreeCtx,
+        cx: &mut WidgetCtx,
         content: WidgetPtr,
         device_id: DeviceId,
         button: MouseButton,
@@ -403,7 +403,7 @@ impl UiHostWindowState {
     /// Handles keyboard input.
     ///
     /// Returns whether the keyboard input was handled
-    fn handle_keyboard_input(&self, _cx: &mut TreeCtx, _content: WidgetPtr, event: &KeyEvent, _time: Duration) {
+    fn handle_keyboard_input(&self, _cx: &mut WidgetCtx, _content: WidgetPtr, event: &KeyEvent, _time: Duration) {
         /*let mut popups = self.popups.borrow();
         // If there are active popups, keyboard events are delivered to the popups.
         // TODO there should be only one popup active at a time.
@@ -481,7 +481,7 @@ impl UiHostWindowState {
     /// Returns true if the app logic should re-run in response of the event.
     fn dispatch_pointer_event(
         &mut self,
-        cx: &mut TreeCtx,
+        cx: &mut WidgetCtx,
         content: WidgetPtr,
         mut event: Event,
         position: Point,
@@ -555,7 +555,7 @@ impl UiHostWindowState {
         }
     }
 
-    fn dispatch_pointer_event_inner(&mut self, cx: &mut TreeCtx, path: &[HitTestEntry], mut event: Event) {
+    fn dispatch_pointer_event_inner(&mut self, cx: &mut WidgetCtx, path: &[HitTestEntry], mut event: Event) {
         for entry in path.iter() {
             event.set_transform(&entry.transform);
             entry.widget.event(cx, &mut event);
@@ -724,7 +724,7 @@ impl UiHostWindowHandler {
         }
     }
 
-    fn open_window(&self, cx: &mut TreeCtx) {
+    fn open_window(&self, cx: &mut WidgetCtx) {
         eprintln!("open_window");
         let window = UiHostWindowState::new(&self.options, &cx.event_loop);
         // associate this widget to the window so that window events are sent to this widget
@@ -736,12 +736,12 @@ impl UiHostWindowHandler {
 }
 
 impl Widget for UiHostWindowHandler {
-    fn update(&mut self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx) {
         self.open_window(cx);
         self.content.update(cx);
     }
 
-    fn event(&mut self, _cx: &mut TreeCtx, _event: &mut Event) {
+    fn event(&mut self, _cx: &mut WidgetCtx, _event: &mut Event) {
         // we don't receive or handle events
     }
 
@@ -755,7 +755,7 @@ impl Widget for UiHostWindowHandler {
         Geometry::ZERO
     }
 
-    fn window_event(&mut self, cx: &mut TreeCtx, event: &WindowEvent, time: Duration) {
+    fn window_event(&mut self, cx: &mut WidgetCtx, event: &WindowEvent, time: Duration) {
         if let Some(ref mut window) = &mut *self.window.borrow_mut() {
             window.handle_window_event(cx, self.content.clone(), event, time);
         } else {

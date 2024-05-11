@@ -3,7 +3,7 @@ use kurbo::{Point, Size};
 
 use crate::{
     drawing::Decoration, environment::Environment, widgets::Padding, Binding, BoxConstraints, Event, Geometry,
-    HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
+    HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -30,7 +30,7 @@ where
     T: Widget,
     D: Decoration + 'static,
 {
-    fn update(&mut self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx) {
         /*if self.decoration.update(cx) {
             // TODO layout is not always necessary. Depending on what changed,
             // a repaint might be sufficient.
@@ -56,7 +56,7 @@ where
     fn environment(&self) -> Environment {
         self.content.environment()
     }
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
         self.content.event(ctx, event)
     }
 

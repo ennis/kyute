@@ -6,7 +6,7 @@ use std::{
     time::Instant,
 };
 
-use crate::{AppGlobals, TreeCtx, Widget, WidgetPod, WidgetPtr};
+use crate::{AppGlobals, Widget, WidgetCtx, WidgetPod, WidgetPtr};
 use tracing::warn;
 use tracy_client::set_thread_name;
 use winit::{
@@ -75,7 +75,7 @@ struct App {
 
 impl App {
     fn update(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>) {
-        let mut tree_ctx = TreeCtx::new(&mut self.app_state, event_loop, self.root.clone());
+        let mut tree_ctx = WidgetCtx::new(&mut self.app_state, event_loop, self.root.clone());
         self.root.widget.borrow_mut().update(&mut tree_ctx);
     }
 }
@@ -160,7 +160,7 @@ impl AppLauncher {
 
                         // dispatch to the appropriate window handler
                         if let Some(window_widget) = app.app_state.windows.get(&window_id).cloned() {
-                            let mut tree_ctx = TreeCtx::new(&mut app.app_state, elwt, window_widget.clone());
+                            let mut tree_ctx = WidgetCtx::new(&mut app.app_state, elwt, window_widget.clone());
                             window_widget.window_event(&mut tree_ctx, &event, event_time);
                         } else {
                             warn!("received event for unknown window {:?}", window_id);

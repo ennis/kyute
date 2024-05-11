@@ -7,8 +7,10 @@ mod decorated_box;
 mod frame;
 mod null;
 //mod overlay;
+mod flex;
 mod padding;
 pub mod text;
+//mod text_edit;
 mod transform;
 
 pub use align::Align;
@@ -19,6 +21,7 @@ pub use decorated_box::DecoratedBox;
 pub use frame::Frame;
 pub use null::Null;
 //pub use overlay::Overlay;
+pub use flex::Flex;
 pub use padding::Padding;
 pub use text::Text;
 pub use transform::TransformNode;

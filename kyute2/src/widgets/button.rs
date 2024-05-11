@@ -10,7 +10,7 @@ use crate::{
     widgets::{
         align::Align, clickable::ClickableState, decorated_box::DecoratedBox, Clickable, Constrained, Padding, Text,
     },
-    Alignment, BoxConstraints, Builder, Color, TreeCtx, Widget, WidgetExt,
+    Alignment, BoxConstraints, Builder, Color, Widget, WidgetCtx, WidgetExt,
 };
 
 pub fn button(label: &str) -> Clickable<impl Widget> {
@@ -18,7 +18,7 @@ pub fn button(label: &str) -> Clickable<impl Widget> {
     // in that case it's not too bad because we're already allocating for the TextSpan
     let label = label.to_string();
 
-    Builder::new(move |cx: &mut TreeCtx| {
+    Builder::new(move |cx: &mut WidgetCtx| {
         let theme = &theme::DARK_THEME;
         let text_style = Arc::new(
             TextStyle::new()

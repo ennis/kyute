@@ -1,7 +1,7 @@
 use kurbo::{Affine, Point, Vec2};
 
 use crate::{
-    environment::Environment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
+    environment::Environment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx,
 };
 
 /// A container for a widget.
@@ -52,7 +52,7 @@ impl<T: ?Sized> TransformNode<T> {
 }
 
 impl<T: Widget> Widget for TransformNode<T> {
-    fn update(&mut self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx)
     }
 
@@ -60,7 +60,7 @@ impl<T: Widget> Widget for TransformNode<T> {
         self.content.environment()
     }
 
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) {
+    fn event(&mut self, cx: &mut WidgetCtx, event: &mut Event) {
         event.with_transform(&self.transform, |event| self.content.event(cx, event))
     }
 

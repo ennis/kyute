@@ -11,14 +11,14 @@ pub struct ClickableState {
 }
 
 impl ClickableState {
-    pub fn at(cx: &mut TreeCtx) -> ClickableState {
+    pub fn at(cx: &mut WidgetCtx) -> ClickableState {
         State::at(cx).expect("ClickableState not found")
     }
 }
 
 pub struct Clickable<T> {
     state: State<ClickableState>,
-    on_click: Box<dyn Fn(&mut TreeCtx)>,
+    on_click: Box<dyn Fn(&mut WidgetCtx)>,
     content: T,
 }
 
@@ -36,7 +36,7 @@ impl<T: Widget> Clickable<T> {
 
     /// Sets the click handler.
     #[must_use]
-    pub fn on_clicked(self, on_clicked: impl Fn(&mut TreeCtx) + 'static) -> Clickable<T> {
+    pub fn on_clicked(self, on_clicked: impl Fn(&mut WidgetCtx) + 'static) -> Clickable<T> {
         Clickable {
             content: self.content,
             state: self.state,
@@ -46,7 +46,7 @@ impl<T: Widget> Clickable<T> {
 }
 
 impl<T: Widget> Widget for Clickable<T> {
-    fn update(&mut self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx);
     }
 
@@ -55,7 +55,7 @@ impl<T: Widget> Widget for Clickable<T> {
         Environment::new().add(self.state.clone())
     }
 
-    fn event(&mut self, cx: &mut TreeCtx, event: &mut Event) {
+    fn event(&mut self, cx: &mut WidgetCtx, event: &mut Event) {
         match event {
             Event::PointerDown(ref _p) => {
                 eprintln!("clickable PointerDown");

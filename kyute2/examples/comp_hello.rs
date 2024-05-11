@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kyute2::{
     text::TextStyle,
     theme,
-    widgets::{button, Frame},
+    widgets::{button, Flex, Frame},
     window::{UiHostWindowHandler, UiHostWindowOptions},
     Alignment, AppLauncher, UnitExt, Widget, WidgetExt,
 };
@@ -17,8 +17,14 @@ fn main_window_contents() -> impl Widget {
             .font_family("Courier New")
             .color(theme::palette::PINK_200),
     );
-    //let text = TextSpan::new("Hello, world!", text_style);
-    Frame::new(20.percent(), 20.percent(), button("hello")).align(Alignment::CENTER, Alignment::CENTER)
+
+    let mut row = Flex::row();
+    row.push(button("hello"));
+    row.push(button("world"));
+    row.push(button("hello"));
+    row.push(button("world"));
+
+    Frame::new(20.percent(), 20.percent(), row).align(Alignment::CENTER, Alignment::CENTER)
 }
 
 fn main() {

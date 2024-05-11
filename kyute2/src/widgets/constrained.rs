@@ -1,5 +1,5 @@
 use crate::{
-    environment::Environment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget,
+    environment::Environment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx,
 };
 use kurbo::Point;
 
@@ -15,7 +15,7 @@ impl<T: Widget> Constrained<T> {
 }
 
 impl<T: Widget> Widget for Constrained<T> {
-    fn update(&mut self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx)
     }
 
@@ -23,7 +23,7 @@ impl<T: Widget> Widget for Constrained<T> {
         self.content.environment()
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
         self.content.event(ctx, event)
     }
 

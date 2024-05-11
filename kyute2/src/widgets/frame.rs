@@ -8,7 +8,7 @@ use crate::{
     environment::Environment,
     layout::place_into,
     Alignment, BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, Insets, LayoutCtx, LengthOrPercentage,
-    PaintCtx, Point, Rect, Size, TreeCtx, Widget,
+    PaintCtx, Point, Rect, Size, Widget, WidgetCtx,
 };
 
 /// A container with a fixed width and height, into which a unique widget is placed.
@@ -81,7 +81,7 @@ impl<T, B> Frame<T, B> {
 }*/
 
 impl<B: ShapeBorder + 'static, T: Widget> Widget for Frame<B, T> {
-    fn update(&mut self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx)
     }
 
@@ -89,7 +89,7 @@ impl<B: ShapeBorder + 'static, T: Widget> Widget for Frame<B, T> {
         self.content.environment()
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
         event.with_offset(self.offset, |event| self.content.event(ctx, event))
     }
 
@@ -146,7 +146,6 @@ impl<B: ShapeBorder + 'static, T: Widget> Widget for Frame<B, T> {
 
         self.size = size;
 
-        // TODO propagate baseline
         Geometry {
             size,
             baseline: None,

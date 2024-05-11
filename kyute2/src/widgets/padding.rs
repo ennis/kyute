@@ -1,4 +1,4 @@
-use crate::{BoxConstraints, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, TreeCtx, Widget};
+use crate::{BoxConstraints, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx};
 use kurbo::{Insets, Point, Size, Vec2};
 
 pub struct Padding<T> {
@@ -17,7 +17,7 @@ impl<T: Widget> Padding<T> {
 }
 
 impl<T: Widget> Widget for Padding<T> {
-    fn update(&mut self, cx: &mut TreeCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx)
     }
 
@@ -25,7 +25,7 @@ impl<T: Widget> Widget for Padding<T> {
         self.content.environment()
     }
 
-    fn event(&mut self, ctx: &mut TreeCtx, event: &mut Event) {
+    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
         event.with_offset(self.offset(), |event| self.content.event(ctx, event));
     }
 
@@ -42,6 +42,8 @@ impl<T: Widget> Widget for Padding<T> {
     }*/
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
+        // FIXME: do we need to hit-test the blank space?
+        // It's unclear what we should do here since it's a wrapper widget
         ctx.test_with_offset(self.offset(), position, |result, position| {
             self.content.hit_test(result, position)
         })
