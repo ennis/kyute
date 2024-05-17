@@ -30,6 +30,10 @@ where
     T: Widget,
     D: Decoration + 'static,
 {
+    fn mount(&mut self, cx: &mut WidgetCtx) {
+        self.content.mount(cx);
+    }
+
     fn update(&mut self, cx: &mut WidgetCtx) {
         /*if self.decoration.update(cx) {
             // TODO layout is not always necessary. Depending on what changed,

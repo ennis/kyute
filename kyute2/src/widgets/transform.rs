@@ -52,6 +52,10 @@ impl<T: ?Sized> TransformNode<T> {
 }
 
 impl<T: Widget> Widget for TransformNode<T> {
+    fn mount(&mut self, cx: &mut WidgetCtx) {
+        self.content.mount(cx)
+    }
+
     fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx)
     }

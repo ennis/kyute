@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kyute2::{
     text::TextStyle,
     theme,
-    widgets::{button, Flex, Frame},
+    widgets::{Button, Flex, Frame},
     window::{UiHostWindowHandler, UiHostWindowOptions},
     Alignment, AppLauncher, UnitExt, Widget, WidgetExt,
 };
@@ -19,10 +19,10 @@ fn main_window_contents() -> impl Widget {
     );
 
     let mut row = Flex::row();
-    row.push(button("hello"));
-    row.push(button("world"));
-    row.push(button("hello"));
-    row.push(button("world"));
+    row.push(Button::new("hello"));
+    row.push(Button::new("world"));
+    row.push(Button::new("hello"));
+    row.push(Button::new("world"));
 
     Frame::new(20.percent(), 20.percent(), row).align(Alignment::CENTER, Alignment::CENTER)
 }

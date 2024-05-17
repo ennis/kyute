@@ -5,6 +5,7 @@
 //!     * win32: enables vulkan interop for composition swap chains
 
 #![feature(const_fn_floating_point_arithmetic)]
+#![feature(impl_trait_in_assoc_type)] // should be stable soon
 
 // public modules
 pub mod application;
@@ -42,8 +43,8 @@ pub use color::Color;
 //pub use element::{Element, TransformNode};
 //pub use environment::{EnvKey, EnvValue, Environment};
 pub use core::{
-    Binding, Builder, ChangeFlags, HitTestResult, IntoWidgetPod, LayoutCtx, PaintCtx, ProxyWidget, State, Widget,
-    WidgetCtx, WidgetPod, WidgetPtr,
+    Binding, Builder, ChangeFlags, HitTestResult, IntoWidget, LayoutCtx, PaintCtx, State, Widget, WidgetCtx, WidgetPod,
+    WidgetPtr,
 };
 pub use event::Event;
 pub use layout::{Alignment, BoxConstraints, Geometry};
@@ -53,8 +54,8 @@ pub use widget_ext::WidgetExt;
 /// Widget implementor prelude.
 pub mod prelude {
     pub use crate::{
-        BoxConstraints, ChangeFlags, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point,
-        ProxyWidget, Rect, Size, State, Widget, WidgetCtx, WidgetPod, WidgetPtr,
+        BoxConstraints, ChangeFlags, Environment, Event, Geometry, HitTestResult, IntoWidget, LayoutCtx, PaintCtx,
+        Point, Rect, Size, State, Widget, WidgetCtx, WidgetPod, WidgetPtr,
     };
 }
 

@@ -27,6 +27,10 @@ impl Text {
 }
 
 impl Widget for Text {
+    fn mount(&mut self, cx: &mut WidgetCtx) {
+        todo!()
+    }
+
     fn update(&mut self, cx: &mut WidgetCtx) {
         /*if self.text.update(cx) {
             self.relayout = true;

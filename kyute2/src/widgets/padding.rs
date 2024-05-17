@@ -1,4 +1,6 @@
-use crate::{BoxConstraints, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx};
+use crate::{
+    BoxConstraints, Environment, Event, Geometry, HitTestResult, IntoWidget, LayoutCtx, PaintCtx, Widget, WidgetCtx,
+};
 use kurbo::{Insets, Point, Size, Vec2};
 
 pub struct Padding<T> {
@@ -7,8 +9,14 @@ pub struct Padding<T> {
 }
 
 impl<T: Widget> Padding<T> {
-    pub fn new(padding: Insets, content: T) -> Self {
-        Self { padding, content }
+    pub fn new<W>(padding: Insets, content: W) -> Self
+    where
+        W: IntoWidget<Inner = T>,
+    {
+        Self {
+            padding,
+            content: content.into_widget(),
+        }
     }
 
     fn offset(&self) -> Vec2 {
@@ -17,6 +25,10 @@ impl<T: Widget> Padding<T> {
 }
 
 impl<T: Widget> Widget for Padding<T> {
+    fn mount(&mut self, cx: &mut WidgetCtx) {
+        self.content.mount(cx)
+    }
+
     fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx)
     }

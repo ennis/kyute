@@ -20,7 +20,7 @@ use crate::{
     BoxConstraints, Environment, Event, Geometry,
 };
 use bitflags::bitflags;
-use kurbo::{Affine, Point, Vec2};
+use kurbo::{Affine, Point, Rect, Vec2};
 use skia_safe as sk;
 use weak_table::PtrWeakHashSet;
 use winit::{event::WindowEvent, event_loop::EventLoopWindowTarget, window::WindowId};
@@ -140,6 +140,14 @@ impl<'a> PaintCtx<'a> {
         result
     }
 
+    pub fn with_clip_rect(&mut self, rect: Rect, f: impl FnOnce(&mut PaintCtx<'a>)) {
+        let mut surface = self.surface.surface();
+        surface.canvas().save();
+        surface.canvas().clip_rect(rect.to_skia(), sk::ClipOp::Intersect, false);
+        f(self);
+        surface.canvas().restore();
+    }
+
     pub fn paint(&mut self, widget: &mut dyn Widget) {
         /*#[cfg(debug_assertions)]
         {
@@ -169,6 +177,8 @@ pub trait Widget: Any {
     // If widget declares grab, also set the transform (coordinate space)
     // then the widget receives all subsequent pointer events in the specified coordinate space
     // (even if somehow the widget has moved in the meantime)
+
+    fn mount(&mut self, cx: &mut WidgetCtx);
 
     /// Updates this widget.
     ///
@@ -202,40 +212,13 @@ pub trait Widget: Any {
     fn paint(&mut self, cx: &mut PaintCtx);
 }
 
-pub trait ProxyWidget: Any {
-    type Inner: Widget;
-    fn inner(&self) -> &Self::Inner;
-    fn inner_mut(&mut self) -> &mut Self::Inner;
+pub struct WidgetMut<'a, 'ctx, T: Widget2> {
+    widget: &'a mut T,
+    ctx: &'a mut WidgetCtx<'ctx>,
 }
 
-impl<T: ProxyWidget> Widget for T {
-    fn update(&mut self, cx: &mut WidgetCtx) {
-        self.inner_mut().update(cx);
-    }
-
-    fn environment(&self) -> Environment {
-        self.inner().environment()
-    }
-
-    fn event(&mut self, cx: &mut WidgetCtx, event: &mut Event) {
-        self.inner_mut().event(cx, event);
-    }
-
-    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
-        self.inner_mut().hit_test(result, position)
-    }
-
-    fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
-        self.inner_mut().layout(cx, bc)
-    }
-
-    fn window_event(&mut self, cx: &mut WidgetCtx, event: &WindowEvent, time: Duration) {
-        self.inner_mut().window_event(cx, event, time);
-    }
-
-    fn paint(&mut self, cx: &mut PaintCtx) {
-        self.inner_mut().paint(cx);
-    }
+pub trait Widget2: Any {
+    fn update(self: WidgetMut<Self>);
 }
 
 pub struct WidgetPod<T: ?Sized = dyn Widget> {
@@ -260,19 +243,37 @@ impl<T> WidgetPod<T> {
     }
 }
 
-pub trait IntoWidgetPod {
-    fn into_widget_pod(self) -> WidgetPtr;
-}
-
-impl IntoWidgetPod for WidgetPtr {
-    fn into_widget_pod(self) -> WidgetPtr {
-        self
+/// Objects that describe a widget and that can be turned into one.
+///
+/// Most of the time you'll create the widget directly. However, some composite widgets (like `Button`)
+///
+pub trait IntoWidget: Sized {
+    type Inner: Widget;
+    fn into_widget(self) -> Self::Inner;
+    fn into_widget_pod(self) -> WidgetPtr<Self::Inner> {
+        WidgetPod::new(self.into_widget())
     }
 }
 
-impl<T: Widget> IntoWidgetPod for T {
-    fn into_widget_pod(self) -> WidgetPtr {
-        WidgetPod::new(self)
+/*
+pub trait ProxyWidget {
+    type Inner: IntoWidget;
+    fn build(self) -> Self::Inner;
+}
+
+impl<T: ProxyWidget> IntoWidget for T {
+    type Inner = <<T as ProxyWidget>::Inner as IntoWidget>::Inner;
+
+    fn into_widget(self) -> Self::Inner {
+        self.build().into_widget()
+    }
+}*/
+
+impl<T: Widget> IntoWidget for T {
+    type Inner = T;
+
+    fn into_widget(self) -> Self::Inner {
+        self
     }
 }
 
@@ -323,6 +324,12 @@ impl WidgetPod {
     pub fn window_event(self: &Rc<Self>, cx: &mut WidgetCtx, event: &winit::event::WindowEvent, time: Duration) {
         cx.with_widget(self, |cx, widget| {
             widget.window_event(cx, event, time);
+        });
+    }
+
+    pub fn mount(self: &Rc<Self>, cx: &mut WidgetCtx) {
+        cx.with_widget(self, |cx, widget| {
+            widget.mount(cx);
         });
     }
 
@@ -421,7 +428,7 @@ impl HitTestResult {
 pub struct WidgetCtx<'a> {
     pub(crate) app_state: &'a mut AppState,
     pub(crate) event_loop: &'a EventLoopWindowTarget<ExtEvent>,
-    /// Pointer to the current widgets.
+    /// Pointer to the current widget.
     current_widget: WidgetPtr,
     /// Widgets that need updating after the current dispatch.
     /// XXX do we need RefCell here?
@@ -803,6 +810,10 @@ impl<T: 'static> State<T> {
 
     pub fn set_dependency(&self, cx: &WidgetCtx) {
         self.0.dependents.borrow_mut().insert(cx.current());
+    }
+
+    pub fn track(&self, cx: &WidgetCtx) {
+        self.set_dependency(cx);
     }
 
     fn notify(&self, cx: &WidgetCtx) {

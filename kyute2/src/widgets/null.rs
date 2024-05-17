@@ -9,6 +9,8 @@ pub struct Null;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 impl Widget for Null {
+    fn mount(&mut self, cx: &mut WidgetCtx) {}
+
     fn update(&mut self, _cx: &mut WidgetCtx) {}
 
     fn event(&mut self, _cx: &mut WidgetCtx, _event: &mut Event) {}

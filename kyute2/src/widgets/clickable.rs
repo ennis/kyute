@@ -46,6 +46,10 @@ impl<T: Widget> Clickable<T> {
 }
 
 impl<T: Widget> Widget for Clickable<T> {
+    fn mount(&mut self, cx: &mut WidgetCtx) {
+        todo!()
+    }
+
     fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx);
     }

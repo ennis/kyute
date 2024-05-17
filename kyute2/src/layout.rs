@@ -4,6 +4,7 @@ use kurbo::{Insets, Vec2};
 use std::{
     fmt,
     hash::{Hash, Hasher},
+    ops::{Range, RangeBounds},
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -82,6 +83,20 @@ impl fmt::Debug for BoxConstraints {
     }
 }
 
+fn range_bounds_to_lengths(bounds: impl RangeBounds<f64>) -> (f64, f64) {
+    let start = match bounds.start_bound() {
+        std::ops::Bound::Included(&x) => x,
+        std::ops::Bound::Excluded(&x) => x,
+        std::ops::Bound::Unbounded => 0.0,
+    };
+    let end = match bounds.end_bound() {
+        std::ops::Bound::Included(&x) => x,
+        std::ops::Bound::Excluded(&x) => x,
+        std::ops::Bound::Unbounded => f64::INFINITY,
+    };
+    (start, end)
+}
+
 impl BoxConstraints {
     pub fn deflate(&self, insets: Insets) -> BoxConstraints {
         BoxConstraints {
@@ -148,6 +163,26 @@ impl BoxConstraints {
 
     pub fn compute_height(&self, height: LengthOrPercentage) -> f64 {
         self.compute_length(height, self.max.height)
+    }
+
+    pub fn set_width_range(&mut self, width: impl RangeBounds<f64>) {
+        let (min, max) = range_bounds_to_lengths(width);
+        self.min.width = min;
+        self.max.width = max;
+    }
+
+    pub fn set_height_range(&mut self, height: impl RangeBounds<f64>) {
+        let (min, max) = range_bounds_to_lengths(height);
+        self.min.height = min;
+        self.max.height = max;
+    }
+
+    pub fn width_range(&self) -> Range<f64> {
+        self.min.width..self.max.width
+    }
+
+    pub fn height_range(&self) -> Range<f64> {
+        self.min.height..self.max.height
     }
 }
 

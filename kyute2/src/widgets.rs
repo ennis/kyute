@@ -11,10 +11,11 @@ mod flex;
 mod padding;
 pub mod text;
 //mod text_edit;
+mod text_edit;
 mod transform;
 
 pub use align::Align;
-pub use button::button;
+pub use button::Button;
 pub use clickable::Clickable;
 pub use constrained::Constrained;
 pub use decorated_box::DecoratedBox;

@@ -15,6 +15,10 @@ impl<T: Widget> Constrained<T> {
 }
 
 impl<T: Widget> Widget for Constrained<T> {
+    fn mount(&mut self, cx: &mut WidgetCtx) {
+        todo!()
+    }
+
     fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx)
     }

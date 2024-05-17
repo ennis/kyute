@@ -2424,3 +2424,136 @@ They tend to make things more complicated (they wrap another `Widget` impl)
 
 The `ProxyWidget` trait solution requires "type-alias impl trait" (TAIT) which is not stable. Otherwise, need to spell
 out the full type of the widget in the proxy struct, or wrap in WidgetPtr.
+
+Alternatively: just use functions (no nice struct initialization syntax though)
+
+# Text editing
+
+To store formatted (but not laid-out) text, use `TextSpan`.
+To format and paint text, use `sk::Paragraph`.
+
+Text editing features:
+
+- move cursor (next character, word, etc.)
+- change the current selection
+- apply a formatter on the text
+- validate input
+- get text under cursor (e.g. to provide a custom context menu then right-clicking on a word)
+
+Text editing state that can be observed and reacted to:
+
+- text
+- selection
+- (some other stuff related to IME maybe)
+
+Events:
+
+- text changed by user
+- selection changed by user
+
+Workflow:
+
+- BaseTextEdit holds a `State<TextEditState>`
+- `TextEditState` has methods to set the state, such as the text, selection, laid-out paragraph, metrics, and other
+  stuff; it's the heart of the widget
+- Can get a handle to the state when creating the widget, then move it around to some other event handler (e.g. into a
+  button click handler)
+
+```
+fn test() {
+    Button {
+        on_click: move |cx| {
+            text_edit_state.modify(cx, |state| {
+                // access & change text_edit_state here, will update all dependents (including the BaseTextEdit itself)
+            })
+        }
+        ..Default::default()        
+    }
+}
+```
+
+Issues:
+
+- a bit verbose to modify `TextEditState`, would like direct methods on `State<TextEditState>`
+- when changing TextEditState, dependents don't know exactly what has changed (is it only the text? only the selection?)
+    - add some logic inside `TextEditState` for that.
+
+Q: should it be `TextEditState(State<TextEditStateInner>)` instead?
+A: No, instead add methods to State to make it less verbose. E.g. `text_edit_state.modify(cx).clear_selection()`.
+
+General issue with `State`:
+Sometimes states should be write-only, i.e. the caller doesn't care about the value changing and shouldn't be added as a
+dependency.
+There's no way to model that right now.
+
+## Where to get the current text?
+
+Must use bindings. Rebuilding the widget would erase the current selection state, and we don't want that.
+
+The lifecycle is as such:
+
+- widget is created with the initial text to display
+- widget gains focus, and receives input events
+- widget updates its internal string as a response to events
+- widget loses focus and/or receives a "submit" key (user presses enter)
+- widget invokes the "editing_finished" handler with the internal string
+- the handler validates and updates the text in the data model
+- either the text edit widget is rebuilt, or
+
+## Controlling the text edit "remotely"?
+
+For example, click a button outside the EditableText, and in response cut/copy/paste the currently selected text.
+One solution is to store the TextEditValue(text+selection) in the app model, then modify that. The EditableText is bound
+to the TextEditValue and will update as a result.
+
+Issue: you need to store the TextEditValue somewhere, even if you don't use that anywhere else.
+
+Moving the cursor: same thing, update the selection in the TextEditValue.
+
+Hit-testing the text: more complicated, since TextEditValue doesn't hold the laid-out paragraph.
+
+# More powerful States
+
+Right now, `State` holds a list of dependencies, which are hard-coded to be pointers to widgets in the tree.
+The only thing that is done in reaction to a state changing is to call `WidgetPtr::update` on the dependencies.
+
+Proposal: instead of having a pointer to dependencies, have `State` hold a list of callbacks to invoke (more precisely,
+to queue for invocation)
+when the state is touched. There wouldn't be a list of dependencies, only the callbacks.
+
+Callback closures could hold a (weak) pointer to the widget, so that methods can be invoked on the widget.
+
+## Rethinking WidgetCtx
+
+The purpose of WidgetCtx right now is more or less to hold the shared pointer to the widget. Thus, methods like
+`Widget::update(&mut self, ctx: &WidgetCtx)` receive both `&mut self` mut borrow of the widget, and a shared pointer to
+it
+(via `ctx.current()`).
+That's redundant, what if calling `Widget::update(self: ???)` was sufficient? With `self` a type that would act as both
+a mut borrow and a `Rc`.
+Arbitrary self types might help, but they are not stable, and it's unclear whether they would work with an
+object-safe `Widget` trait.
+(actually, this looks like a good use case for arbitrary_self_types)
+=> that's exactly what masonry ~~does~~ wants to
+do (https://rust-lang.zulipchat.com/#narrow/stream/213817-t-lang/topic/Receiver.20trait.20with.20Target/near/303455619)
+Also https://github.com/rust-lang/rfcs/pull/3519#issuecomment-1820812976 (pretty much the same stuff as us)
+
+Alternative: store `weak_this: WeakWidgetPtr` directly inside the widget (not the WidgetPod).
+
+In another terms: what if we could do something like C++'s `shared_from_this()` inside widget trait methods.
+
+Issue: widgets that are wrapped in modifiers like `Padding` are of type `Padding<Self>`, so they can't store
+a `WeakWidgetPtr<Self>`
+because the type stored in the Rc is `Padding<Self>` and not `Self`.
+Solution: allocate every widget in its own WidgetPod, including wrappers. More overhead per modifier, but not
+unreasonable.
+
+* Option zero: what we would like to write, ideally:
+
+```
+fn 
+```
+
+* Option A: without `dispatch_from_dyn` or `arbitrary_self_types`
+
+

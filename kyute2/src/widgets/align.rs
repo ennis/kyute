@@ -25,6 +25,10 @@ impl<T: Widget> Align<T> {
 }
 
 impl<T: Widget> Widget for Align<T> {
+    fn mount(&mut self, cx: &mut WidgetCtx) {
+        todo!()
+    }
+
     fn update(&mut self, cx: &mut WidgetCtx) {
         self.content.update(cx)
     }
