@@ -1,8 +1,8 @@
 use kurbo::{Point, Rect, Vec2};
 
 use crate::{
-    BoxConstraints, Event, Geometry, HitTestResult, IntoWidget, LayoutCtx, PaintCtx, Size, Widget, WidgetCtx,
-    WidgetPod, WidgetPtr,
+    BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Size, Widget, WidgetCtx, WidgetPod,
+    WidgetPtr, WidgetPtrAny,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -50,23 +50,23 @@ impl Flex {
         Flex::new(Axis::Vertical)
     }
 
-    pub fn push(&mut self, item: impl IntoWidget) {
+    pub fn push(&mut self, item: impl Widget) {
         self.items.push(FlexItem {
             flex: 0.0,
             alignment: None,
             offset: Vec2::ZERO,
             size: Size::ZERO,
-            content: item.into_widget_pod(),
+            content: WidgetPod::new(item),
         });
     }
 
-    pub fn push_flex(&mut self, item: impl IntoWidget, flex: f64) {
+    pub fn push_flex(&mut self, item: impl Widget, flex: f64) {
         self.items.push(FlexItem {
             flex,
             alignment: None,
             offset: Vec2::ZERO,
             size: Size::ZERO,
-            content: item.into_widget_pod(),
+            content: WidgetPod::new(item),
         });
     }
 }
@@ -76,7 +76,7 @@ pub struct FlexItem {
     alignment: Option<CrossAxisAlignment>,
     offset: Vec2,
     size: Size,
-    content: WidgetPtr,
+    content: WidgetPtrAny,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -204,24 +204,22 @@ fn main_cross_constraints(axis: Axis, min_main: f64, max_main: f64, min_cross: f
 }
 
 impl Widget for Flex {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
         for item in &mut self.items {
-            item.content.mount(cx);
+            item.content.dyn_mount(cx);
         }
     }
 
-    fn update(&mut self, cx: &mut WidgetCtx) {
+    /*fn update(&mut self, cx: &mut WidgetCtx<Self>) {
         for item in &mut self.items {
             item.content.update(cx);
         }
-    }
-
-    fn event(&mut self, _cx: &mut WidgetCtx, _event: &mut Event) {}
+    }*/
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         for item in &mut self.items {
             if result.test_with_offset(item.offset, position, |result, position| {
-                item.content.hit_test(result, position)
+                item.content.dyn_hit_test(result, position)
             }) {
                 return true;
             }

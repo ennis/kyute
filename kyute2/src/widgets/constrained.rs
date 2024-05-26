@@ -1,38 +1,30 @@
 use crate::{
-    environment::Environment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx,
+    environment::Environment, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget,
+    WidgetCtx, WidgetPod, WidgetPtrAny,
 };
 use kurbo::Point;
 
-pub struct Constrained<T> {
+pub struct Constrained {
     pub constraints: BoxConstraints,
-    pub content: T,
+    pub content: WidgetPtrAny,
 }
 
-impl<T: Widget> Constrained<T> {
-    pub fn new(constraints: BoxConstraints, content: T) -> Self {
-        Self { constraints, content }
+impl Constrained {
+    pub fn new(constraints: BoxConstraints, content: impl Widget) -> Self {
+        Self {
+            constraints,
+            content: WidgetPod::new(content),
+        }
     }
 }
 
-impl<T: Widget> Widget for Constrained<T> {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
-        todo!()
-    }
-
-    fn update(&mut self, cx: &mut WidgetCtx) {
-        self.content.update(cx)
-    }
-
-    fn environment(&self) -> Environment {
-        self.content.environment()
-    }
-
-    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
-        self.content.event(ctx, event)
+impl Widget for Constrained {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
+        self.content.dyn_mount(cx)
     }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.content.hit_test(ctx, position)
+        self.content.dyn_hit_test(ctx, position)
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {

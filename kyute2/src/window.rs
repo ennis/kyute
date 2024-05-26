@@ -23,8 +23,8 @@ use crate::{
     drawing::ToSkia,
     event::{PointerButton, PointerButtons, PointerEvent},
     window::key::{key_code_from_winit, modifiers_from_winit},
-    AppGlobals, BoxConstraints, ChangeFlags, Color, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Rect,
-    Size, Widget, WidgetCtx, WidgetPod, WidgetPtr,
+    AppGlobals, BoxConstraints, ChangeFlags, Color, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point,
+    Rect, Size, Widget, WidgetCtx, WidgetPod, WidgetPtr, WidgetPtrAny,
 };
 
 mod key;
@@ -81,7 +81,7 @@ struct LastClick {
     repeat_count: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct InputState {
     // TODO do tracking in winit and remove this
     cursor_pos: Point,
@@ -93,7 +93,7 @@ struct InputState {
     /// The widget currently grabbing the pointer.
     pointer_grab: Vec<HitTestEntry>,
     /// The widget that has the focus for keyboard events.
-    focus: Option<WidgetPtr>,
+    focus: Option<WidgetPtrAny>,
     /// Result of the previous hit-test
     prev_hit_test_result: Vec<HitTestEntry>,
 }
@@ -222,7 +222,7 @@ impl UiHostWindowState {
     ///
     /// It updates the last known input state (`input_state`), and resizes the compositor layer
     /// if needed.
-    fn handle_window_event(&mut self, cx: &mut WidgetCtx, content: WidgetPtr, event: &WindowEvent, time: Duration) {
+    fn handle_window_event(&mut self, cx: &mut Ctx, content: WidgetPtrAny, event: &WindowEvent, time: Duration) {
         //eprintln!("handle_window_event {:?}", event);
         match event {
             WindowEvent::Resized(new_size) => {
@@ -304,7 +304,7 @@ impl UiHostWindowState {
         // When we reach that point, all events have been dispatched to widgets, which may have
         // requested updates and/or relayouts. We need to process these now.
         // First process pending updates.
-        cx.dispatch_pending_updates();
+        cx.dispatch_queued_callbacks();
 
         // Then if something requested a relayout, do it now.
         if cx.needs_layout() {
@@ -318,8 +318,8 @@ impl UiHostWindowState {
     /// Handles mouse input.
     fn handle_mouse_input(
         &mut self,
-        cx: &mut WidgetCtx,
-        content: WidgetPtr,
+        cx: &mut Ctx,
+        content: WidgetPtrAny,
         device_id: DeviceId,
         button: MouseButton,
         state: ElementState,
@@ -403,7 +403,7 @@ impl UiHostWindowState {
     /// Handles keyboard input.
     ///
     /// Returns whether the keyboard input was handled
-    fn handle_keyboard_input(&self, _cx: &mut WidgetCtx, _content: WidgetPtr, event: &KeyEvent, _time: Duration) {
+    fn handle_keyboard_input(&self, _cx: &mut Ctx, _content: WidgetPtrAny, event: &KeyEvent, _time: Duration) {
         /*let mut popups = self.popups.borrow();
         // If there are active popups, keyboard events are delivered to the popups.
         // TODO there should be only one popup active at a time.
@@ -481,8 +481,8 @@ impl UiHostWindowState {
     /// Returns true if the app logic should re-run in response of the event.
     fn dispatch_pointer_event(
         &mut self,
-        cx: &mut WidgetCtx,
-        content: WidgetPtr,
+        cx: &mut Ctx,
+        content: WidgetPtrAny,
         mut event: Event,
         position: Point,
         time: Duration,
@@ -493,7 +493,7 @@ impl UiHostWindowState {
             mem::take(&mut self.input_state.pointer_grab)
         } else {
             let mut hit_test_result = HitTestResult::new();
-            content.hit_test(&mut hit_test_result, position);
+            content.dyn_hit_test(&mut hit_test_result, position);
             hit_test_result.hits
         };
 
@@ -555,10 +555,10 @@ impl UiHostWindowState {
         }
     }
 
-    fn dispatch_pointer_event_inner(&mut self, cx: &mut WidgetCtx, path: &[HitTestEntry], mut event: Event) {
+    fn dispatch_pointer_event_inner(&mut self, cx: &mut Ctx, path: &[HitTestEntry], mut event: Event) {
         for entry in path.iter() {
             event.set_transform(&entry.transform);
-            entry.widget.event(cx, &mut event);
+            entry.widget.dyn_event(cx, &mut event);
         }
 
         if event.capture_requested() {
@@ -567,7 +567,7 @@ impl UiHostWindowState {
         }
     }
 
-    fn update_layout(&self, content: WidgetPtr) {
+    fn update_layout(&self, content: WidgetPtrAny) {
         let _span = span!("update_layout");
         //span.emit_text(&format!("Window ID: {:016X}", u64::from(self.window.id())));
         //span.emit_text(&format!("Window title: {:?}", self.window.title()));
@@ -636,7 +636,7 @@ impl UiHostWindowState {
     /// * `options` - Options for painting the window.
     /// * `widget` - The root widget to paint into the window.
     ///
-    fn paint(&mut self, _time: Duration, options: &WindowPaintOptions, content: WidgetPtr) {
+    fn paint(&mut self, _time: Duration, options: &WindowPaintOptions, content: WidgetPtrAny) {
         let _span = span!("paint");
         eprintln!("paint");
 
@@ -701,7 +701,7 @@ impl UiHostWindowState {
 /// A window handler that hosts a UI tree.
 pub struct UiHostWindowHandler {
     /// Gui widgets
-    content: WidgetPtr,
+    content: WidgetPtrAny,
     options: UiHostWindowOptions,
     window: RefCell<Option<UiHostWindowState>>,
     /// Damage regions to be repainted.
@@ -724,7 +724,7 @@ impl UiHostWindowHandler {
         }
     }
 
-    fn open_window(&self, cx: &mut WidgetCtx) {
+    fn open_window(&self, cx: &mut WidgetCtx<Self>) {
         eprintln!("open_window");
         let window = UiHostWindowState::new(&self.options, &cx.event_loop);
         // associate this widget to the window so that window events are sent to this widget
@@ -736,12 +736,16 @@ impl UiHostWindowHandler {
 }
 
 impl Widget for UiHostWindowHandler {
-    fn update(&mut self, cx: &mut WidgetCtx) {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
         self.open_window(cx);
-        self.content.update(cx);
+        self.content.dyn_mount(cx);
     }
 
-    fn event(&mut self, _cx: &mut WidgetCtx, _event: &mut Event) {
+    fn update(&mut self, cx: &mut WidgetCtx<Self>) {
+        //self.content.dyn_update(cx);
+    }
+
+    fn event(&mut self, _cx: &mut WidgetCtx<Self>, _event: &mut Event) {
         // we don't receive or handle events
     }
 
@@ -755,7 +759,7 @@ impl Widget for UiHostWindowHandler {
         Geometry::ZERO
     }
 
-    fn window_event(&mut self, cx: &mut WidgetCtx, event: &WindowEvent, time: Duration) {
+    fn window_event(&mut self, cx: &mut WidgetCtx<Self>, event: &WindowEvent, time: Duration) {
         if let Some(ref mut window) = &mut *self.window.borrow_mut() {
             window.handle_window_event(cx, self.content.clone(), event, time);
         } else {

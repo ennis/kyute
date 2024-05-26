@@ -43,8 +43,8 @@ pub use color::Color;
 //pub use element::{Element, TransformNode};
 //pub use environment::{EnvKey, EnvValue, Environment};
 pub use core::{
-    Binding, Builder, ChangeFlags, HitTestResult, IntoWidget, LayoutCtx, PaintCtx, State, Widget, WidgetCtx, WidgetPod,
-    WidgetPtr,
+    Binding, Builder, ChangeFlags, Ctx, HitTestResult, LayoutCtx, PaintCtx, State, WeakWidgetPtrAny, Widget, WidgetCtx,
+    WidgetPod, WidgetPtr, WidgetPtrAny,
 };
 pub use event::Event;
 pub use layout::{Alignment, BoxConstraints, Geometry};
@@ -54,8 +54,8 @@ pub use widget_ext::WidgetExt;
 /// Widget implementor prelude.
 pub mod prelude {
     pub use crate::{
-        BoxConstraints, ChangeFlags, Environment, Event, Geometry, HitTestResult, IntoWidget, LayoutCtx, PaintCtx,
-        Point, Rect, Size, State, Widget, WidgetCtx, WidgetPod, WidgetPtr,
+        BoxConstraints, ChangeFlags, Ctx, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point,
+        Rect, Size, State, Widget, WidgetPod, WidgetPtr,
     };
 }
 

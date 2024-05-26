@@ -1,49 +1,37 @@
 use kurbo::{Insets, Vec2};
 
-use crate::{layout::place_into, prelude::*, Alignment};
+use crate::{core::WidgetCtx, layout::place_into, prelude::*, Alignment, WidgetPtrAny};
 
-pub struct Align<T> {
+pub struct Align {
     pub x: Alignment,
     pub y: Alignment,
     pub width_factor: Option<f64>,
     pub height_factor: Option<f64>,
     offset: Vec2,
-    pub content: T,
+    pub content: WidgetPtrAny,
 }
 
-impl<T: Widget> Align<T> {
-    pub fn new(x: Alignment, y: Alignment, content: T) -> Self {
+impl Align {
+    pub fn new(x: Alignment, y: Alignment, content: impl Widget) -> Self {
         Self {
             x,
             y,
             width_factor: None,
             height_factor: None,
             offset: Default::default(),
-            content,
+            content: WidgetPod::new(content),
         }
     }
 }
 
-impl<T: Widget> Widget for Align<T> {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
-        todo!()
-    }
-
-    fn update(&mut self, cx: &mut WidgetCtx) {
-        self.content.update(cx)
-    }
-
-    fn environment(&self) -> Environment {
-        self.content.environment()
-    }
-
-    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
-        event.with_offset(self.offset, |event| self.content.event(ctx, event))
+impl Widget for Align {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
+        self.content.dyn_mount(cx)
     }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
         ctx.test_with_offset(self.offset, position, |result, position| {
-            self.content.hit_test(result, position)
+            self.content.dyn_hit_test(result, position)
         })
     }
 

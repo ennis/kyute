@@ -6,7 +6,7 @@ use tracy_client::span;
 use crate::{
     drawing::ToSkia,
     text::{get_font_collection, TextSpan, TextStyle},
-    Binding, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Widget, WidgetCtx,
+    Binding, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Widget, WidgetCtx,
 };
 
 pub struct Text {
@@ -27,11 +27,9 @@ impl Text {
 }
 
 impl Widget for Text {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
-        todo!()
-    }
+    fn mount(&mut self, _cx: &mut WidgetCtx<Self>) {}
 
-    fn update(&mut self, cx: &mut WidgetCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx<Self>) {
         /*if self.text.update(cx) {
             self.relayout = true;
             self.paragraph = build_paragraph(&self.text.value());
@@ -39,7 +37,7 @@ impl Widget for Text {
         }*/
     }
 
-    fn event(&mut self, _ctx: &mut WidgetCtx, _event: &mut Event) {}
+    fn event(&mut self, _ctx: &mut WidgetCtx<Self>, _event: &mut Event) {}
 
     fn hit_test(&mut self, _ctx: &mut HitTestResult, position: Point) -> bool {
         if self.relayout {

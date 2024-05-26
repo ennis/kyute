@@ -24,12 +24,12 @@ pub trait WidgetExt: Widget + Sized + 'static {
     ///
     /// TODO
     #[must_use]
-    fn clickable(self) -> Clickable<Self> {
+    fn clickable(self) -> Clickable {
         Clickable::new(self)
     }
 
     #[must_use]
-    fn align(self, x: Alignment, y: Alignment) -> Align<Self> {
+    fn align(self, x: Alignment, y: Alignment) -> Align {
         Align::new(x, y, self)
     }
 

@@ -1,28 +1,28 @@
 use kurbo::{Affine, Point, Vec2};
 
 use crate::{
-    environment::Environment, BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx,
+    environment::Environment, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget,
+    WidgetCtx, WidgetPod, WidgetPtrAny,
 };
 
 /// A container for a widget.
 ///
-/// TODO: make a version with only an offset instead of a full-blown transform
-pub struct TransformNode<T: ?Sized = dyn Widget> {
+pub struct TransformNode {
     /// Parent-to-local transform.
     pub transform: Affine,
-    pub content: T,
+    pub content: WidgetPtrAny,
 }
 
-impl<T: Sized> TransformNode<T> {
-    pub fn new(content: T) -> TransformNode<T> {
+impl TransformNode {
+    pub fn new(content: impl Widget) -> TransformNode {
         TransformNode {
             transform: Affine::IDENTITY,
-            content,
+            content: WidgetPod::new(content),
         }
     }
 }
 
-impl<T: ?Sized> TransformNode<T> {
+impl TransformNode {
     /// Sets the position of the contained element relative to the parent.
     ///
     /// Shorthand for `set_transform(Affine::translate(offset))`
@@ -51,26 +51,14 @@ impl<T: ?Sized> TransformNode<T> {
     }*/
 }
 
-impl<T: Widget> Widget for TransformNode<T> {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
-        self.content.mount(cx)
-    }
-
-    fn update(&mut self, cx: &mut WidgetCtx) {
-        self.content.update(cx)
-    }
-
-    fn environment(&self) -> Environment {
-        self.content.environment()
-    }
-
-    fn event(&mut self, cx: &mut WidgetCtx, event: &mut Event) {
-        event.with_transform(&self.transform, |event| self.content.event(cx, event))
+impl Widget for TransformNode {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
+        self.content.dyn_mount(cx)
     }
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         result.test_with_transform(&self.transform, position, |result, position| {
-            self.content.hit_test(result, position)
+            self.content.dyn_hit_test(result, position)
         })
     }
 

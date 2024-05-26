@@ -2,11 +2,12 @@
 use crate::{
     core::Widget,
     drawing::{FromSkia, ToSkia},
-    event::{Event, Modifiers},
+    event::Event,
     text::{Selection, TextSpan, TextStyle},
-    Binding, BoxConstraints, Geometry, HitTestResult, LayoutCtx, PaintCtx, State, WidgetCtx,
+    Binding, BoxConstraints, Ctx, Geometry, HitTestResult, LayoutCtx, PaintCtx, State, WidgetCtx, WidgetPod, WidgetPtr,
+    WidgetPtrAny,
 };
-use keyboard_types::KeyState;
+use keyboard_types::{KeyState, Modifiers};
 use kurbo::{Point, Rect, Size, Vec2};
 use skia_safe as sk;
 use skia_safe::textlayout::{Paragraph, RectHeightStyle, RectWidthStyle};
@@ -171,17 +172,17 @@ impl TextEditingState {
 pub struct BaseTextEdit {
     state: State<TextEditingState>,
     style: TextStyle,
-    editing_finished: Box<dyn FnMut(&mut WidgetCtx, String)>, // issue: what if TextEditState is changed or accessed here? this will make the BaseTextEdit depend on the widget, which it already does
+    editing_finished: Box<dyn FnMut(&mut Ctx, String)>, // issue: what if TextEditState is changed or accessed here? this will make the BaseTextEdit depend on the widget, which it already does
     // more generally: you can't establish dependencies in event handlers; you only schedule updates
     // Also: need to be extremely careful with TextEditingState because we borrow it in Widget::event,
     // and the handlers may try to borrow it as well; better call them at the end.
-    text_changed: Box<dyn FnMut(&mut WidgetCtx, String)>,
-    selection_changed: Box<dyn FnMut(&mut WidgetCtx, Selection)>,
+    text_changed: Box<dyn FnMut(&mut Ctx, String)>,
+    selection_changed: Box<dyn FnMut(&mut Ctx, Selection)>,
     /// Whether the text edit is focused.
     focused: bool,
     horizontal_offset: f64,
     paragraph: Option<sk::textlayout::Paragraph>,
-    inner: Viewport<CoreTextEdit>,
+    inner: WidgetPtr<Viewport<CoreTextEdit>>,
 }
 
 impl BaseTextEdit {
@@ -196,7 +197,7 @@ impl BaseTextEdit {
             focused: false,
             horizontal_offset: 0.0,
             paragraph: None,
-            inner: Viewport::new(CoreTextEdit::new(state.clone())),
+            inner: WidgetPod::new(Viewport::new(CoreTextEdit::new(state.clone(), TextStyle::default()))),
         }
     }
 }
@@ -213,15 +214,15 @@ fn edit_text(text: &mut String, selection: Selection, replace_with: &str) -> Sel
 }
 
 impl Widget for BaseTextEdit {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
         // nothing to do
     }
 
-    fn update(&mut self, cx: &mut WidgetCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx<Self>) {
         // the state has changed
     }
 
-    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
+    fn event(&mut self, ctx: &mut WidgetCtx<Self>, event: &mut Event) {
         let mut state = self.state.get_untracked();
         let mut editing_finished = false;
         let mut text_changed = false;
@@ -557,17 +558,17 @@ pub struct Viewport<Content> {
     offset: Vec2,
     constrain_width: bool,
     constrain_height: bool,
-    content: Content,
+    content: WidgetPtr<Content>,
 }
 
-impl<Content> Viewport<Content> {
+impl<Content: Widget> Viewport<Content> {
     pub fn new(content: Content) -> Viewport<Content> {
         Viewport {
             size: Size::ZERO,
             offset: Vec2::ZERO,
             constrain_width: false,
             constrain_height: false,
-            content,
+            content: WidgetPod::new(content),
         }
     }
 
@@ -596,7 +597,7 @@ impl<Content> Viewport<Content> {
         viewport_rect.union(rect) == viewport_rect
     }
 
-    pub fn inner(&self) -> &Content {
+    pub fn inner(&self) -> &WidgetPtr<Content> {
         &self.content
     }
 
@@ -613,17 +614,13 @@ impl<Content> Viewport<Content> {
 }
 
 impl<Content: Widget + 'static> Widget for Viewport<Content> {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
         self.content.mount(cx)
     }
 
-    fn update(&mut self, cx: &mut WidgetCtx) {
-        self.content.update(cx)
-    }
+    fn update(&mut self, cx: &mut WidgetCtx<Self>) {}
 
-    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
-        self.content.event(ctx, event)
-    }
+    fn event(&mut self, ctx: &mut WidgetCtx<Self>, event: &mut Event) {}
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         if self.size.to_rect().contains(position) {
@@ -697,7 +694,7 @@ impl CoreTextEdit {
 }
 
 impl Widget for CoreTextEdit {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
         /*connect(self.state, cx, |this_, cx| {
             // issue: `cx` is not enough to retrieve &mut self
             // -> there is no `Weak<Self>`
@@ -709,13 +706,13 @@ impl Widget for CoreTextEdit {
         self.state.track(cx);
     }
 
-    fn update(&mut self, cx: &mut WidgetCtx) {
+    fn update(&mut self, cx: &mut WidgetCtx<Self>) {
         // the state has changed; we don't know if it's the text or the selection, but in any case
         // we need to update the layout
         cx.mark_needs_layout();
     }
 
-    fn event(&mut self, cx: &mut WidgetCtx, event: &mut Event) {}
+    fn event(&mut self, cx: &mut WidgetCtx<Self>, event: &mut Event) {}
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         todo!()

@@ -7,12 +7,12 @@ use crate::{
     drawing::{Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration},
     environment::Environment,
     layout::place_into,
-    Alignment, BoxConstraints, ChangeFlags, Event, Geometry, HitTestResult, Insets, LayoutCtx, LengthOrPercentage,
-    PaintCtx, Point, Rect, Size, Widget, WidgetCtx,
+    Alignment, BoxConstraints, ChangeFlags, Ctx, Event, Geometry, HitTestResult, Insets, LayoutCtx, LengthOrPercentage,
+    PaintCtx, Point, Rect, Size, Widget, WidgetCtx, WidgetPod, WidgetPtrAny,
 };
 
 /// A container with a fixed width and height, into which a unique widget is placed.
-pub struct Frame<B, T> {
+pub struct Frame<B> {
     width: LengthOrPercentage,
     height: LengthOrPercentage,
     change_flags: Cell<ChangeFlags>,
@@ -32,11 +32,15 @@ pub struct Frame<B, T> {
     /// Computed bounds
     bounding_rect: Rect,
     paint_bounding_rect: Rect,
-    content: T,
+    content: WidgetPtrAny,
 }
 
-impl<T: Widget> Frame<RoundedRectBorder, T> {
-    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, content: T) -> Frame<RoundedRectBorder, T> {
+impl Frame<RoundedRectBorder> {
+    pub fn new(
+        width: LengthOrPercentage,
+        height: LengthOrPercentage,
+        content: impl Widget,
+    ) -> Frame<RoundedRectBorder> {
         Frame {
             width,
             height,
@@ -52,7 +56,7 @@ impl<T: Widget> Frame<RoundedRectBorder, T> {
             bounding_rect: Default::default(),
             paint_bounding_rect: Default::default(),
             decoration: ShapeDecoration::new(),
-            content,
+            content: WidgetPod::new(content),
         }
     }
 }
@@ -80,22 +84,14 @@ impl<T, B> Frame<T, B> {
     }
 }*/
 
-impl<B: ShapeBorder + 'static, T: Widget> Widget for Frame<B, T> {
-    fn update(&mut self, cx: &mut WidgetCtx) {
-        self.content.update(cx)
-    }
-
-    fn environment(&self) -> Environment {
-        self.content.environment()
-    }
-
-    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
-        event.with_offset(self.offset, |event| self.content.event(ctx, event))
+impl<B: ShapeBorder + 'static> Widget for Frame<B> {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
+        self.content.dyn_mount(cx)
     }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
         ctx.test_with_offset(self.offset, position, |result, position| {
-            self.content.hit_test(result, position)
+            self.content.dyn_hit_test(result, position)
         }) || self.bounding_rect.contains(position)
     }
 

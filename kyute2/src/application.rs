@@ -6,7 +6,7 @@ use std::{
     time::Instant,
 };
 
-use crate::{AppGlobals, Widget, WidgetCtx, WidgetPod, WidgetPtr};
+use crate::{AppGlobals, Ctx, Environment, Widget, WidgetPod, WidgetPtr, WidgetPtrAny};
 use tracing::warn;
 use tracy_client::set_thread_name;
 use winit::{
@@ -32,7 +32,7 @@ impl fmt::Debug for ExtEvent {
 /// Holds the windows and the application logic.
 pub(crate) struct AppState {
     /// Widget paths to open windows.
-    pub(crate) windows: HashMap<WindowId, WidgetPtr>,
+    pub(crate) windows: HashMap<WindowId, WidgetPtrAny>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -69,14 +69,14 @@ impl Wake for AppWaker {
 
 /// Holds the UI root widget + the application state.
 struct App {
-    root: WidgetPtr,
+    root: WidgetPtrAny,
     app_state: AppState,
 }
 
 impl App {
-    fn update(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>) {
-        let mut tree_ctx = WidgetCtx::new(&mut self.app_state, event_loop, self.root.clone());
-        self.root.widget.borrow_mut().update(&mut tree_ctx);
+    fn mount(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>) {
+        let mut cx = Ctx::new(&mut self.app_state, event_loop, Environment::new());
+        self.root.dyn_mount_root(&mut cx);
     }
 }
 
@@ -128,18 +128,18 @@ impl AppLauncher {
         self.run_inner(WidgetPod::new(root_widget))
     }
 
-    fn run_inner(self, root: WidgetPtr) {
+    fn run_inner(self, root: WidgetPtrAny) {
         let event_loop = self.event_loop;
         //let mut debug_window = self.debug_window;
         let _tracy_client = self.tracy_client;
         set_thread_name!("UI thread");
 
-        // initial UI update
+        // initial UI mount
         let mut app = App {
             root,
             app_state: self.app_state,
         };
-        app.update(&event_loop);
+        app.mount(&event_loop);
 
         // run the event loop
         event_loop.set_control_flow(ControlFlow::Wait);
@@ -160,8 +160,8 @@ impl AppLauncher {
 
                         // dispatch to the appropriate window handler
                         if let Some(window_widget) = app.app_state.windows.get(&window_id).cloned() {
-                            let mut tree_ctx = WidgetCtx::new(&mut app.app_state, elwt, window_widget.clone());
-                            window_widget.window_event(&mut tree_ctx, &event, event_time);
+                            let mut ctx = Ctx::new(&mut app.app_state, elwt, Environment::new());
+                            window_widget.dyn_window_event(&mut ctx, &event, event_time);
                         } else {
                             warn!("received event for unknown window {:?}", window_id);
                         }

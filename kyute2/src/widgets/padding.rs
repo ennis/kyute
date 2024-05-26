@@ -1,21 +1,19 @@
 use crate::{
-    BoxConstraints, Environment, Event, Geometry, HitTestResult, IntoWidget, LayoutCtx, PaintCtx, Widget, WidgetCtx,
+    BoxConstraints, Ctx, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx,
+    WidgetPod, WidgetPtr, WidgetPtrAny,
 };
 use kurbo::{Insets, Point, Size, Vec2};
 
 pub struct Padding<T> {
     pub padding: Insets,
-    pub content: T,
+    pub content: WidgetPtr<T>,
 }
 
 impl<T: Widget> Padding<T> {
-    pub fn new<W>(padding: Insets, content: W) -> Self
-    where
-        W: IntoWidget<Inner = T>,
-    {
+    pub fn new(padding: Insets, content: T) -> Self {
         Self {
             padding,
-            content: content.into_widget(),
+            content: WidgetPod::new(content),
         }
     }
 
@@ -25,20 +23,8 @@ impl<T: Widget> Padding<T> {
 }
 
 impl<T: Widget> Widget for Padding<T> {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
         self.content.mount(cx)
-    }
-
-    fn update(&mut self, cx: &mut WidgetCtx) {
-        self.content.update(cx)
-    }
-
-    fn environment(&self) -> Environment {
-        self.content.environment()
-    }
-
-    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
-        event.with_offset(self.offset(), |event| self.content.event(ctx, event));
     }
 
     /*fn natural_width(&mut self, height: f64) -> f64 {

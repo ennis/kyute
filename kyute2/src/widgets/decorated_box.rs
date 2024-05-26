@@ -2,47 +2,35 @@
 use kurbo::{Point, Size};
 
 use crate::{
-    drawing::Decoration, environment::Environment, widgets::Padding, Binding, BoxConstraints, Event, Geometry,
-    HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx,
+    drawing::Decoration, environment::Environment, widgets::Padding, Binding, BoxConstraints, Ctx, Event, Geometry,
+    HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx, WidgetPod, WidgetPtrAny,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct DecoratedBox<D, T> {
+pub struct DecoratedBox<D> {
     decoration: D,
     size: Size,
-    content: Padding<T>,
+    content: WidgetPtrAny,
 }
 
-impl<D: Decoration, T: Widget> DecoratedBox<D, T> {
-    pub fn new(decoration: D, content: T) -> Self {
+impl<D: Decoration> DecoratedBox<D> {
+    pub fn new(decoration: D, content: impl Widget) -> Self {
         let padding = decoration.insets();
         Self {
             decoration,
             size: Default::default(),
-            content: Padding::new(padding, content),
+            content: WidgetPod::new(Padding::new(padding, content)),
         }
     }
 }
 
-impl<D, T> Widget for DecoratedBox<D, T>
+impl<D> Widget for DecoratedBox<D>
 where
-    T: Widget,
     D: Decoration + 'static,
 {
-    fn mount(&mut self, cx: &mut WidgetCtx) {
-        self.content.mount(cx);
-    }
-
-    fn update(&mut self, cx: &mut WidgetCtx) {
-        /*if self.decoration.update(cx) {
-            // TODO layout is not always necessary. Depending on what changed,
-            // a repaint might be sufficient.
-            self.content.padding = self.decoration.value_ref().insets();
-            cx.mark_needs_layout();
-        }*/
-
-        self.content.update(cx)
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
+        self.content.dyn_mount(cx);
     }
 
     /*fn natural_width(&mut self, height: f64) -> f64 {
@@ -57,15 +45,8 @@ where
         self.content.natural_baseline(params)
     }*/
 
-    fn environment(&self) -> Environment {
-        self.content.environment()
-    }
-    fn event(&mut self, ctx: &mut WidgetCtx, event: &mut Event) {
-        self.content.event(ctx, event)
-    }
-
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.content.hit_test(ctx, position) || self.size.to_rect().contains(position)
+        self.content.dyn_hit_test(ctx, position) || self.size.to_rect().contains(position)
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {

@@ -1,6 +1,6 @@
 use kurbo::Point;
 
-use crate::{BoxConstraints, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx};
+use crate::{BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx};
 
 /// A widget that does nothing.
 #[derive(Copy, Clone, Default)]
@@ -9,11 +9,7 @@ pub struct Null;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 impl Widget for Null {
-    fn mount(&mut self, cx: &mut WidgetCtx) {}
-
-    fn update(&mut self, _cx: &mut WidgetCtx) {}
-
-    fn event(&mut self, _cx: &mut WidgetCtx, _event: &mut Event) {}
+    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {}
 
     fn hit_test(&mut self, _result: &mut HitTestResult, _position: Point) -> bool {
         false
