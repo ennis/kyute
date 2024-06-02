@@ -4,15 +4,17 @@ use std::cell::Cell;
 use kurbo::{Affine, Vec2};
 
 use crate::{
+    core::{WeakWidget, WeakWidgetPtr},
     drawing::{Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration},
     environment::Environment,
     layout::place_into,
     Alignment, BoxConstraints, ChangeFlags, Ctx, Event, Geometry, HitTestResult, Insets, LayoutCtx, LengthOrPercentage,
-    PaintCtx, Point, Rect, Size, Widget, WidgetCtx, WidgetPod, WidgetPtrAny,
+    PaintCtx, Point, Rect, Size, Widget, WidgetCtx, WidgetPod, WidgetPtr, WidgetPtrAny,
 };
 
 /// A container with a fixed width and height, into which a unique widget is placed.
 pub struct Frame<B> {
+    weak: WeakWidgetPtr<Self>,
     width: LengthOrPercentage,
     height: LengthOrPercentage,
     change_flags: Cell<ChangeFlags>,
@@ -39,9 +41,10 @@ impl Frame<RoundedRectBorder> {
     pub fn new(
         width: LengthOrPercentage,
         height: LengthOrPercentage,
-        content: impl Widget,
-    ) -> Frame<RoundedRectBorder> {
-        Frame {
+        content: impl Into<WidgetPtrAny>,
+    ) -> WidgetPtr<Self> {
+        WidgetPod::new_cyclic(move |weak| Frame {
+            weak,
             width,
             height,
             change_flags: Cell::new(ChangeFlags::all()),
@@ -56,8 +59,8 @@ impl Frame<RoundedRectBorder> {
             bounding_rect: Default::default(),
             paint_bounding_rect: Default::default(),
             decoration: ShapeDecoration::new(),
-            content: WidgetPod::new(content),
-        }
+            content: content.into(),
+        })
     }
 }
 
@@ -85,13 +88,13 @@ impl<T, B> Frame<T, B> {
 }*/
 
 impl<B: ShapeBorder + 'static> Widget for Frame<B> {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
-        self.content.dyn_mount(cx)
+    fn mount(&mut self, cx: &mut Ctx) {
+        self.content.mount(cx)
     }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
         ctx.test_with_offset(self.offset, position, |result, position| {
-            self.content.dyn_hit_test(result, position)
+            self.content.hit_test(result, position)
         }) || self.bounding_rect.contains(position)
     }
 

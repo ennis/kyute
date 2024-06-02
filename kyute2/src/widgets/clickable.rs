@@ -1,5 +1,9 @@
 //! Clickable widget wrapper
-use crate::{prelude::*, WidgetCtx, WidgetPtrAny};
+use crate::{
+    core::{WeakWidget, WeakWidgetPtr, WidgetBase},
+    prelude::*,
+    WidgetCtx, WidgetPtrAny,
+};
 use keyboard_types::{Key, KeyState};
 use tracing::trace;
 
@@ -11,12 +15,13 @@ pub struct ClickableState {
 }
 
 impl ClickableState {
-    pub fn at(cx: &mut WidgetCtx<impl Widget>) -> ClickableState {
+    pub fn at(cx: &mut Ctx) -> ClickableState {
         State::at(cx).expect("ClickableState not found")
     }
 }
 
 pub struct Clickable {
+    base: WidgetBase<Self>,
     state: State<ClickableState>,
     on_click: Box<dyn Fn(&mut Ctx)>,
     content: WidgetPtrAny,
@@ -24,37 +29,26 @@ pub struct Clickable {
 
 impl Clickable {
     /// Creates a new clickable widget.
-    pub fn new(content: impl Widget) -> Clickable {
-        Clickable {
-            content: WidgetPod::new(content),
-            state: Default::default(),
-            on_click: Box::new(|_cx| {
-                trace!("Clickable::on_clicked");
-            }),
-        }
-    }
-
-    /// Sets the click handler.
-    #[must_use]
-    pub fn on_clicked(self, on_clicked: impl Fn(&mut Ctx) + 'static) -> Clickable {
-        Clickable {
-            content: self.content,
-            state: self.state,
-            on_click: Box::new(on_clicked),
-        }
+    pub fn new(content: WidgetPtr<impl Widget>, on_click: impl Fn(&mut Ctx) + 'static) -> WidgetPtr<Clickable> {
+        WidgetPod::new_cyclic(move |base| Clickable {
+            base,
+            state: State::new(ClickableState::default()),
+            on_click: Box::new(on_click),
+            content,
+        })
     }
 }
 
 impl Widget for Clickable {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
-        self.content.dyn_mount(cx)
+    fn mount(&mut self, cx: &mut Ctx) {
+        self.content.mount(cx)
     }
 
     fn environment(&self) -> Environment {
         Environment::new().add(self.state.clone())
     }
 
-    fn event(&mut self, cx: &mut WidgetCtx<Self>, event: &mut Event) {
+    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {
         match event {
             Event::PointerDown(ref _p) => {
                 eprintln!("clickable PointerDown");
@@ -99,7 +93,7 @@ impl Widget for Clickable {
     }
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
-        self.content.dyn_hit_test(result, position)
+        self.content.hit_test(result, position)
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {

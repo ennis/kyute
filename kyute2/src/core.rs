@@ -175,13 +175,24 @@ impl<'a> PaintCtx<'a> {
     }
 }
 
+pub trait WeakWidget: Any {
+    fn weak_self(&self) -> WeakWidgetPtr<Self>
+    where
+        Self: Sized;
+}
+
+/*
+impl WeakWidget for WeakWidgetPtr {
+    fn weak_self(&self) -> WeakWidgetPtr<Self> {
+        WeakWidgetPtr::new(self)
+    }
+}*/
+
 /// Widget types.
 ///
 /// See the crate documentation for more information.
 pub trait Widget: Any {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>)
-    where
-        Self: Sized;
+    fn mount(&mut self, cx: &mut Ctx);
 
     /// Updates this widget.
     ///
@@ -194,22 +205,14 @@ pub trait Widget: Any {
     ///
     /// You shouldn't have to manually call `update()` on child widgets. Instead, request an update by
     /// calling `cx.request_update(widgetpaths)`.
-    fn update(&mut self, cx: &mut WidgetCtx<Self>)
-    where
-        Self: Sized,
-    {
-    }
+    fn update(&mut self, cx: &mut Ctx) {}
 
     fn environment(&self) -> Environment {
         Environment::new()
     }
 
     /// Event handling.
-    fn event(&mut self, cx: &mut WidgetCtx<Self>, event: &mut Event)
-    where
-        Self: Sized,
-    {
-    }
+    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {}
 
     /// Hit-testing.
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool;
@@ -218,108 +221,25 @@ pub trait Widget: Any {
     fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry;
 
     /// Raw window events.
-    fn window_event(&mut self, _cx: &mut WidgetCtx<Self>, _event: &winit::event::WindowEvent, _time: Duration)
-    where
-        Self: Sized,
-    {
-    }
+    fn window_event(&mut self, _cx: &mut Ctx, _event: &winit::event::WindowEvent, _time: Duration) {}
 
     fn paint(&mut self, cx: &mut PaintCtx);
 }
 
-pub trait AnyWidget: Widget {
-    /// # Safety
-    ///
-    /// `this` must be the `Rc<WidgetPod>` containing the widget (`&mut self`).
-    unsafe fn mount(&mut self, this: WidgetPtrAny, cx: &mut Ctx);
-    unsafe fn update(&mut self, this: WidgetPtrAny, cx: &mut Ctx);
-    unsafe fn event(&mut self, this: WidgetPtrAny, cx: &mut Ctx, event: &mut Event);
-    unsafe fn window_event(
-        &mut self,
-        this: WidgetPtrAny,
-        cx: &mut Ctx,
-        event: &winit::event::WindowEvent,
-        time: Duration,
-    );
+pub type WidgetPtr<T = dyn Widget> = Rc<WidgetPod<T>>;
+pub type WeakWidgetPtr<T = dyn Widget> = Weak<WidgetPod<T>>;
+pub type WidgetPtrAny = Rc<WidgetPod<dyn Widget>>;
+pub type WeakWidgetPtrAny = Weak<WidgetPod<dyn Widget>>;
+
+pub struct WidgetBase<W> {
+    weak_self: Weak<RefCell<W>>,
+    parent: Weak<RefCell<dyn Widget>>,
+    environment: Environment,
+    mounted: bool,
 }
-
-impl<W: Widget> AnyWidget for W {
-    unsafe fn mount(&mut self, this: WidgetPtrAny, cx: &mut Ctx) {
-        WidgetCtx::with(cx, this.downcast_unchecked(), |cx| {
-            self.mount(cx);
-        });
-    }
-
-    unsafe fn update(&mut self, this: WidgetPtrAny, cx: &mut Ctx) {
-        WidgetCtx::with(cx, this.downcast_unchecked(), |cx| {
-            self.update(cx);
-        });
-    }
-
-    unsafe fn event(&mut self, this: WidgetPtrAny, cx: &mut Ctx, event: &mut Event) {
-        WidgetCtx::with(cx, this.downcast_unchecked(), |cx| {
-            self.event(cx, event);
-        });
-    }
-
-    unsafe fn window_event(&mut self, this: WidgetPtrAny, cx: &mut Ctx, event: &WindowEvent, time: Duration) {
-        WidgetCtx::with(cx, this.downcast_unchecked(), |cx| {
-            self.window_event(cx, event, time);
-        });
-    }
-}
-
-pub type WidgetPtr<T> = Rc<WidgetPod<T>>;
-pub type WeakWidgetPtr<T> = Weak<WidgetPod<T>>;
-pub type WidgetPtrAny = Rc<WidgetPod<dyn AnyWidget>>;
-pub type WeakWidgetPtrAny = Weak<WidgetPod<dyn AnyWidget>>;
-
-/*
-/// Proxy trait to support trait objects on `Widget`.
-pub trait AnyWidgetPod {
-    fn dyn_mount(self: Rc<Self>, cx: &mut Ctx, parent: WeakWidgetPtrAny);
-    fn dyn_update(self: Rc<Self>, cx: &mut Ctx);
-    fn dyn_event(self: Rc<Self>, cx: &mut Ctx, event: &mut Event);
-    fn dyn_window_event(self: Rc<Self>, cx: &mut Ctx, event: &winit::event::WindowEvent, time: Duration);
-    fn environment(&self) -> Environment;
-    fn dyn_hit_test(self: Rc<Self>, result: &mut HitTestResult, position: Point) -> bool;
-    fn layout(&self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry;
-    fn paint(&self, cx: &mut PaintCtx);
-}
-
-// impl AnyWidgetPod for WidgetPod<dyn Widget>
-
-impl dyn AnyWidgetPod {
-    pub fn mount(self: &Rc<Self>, parent_cx: &mut WidgetCtx<impl Widget>) {
-        let parent = Rc::downgrade(&parent_cx.current_widget);
-        AnyWidgetPod::dyn_mount(self.clone(), parent_cx.base, parent)
-    }
-
-    pub fn mount_root(self: &Rc<Self>, cx: &mut Ctx) {
-        AnyWidgetPod::dyn_mount(self.clone(), cx, WeakWidgetPtr::<Null>::default());
-    }
-
-    pub fn update(self: &Rc<Self>, cx: &mut Ctx) {
-        AnyWidgetPod::dyn_update(self.clone(), cx);
-    }
-
-    pub fn event(self: &Rc<Self>, cx: &mut Ctx, event: &mut Event) {
-        AnyWidgetPod::dyn_event(self.clone(), cx, event);
-    }
-
-    pub fn window_event(self: &Rc<Self>, cx: &mut Ctx, event: &winit::event::WindowEvent, time: Duration) {
-        AnyWidgetPod::dyn_window_event(self.clone(), cx, event, time);
-    }
-
-    pub fn hit_test(self: &Rc<Self>, result: &mut HitTestResult, position: Point) -> bool {
-        AnyWidgetPod::dyn_hit_test(self.clone(), result, position)
-    }
-}*/
-
-impl<W: Widget + ?Sized> WidgetPod<W> {}
 
 /// Container for widgets.
-pub struct WidgetPod<T: ?Sized = dyn AnyWidget> {
+pub struct WidgetPod<T: ?Sized = dyn Widget> {
     mounted: Cell<bool>,
     parent: RefCell<WeakWidgetPtrAny>,
     environment: RefCell<Environment>,
@@ -337,69 +257,57 @@ impl<W> WidgetPod<W> {
         })
     }
 
+    pub fn new_cyclic(f: impl FnOnce(WeakWidgetPtr<W>) -> W) -> WidgetPtr<W> {
+        Rc::new_cyclic(move |weak| WidgetPod {
+            mounted: Cell::new(false),
+            // Weak::new() doesn't work with unsized types, so use the dummy Null widgets (https://github.com/rust-lang/rust/issues/50513)
+            parent: RefCell::new(WeakWidgetPtr::<Null>::new()),
+            environment: Default::default(),
+            widget: RefCell::new(f(weak.clone())),
+        })
+    }
+
     pub fn environment(&self) -> Environment {
         self.environment.borrow().clone()
     }
 }
 
 impl WidgetPod {
-    pub unsafe fn downcast_unchecked<T: Widget + 'static>(self: Rc<Self>) -> WidgetPtr<T> {
-        Rc::from_raw(Rc::into_raw(self) as *const WidgetPod<T>)
-    }
-
-    pub fn downcast<W: Widget + 'static>(self: Rc<Self>) -> Option<WidgetPtr<W>> {
-        if self.widget.borrow().deref().type_id() == TypeId::of::<W>() {
-            Some(unsafe { self.downcast_unchecked() })
-        } else {
-            None
+    pub fn hit_test(self: &Rc<Self>, result: &mut HitTestResult, position: Point) -> bool {
+        let hit = self.widget.borrow_mut().hit_test(result, position);
+        if hit {
+            result.add(self.clone());
         }
+        hit
     }
 
-    fn mount_inner(self: &Rc<Self>, cx: &mut Ctx, parent: WeakWidgetPtrAny) {
+    pub fn mount(self: &Rc<Self>, cx: &mut Ctx) {
+        let parent = cx.current.clone();
         if !self.mounted.get() {
             self.mounted.set(true);
             let env = self.widget.borrow().environment().union(cx.environment.clone());
             self.environment.replace(env);
             self.parent.replace(parent);
         }
-        unsafe {
-            AnyWidget::mount(&mut *self.widget.borrow_mut(), self.clone(), cx);
-        }
+        self.widget.borrow_mut().mount(cx);
     }
 
-    pub fn dyn_mount_root(self: &Rc<Self>, cx: &mut Ctx) {
-        self.mount_inner(cx, WeakWidgetPtr::<Null>::default());
+    pub fn update(self: &Rc<Self>, cx: &mut Ctx) {
+        cx.with_widget(self.clone(), |cx| {
+            self.widget.borrow_mut().update(cx);
+        });
     }
 
-    pub fn dyn_mount(self: &Rc<Self>, cx: &mut WidgetCtx<impl Widget>) {
-        let parent = Rc::downgrade(&cx.current_widget);
-        self.mount_inner(cx, parent);
+    pub fn event(self: &Rc<Self>, cx: &mut Ctx, event: &mut Event) {
+        cx.with_widget(self.clone(), |cx| {
+            self.widget.borrow_mut().event(cx, event);
+        });
     }
 
-    pub fn dyn_update(self: &Rc<Self>, cx: &mut Ctx) {
-        unsafe {
-            AnyWidget::update(&mut *self.widget.borrow_mut(), self.clone(), cx);
-        }
-    }
-
-    pub fn dyn_event(self: &Rc<Self>, cx: &mut Ctx, event: &mut Event) {
-        unsafe {
-            AnyWidget::event(&mut *self.widget.borrow_mut(), self.clone(), cx, event);
-        }
-    }
-
-    pub fn dyn_window_event(self: &Rc<Self>, cx: &mut Ctx, event: &winit::event::WindowEvent, time: Duration) {
-        unsafe {
-            AnyWidget::window_event(&mut *self.widget.borrow_mut(), self.clone(), cx, event, time);
-        }
-    }
-
-    pub fn dyn_hit_test(self: &Rc<Self>, result: &mut HitTestResult, position: Point) -> bool {
-        let hit = self.widget.borrow_mut().hit_test(result, position);
-        if hit {
-            result.add(self.clone());
-        }
-        hit
+    pub fn window_event(self: &Rc<Self>, cx: &mut Ctx, event: &winit::event::WindowEvent, time: Duration) {
+        cx.with_widget(self.clone(), |cx| {
+            self.widget.borrow_mut().window_event(cx, event, time);
+        });
     }
 }
 
@@ -408,41 +316,12 @@ impl<W: Widget> WidgetPod<W> {
         self.clone()
     }
 
-    pub fn call_with_cx(self: &Rc<Self>, ctx: &mut Ctx, f: impl FnOnce(&mut W, &mut WidgetCtx<W>)) {
-        WidgetCtx::with(ctx, self.clone(), |cx| {
-            f(&mut *self.widget.borrow_mut(), cx);
-        });
-    }
-
-    pub fn mount_root(self: &Rc<Self>, cx: &mut Ctx) {
-        // TODO we can implement this without downcasts, but for now defer to the dyn implementation
-        self.as_dyn().dyn_mount_root(cx);
-    }
-
-    pub fn mount(self: &Rc<Self>, cx: &mut WidgetCtx<impl Widget>) {
-        self.as_dyn().dyn_mount(cx);
+    pub fn mount(self: &Rc<Self>, cx: &mut Ctx) {
+        self.as_dyn().mount(cx);
     }
 
     pub fn update(self: &Rc<Self>, cx: &mut Ctx) {
-        WidgetCtx::with(cx, self.clone(), |cx| {
-            self.widget.borrow_mut().update(cx);
-        });
-    }
-
-    pub fn event(self: &Rc<Self>, cx: &mut Ctx, event: &mut Event) {
-        WidgetCtx::with(cx, self.clone(), |cx| {
-            self.widget.borrow_mut().event(cx, event);
-        });
-    }
-
-    pub fn window_event(self: &Rc<Self>, cx: &mut Ctx, event: &winit::event::WindowEvent, time: Duration) {
-        WidgetCtx::with(cx, self.clone(), |cx| {
-            self.widget.borrow_mut().window_event(cx, event, time);
-        });
-    }
-
-    pub fn hit_test(self: &Rc<Self>, result: &mut HitTestResult, position: Point) -> bool {
-        self.as_dyn().dyn_hit_test(result, position)
+        self.as_dyn().update(cx);
     }
 }
 
@@ -453,6 +332,12 @@ impl<W: Widget + ?Sized> WidgetPod<W> {
 
     pub fn paint(&self, cx: &mut PaintCtx) {
         self.widget.borrow_mut().paint(cx);
+    }
+
+    pub fn call_with_cx(self: &Rc<Self>, ctx: &mut Ctx, f: impl FnOnce(&mut W, &mut Ctx)) {
+        ctx.with_widget(self.as_dyn(), |cx| {
+            f(&mut *self.widget.borrow_mut(), cx);
+        });
     }
 }
 
@@ -528,6 +413,7 @@ pub struct Ctx<'a> {
     /// Whether relayout is necessary.
     relayout: bool,
     environment: Environment,
+    current: WeakWidgetPtrAny,
 }
 
 impl<'a> Ctx<'a> {
@@ -535,15 +421,64 @@ impl<'a> Ctx<'a> {
     pub(crate) fn new(
         app_state: &'a mut AppState,
         event_loop: &'a EventLoopWindowTarget<ExtEvent>,
+        current: WeakWidgetPtrAny,
+    ) -> Self {
+        Ctx {
+            app_state,
+            event_loop,
+            pending_callbacks: RefCell::new(Default::default()),
+            relayout: false,
+            environment: current.upgrade().unwrap().environment.borrow().clone(),
+            current,
+        }
+    }
+
+    pub(crate) fn new_root(
+        app_state: &'a mut AppState,
+        event_loop: &'a EventLoopWindowTarget<ExtEvent>,
         environment: Environment,
-    ) -> Ctx<'a> {
+    ) -> Self {
         Ctx {
             app_state,
             event_loop,
             pending_callbacks: RefCell::new(Default::default()),
             relayout: false,
             environment,
+            current: WeakWidgetPtr::<Null>::default(),
         }
+    }
+
+    /// Associates the current widgets with a window with the specified ID.
+    ///
+    /// The widgets will receive window events from the specified window (via `window_event`).
+    ///
+    /// # Arguments
+    ///
+    /// - `window_id`: The ID of the window to associate with the widgets.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the window is already associated with another widgets.
+    pub fn register_window(&mut self, window_id: WindowId) {
+        //trace!("registering window {:016X}", u64::from(window_id));
+        //eprintln!("register window {window_id:?} on path {:?}", &self.path[..]);
+        if self
+            .app_state
+            .windows
+            .insert(window_id, self.current.upgrade().unwrap())
+            .is_some()
+        {
+            panic!("window {window_id:?} already registered");
+        }
+    }
+
+    pub fn with_widget<R>(&mut self, widget: WidgetPtr, f: impl FnOnce(&mut Ctx) -> R) -> R {
+        let prev_env = mem::replace(&mut self.environment, widget.environment.borrow().clone());
+        let prev_current = mem::replace(&mut self.current, Rc::downgrade(&widget));
+        let r = f(self);
+        self.environment = prev_env;
+        self.current = prev_current;
+        r
     }
 
     pub fn queue_callback(&mut self, callback: Rc<dyn Fn(&mut Ctx)>) {
@@ -570,6 +505,10 @@ impl<'a> Ctx<'a> {
 
     pub fn env<T: EnvValue>(&self) -> Option<T> {
         self.environment.get::<T>()
+    }
+
+    pub fn current(&self) -> WidgetPtr {
+        self.current.upgrade().unwrap()
     }
 }
 
@@ -611,74 +550,56 @@ impl<'a, 'b, W: Widget> WidgetCtx<'a, 'b, W> {
     pub fn current(&self) -> WidgetPtr<W> {
         self.current_widget.clone()
     }
-
-    /// Associates the current widgets with a window with the specified ID.
-    ///
-    /// The widgets will receive window events from the specified window (via `window_event`).
-    ///
-    /// # Arguments
-    ///
-    /// - `window_id`: The ID of the window to associate with the widgets.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the window is already associated with another widgets.
-    pub fn register_window(&mut self, window_id: WindowId) {
-        //trace!("registering window {:016X}", u64::from(window_id));
-        //eprintln!("register window {window_id:?} on path {:?}", &self.path[..]);
-        if self
-            .base
-            .app_state
-            .windows
-            .insert(window_id, self.current_widget.clone())
-            .is_some()
-        {
-            panic!("window {window_id:?} already registered");
-        }
-    }
 }
 
 /// A widget that builds a widget given a TreeCtx
-pub struct Builder<W> {
-    f: Box<dyn FnMut(&mut WidgetCtx<Self>) -> W>,
+pub struct Builder<F> {
+    weak: WeakWidgetPtr<Self>,
+    f: F,
     inner: Option<WidgetPtrAny>,
 }
 
-impl<W> Builder<W> {
-    pub fn new(f: impl FnMut(&mut WidgetCtx<Self>) -> W + 'static) -> Builder<W> {
-        Builder {
-            f: Box::new(f),
-            inner: None,
-        }
+impl<F> Builder<F> {
+    pub fn new(f: F) -> WidgetPtr<Self>
+    where
+        F: Fn(&mut Ctx) -> WidgetPtrAny,
+    {
+        WidgetPod::new_cyclic(move |weak| Builder { weak, f, inner: None })
     }
 }
 
-impl<W> Widget for Builder<W>
+impl<F: 'static> WeakWidget for Builder<F> {
+    fn weak_self(&self) -> WeakWidgetPtr<Self> {
+        self.weak.clone()
+    }
+}
+
+impl<F> Widget for Builder<F>
 where
-    W: Widget + 'static,
+    F: Fn(&mut Ctx) -> WidgetPtr + 'static,
 {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
+    fn mount(&mut self, cx: &mut Ctx) {
         self.inner = {
-            let widget: WidgetPtrAny = WidgetPod::new((self.f)(cx));
-            widget.dyn_mount(cx);
+            let widget = (self.f)(cx);
+            widget.mount(cx);
             Some(widget)
         };
     }
 
-    fn update(&mut self, cx: &mut WidgetCtx<Self>) {
+    fn update(&mut self, cx: &mut Ctx) {
         self.inner = {
-            let widget: WidgetPtrAny = WidgetPod::new((self.f)(cx));
-            widget.dyn_update(cx);
+            let widget: WidgetPtr = (self.f)(cx);
+            widget.update(cx);
             cx.mark_needs_layout();
             Some(widget)
         };
     }
 
-    fn event(&mut self, cx: &mut WidgetCtx<Self>, event: &mut Event) {}
+    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {}
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         if let Some(ref inner) = self.inner {
-            inner.dyn_hit_test(result, position)
+            inner.hit_test(result, position)
         } else {
             false
         }
@@ -818,7 +739,7 @@ impl<T: 'static> State<T> {
         self.0.data.borrow()
     }
 
-    pub fn get_tracked(&self, cx: &mut WidgetCtx<impl Widget>) -> Ref<T> {
+    pub fn get_tracked(&self, target: &impl WeakWidget, cx: &mut Ctx) -> Ref<T> {
         // FIXME: this keeps adding more and more callbacks that are never cleaned up
 
         // We need to only add the callback when the same (receiver, method) pair isn't present in the
@@ -827,27 +748,36 @@ impl<T: 'static> State<T> {
         //
         // Alternatives:
         // - store both the WeakWidgetPtr *and* the location where the callback was added (with #[track_caller]); compare locations
-        self.watch(cx, Widget::update);
+        self.watch(target, Widget::update);
         self.0.data.borrow()
     }
 
-    pub fn at(cx: &mut WidgetCtx<impl Widget>) -> Option<T>
+    // TODO: where is this useful?
+    // - in event handlers => NO (no dependencies are introduced in event handlers)
+    // - in Widget::update? => MAYBE, but it's possible to explicitly watch for the state in `Widget::mount` instead (update isn't called upon creation anymore, so the dependency isn't set)
+    // - in Builder closures => YES
+    pub fn at(cx: &mut Ctx) -> Option<T>
     where
         T: Clone,
     {
+        // A receiver is something from which you can get a WeakWidgetPtr<T>, where T: ?Sized + Widget
+        //
+        // This is implemented for W: Widget
+        // and also for &mut Ctx (which holds the current widget)
+        let target = cx.current();
         cx.env::<State<T>>().map(|state| state.get_tracked(cx).clone())
     }
 
     #[track_caller]
-    pub fn watch<W, F>(&self, cx: &mut WidgetCtx<W>, f: F)
+    pub fn watch<W, F>(&self, target: &W, f: F)
     where
-        W: Widget,
-        F: Fn(&mut W, &mut WidgetCtx<W>) + 'static,
+        W: WeakWidget,
+        F: Fn(&mut W, &mut Ctx) + 'static,
     {
         let location = Location::caller();
-        let target = Rc::downgrade(&cx.current());
+        let target = target.weak_self();
         self.0.callbacks.borrow_mut().insert(
-            CallbackStrongKey(location, cx.current()),
+            CallbackStrongKey(location, target.upgrade().unwrap()),
             Rc::new(move |ctx| {
                 if let Some(target) = target.upgrade() {
                     target.call_with_cx(ctx, &f)
@@ -897,7 +827,7 @@ impl WeakElement for CallbackWeakKey {
 }
 
 impl WeakKey for CallbackWeakKey {
-    type Key = (&'static Location<'static>, *const WidgetPod<dyn AnyWidget>);
+    type Key = (&'static Location<'static>, *const WidgetPod<dyn Widget>);
 
     fn with_key<F, R>(view: &Self::Strong, f: F) -> R
     where

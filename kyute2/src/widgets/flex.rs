@@ -1,6 +1,7 @@
 use kurbo::{Point, Rect, Vec2};
 
 use crate::{
+    core::{WeakWidget, WeakWidgetPtr},
     BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Size, Widget, WidgetCtx, WidgetPod,
     WidgetPtr, WidgetPtrAny,
 };
@@ -26,6 +27,7 @@ pub enum CrossAxisAlignment {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 pub struct Flex {
+    weak: WeakWidgetPtr<Self>,
     pub axis: Axis,
     pub main_axis_alignment: MainAxisAlignment,
     pub cross_axis_alignment: CrossAxisAlignment,
@@ -33,40 +35,41 @@ pub struct Flex {
 }
 
 impl Flex {
-    pub fn new(axis: Axis) -> Flex {
-        Flex {
+    pub fn new(axis: Axis) -> WidgetPtr<Flex> {
+        WidgetPod::new_cyclic(|weak| Flex {
+            weak,
             axis,
             main_axis_alignment: MainAxisAlignment::Start,
             cross_axis_alignment: CrossAxisAlignment::Start,
             items: Vec::new(),
-        }
+        })
     }
 
-    pub fn row() -> Flex {
+    pub fn row() -> WidgetPtr<Flex> {
         Flex::new(Axis::Horizontal)
     }
 
-    pub fn column() -> Flex {
+    pub fn column() -> WidgetPtr<Flex> {
         Flex::new(Axis::Vertical)
     }
 
-    pub fn push(&mut self, item: impl Widget) {
+    pub fn push(&mut self, item: impl Into<WidgetPtrAny>) {
         self.items.push(FlexItem {
             flex: 0.0,
             alignment: None,
             offset: Vec2::ZERO,
             size: Size::ZERO,
-            content: WidgetPod::new(item),
+            content: item.into(),
         });
     }
 
-    pub fn push_flex(&mut self, item: impl Widget, flex: f64) {
+    pub fn push_flex(&mut self, item: impl Into<WidgetPtrAny>, flex: f64) {
         self.items.push(FlexItem {
             flex,
             alignment: None,
             offset: Vec2::ZERO,
             size: Size::ZERO,
-            content: WidgetPod::new(item),
+            content: item.into(),
         });
     }
 }
@@ -76,7 +79,7 @@ pub struct FlexItem {
     alignment: Option<CrossAxisAlignment>,
     offset: Vec2,
     size: Size,
-    content: WidgetPtrAny,
+    content: WidgetPtr,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -203,10 +206,16 @@ fn main_cross_constraints(axis: Axis, min_main: f64, max_main: f64, min_cross: f
     }
 }
 
+impl WeakWidget for Flex {
+    fn weak_self(&self) -> WeakWidgetPtr<Self> {
+        self.weak.clone()
+    }
+}
+
 impl Widget for Flex {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
+    fn mount(&mut self, cx: &mut Ctx) {
         for item in &mut self.items {
-            item.content.dyn_mount(cx);
+            item.content.mount(cx);
         }
     }
 
@@ -219,7 +228,7 @@ impl Widget for Flex {
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         for item in &mut self.items {
             if result.test_with_offset(item.offset, position, |result, position| {
-                item.content.dyn_hit_test(result, position)
+                item.content.hit_test(result, position)
             }) {
                 return true;
             }

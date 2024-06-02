@@ -2556,4 +2556,50 @@ fn
 
 * Option A: without `dispatch_from_dyn` or `arbitrary_self_types`
 
+## Issue: wrapping everything in WidgetPtr makes composition harder
+
+Widgets don't get an exclusive reference to their children anymore.
+This is annoying for things like `Viewport` which has functions that are supposed to be called by the parent widget.
+
+Q: Use properties for everything?
+
+The main question is how do widgets react to property changes? We know that properties hold a reference to the object
+they depend on (`State` instances mostly).
+Several options:
+
+1. (basic design) all property updates result in a call to `Widget::update` on the widget that holds the property.
+   However, there's no direct way for the widget to know which property has changed.
+2. (handlers) register event handlers on the properties, which eventually go to `State::watch`. The issue is that the
+   widget needs to know its own weak handle, which tends to complicate
+   the definition of the Widget trait.
+
+Alternative (1.a): don't define "event handlers" on `State`, instead create "derived values" that implicitly register a
+dependency on the state when they are used in the calculation.
+
+Q: where to store common widget data (weak handle, environment, parent, mount flag)?
+
+Options:
+
+1. Outside the widget, in wrapper (`WidgetPod`). `Widget` impls gain access to the data via `cx` methods.
+2. Widget owns the common widget data in a member. `Widget` impls have direct, exclusive access to the data. This is
+   more like traditional "inheritance".
+
+With (1) widget impls must pass a context to every function that wants to access the common data (environment, etc.).
+Option (2) doesn't require it (it's accessible via `self`). However, every widget must now have a `data` field
+and implement two additional methods on `Widget` to get a reference to this field (both shared (non-mut) &
+exclusive `&mut Data`). This could be automated with a macro.
+
+Q: use `Rc<Self>` as receiver?
+This is supported already. This way, there wouldn't be any need to store the weak pointer anywhere, just downgrade self.
+However, would need refcell for everything.
+
+# Long-term goals
+
+## Layout designer / UI builder
+
+## Hot-reloading
+
+## Domain-specific language (like slint)
+
+Rust really isn't the best for UI code.
 

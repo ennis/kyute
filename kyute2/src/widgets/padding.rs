@@ -1,20 +1,19 @@
 use crate::{
+    core::{WeakWidget, WeakWidgetPtr},
     BoxConstraints, Ctx, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx,
     WidgetPod, WidgetPtr, WidgetPtrAny,
 };
 use kurbo::{Insets, Point, Size, Vec2};
 
 pub struct Padding<T> {
+    weak: WeakWidgetPtr<Self>,
     pub padding: Insets,
     pub content: WidgetPtr<T>,
 }
 
 impl<T: Widget> Padding<T> {
-    pub fn new(padding: Insets, content: T) -> Self {
-        Self {
-            padding,
-            content: WidgetPod::new(content),
-        }
+    pub fn new(padding: Insets, content: WidgetPtr<T>) -> WidgetPtr<Self> {
+        WidgetPod::new_cyclic(move |weak| Padding { weak, padding, content })
     }
 
     fn offset(&self) -> Vec2 {
@@ -22,9 +21,15 @@ impl<T: Widget> Padding<T> {
     }
 }
 
+impl<T: Widget> WeakWidget for Padding<T> {
+    fn weak_self(&self) -> WeakWidgetPtr<Self> {
+        self.weak.clone()
+    }
+}
+
 impl<T: Widget> Widget for Padding<T> {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
-        self.content.mount(cx)
+    fn mount(&mut self, cx: &mut Ctx) {
+        self.content.as_dyn().mount(cx)
     }
 
     /*fn natural_width(&mut self, height: f64) -> f64 {
@@ -43,7 +48,7 @@ impl<T: Widget> Widget for Padding<T> {
         // FIXME: do we need to hit-test the blank space?
         // It's unclear what we should do here since it's a wrapper widget
         ctx.test_with_offset(self.offset(), position, |result, position| {
-            self.content.hit_test(result, position)
+            self.content.as_dyn().hit_test(result, position)
         })
     }
 

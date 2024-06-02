@@ -4,32 +4,42 @@ use tracing::warn;
 use tracy_client::span;
 
 use crate::{
+    core::{WeakWidget, WeakWidgetPtr},
     drawing::ToSkia,
     text::{get_font_collection, TextSpan, TextStyle},
     Binding, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Widget, WidgetCtx,
+    WidgetPod, WidgetPtr,
 };
 
 pub struct Text {
+    weak: WeakWidgetPtr<Self>,
     text: TextSpan,
     relayout: bool,
     paragraph: sk::textlayout::Paragraph,
 }
 
 impl Text {
-    pub fn new(text: TextSpan) -> Text {
+    pub fn new(text: TextSpan) -> WidgetPtr<Text> {
         let paragraph = text.build_paragraph();
-        Text {
+        WidgetPod::new_cyclic(move |weak| Text {
+            weak,
             text,
             relayout: true,
             paragraph,
-        }
+        })
+    }
+}
+
+impl WeakWidget for Text {
+    fn weak_self(&self) -> WeakWidgetPtr<Self> {
+        self.weak.clone()
     }
 }
 
 impl Widget for Text {
-    fn mount(&mut self, _cx: &mut WidgetCtx<Self>) {}
+    fn mount(&mut self, _cx: &mut Ctx) {}
 
-    fn update(&mut self, cx: &mut WidgetCtx<Self>) {
+    fn update(&mut self, cx: &mut Ctx) {
         /*if self.text.update(cx) {
             self.relayout = true;
             self.paragraph = build_paragraph(&self.text.value());
@@ -37,7 +47,7 @@ impl Widget for Text {
         }*/
     }
 
-    fn event(&mut self, _ctx: &mut WidgetCtx<Self>, _event: &mut Event) {}
+    fn event(&mut self, _ctx: &mut Ctx, _event: &mut Event) {}
 
     fn hit_test(&mut self, _ctx: &mut HitTestResult, position: Point) -> bool {
         if self.relayout {

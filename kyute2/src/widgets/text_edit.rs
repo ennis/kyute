@@ -172,10 +172,7 @@ impl TextEditingState {
 pub struct BaseTextEdit {
     state: State<TextEditingState>,
     style: TextStyle,
-    editing_finished: Box<dyn FnMut(&mut Ctx, String)>, // issue: what if TextEditState is changed or accessed here? this will make the BaseTextEdit depend on the widget, which it already does
-    // more generally: you can't establish dependencies in event handlers; you only schedule updates
-    // Also: need to be extremely careful with TextEditingState because we borrow it in Widget::event,
-    // and the handlers may try to borrow it as well; better call them at the end.
+    editing_finished: Box<dyn FnMut(&mut Ctx, String)>,
     text_changed: Box<dyn FnMut(&mut Ctx, String)>,
     selection_changed: Box<dyn FnMut(&mut Ctx, Selection)>,
     /// Whether the text edit is focused.
@@ -553,113 +550,6 @@ impl From<TextField> for form::Row {
 }
 */
 
-pub struct Viewport<Content> {
-    size: Size,
-    offset: Vec2,
-    constrain_width: bool,
-    constrain_height: bool,
-    content: WidgetPtr<Content>,
-}
-
-impl<Content: Widget> Viewport<Content> {
-    pub fn new(content: Content) -> Viewport<Content> {
-        Viewport {
-            size: Size::ZERO,
-            offset: Vec2::ZERO,
-            constrain_width: false,
-            constrain_height: false,
-            content: WidgetPod::new(content),
-        }
-    }
-
-    pub fn constrain_width(mut self) -> Self {
-        self.constrain_width = true;
-        self
-    }
-
-    pub fn constraint_height(mut self) -> Self {
-        self.constrain_height = true;
-        self
-    }
-
-    pub fn set_x_offset(&mut self, x: f64) {
-        self.offset.x = x;
-    }
-
-    pub fn set_y_offset(&mut self, y: f64) {
-        self.offset.y = y;
-    }
-
-    /// Returns whether the viewport fully contains the given rectangle.
-    pub fn contains_rect(&self, rect: Rect) -> bool {
-        let viewport_rect = Rect::from_origin_size(self.offset.to_point(), self.size);
-        // TODO maybe there's a better approach
-        viewport_rect.union(rect) == viewport_rect
-    }
-
-    pub fn inner(&self) -> &WidgetPtr<Content> {
-        &self.content
-    }
-
-    /// Sets the X offset of the viewport such that the given point (in the coordinate space inside the viewport) is in view.
-    pub fn horizontal_scroll_to(&mut self, x: f64) {
-        if x - self.offset.x > self.size.width {
-            // pos overflow to the right
-            self.offset.x = x - self.size.width;
-        } else if x - self.offset.x < 0.0 {
-            // pos overflow to the left
-            self.offset.x = x;
-        }
-    }
-}
-
-impl<Content: Widget + 'static> Widget for Viewport<Content> {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
-        self.content.mount(cx)
-    }
-
-    fn update(&mut self, cx: &mut WidgetCtx<Self>) {}
-
-    fn event(&mut self, ctx: &mut WidgetCtx<Self>, event: &mut Event) {}
-
-    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
-        if self.size.to_rect().contains(position) {
-            result.test_with_offset(self.offset, position, |result, position| {
-                self.content.hit_test(result, position)
-            })
-        } else {
-            false
-        }
-    }
-
-    fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
-        let mut child_constraints = BoxConstraints::default();
-        if self.constrain_width {
-            child_constraints.set_width_range(constraints.width_range());
-        }
-        if self.constrain_height {
-            child_constraints.set_height_range(constraints.height_range());
-        }
-
-        let child_layout = self.content.layout(ctx, &child_constraints);
-
-        // always take the maximum available space
-        // if the constraints are unbounded in a direction, we use the child's size
-        self.size.width = constraints.finite_max_width().unwrap_or(child_layout.size.width);
-        self.size.height = constraints.finite_max_height().unwrap_or(child_layout.size.height);
-        Geometry::new(self.size)
-    }
-
-    fn paint(&mut self, ctx: &mut PaintCtx) {
-        let clip_rect = self.size.to_rect();
-        ctx.with_clip_rect(clip_rect, |ctx| {
-            ctx.with_offset(self.offset, |ctx| {
-                self.content.paint(ctx);
-            });
-        });
-    }
-}
-
 //
 // TextEdit
 //   -> State<TextEditingState>
@@ -671,6 +561,7 @@ impl<Content: Widget + 'static> Widget for Viewport<Content> {
 ///
 /// It doesn't handle any user input or interaction, nor does it handle scrolling on overflow.
 pub struct CoreTextEdit {
+    data: WidgetData<Self>,
     state: State<TextEditingState>,
     style: TextStyle,
     paragraph: Paragraph,
@@ -694,7 +585,7 @@ impl CoreTextEdit {
 }
 
 impl Widget for CoreTextEdit {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
+    fn mount(&mut self, cx: &mut Ctx) {
         /*connect(self.state, cx, |this_, cx| {
             // issue: `cx` is not enough to retrieve &mut self
             // -> there is no `Weak<Self>`
@@ -703,7 +594,11 @@ impl Widget for CoreTextEdit {
         });*/
 
         // mark this widget as dependent on the text editing state
-        self.state.track(cx);
+        //self.state.track(cx);
+
+        //self.state.watch(&mut self.data, Self::text_state_changed);
+
+        self.watch(&self.state, Self::text_state_changed);
     }
 
     fn update(&mut self, cx: &mut WidgetCtx<Self>) {

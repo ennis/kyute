@@ -1,8 +1,14 @@
 use kurbo::{Insets, Vec2};
 
-use crate::{core::WidgetCtx, layout::place_into, prelude::*, Alignment, WidgetPtrAny};
+use crate::{
+    core::{WeakWidget, WeakWidgetPtr, WidgetCtx},
+    layout::place_into,
+    prelude::*,
+    Alignment, WidgetPtrAny,
+};
 
 pub struct Align {
+    weak: WeakWidgetPtr<Self>,
     pub x: Alignment,
     pub y: Alignment,
     pub width_factor: Option<f64>,
@@ -12,26 +18,33 @@ pub struct Align {
 }
 
 impl Align {
-    pub fn new(x: Alignment, y: Alignment, content: impl Widget) -> Self {
-        Self {
+    pub fn new(x: Alignment, y: Alignment, content: WidgetPtr<impl Widget>) -> WidgetPtr<Self> {
+        WidgetPod::new_cyclic(move |weak| Align {
+            weak,
             x,
             y,
             width_factor: None,
             height_factor: None,
             offset: Default::default(),
-            content: WidgetPod::new(content),
-        }
+            content,
+        })
+    }
+}
+
+impl WeakWidget for Align {
+    fn weak_self(&self) -> WeakWidgetPtr<Self> {
+        self.weak.clone()
     }
 }
 
 impl Widget for Align {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
-        self.content.dyn_mount(cx)
+    fn mount(&mut self, cx: &mut Ctx) {
+        self.content.mount(cx)
     }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
         ctx.test_with_offset(self.offset, position, |result, position| {
-            self.content.dyn_hit_test(result, position)
+            self.content.hit_test(result, position)
         })
     }
 

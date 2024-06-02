@@ -2,26 +2,39 @@
 use kurbo::{Point, Size};
 
 use crate::{
-    drawing::Decoration, environment::Environment, widgets::Padding, Binding, BoxConstraints, Ctx, Event, Geometry,
-    HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx, WidgetPod, WidgetPtrAny,
+    core::{WeakWidget, WeakWidgetPtr},
+    drawing::Decoration,
+    environment::Environment,
+    widgets::Padding,
+    Binding, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx, WidgetPod,
+    WidgetPtr, WidgetPtrAny,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct DecoratedBox<D> {
+    weak: WeakWidgetPtr<Self>,
     decoration: D,
     size: Size,
-    content: WidgetPtrAny,
+    content: WidgetPtr,
 }
 
 impl<D: Decoration> DecoratedBox<D> {
-    pub fn new(decoration: D, content: impl Widget) -> Self {
+    pub fn new(decoration: D, content: WidgetPtr<impl Widget>) -> WidgetPtr<Self> {
         let padding = decoration.insets();
-        Self {
+        WidgetPod::new_cyclic(move |weak| DecoratedBox {
+            weak,
             decoration,
             size: Default::default(),
-            content: WidgetPod::new(Padding::new(padding, content)),
-        }
+            content: Padding::new(padding, content),
+        })
+    }
+}
+
+impl<D: Decoration + 'static> WeakWidget for DecoratedBox<D> {
+    fn weak_self(&self) -> WeakWidgetPtr<Self> {
+        // Assuming you have a WeakWidgetPtr field in DecoratedBox
+        self.weak.clone()
     }
 }
 
@@ -29,8 +42,8 @@ impl<D> Widget for DecoratedBox<D>
 where
     D: Decoration + 'static,
 {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
-        self.content.dyn_mount(cx);
+    fn mount(&mut self, cx: &mut Ctx) {
+        self.content.mount(cx);
     }
 
     /*fn natural_width(&mut self, height: f64) -> f64 {
@@ -46,7 +59,7 @@ where
     }*/
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.content.dyn_hit_test(ctx, position) || self.size.to_rect().contains(position)
+        self.content.hit_test(ctx, position) || self.size.to_rect().contains(position)
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {

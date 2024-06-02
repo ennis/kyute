@@ -1,30 +1,39 @@
 use crate::{
-    environment::Environment, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget,
-    WidgetCtx, WidgetPod, WidgetPtrAny,
+    core::{WeakWidget, WeakWidgetPtr},
+    BoxConstraints, Ctx, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx, WidgetPod, WidgetPtr,
+    WidgetPtrAny,
 };
 use kurbo::Point;
 
 pub struct Constrained {
+    weak: WeakWidgetPtr<Self>,
     pub constraints: BoxConstraints,
-    pub content: WidgetPtrAny,
+    pub content: WidgetPtr,
 }
 
 impl Constrained {
-    pub fn new(constraints: BoxConstraints, content: impl Widget) -> Self {
-        Self {
+    pub fn new(constraints: BoxConstraints, content: WidgetPtr<impl Widget>) -> WidgetPtr<Self> {
+        WidgetPod::new_cyclic(move |weak| Constrained {
+            weak,
             constraints,
-            content: WidgetPod::new(content),
-        }
+            content,
+        })
+    }
+}
+
+impl WeakWidget for Constrained {
+    fn weak_self(&self) -> WeakWidgetPtr<Self> {
+        self.weak.clone()
     }
 }
 
 impl Widget for Constrained {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
-        self.content.dyn_mount(cx)
+    fn mount(&mut self, cx: &mut Ctx) {
+        self.content.mount(cx)
     }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
-        self.content.dyn_hit_test(ctx, position)
+        self.content.hit_test(ctx, position)
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {

@@ -8,12 +8,12 @@ use crate::{
     text::{TextSpan, TextStyle},
     theme,
     widgets::{align::Align, clickable::ClickableState, decorated_box::DecoratedBox, Constrained, Padding, Text},
-    Alignment, BoxConstraints, Builder, Color, Ctx, Widget, WidgetCtx, WidgetExt,
+    Alignment, BoxConstraints, Builder, Color, Ctx, Widget, WidgetCtx, WidgetExt, WidgetPtr,
 };
 
-pub fn button(label: impl Into<String>) -> impl Widget {
+pub fn button(label: impl Into<String>) -> WidgetPtr {
     let label = label.into();
-    Builder::new(move |cx: &mut WidgetCtx<_>| {
+    Builder::new(move |cx: &mut Ctx| {
         let theme = &theme::DARK_THEME;
         let text_style = Arc::new(
             TextStyle::new()
@@ -23,7 +23,6 @@ pub fn button(label: impl Into<String>) -> impl Widget {
         );
         let text = TextSpan::new(label.clone(), text_style);
 
-        // Issue: this keeps adding new copies of the callback
         let state = ClickableState::at(cx);
 
         let decoration = if theme.dark_mode {
@@ -109,5 +108,7 @@ pub fn button(label: impl Into<String>) -> impl Widget {
             ),
         )
     })
-    .clickable()
+    .clickable(|_| {
+        eprintln!("Button clicked");
+    })
 }

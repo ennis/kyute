@@ -19,7 +19,7 @@ use winit::{
 use crate::{
     application::ExtEvent,
     composition::{ColorType, LayerID},
-    core::HitTestEntry,
+    core::{HitTestEntry, WeakWidget, WeakWidgetPtr},
     drawing::ToSkia,
     event::{PointerButton, PointerButtons, PointerEvent},
     window::key::{key_code_from_winit, modifiers_from_winit},
@@ -493,7 +493,7 @@ impl UiHostWindowState {
             mem::take(&mut self.input_state.pointer_grab)
         } else {
             let mut hit_test_result = HitTestResult::new();
-            content.dyn_hit_test(&mut hit_test_result, position);
+            content.hit_test(&mut hit_test_result, position);
             hit_test_result.hits
         };
 
@@ -558,7 +558,7 @@ impl UiHostWindowState {
     fn dispatch_pointer_event_inner(&mut self, cx: &mut Ctx, path: &[HitTestEntry], mut event: Event) {
         for entry in path.iter() {
             event.set_transform(&entry.transform);
-            entry.widget.dyn_event(cx, &mut event);
+            entry.widget.event(cx, &mut event);
         }
 
         if event.capture_requested() {
@@ -700,6 +700,7 @@ impl UiHostWindowState {
 
 /// A window handler that hosts a UI tree.
 pub struct UiHostWindowHandler {
+    weak: WeakWidgetPtr<Self>,
     /// Gui widgets
     content: WidgetPtrAny,
     options: UiHostWindowOptions,
@@ -713,18 +714,19 @@ pub struct UiHostWindowHandler {
 
 impl UiHostWindowHandler {
     /// Creates a new window and registers it with the event loop.
-    pub fn new(content: impl Widget + 'static, options: UiHostWindowOptions) -> UiHostWindowHandler {
+    pub fn new(content: impl Into<WidgetPtr>, options: UiHostWindowOptions) -> WidgetPtr<UiHostWindowHandler> {
         //------------------------------------------------
         // build the window handler
-        UiHostWindowHandler {
-            content: WidgetPod::new(content),
+        WidgetPod::new_cyclic(|weak| UiHostWindowHandler {
+            weak,
+            content: content.into(),
             options,
             window: RefCell::new(None),
             damage_regions: DamageRegions::default(),
-        }
+        })
     }
 
-    fn open_window(&self, cx: &mut WidgetCtx<Self>) {
+    fn open_window(&self, cx: &mut Ctx) {
         eprintln!("open_window");
         let window = UiHostWindowState::new(&self.options, &cx.event_loop);
         // associate this widget to the window so that window events are sent to this widget
@@ -735,17 +737,23 @@ impl UiHostWindowHandler {
     }
 }
 
+impl WeakWidget for UiHostWindowHandler {
+    fn weak_self(&self) -> WeakWidgetPtr<Self> {
+        self.weak.clone()
+    }
+}
+
 impl Widget for UiHostWindowHandler {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
+    fn mount(&mut self, cx: &mut Ctx) {
         self.open_window(cx);
-        self.content.dyn_mount(cx);
+        self.content.mount(cx);
     }
 
-    fn update(&mut self, cx: &mut WidgetCtx<Self>) {
+    fn update(&mut self, cx: &mut Ctx) {
         //self.content.dyn_update(cx);
     }
 
-    fn event(&mut self, _cx: &mut WidgetCtx<Self>, _event: &mut Event) {
+    fn event(&mut self, _cx: &mut Ctx, _event: &mut Event) {
         // we don't receive or handle events
     }
 
@@ -759,7 +767,7 @@ impl Widget for UiHostWindowHandler {
         Geometry::ZERO
     }
 
-    fn window_event(&mut self, cx: &mut WidgetCtx<Self>, event: &WindowEvent, time: Duration) {
+    fn window_event(&mut self, cx: &mut Ctx, event: &WindowEvent, time: Duration) {
         if let Some(ref mut window) = &mut *self.window.borrow_mut() {
             window.handle_window_event(cx, self.content.clone(), event, time);
         } else {

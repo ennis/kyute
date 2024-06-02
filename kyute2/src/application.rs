@@ -75,8 +75,8 @@ struct App {
 
 impl App {
     fn mount(&mut self, event_loop: &EventLoopWindowTarget<ExtEvent>) {
-        let mut cx = Ctx::new(&mut self.app_state, event_loop, Environment::new());
-        self.root.dyn_mount_root(&mut cx);
+        let mut cx = Ctx::new_root(&mut self.app_state, event_loop, Environment::new());
+        self.root.mount(&mut cx);
     }
 }
 
@@ -160,8 +160,8 @@ impl AppLauncher {
 
                         // dispatch to the appropriate window handler
                         if let Some(window_widget) = app.app_state.windows.get(&window_id).cloned() {
-                            let mut ctx = Ctx::new(&mut app.app_state, elwt, Environment::new());
-                            window_widget.dyn_window_event(&mut ctx, &event, event_time);
+                            let mut ctx = Ctx::new_root(&mut app.app_state, elwt, Environment::new());
+                            window_widget.window_event(&mut ctx, &event, event_time);
                         } else {
                             warn!("received event for unknown window {:?}", window_id);
                         }
