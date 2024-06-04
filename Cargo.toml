@@ -2,22 +2,19 @@
 resolver = "2"
 members = [
     #"kyute",                 # user interface library - widgets and application architecture
-    "kyute2",                # user interface library - widgets and application architecture
-    "kyute2/macros",         # user interface library - widgets and application architecture
-    "kyute-compose",         # user interface library - function composition cache
-    "kyute-compose/macros",  # user interface library - function composition cache - proc macros
-    "kyute-common",          # user interface library - common types
-    "kyute-common/macros",   # user interface library - common types - proc macros
-    "kyute/macros",          # user interface library - widgets and application architecture - proc macros
+    "kyute2", # user interface library - widgets and application architecture
+    "kyute2/macros", # user interface library - widgets and application architecture
+    "kyute-compose", # user interface library - function composition cache
+    "kyute-compose/macros", # user interface library - function composition cache - proc macros
+    "kyute-common", # user interface library - common types
+    "kyute-common/macros", # user interface library - common types - proc macros
+    "kyute/macros", # user interface library - widgets and application architecture - proc macros
     #"kyute-shell",           # user interface library - windowing, drawing and system integration
 ]
 
 # Patch winit to our version
 [patch.crates-io]
-winit = { path="../winit" }
-egui = { path="../egui/crates/egui" }
-epaint = { path="../egui/crates/epaint" }
-ecolor = { path="../egui/crates/ecolor" }
+winit = { path = "../winit" }
 
 [profile.release]
 debug = true

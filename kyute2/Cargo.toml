@@ -36,12 +36,12 @@ weak-table = "0.3.2"
 
 # Bullshit needed to open another window with egui in it: egui, wgpu renderer, winit integration, pollster
 # because of WGPUs stupid async API, phosphor for icons
-egui = { path = "../../egui/crates/egui", optional = true }
-egui-wgpu = { path = "../../egui/crates/egui-wgpu", optional = true }
-egui-winit = { path = "../../egui/crates/egui-winit", optional = true }
-egui-phosphor = { version = "=0.3.0", features = ["fill"], optional = true }
-pollster = { version = "0.3.0", optional = true }
-serde_json = { version = "1.0", optional = true }
+#egui = { path = "../../egui/crates/egui", optional = true }
+#egui-wgpu = { path = "../../egui/crates/egui-wgpu", optional = true }
+#egui-winit = { path = "../../egui/crates/egui-winit", optional = true }
+#egui-phosphor = { version = "=0.3.0", features = ["fill"], optional = true }
+#pollster = { version = "0.3.0", optional = true }
+#serde_json = { version = "1.0", optional = true }
 unicode-segmentation = "1.10.1"
 
 # Windows dependencies
@@ -87,8 +87,8 @@ tracing-tree = "0.2.1"
 spin_sleep = "1.1.1"
 
 [features]
-default = ["d3d", "svg", "debug_window"]
+default = ["d3d", "svg"]
 vulkan = ["dep:graal", "skia-safe/vulkan"]
 d3d = ["skia-safe/d3d"]
 svg = ["dep:roxmltree", "dep:usvg", "dep:svgtypes"]
-debug_window = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit", "dep:egui-phosphor", "dep:pollster", "dep:serde_json"]
+#debug_window = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit", "dep:egui-phosphor", "dep:pollster", "dep:serde_json"]
