@@ -6,7 +6,7 @@ use std::{
     time::Instant,
 };
 
-use crate::{AppGlobals, Ctx, Environment, Widget, WidgetPod, WidgetPtr, WidgetPtrAny};
+use crate::{AppGlobals, Ctx, Environment, Widget, WidgetPod, WidgetPtr};
 use tracing::warn;
 use tracy_client::set_thread_name;
 use winit::{
@@ -32,7 +32,7 @@ impl fmt::Debug for ExtEvent {
 /// Holds the windows and the application logic.
 pub(crate) struct AppState {
     /// Widget paths to open windows.
-    pub(crate) windows: HashMap<WindowId, WidgetPtrAny>,
+    pub(crate) windows: HashMap<WindowId, WidgetPtr>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +69,7 @@ impl Wake for AppWaker {
 
 /// Holds the UI root widget + the application state.
 struct App {
-    root: WidgetPtrAny,
+    root: WidgetPtr,
     app_state: AppState,
 }
 
@@ -128,7 +128,7 @@ impl AppLauncher {
         self.run_inner(WidgetPod::new(root_widget))
     }
 
-    fn run_inner(self, root: WidgetPtrAny) {
+    fn run_inner(self, root: WidgetPtr) {
         let event_loop = self.event_loop;
         //let mut debug_window = self.debug_window;
         let _tracy_client = self.tracy_client;
@@ -161,7 +161,7 @@ impl AppLauncher {
                         // dispatch to the appropriate window handler
                         if let Some(window_widget) = app.app_state.windows.get(&window_id).cloned() {
                             let mut ctx = Ctx::new_root(&mut app.app_state, elwt, Environment::new());
-                            window_widget.window_event(&mut ctx, &event, event_time);
+                            window_widget.dyn_window_event(&mut ctx, &event, event_time);
                         } else {
                             warn!("received event for unknown window {:?}", window_id);
                         }

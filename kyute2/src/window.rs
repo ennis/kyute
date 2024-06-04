@@ -19,12 +19,12 @@ use winit::{
 use crate::{
     application::ExtEvent,
     composition::{ColorType, LayerID},
-    core::{HitTestEntry, WeakWidget, WeakWidgetPtr},
+    core::HitTestEntry,
     drawing::ToSkia,
     event::{PointerButton, PointerButtons, PointerEvent},
     window::key::{key_code_from_winit, modifiers_from_winit},
     AppGlobals, BoxConstraints, ChangeFlags, Color, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point,
-    Rect, Size, Widget, WidgetCtx, WidgetPod, WidgetPtr, WidgetPtrAny,
+    Rect, Size, Widget, WidgetPod, WidgetPtr,
 };
 
 mod key;
@@ -93,7 +93,7 @@ struct InputState {
     /// The widget currently grabbing the pointer.
     pointer_grab: Vec<HitTestEntry>,
     /// The widget that has the focus for keyboard events.
-    focus: Option<WidgetPtrAny>,
+    focus: Option<WidgetPtr>,
     /// Result of the previous hit-test
     prev_hit_test_result: Vec<HitTestEntry>,
 }
@@ -222,7 +222,7 @@ impl UiHostWindowState {
     ///
     /// It updates the last known input state (`input_state`), and resizes the compositor layer
     /// if needed.
-    fn handle_window_event(&mut self, cx: &mut Ctx, content: WidgetPtrAny, event: &WindowEvent, time: Duration) {
+    fn handle_window_event(&mut self, cx: &mut Ctx, content: WidgetPtr, event: &WindowEvent, time: Duration) {
         //eprintln!("handle_window_event {:?}", event);
         match event {
             WindowEvent::Resized(new_size) => {
@@ -319,7 +319,7 @@ impl UiHostWindowState {
     fn handle_mouse_input(
         &mut self,
         cx: &mut Ctx,
-        content: WidgetPtrAny,
+        content: WidgetPtr,
         device_id: DeviceId,
         button: MouseButton,
         state: ElementState,
@@ -403,7 +403,7 @@ impl UiHostWindowState {
     /// Handles keyboard input.
     ///
     /// Returns whether the keyboard input was handled
-    fn handle_keyboard_input(&self, _cx: &mut Ctx, _content: WidgetPtrAny, event: &KeyEvent, _time: Duration) {
+    fn handle_keyboard_input(&self, _cx: &mut Ctx, _content: WidgetPtr, event: &KeyEvent, _time: Duration) {
         /*let mut popups = self.popups.borrow();
         // If there are active popups, keyboard events are delivered to the popups.
         // TODO there should be only one popup active at a time.
@@ -482,7 +482,7 @@ impl UiHostWindowState {
     fn dispatch_pointer_event(
         &mut self,
         cx: &mut Ctx,
-        content: WidgetPtrAny,
+        content: WidgetPtr,
         mut event: Event,
         position: Point,
         time: Duration,
@@ -558,7 +558,7 @@ impl UiHostWindowState {
     fn dispatch_pointer_event_inner(&mut self, cx: &mut Ctx, path: &[HitTestEntry], mut event: Event) {
         for entry in path.iter() {
             event.set_transform(&entry.transform);
-            entry.widget.event(cx, &mut event);
+            entry.widget.dyn_event(cx, &mut event);
         }
 
         if event.capture_requested() {
@@ -567,7 +567,7 @@ impl UiHostWindowState {
         }
     }
 
-    fn update_layout(&self, content: WidgetPtrAny) {
+    fn update_layout(&self, mut content: WidgetPtr) {
         let _span = span!("update_layout");
         //span.emit_text(&format!("Window ID: {:016X}", u64::from(self.window.id())));
         //span.emit_text(&format!("Window title: {:?}", self.window.title()));
@@ -636,7 +636,7 @@ impl UiHostWindowState {
     /// * `options` - Options for painting the window.
     /// * `widget` - The root widget to paint into the window.
     ///
-    fn paint(&mut self, _time: Duration, options: &WindowPaintOptions, content: WidgetPtrAny) {
+    fn paint(&mut self, _time: Duration, options: &WindowPaintOptions, mut content: WidgetPtr) {
         let _span = span!("paint");
         eprintln!("paint");
 
@@ -700,9 +700,8 @@ impl UiHostWindowState {
 
 /// A window handler that hosts a UI tree.
 pub struct UiHostWindowHandler {
-    weak: WeakWidgetPtr<Self>,
     /// Gui widgets
-    content: WidgetPtrAny,
+    content: WidgetPtr,
     options: UiHostWindowOptions,
     window: RefCell<Option<UiHostWindowState>>,
     /// Damage regions to be repainted.
@@ -714,16 +713,15 @@ pub struct UiHostWindowHandler {
 
 impl UiHostWindowHandler {
     /// Creates a new window and registers it with the event loop.
-    pub fn new(content: impl Into<WidgetPtr>, options: UiHostWindowOptions) -> WidgetPtr<UiHostWindowHandler> {
+    pub fn new(content: impl Widget, options: UiHostWindowOptions) -> UiHostWindowHandler {
         //------------------------------------------------
         // build the window handler
-        WidgetPod::new_cyclic(|weak| UiHostWindowHandler {
-            weak,
-            content: content.into(),
+        UiHostWindowHandler {
+            content: content.to_widget_ptr(),
             options,
             window: RefCell::new(None),
             damage_regions: DamageRegions::default(),
-        })
+        }
     }
 
     fn open_window(&self, cx: &mut Ctx) {
@@ -734,12 +732,6 @@ impl UiHostWindowHandler {
         window.window.set_visible(true);
         window.window.request_redraw();
         self.window.replace(Some(window));
-    }
-}
-
-impl WeakWidget for UiHostWindowHandler {
-    fn weak_self(&self) -> WeakWidgetPtr<Self> {
-        self.weak.clone()
     }
 }
 

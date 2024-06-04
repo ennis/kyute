@@ -1,32 +1,27 @@
 use kurbo::{Affine, Point, Vec2};
 
 use crate::{
-    core::{WeakWidget, WeakWidgetPtr},
-    environment::Environment,
-    BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx, WidgetPod, WidgetPtr,
-    WidgetPtrAny,
+    environment::Environment, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget,
 };
 
 /// A container for a widget.
 ///
-pub struct TransformNode {
-    weak: WeakWidgetPtr<Self>,
+pub struct TransformNode<W> {
     /// Parent-to-local transform.
     pub transform: Affine,
-    pub content: WidgetPtrAny,
+    pub content: W,
 }
 
-impl TransformNode {
-    pub fn new(content: impl Into<WidgetPtrAny>) -> WidgetPtr<TransformNode> {
-        WidgetPod::new_cyclic(|weak| TransformNode {
-            weak,
+impl<W> TransformNode<W> {
+    pub fn new(content: W) -> TransformNode<W> {
+        TransformNode {
             transform: Affine::IDENTITY,
             content: content.into(),
-        })
+        }
     }
 }
 
-impl TransformNode {
+impl<W> TransformNode<W> {
     /// Sets the position of the contained element relative to the parent.
     ///
     /// Shorthand for `set_transform(Affine::translate(offset))`
@@ -45,15 +40,23 @@ impl TransformNode {
     }
 }
 
-impl WeakWidget for TransformNode {
-    fn weak_self(&self) -> WeakWidgetPtr<Self> {
-        self.weak.clone()
-    }
-}
-
-impl Widget for TransformNode {
+impl<W: Widget> Widget for TransformNode<W> {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx)
+    }
+
+    fn update(&mut self, cx: &mut Ctx) {
+        self.content.update(cx)
+    }
+
+    fn environment(&self) -> Environment {
+        self.content.environment()
+    }
+
+    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {
+        event.with_transform(&self.transform, |event| {
+            self.content.event(cx, event);
+        });
     }
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {

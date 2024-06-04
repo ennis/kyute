@@ -8,10 +8,10 @@ use crate::{
     text::{TextSpan, TextStyle},
     theme,
     widgets::{align::Align, clickable::ClickableState, decorated_box::DecoratedBox, Constrained, Padding, Text},
-    Alignment, BoxConstraints, Builder, Color, Ctx, Widget, WidgetCtx, WidgetExt, WidgetPtr,
+    Alignment, BoxConstraints, Builder, Color, Ctx, Widget, WidgetExt,
 };
 
-pub fn button(label: impl Into<String>) -> WidgetPtr {
+pub fn button(label: impl Into<String>) -> impl Widget {
     let label = label.into();
     Builder::new(move |cx: &mut Ctx| {
         let theme = &theme::DARK_THEME;

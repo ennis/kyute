@@ -1,28 +1,24 @@
-use crate::{
-    core::{WeakWidget, WeakWidgetPtr, WidgetBase},
-    Binding, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetPod, WidgetPtr,
-};
 use kurbo::{Point, Rect, Size, Vec2};
 
-pub struct Viewport {
-    base: WidgetBase<Self>,
+use crate::{BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget};
+
+pub struct Viewport<W> {
     size: Size,
     offset: Vec2,
     constrain_width: bool,
     constrain_height: bool,
-    content: WidgetPtr,
+    content: W,
 }
 
-impl Viewport {
-    pub fn new(content: WidgetPtr) -> WidgetPtr<Self> {
-        WidgetPod::new(|base| Viewport {
-            base,
+impl<W> Viewport<W> {
+    pub fn new(content: W) -> Self {
+        Viewport {
             size: Size::ZERO,
             offset: Vec2::ZERO,
             constrain_width: false,
             constrain_height: false,
             content,
-        })
+        }
     }
 
     /*pub fn constrain_width(mut self) -> Self {
@@ -50,7 +46,7 @@ impl Viewport {
         viewport_rect.union(rect) == viewport_rect
     }
 
-    pub fn inner(&self) -> &WidgetPtr<Content> {
+    pub fn inner(&self) -> &W {
         &self.content
     }
 
@@ -73,23 +69,25 @@ impl<Content: 'static> WeakWidget for Viewport<Content> {
     }
 }*/
 
-impl Widget for Viewport {
-    fn base(&self) -> &WidgetBase<Self> {
-        &self.base
-    }
-
+impl<W: Widget> Widget for Viewport<W> {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx)
     }
 
-    fn update(&mut self, cx: &mut Ctx) {}
+    fn update(&mut self, cx: &mut Ctx) {
+        self.content.update(cx)
+    }
 
-    fn event(&mut self, ctx: &mut Ctx, event: &mut Event) {}
+    fn event(&mut self, ctx: &mut Ctx, event: &mut Event) {
+        event.with_offset(self.offset, |event| {
+            self.content.event(ctx, event);
+        });
+    }
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         if self.size.to_rect().contains(position) {
             result.test_with_offset(self.offset, position, |result, position| {
-                self.content.as_dyn().hit_test(result, position)
+                self.content.hit_test(result, position)
             })
         } else {
             false

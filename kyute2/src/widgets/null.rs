@@ -1,30 +1,12 @@
 use kurbo::Point;
 
-use crate::{
-    core::{WeakWidget, WeakWidgetPtr},
-    BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx, WidgetPod, WidgetPtr,
-};
+use crate::{BoxConstraints, Ctx, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget};
 
 /// A widget that does nothing.
-#[derive(Clone, Default)]
-pub struct Null {
-    weak: WeakWidgetPtr<Self>,
-}
-
-impl Null {
-    /// Creates a new null widget.
-    pub fn new() -> WidgetPtr<Null> {
-        WidgetPod::new_cyclic(|weak| Null { weak })
-    }
-}
+#[derive(Copy, Clone, Default)]
+pub struct Null;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-impl WeakWidget for Null {
-    fn weak_self(&self) -> WeakWidgetPtr<Self> {
-        self.weak.clone()
-    }
-}
 
 impl Widget for Null {
     fn mount(&mut self, cx: &mut Ctx) {}

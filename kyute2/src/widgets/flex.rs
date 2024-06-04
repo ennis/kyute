@@ -1,10 +1,6 @@
 use kurbo::{Point, Rect, Vec2};
 
-use crate::{
-    core::{WeakWidget, WeakWidgetPtr},
-    BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Size, Widget, WidgetCtx, WidgetPod,
-    WidgetPtr, WidgetPtrAny,
-};
+use crate::{BoxConstraints, Ctx, Geometry, HitTestResult, LayoutCtx, PaintCtx, Size, Widget, WidgetPtr};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum MainAxisAlignment {
@@ -27,7 +23,6 @@ pub enum CrossAxisAlignment {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 pub struct Flex {
-    weak: WeakWidgetPtr<Self>,
     pub axis: Axis,
     pub main_axis_alignment: MainAxisAlignment,
     pub cross_axis_alignment: CrossAxisAlignment,
@@ -35,41 +30,40 @@ pub struct Flex {
 }
 
 impl Flex {
-    pub fn new(axis: Axis) -> WidgetPtr<Flex> {
-        WidgetPod::new_cyclic(|weak| Flex {
-            weak,
+    pub fn new(axis: Axis) -> Flex {
+        Flex {
             axis,
             main_axis_alignment: MainAxisAlignment::Start,
             cross_axis_alignment: CrossAxisAlignment::Start,
             items: Vec::new(),
-        })
+        }
     }
 
-    pub fn row() -> WidgetPtr<Flex> {
+    pub fn row() -> Flex {
         Flex::new(Axis::Horizontal)
     }
 
-    pub fn column() -> WidgetPtr<Flex> {
+    pub fn column() -> Flex {
         Flex::new(Axis::Vertical)
     }
 
-    pub fn push(&mut self, item: impl Into<WidgetPtrAny>) {
+    pub fn push(&mut self, item: impl Widget) {
         self.items.push(FlexItem {
             flex: 0.0,
             alignment: None,
             offset: Vec2::ZERO,
             size: Size::ZERO,
-            content: item.into(),
+            content: item.to_widget_ptr(),
         });
     }
 
-    pub fn push_flex(&mut self, item: impl Into<WidgetPtrAny>, flex: f64) {
+    pub fn push_flex(&mut self, item: impl Widget, flex: f64) {
         self.items.push(FlexItem {
             flex,
             alignment: None,
             offset: Vec2::ZERO,
             size: Size::ZERO,
-            content: item.into(),
+            content: item.to_widget_ptr(),
         });
     }
 }
@@ -203,12 +197,6 @@ fn main_cross_constraints(axis: Axis, min_main: f64, max_main: f64, min_cross: f
                 height: max_main,
             },
         },
-    }
-}
-
-impl WeakWidget for Flex {
-    fn weak_self(&self) -> WeakWidgetPtr<Self> {
-        self.weak.clone()
     }
 }
 

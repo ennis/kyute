@@ -1,20 +1,19 @@
 //! Frame containers
-use std::cell::Cell;
+use std::{cell::Cell, time::Duration};
 
 use kurbo::{Affine, Vec2};
+use winit::event::WindowEvent;
 
 use crate::{
-    core::{WeakWidget, WeakWidgetPtr},
     drawing::{Decoration, RoundedRectBorder, ShapeBorder, ShapeDecoration},
     environment::Environment,
     layout::place_into,
     Alignment, BoxConstraints, ChangeFlags, Ctx, Event, Geometry, HitTestResult, Insets, LayoutCtx, LengthOrPercentage,
-    PaintCtx, Point, Rect, Size, Widget, WidgetCtx, WidgetPod, WidgetPtr, WidgetPtrAny,
+    PaintCtx, Point, Rect, Size, Widget,
 };
 
 /// A container with a fixed width and height, into which a unique widget is placed.
-pub struct Frame<B> {
-    weak: WeakWidgetPtr<Self>,
+pub struct Frame<B, W> {
     width: LengthOrPercentage,
     height: LengthOrPercentage,
     change_flags: Cell<ChangeFlags>,
@@ -34,17 +33,12 @@ pub struct Frame<B> {
     /// Computed bounds
     bounding_rect: Rect,
     paint_bounding_rect: Rect,
-    content: WidgetPtrAny,
+    content: W,
 }
 
-impl Frame<RoundedRectBorder> {
-    pub fn new(
-        width: LengthOrPercentage,
-        height: LengthOrPercentage,
-        content: impl Into<WidgetPtrAny>,
-    ) -> WidgetPtr<Self> {
-        WidgetPod::new_cyclic(move |weak| Frame {
-            weak,
+impl<W> Frame<RoundedRectBorder, W> {
+    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, content: W) -> Self {
+        Frame {
             width,
             height,
             change_flags: Cell::new(ChangeFlags::all()),
@@ -59,8 +53,8 @@ impl Frame<RoundedRectBorder> {
             bounding_rect: Default::default(),
             paint_bounding_rect: Default::default(),
             decoration: ShapeDecoration::new(),
-            content: content.into(),
-        })
+            content,
+        }
     }
 }
 
@@ -87,9 +81,21 @@ impl<T, B> Frame<T, B> {
     }
 }*/
 
-impl<B: ShapeBorder + 'static> Widget for Frame<B> {
+impl<B: ShapeBorder + 'static, W: Widget> Widget for Frame<B, W> {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx)
+    }
+
+    fn update(&mut self, cx: &mut Ctx) {
+        self.content.update(cx)
+    }
+
+    fn environment(&self) -> Environment {
+        self.content.environment()
+    }
+
+    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {
+        self.content.event(cx, event)
     }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
@@ -151,6 +157,10 @@ impl<B: ShapeBorder + 'static> Widget for Frame<B> {
             bounding_rect: self.bounding_rect,
             paint_bounding_rect: self.paint_bounding_rect,
         }
+    }
+
+    fn window_event(&mut self, _cx: &mut Ctx, _event: &WindowEvent, _time: Duration) {
+        self.content.window_event(_cx, _event, _time)
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx) {

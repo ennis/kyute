@@ -1,11 +1,11 @@
 use crate::{
     core::Widget,
     widgets::{Align, Clickable},
-    Alignment, Ctx, WidgetPtr,
+    Alignment, Ctx,
 };
 
 /// Extension methods on widgets.
-pub trait WidgetExt {
+pub trait WidgetExt: Widget {
     /*/// Sets the background paint of the widget.
     #[must_use]
     fn background(self, paint: impl Into<Paint>) -> Overlay<Self, Background> {
@@ -24,10 +24,20 @@ pub trait WidgetExt {
     ///
     /// TODO
     #[must_use]
-    fn clickable(self, on_click: impl Fn(&mut Ctx) + 'static) -> WidgetPtr<Clickable>;
+    fn clickable(self, on_click: impl Fn(&mut Ctx) + 'static) -> Clickable<Self>
+    where
+        Self: Sized,
+    {
+        Clickable::new(self, on_click)
+    }
 
     #[must_use]
-    fn align(self, x: Alignment, y: Alignment) -> WidgetPtr<Align>;
+    fn align(self, x: Alignment, y: Alignment) -> Align<Self>
+    where
+        Self: Sized,
+    {
+        Align::new(x, y, self)
+    }
 
     /*#[must_use]
     fn provide_with<T, F>(self, f: F) -> ProvideWith<T, F, Self> {
@@ -84,14 +94,4 @@ pub trait WidgetExt {
     }*/
 }
 
-impl<W: Widget + 'static> WidgetExt for WidgetPtr<W> {
-    #[must_use]
-    fn clickable(self, on_click: impl Fn(&mut Ctx) + 'static) -> WidgetPtr<Clickable> {
-        Clickable::new(self, on_click)
-    }
-
-    #[must_use]
-    fn align(self, x: Alignment, y: Alignment) -> WidgetPtr<Align> {
-        Align::new(x, y, self)
-    }
-}
+impl<W: Widget + 'static> WidgetExt for W {}

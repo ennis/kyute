@@ -2,48 +2,48 @@
 use kurbo::{Point, Size};
 
 use crate::{
-    core::{WeakWidget, WeakWidgetPtr},
-    drawing::Decoration,
-    environment::Environment,
-    widgets::Padding,
-    Binding, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetCtx, WidgetPod,
-    WidgetPtr, WidgetPtrAny,
+    drawing::Decoration, environment::Environment, widgets::Padding, BoxConstraints, Ctx, Event, Geometry,
+    HitTestResult, LayoutCtx, PaintCtx, Widget,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct DecoratedBox<D> {
-    weak: WeakWidgetPtr<Self>,
+pub struct DecoratedBox<D, W> {
     decoration: D,
     size: Size,
-    content: WidgetPtr,
+    content: Padding<W>,
 }
 
-impl<D: Decoration> DecoratedBox<D> {
-    pub fn new(decoration: D, content: WidgetPtr<impl Widget>) -> WidgetPtr<Self> {
+impl<D: Decoration, W> DecoratedBox<D, W> {
+    pub fn new(decoration: D, content: W) -> Self {
         let padding = decoration.insets();
-        WidgetPod::new_cyclic(move |weak| DecoratedBox {
-            weak,
+        DecoratedBox {
             decoration,
             size: Default::default(),
             content: Padding::new(padding, content),
-        })
+        }
     }
 }
 
-impl<D: Decoration + 'static> WeakWidget for DecoratedBox<D> {
-    fn weak_self(&self) -> WeakWidgetPtr<Self> {
-        // Assuming you have a WeakWidgetPtr field in DecoratedBox
-        self.weak.clone()
-    }
-}
-
-impl<D> Widget for DecoratedBox<D>
+impl<D, W> Widget for DecoratedBox<D, W>
 where
     D: Decoration + 'static,
+    W: Widget,
 {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx);
+    }
+
+    fn update(&mut self, cx: &mut Ctx) {
+        self.content.update(cx);
+    }
+
+    fn environment(&self) -> Environment {
+        self.content.environment()
+    }
+
+    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {
+        self.content.event(cx, event);
     }
 
     /*fn natural_width(&mut self, height: f64) -> f64 {

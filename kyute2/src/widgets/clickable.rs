@@ -1,11 +1,7 @@
 //! Clickable widget wrapper
-use crate::{
-    core::{WeakWidget, WeakWidgetPtr, WidgetBase},
-    prelude::*,
-    WidgetCtx, WidgetPtrAny,
-};
 use keyboard_types::{Key, KeyState};
-use tracing::trace;
+
+use crate::prelude::*;
 
 #[derive(Copy, Clone, Default)]
 pub struct ClickableState {
@@ -20,28 +16,30 @@ impl ClickableState {
     }
 }
 
-pub struct Clickable {
-    base: WidgetBase<Self>,
+pub struct Clickable<W> {
     state: State<ClickableState>,
     on_click: Box<dyn Fn(&mut Ctx)>,
-    content: WidgetPtrAny,
+    content: W,
 }
 
-impl Clickable {
+impl<W: Widget> Clickable<W> {
     /// Creates a new clickable widget.
-    pub fn new(content: WidgetPtr<impl Widget>, on_click: impl Fn(&mut Ctx) + 'static) -> WidgetPtr<Clickable> {
-        WidgetPod::new_cyclic(move |base| Clickable {
-            base,
+    pub fn new(content: W, on_click: impl Fn(&mut Ctx) + 'static) -> Clickable<W> {
+        Clickable {
             state: State::new(ClickableState::default()),
             on_click: Box::new(on_click),
             content,
-        })
+        }
     }
 }
 
-impl Widget for Clickable {
+impl<W: Widget> Widget for Clickable<W> {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx)
+    }
+
+    fn update(&mut self, cx: &mut Ctx) {
+        self.content.update(cx)
     }
 
     fn environment(&self) -> Environment {

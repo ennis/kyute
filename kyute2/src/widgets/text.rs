@@ -4,42 +4,34 @@ use tracing::warn;
 use tracy_client::span;
 
 use crate::{
-    core::{WeakWidget, WeakWidgetPtr},
+    core::WeakWidgetPtr,
     drawing::ToSkia,
     text::{get_font_collection, TextSpan, TextStyle},
-    Binding, BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Widget, WidgetCtx,
-    WidgetPod, WidgetPtr,
+    BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Widget, WidgetCtx, WidgetPod,
+    WidgetPtr,
 };
 
 pub struct Text {
-    weak: WeakWidgetPtr<Self>,
     text: TextSpan,
     relayout: bool,
     paragraph: sk::textlayout::Paragraph,
 }
 
 impl Text {
-    pub fn new(text: TextSpan) -> WidgetPtr<Text> {
+    pub fn new(text: TextSpan) -> Text {
         let paragraph = text.build_paragraph();
-        WidgetPod::new_cyclic(move |weak| Text {
-            weak,
+        Text {
             text,
             relayout: true,
             paragraph,
-        })
-    }
-}
-
-impl WeakWidget for Text {
-    fn weak_self(&self) -> WeakWidgetPtr<Self> {
-        self.weak.clone()
+        }
     }
 }
 
 impl Widget for Text {
     fn mount(&mut self, _cx: &mut Ctx) {}
 
-    fn update(&mut self, cx: &mut Ctx) {
+    fn update(&mut self, _cx: &mut Ctx) {
         /*if self.text.update(cx) {
             self.relayout = true;
             self.paragraph = build_paragraph(&self.text.value());

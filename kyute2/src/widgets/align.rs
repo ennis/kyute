@@ -1,45 +1,40 @@
 use kurbo::{Insets, Vec2};
 
-use crate::{
-    core::{WeakWidget, WeakWidgetPtr, WidgetCtx},
-    layout::place_into,
-    prelude::*,
-    Alignment, WidgetPtrAny,
-};
+use crate::{layout::place_into, prelude::*, Alignment};
 
-pub struct Align {
-    weak: WeakWidgetPtr<Self>,
+pub struct Align<W> {
     pub x: Alignment,
     pub y: Alignment,
     pub width_factor: Option<f64>,
     pub height_factor: Option<f64>,
     offset: Vec2,
-    pub content: WidgetPtrAny,
+    pub content: W,
 }
 
-impl Align {
-    pub fn new(x: Alignment, y: Alignment, content: WidgetPtr<impl Widget>) -> WidgetPtr<Self> {
-        WidgetPod::new_cyclic(move |weak| Align {
-            weak,
+impl<W: Widget> Align<W> {
+    pub fn new(x: Alignment, y: Alignment, content: W) -> Self {
+        Align {
             x,
             y,
             width_factor: None,
             height_factor: None,
             offset: Default::default(),
             content,
-        })
+        }
     }
 }
 
-impl WeakWidget for Align {
-    fn weak_self(&self) -> WeakWidgetPtr<Self> {
-        self.weak.clone()
-    }
-}
-
-impl Widget for Align {
+impl<W: Widget> Widget for Align<W> {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx)
+    }
+
+    fn environment(&self) -> Environment {
+        self.content.environment()
+    }
+
+    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {
+        self.content.event(cx, event)
     }
 
     fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
