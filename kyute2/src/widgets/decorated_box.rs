@@ -3,47 +3,34 @@ use kurbo::{Point, Size};
 
 use crate::{
     drawing::Decoration, environment::Environment, widgets::Padding, BoxConstraints, Ctx, Event, Geometry,
-    HitTestResult, LayoutCtx, PaintCtx, Widget,
+    HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetPod, WidgetPtr,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-pub struct DecoratedBox<D, W> {
+pub struct DecoratedBox<D> {
     decoration: D,
     size: Size,
-    content: Padding<W>,
+    content: WidgetPtr,
 }
 
-impl<D: Decoration, W> DecoratedBox<D, W> {
-    pub fn new(decoration: D, content: W) -> Self {
+impl<D: Decoration + 'static> DecoratedBox<D> {
+    pub fn new(decoration: D, content: WidgetPtr) -> WidgetPtr<Self> {
         let padding = decoration.insets();
-        DecoratedBox {
+        WidgetPod::new_cyclic(|weak| DecoratedBox {
             decoration,
             size: Default::default(),
-            content: Padding::new(padding, content),
-        }
+            content: Padding::new(padding, content.with_parent(weak)),
+        })
     }
 }
 
-impl<D, W> Widget for DecoratedBox<D, W>
+impl<D> Widget for DecoratedBox<D>
 where
     D: Decoration + 'static,
-    W: Widget,
 {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx);
-    }
-
-    fn update(&mut self, cx: &mut Ctx) {
-        self.content.update(cx);
-    }
-
-    fn environment(&self) -> Environment {
-        self.content.environment()
-    }
-
-    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {
-        self.content.event(cx, event);
     }
 
     /*fn natural_width(&mut self, height: f64) -> f64 {

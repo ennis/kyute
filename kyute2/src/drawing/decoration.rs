@@ -133,7 +133,7 @@ where
 pub struct ShapeDecoration<Border> {
     pub fill: Paint,
     pub border: Border,
-    pub shadows: SmallVec<[BoxShadow; 2]>,
+    pub shadows: SmallVec<BoxShadow, 2>,
 }
 
 impl ShapeDecoration<RoundedRectBorder> {

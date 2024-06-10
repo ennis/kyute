@@ -1,10 +1,14 @@
 use kurbo::Point;
 
-use crate::{BoxConstraints, Ctx, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget};
+use crate::{BoxConstraints, Ctx, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetPod, WidgetPtr};
 
 /// A widget that does nothing.
 #[derive(Copy, Clone, Default)]
 pub struct Null;
+
+fn null() -> WidgetPtr<Null> {
+    WidgetPod::new(Null)
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

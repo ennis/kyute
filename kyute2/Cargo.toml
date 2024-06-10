@@ -29,10 +29,13 @@ winit = { path = "../../winit" }
 keyboard-types = "0.7.0"
 raw-window-handle = "0.6"
 bumpalo = "3.14.0"
-smallvec = "1.11.1"
 tracy-client = "0.16.4"
 im = "15.1.0"
 weak-table = "0.3.2"
+scoped-tls = "1.0.1"
+smallvec = "2.0.0-alpha.6"
+copypasta = "0.10.1"
+
 
 # Bullshit needed to open another window with egui in it: egui, wgpu renderer, winit integration, pollster
 # because of WGPUs stupid async API, phosphor for icons

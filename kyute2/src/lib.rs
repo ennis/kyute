@@ -43,8 +43,7 @@ pub use color::Color;
 //pub use element::{Element, TransformNode};
 //pub use environment::{EnvKey, EnvValue, Environment};
 pub use core::{
-    Binding, Builder, ChangeFlags, Ctx, HitTestResult, LayoutCtx, PaintCtx, State, Widget, WidgetCtx, WidgetPod,
-    WidgetPtr,
+    Binding, Builder, ChangeFlags, Ctx, HitTestResult, LayoutCtx, PaintCtx, State, Widget, WidgetPod, WidgetPtr,
 };
 pub use event::Event;
 pub use layout::{Alignment, BoxConstraints, Geometry};

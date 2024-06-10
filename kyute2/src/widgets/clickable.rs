@@ -16,30 +16,26 @@ impl ClickableState {
     }
 }
 
-pub struct Clickable<W> {
+pub struct Clickable {
     state: State<ClickableState>,
     on_click: Box<dyn Fn(&mut Ctx)>,
-    content: W,
+    content: WidgetPtr,
 }
 
-impl<W: Widget> Clickable<W> {
+impl Clickable {
     /// Creates a new clickable widget.
-    pub fn new(content: W, on_click: impl Fn(&mut Ctx) + 'static) -> Clickable<W> {
-        Clickable {
+    pub fn new(content: WidgetPtr, on_click: impl Fn(&mut Ctx) + 'static) -> WidgetPtr<Clickable> {
+        WidgetPod::new_cyclic(move |weak| Clickable {
             state: State::new(ClickableState::default()),
             on_click: Box::new(on_click),
-            content,
-        }
+            content: content.with_parent(weak),
+        })
     }
 }
 
-impl<W: Widget> Widget for Clickable<W> {
+impl Widget for Clickable {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx)
-    }
-
-    fn update(&mut self, cx: &mut Ctx) {
-        self.content.update(cx)
     }
 
     fn environment(&self) -> Environment {

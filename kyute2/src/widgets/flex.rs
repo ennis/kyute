@@ -47,23 +47,23 @@ impl Flex {
         Flex::new(Axis::Vertical)
     }
 
-    pub fn push(&mut self, item: impl Widget) {
+    pub fn push(&mut self, item: WidgetPtr) {
         self.items.push(FlexItem {
             flex: 0.0,
             alignment: None,
             offset: Vec2::ZERO,
             size: Size::ZERO,
-            content: item.to_widget_ptr(),
+            content: item,
         });
     }
 
-    pub fn push_flex(&mut self, item: impl Widget, flex: f64) {
+    pub fn push_flex(&mut self, item: WidgetPtr, flex: f64) {
         self.items.push(FlexItem {
             flex,
             alignment: None,
             offset: Vec2::ZERO,
             size: Size::ZERO,
-            content: item.to_widget_ptr(),
+            content: item,
         });
     }
 }
@@ -215,9 +215,7 @@ impl Widget for Flex {
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         for item in &mut self.items {
-            if result.test_with_offset(item.offset, position, |result, position| {
-                item.content.hit_test(result, position)
-            }) {
+            if item.content.hit_test(result, position) {
                 return true;
             }
         }
@@ -343,6 +341,7 @@ impl Widget for Flex {
                 }
             };
             c.offset.set_cross_axis_offset(axis, offset);
+            c.content.set_offset(c.offset);
         }
 
         let size = Size::from_main_cross(axis, main_axis_size_constrained, cross_axis_size);
@@ -356,7 +355,7 @@ impl Widget for Flex {
 
     fn paint(&mut self, cx: &mut PaintCtx) {
         for item in self.items.iter_mut() {
-            cx.with_offset(item.offset, |cx| item.content.paint(cx));
+            item.content.paint(cx);
         }
     }
 }

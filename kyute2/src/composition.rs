@@ -1,4 +1,7 @@
 //! System compositor interface
+//!
+//! TODO: Rc handles for layers (Rc<Compositor>)
+//! TODO: DrawableSurface should have Rc handle semantics
 use crate::{backend, Size};
 use raw_window_handle::RawWindowHandle;
 use skia_safe as sk;
@@ -280,7 +283,6 @@ impl Compositor {
     //pub fn get_native_surface(&mut self, surface_layer_id: LayerID) -> &backend::CompositionSurface {}
 
     pub fn destroy_layer(&self, layer: LayerID) {
-        //todo!()
         let mut inner = self.inner.borrow_mut();
         inner.backend.destroy_layer(layer);
     }

@@ -2593,6 +2593,64 @@ Q: use `Rc<Self>` as receiver?
 This is supported already. This way, there wouldn't be any need to store the weak pointer anywhere, just downgrade self.
 However, would need refcell for everything.
 
+# Medium-term goals
+
+## Drawing EDSL
+
+Unify drawing & responding to events. Something like immediate mode, but at a smaller scope:
+
+```rust
+
+fn widget(cx: &ImCtx) {
+    // request a size
+    let size = cx.request_maximum_size();
+
+    // draws / hit-tests a rectangle
+    // possible specifications:
+    // - left/right/top/bottom
+    // - left/right/center_x/height
+
+    // specifying equations:
+    // 
+    // bottom - top     = height
+    // center_y         = (top + bottom) / 2
+    //
+    // right - left     = width
+    // center_x         = (left + right) / 2
+    //
+    // aspect_ratio     = width / height
+    //
+    // L, T, R, B, CX, CY, W, H
+    // 
+    // B - T - H                = 0
+    // 0.5 * B + 0.5 * T - CY   = 0
+    // R- L - W                 = 0
+    // 0.5 * L + 0.5 * R - CX   = 0
+
+    // 0  -1   0    1   0  0  0  -1 | 0
+    // 0  0.5  0  0.5   0  -1 0   0 | 0
+    // -1 0 1 0 0 0 -1 0 | 0
+    // 0.5 0 0.5 0 -1 0 0 0 | 0
+
+    rectangle!(
+        center: todo!(),
+    );
+
+
+    // specifying system of equations for positioning:
+    // bottom, top, left, right, mid_horizontal, mid_vertical, baseline 
+
+
+    text(cx);
+}
+
+```
+
+Q: Constraint-based? Like cassowary, metafont/metapost
+A: Constraint-based layout code don't look much more readable than
+direct imperative code in practice.
+They might be more useful when used in combination with a WYSIWYG layout editor.
+
 # Long-term goals
 
 ## Layout designer / UI builder
@@ -2602,4 +2660,5 @@ However, would need refcell for everything.
 ## Domain-specific language (like slint)
 
 Rust really isn't the best for UI code.
+
 

@@ -67,7 +67,8 @@ bitflags! {
 }
 
 /// Context passed to `Element::layout`.
-pub struct LayoutCtx {
+pub struct LayoutCtx<'a, 'b> {
+    pub(crate) cx: &'a mut Ctx<'b>,
     /// Parent window handle.
     pub scale_factor: f64,
 
@@ -75,38 +76,35 @@ pub struct LayoutCtx {
     pub(crate) window_transform: Affine,
 }
 
-impl LayoutCtx {
-    pub(crate) fn new(scale_factor: f64) -> LayoutCtx {
+impl<'a, 'b> LayoutCtx<'a, 'b> {
+    pub(crate) fn new(cx: &'a mut Ctx<'b>, scale_factor: f64) -> LayoutCtx<'a, 'b> {
         LayoutCtx {
+            cx,
             scale_factor,
             window_transform: Default::default(),
         }
     }
+}
 
-    /*pub fn layout<T: ?Sized>(&mut self, child_widget: &mut T, constraints: &BoxConstraints) -> Geometry
-    where
-        T: Widget,
-    {
-        //let geometry = child_element.layout(self, constraints);
-        /*#[cfg(debug_assertions)]
-        {
-            self.debug_info.add(ElementLayoutDebugInfo {
-                element_ptr: elem_ptr_id(child_element),
-                constraints: *constraints,
-                geometry: geometry.clone(),
-            });
-        }*/
-        child_widget.layout(self, constraints)
-    }*/
+impl<'a, 'b> Deref for LayoutCtx<'a, 'b> {
+    type Target = Ctx<'b>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.cx
+    }
+}
+
+impl<'a, 'b> DerefMut for LayoutCtx<'a, 'b> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cx
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 /// Paint context.
-pub struct PaintCtx<'a> {
-    /// Scale factor.
+pub struct PaintCtx<'a, 'b> {
+    pub(crate) cx: &'a mut Ctx<'b>,
     pub(crate) scale_factor: f64,
 
     /// Transform from window area to the current element.
@@ -117,17 +115,17 @@ pub struct PaintCtx<'a> {
     //pub(crate) debug_info: PaintDebugInfo,
 }
 
-impl<'a> PaintCtx<'a> {
+impl<'a, 'b> PaintCtx<'a, 'b> {
     pub fn with_offset<F, R>(&mut self, offset: Vec2, f: F) -> R
     where
-        F: FnOnce(&mut PaintCtx<'a>) -> R,
+        F: FnOnce(&mut PaintCtx<'a, 'b>) -> R,
     {
         self.with_transform(&Affine::translate(offset), f)
     }
 
     pub fn with_transform<F, R>(&mut self, transform: &Affine, f: F) -> R
     where
-        F: FnOnce(&mut PaintCtx<'a>) -> R,
+        F: FnOnce(&mut PaintCtx<'a, 'b>) -> R,
     {
         let scale = self.scale_factor as sk::scalar;
         let prev_transform = self.window_transform;
@@ -146,7 +144,7 @@ impl<'a> PaintCtx<'a> {
         result
     }
 
-    pub fn with_clip_rect(&mut self, rect: Rect, f: impl FnOnce(&mut PaintCtx<'a>)) {
+    pub fn with_clip_rect(&mut self, rect: Rect, f: impl FnOnce(&mut PaintCtx<'a, 'b>)) {
         let mut surface = self.surface.surface();
         surface.canvas().save();
         surface.canvas().clip_rect(rect.to_skia(), sk::ClipOp::Intersect, false);
@@ -242,8 +240,14 @@ pub type WeakWidgetPtr<T = dyn Widget> = Weak<WidgetPod<T>>;
 
 /// Container for widgets.
 pub struct WidgetPod<T: ?Sized = dyn Widget> {
-    mounted: Cell<bool>,
     parent: RefCell<WeakWidgetPtr>,
+    // TODO move booleans to bitflags
+    /// Whether `mount` was called on this widget.
+    mounted: Cell<bool>,
+    /// Whether this widget is focused.
+    focused: Cell<bool>,
+    pointer_grab: Cell<bool>,
+    transform: Cell<Affine>,
     environment: RefCell<Environment>,
     pub widget: RefCell<T>,
 }
@@ -253,6 +257,9 @@ impl<W> WidgetPod<W> {
         Rc::new(WidgetPod {
             mounted: Cell::new(false),
             // Weak::new() doesn't work with unsized types, so use the dummy Null widgets (https://github.com/rust-lang/rust/issues/50513)
+            focused: Cell::new(false),
+            pointer_grab: Cell::new(false),
+            transform: Default::default(),
             parent: RefCell::new(WeakWidgetPtr::<Null>::new()),
             environment: Default::default(),
             widget: RefCell::new(widget),
@@ -263,6 +270,9 @@ impl<W> WidgetPod<W> {
         Rc::new_cyclic(move |weak| WidgetPod {
             mounted: Cell::new(false),
             // Weak::new() doesn't work with unsized types, so use the dummy Null widgets (https://github.com/rust-lang/rust/issues/50513)
+            focused: Cell::new(false),
+            pointer_grab: Cell::new(false),
+            transform: Default::default(),
             parent: RefCell::new(WeakWidgetPtr::<Null>::new()),
             environment: Default::default(),
             widget: RefCell::new(f(weak.clone())),
@@ -276,14 +286,16 @@ impl<W> WidgetPod<W> {
 
 impl WidgetPod {
     pub fn hit_test(self: &Rc<Self>, result: &mut HitTestResult, position: Point) -> bool {
-        let hit = self.widget.borrow_mut().hit_test(result, position);
-        if hit {
-            result.add(self.clone());
-        }
-        hit
+        result.test_with_transform(&self.transform.get(), position, |result, position| {
+            let hit = self.widget.borrow_mut().hit_test(result, position);
+            if hit {
+                result.add(self.clone());
+            }
+            hit
+        })
     }
 
-    pub fn dyn_mount(self: &Rc<Self>, cx: &mut Ctx) {
+    pub fn mount(self: &Rc<Self>, cx: &mut Ctx) {
         let parent = cx.current.clone();
         if !self.mounted.get() {
             self.mounted.set(true);
@@ -296,19 +308,21 @@ impl WidgetPod {
         });
     }
 
-    pub fn dyn_update(self: &Rc<Self>, cx: &mut Ctx) {
+    pub fn update(self: &Rc<Self>, cx: &mut Ctx) {
         cx.with_widget(self.clone(), |cx| {
             self.widget.borrow_mut().update(cx);
         });
     }
 
-    pub fn dyn_event(self: &Rc<Self>, cx: &mut Ctx, event: &mut Event) {
-        cx.with_widget(self.clone(), |cx| {
-            self.widget.borrow_mut().event(cx, event);
+    pub fn event(self: &Rc<Self>, cx: &mut Ctx, event: &mut Event) {
+        event.with_transform(&self.transform.get(), |event| {
+            cx.with_widget(self.clone(), |cx| {
+                self.widget.borrow_mut().event(cx, event);
+            });
         });
     }
 
-    pub fn dyn_window_event(self: &Rc<Self>, cx: &mut Ctx, event: &winit::event::WindowEvent, time: Duration) {
+    pub fn window_event(self: &Rc<Self>, cx: &mut Ctx, event: &winit::event::WindowEvent, time: Duration) {
         cx.with_widget(self.clone(), |cx| {
             self.widget.borrow_mut().window_event(cx, event, time);
         });
@@ -339,7 +353,11 @@ impl<W: Widget> WidgetPod<W> {
     }
 
     pub fn window_event(self: &Rc<Self>, cx: &mut Ctx, event: &winit::event::WindowEvent, time: Duration) {
-        self.as_dyn().dyn_window_event(cx, event, time)
+        self.as_dyn().window_event(cx, event, time)
+    }
+
+    pub fn hit_test(self: &Rc<Self>, result: &mut HitTestResult, position: Point) -> bool {
+        self.as_dyn().hit_test(result, position)
     }
 
     pub fn invoke(self: &Rc<Self>, ctx: &mut Ctx, f: impl FnOnce(&mut W, &mut Ctx)) {
@@ -355,7 +373,26 @@ impl<W: Widget + ?Sized> WidgetPod<W> {
     }
 
     pub fn paint(&self, cx: &mut PaintCtx) {
-        self.widget.borrow_mut().paint(cx);
+        cx.with_transform(&self.transform.get(), |cx| {
+            self.widget.borrow_mut().paint(cx);
+        });
+    }
+
+    pub fn set_parent(&self, parent: WeakWidgetPtr) {
+        self.parent.replace(parent);
+    }
+
+    pub fn with_parent(mut self: Rc<Self>, parent: WeakWidgetPtr) -> Rc<Self> {
+        self.parent.replace(parent.clone());
+        self
+    }
+
+    pub fn set_transform(self: &Rc<Self>, transform: Affine) {
+        self.transform.set(transform);
+    }
+
+    pub fn set_offset(self: &Rc<Self>, offset: Vec2) {
+        self.transform.set(Affine::translate(offset));
     }
 }
 
@@ -365,6 +402,25 @@ impl fmt::Debug for WidgetPod {
     }
 }
 
+// FIXME: WidgetPod probably shouldn't implement Widget (at least not directly).
+// The problem arises with wrapper widgets (e.g. `Padding`), which forward all methods to the wrapped `Widget`.
+// This must not happen for `WidgetPod` since if they need to receive the event it will be delivered
+// directly to them. But `Padding` has no way to distinguish WidgetPods since they all implement Widget.
+//
+// Solutions:
+// - Make WidgetPod not implement Widget, and instead have a `WidgetPod::as_widget` method that returns a `WidgetPtr<dyn Widget>`.
+//   Not great, since some constructors return `WidgetPtr`s directly, and others not.
+// - Make the impl of Widget for WidgetPtr do nothing.
+//   This is *very* confusing since it's not clear which method is called (the one from Widget or the one from WidgetPod?)
+// - Have all widgets return `WidgetPtr<impl Widget>`
+// - There should be a new function, `Widget::set_transform` that propagates the parent transform to children
+//
+// In any case:
+// - there should be a function in `Ctx` to get the coordinate space of the current widget (the widget that received the Ctx).
+// - this function returns a valid result only after layout
+// - WidgetPods should contain the window transform of the widget, otherwise it would be impossible to call a method directly on them.
+
+/*
 impl Widget for WidgetPtr<dyn Widget> {
     fn mount(&mut self, cx: &mut Ctx) {
         WidgetPod::dyn_mount(self, cx)
@@ -431,7 +487,7 @@ impl<W: Widget> Widget for WidgetPtr<W> {
     fn to_widget_ptr(self) -> WidgetPtr {
         self
     }
-}
+}*/
 
 #[derive(Clone, Debug)]
 pub struct HitTestEntry {
@@ -490,6 +546,10 @@ impl HitTestResult {
     }
 }
 
+fn weak_null() -> WeakWidgetPtr {
+    WeakWidgetPtr::<Null>::new()
+}
+
 /// Context passed during tree traversals.
 pub struct Ctx<'a> {
     pub app_state: &'a mut AppState,
@@ -499,7 +559,11 @@ pub struct Ctx<'a> {
     /// Whether relayout is necessary.
     relayout: bool,
     environment: Environment,
+    /// Transform from the window coordinate space to the current widget.
+    transform: Affine,
     current: WeakWidgetPtr,
+    requested_focus: WeakWidgetPtr,
+    requested_pointer_grab: WeakWidgetPtr,
 }
 
 impl<'a> Ctx<'a> {
@@ -515,7 +579,10 @@ impl<'a> Ctx<'a> {
             pending_callbacks: RefCell::new(Default::default()),
             relayout: false,
             environment: current.upgrade().unwrap().environment.borrow().clone(),
+            transform: Affine::default(),
             current,
+            requested_focus: weak_null(),
+            requested_pointer_grab: weak_null(),
         }
     }
 
@@ -530,7 +597,10 @@ impl<'a> Ctx<'a> {
             pending_callbacks: RefCell::new(Default::default()),
             relayout: false,
             environment,
-            current: WeakWidgetPtr::<Null>::default(),
+            transform: Affine::default(),
+            current: weak_null(),
+            requested_focus: weak_null(),
+            requested_pointer_grab: weak_null(),
         }
     }
 
@@ -589,6 +659,24 @@ impl<'a> Ctx<'a> {
         self.relayout
     }
 
+    /// Whether the current widget is focused.
+    pub fn has_focus(&self) -> bool {
+        if let Some(current) = self.current.upgrade() {
+            current.focused.get()
+        } else {
+            false
+        }
+    }
+
+    /// Whether the current widget is grabbing the pointer.
+    pub fn has_pointer_grab(&self) -> bool {
+        if let Some(current) = self.current.upgrade() {
+            current.pointer_grab.get()
+        } else {
+            false
+        }
+    }
+
     pub fn env<T: EnvValue>(&self) -> Option<T> {
         self.environment.get::<T>()
     }
@@ -596,8 +684,19 @@ impl<'a> Ctx<'a> {
     pub fn current(&self) -> WidgetPtr {
         self.current.upgrade().unwrap()
     }
+
+    /// Requests that the current widget gain focus.
+    pub fn request_focus(&mut self) {
+        self.requested_focus = self.current.clone();
+    }
+
+    /// Requests that the current widget grab the pointer.
+    pub fn request_pointer_grab(&mut self) {
+        self.requested_pointer_grab = self.current.clone();
+    }
 }
 
+/*
 pub struct WidgetCtx<'a, 'b, W> {
     base: &'b mut Ctx<'a>,
     current_widget: WidgetPtr<W>,
@@ -636,31 +735,31 @@ impl<'a, 'b, W: Widget> WidgetCtx<'a, 'b, W> {
     pub fn current(&self) -> WidgetPtr<W> {
         self.current_widget.clone()
     }
-}
+}*/
 
 /// A widget that builds a widget given a TreeCtx
-pub struct Builder<F, W> {
+pub struct Builder<F> {
     f: F,
-    inner: Option<W>,
+    inner: Option<WidgetPtr>,
 }
 
-impl<F, W> Builder<F, W> {
-    pub fn new(f: F) -> Self
+impl<F> Builder<F> {
+    pub fn new(f: F) -> WidgetPtr<Self>
     where
-        F: Fn(&mut Ctx) -> W,
+        F: Fn(&mut Ctx) -> WidgetPtr,
     {
-        Builder { f, inner: None }
+        WidgetPod::new(Builder { f, inner: None })
     }
 }
 
-impl<F, W> Widget for Builder<F, W>
+impl<F> Widget for Builder<F>
 where
-    F: Fn(&mut Ctx) -> W + 'static,
-    W: Widget,
+    F: Fn(&mut Ctx) -> WidgetPtr + 'static,
 {
     fn mount(&mut self, cx: &mut Ctx) {
         self.inner = {
             let mut widget = (self.f)(cx);
+            widget.set_parent(cx.current.clone());
             widget.mount(cx);
             Some(widget)
         };
@@ -669,6 +768,7 @@ where
     fn update(&mut self, cx: &mut Ctx) {
         self.inner = {
             let mut widget = (self.f)(cx);
+            widget.set_parent(cx.current.clone());
             widget.mount(cx);
             cx.mark_needs_layout();
             Some(widget)
@@ -824,14 +924,6 @@ impl<T: 'static> State<T> {
     }
 
     pub fn get_tracked(&self, cx: &mut Ctx) -> Ref<T> {
-        // FIXME: this keeps adding more and more callbacks that are never cleaned up
-
-        // We need to only add the callback when the same (receiver, method) pair isn't present in the
-        // callbacks list. The problem is that we have no way of telling whether two `&dyn Fn(&mut Ctx)`
-        // represent the same callback (closures have no identity and can't be compared).
-        //
-        // Alternatives:
-        // - store both the WeakWidgetPtr *and* the location where the callback was added (with #[track_caller]); compare locations
         self.watch_dyn(&cx.current(), Widget::update);
         self.0.data.borrow()
     }

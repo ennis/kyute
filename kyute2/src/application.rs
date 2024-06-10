@@ -161,7 +161,7 @@ impl AppLauncher {
                         // dispatch to the appropriate window handler
                         if let Some(window_widget) = app.app_state.windows.get(&window_id).cloned() {
                             let mut ctx = Ctx::new_root(&mut app.app_state, elwt, Environment::new());
-                            window_widget.dyn_window_event(&mut ctx, &event, event_time);
+                            window_widget.window_event(&mut ctx, &event, event_time);
                         } else {
                             warn!("received event for unknown window {:?}", window_id);
                         }

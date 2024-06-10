@@ -4,8 +4,8 @@ use crate::{
     drawing::{FromSkia, ToSkia},
     event::Event,
     text::{Selection, TextSpan, TextStyle},
-    Binding, BoxConstraints, Ctx, Geometry, HitTestResult, LayoutCtx, PaintCtx, State, WidgetCtx, WidgetPod, WidgetPtr,
-    WidgetPtrAny,
+    widgets::viewport::Viewport,
+    Binding, BoxConstraints, Ctx, Geometry, HitTestResult, LayoutCtx, PaintCtx, State, WidgetPod, WidgetPtr,
 };
 use keyboard_types::{KeyState, Modifiers};
 use kurbo::{Point, Rect, Size, Vec2};
@@ -44,8 +44,16 @@ fn next_grapheme_cluster(text: &str, offset: usize) -> Option<usize> {
 
 // Current state of a text editor widget.
 pub struct TextEditingState {
-    text: String,
-    selection: Selection,
+    pub text: String,
+    pub selection: Selection,
+}
+
+pub type TextAffinity = sk::textlayout::Affinity;
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct TextPosition {
+    pub position: usize,
+    pub affinity: TextAffinity,
 }
 
 impl TextEditingState {
@@ -78,6 +86,13 @@ impl TextEditingState {
 
     pub fn cursor_pos(&self) -> usize {
         self.selection.end
+    }
+
+    pub fn select_all(&mut self) {
+        self.selection = Selection {
+            start: 0,
+            end: self.text.len(),
+        };
     }
 
     /// Moves the cursor forward or backward, possibly modifying the anchor of the selection. Returns the new selection.
@@ -171,15 +186,14 @@ impl TextEditingState {
 /// Text editor widget.
 pub struct BaseTextEdit {
     state: State<TextEditingState>,
-    style: TextStyle,
+    //style: TextStyle,
     editing_finished: Box<dyn FnMut(&mut Ctx, String)>,
     text_changed: Box<dyn FnMut(&mut Ctx, String)>,
     selection_changed: Box<dyn FnMut(&mut Ctx, Selection)>,
     /// Whether the text edit is focused.
     focused: bool,
-    horizontal_offset: f64,
-    paragraph: Option<sk::textlayout::Paragraph>,
-    inner: WidgetPtr<Viewport<CoreTextEdit>>,
+    paragraph: Option<Paragraph>,
+    viewport: Viewport<CoreTextEdit>,
 }
 
 impl BaseTextEdit {
@@ -187,14 +201,13 @@ impl BaseTextEdit {
     pub fn new(state: State<TextEditingState>) -> BaseTextEdit {
         BaseTextEdit {
             state,
-            style: Default::default(),
             editing_finished: Box::new(|_, _| {}),
             text_changed: Box::new(|_, _| {}),
             selection_changed: Box::new(|_, _| {}),
             focused: false,
-            horizontal_offset: 0.0,
+            //horizontal_offset: 0.0,
             paragraph: None,
-            inner: WidgetPod::new(Viewport::new(CoreTextEdit::new(state.clone(), TextStyle::default()))),
+            viewport: Viewport::new(CoreTextEdit::new(state.clone(), Arc::new(TextStyle::default()))),
         }
     }
 }
@@ -211,144 +224,15 @@ fn edit_text(text: &mut String, selection: Selection, replace_with: &str) -> Sel
 }
 
 impl Widget for BaseTextEdit {
-    fn mount(&mut self, cx: &mut WidgetCtx<Self>) {
-        // nothing to do
+    fn mount(&mut self, cx: &mut Ctx) {
+        self.viewport.mount(cx);
     }
 
-    fn update(&mut self, cx: &mut WidgetCtx<Self>) {
+    fn update(&mut self, cx: &mut Ctx) {
         // the state has changed
     }
 
-    fn event(&mut self, ctx: &mut WidgetCtx<Self>, event: &mut Event) {
-        let mut state = self.state.get_untracked();
-        let mut editing_finished = false;
-        let mut text_changed = false;
-        let mut selection_changed = false;
-
-        let Some(ref mut paragraph) = self.paragraph else {
-            // no layout yet
-            return;
-        };
-
-        match event {
-            Event::FocusGained => {
-                //trace!("text edit: focus gained");
-            }
-            Event::FocusLost => {
-                //trace!("text edit: focus lost");
-                let pos = state.selection.end;
-                if state.selection.start != state.selection.end {
-                    selection_changed = true;
-                }
-                editing_finished = true;
-            }
-            Event::PointerOver(p) => {}
-            Event::PointerOut(p) => {}
-            Event::PointerDown(p) => {
-                if p.repeat_count == 2 {
-                    trace!("text edit: select all");
-                    // double-click selects all
-                    self.notify_selection_changed(
-                        ctx,
-                        Selection {
-                            start: 0,
-                            end: state.text.len(),
-                        },
-                    );
-                } else {
-                    let text_pos = self.text_position(p.position);
-                    trace!("text edit: move cursor");
-                    selection_changed = true;
-                }
-
-                // TODO
-                //ctx.request_focus();
-                //ctx.capture_pointer();
-                //ctx.set_handled();
-            }
-            Event::PointerMove(p) => {
-                // update selection
-                /*if ctx.is_capturing_pointer() {
-                    trace!("text edit: move cursor");
-                    let text_pos = self.text_position(p.position);
-                    selection_changed = true;
-                    /*self.notify_selection_changed(
-                        ctx,
-                        Selection {
-                            start: self.selection.start,
-                            end: text_pos.position,
-                        },
-                    );*/
-                }*/
-            }
-            Event::PointerUp(p) => {
-                // nothing to do (pointer grab automatically ends)
-                //ctx.set_handled();
-            }
-            Event::Keyboard(k) => match k.state {
-                KeyState::Down => match k.key {
-                    keyboard_types::Key::Backspace => {
-                        trace!("text edit: backspace");
-                        if state.selection.is_empty() {
-                            state.move_cursor(Movement::Left, true)
-                        }
-                        edit_text(&mut state.text, state.selection, "");
-                        // TODO
-                        /*let (new_text, new_selection) = edit_text(&self.formatted_text.plain_text, selection, "");
-                        self.notify_text_changed(ctx, new_text);
-                        self.notify_selection_changed(ctx, new_selection);
-                        ctx.request_relayout();
-                        ctx.set_handled();*/
-                    }
-                    keyboard_types::Key::Delete => {
-                        trace!("text edit: delete");
-                        if state.selection.is_empty() {
-                            state.move_cursor(Movement::Right, true)
-                        }
-                        state.delete_selected();
-                        selection_changed = true;
-                        text_changed = true;
-                    }
-                    keyboard_types::Key::ArrowLeft => {
-                        state.move_cursor(Movement::Left, k.modifiers.contains(Modifiers::SHIFT));
-                        selection_changed = true;
-                    }
-                    keyboard_types::Key::ArrowRight => {
-                        state.move_cursor(Movement::Right, k.modifiers.contains(Modifiers::SHIFT));
-                        selection_changed = true;
-                    }
-                    keyboard_types::Key::Character(ref c) => {
-                        // reject control characters (handle in KeyDown instead)
-                        edit_text(&mut state.text, state.selection, c);
-                        text_changed = true;
-                    }
-                    keyboard_types::Key::Enter => {
-                        editing_finished = true;
-                    }
-                    _ => {}
-                },
-                KeyState::Up => {}
-            },
-
-            //Event::Composition(_) => {}
-            _ => {}
-        }
-
-        drop(state);
-        if editing_finished {
-            // TODO: avoid expensive cloning here
-            let text = self.state.get_untracked().text().to_string();
-            (self.editing_finished)(ctx, text);
-        }
-        if text_changed {
-            let text = self.state.get_untracked().text().to_string();
-            (self.text_changed)(ctx, text);
-        }
-        if selection_changed {
-            let selection = self.state.get_untracked().selection();
-            (self.selection_changed)(ctx, selection);
-        }
-    }
+    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {}
 
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         self.inner.hit_test(result, position)
@@ -553,65 +437,228 @@ impl From<TextField> for form::Row {
 //
 // TextEdit
 //   -> State<TextEditingState>
-//      -> BaseTextEdit(state)
-//          -> CoreTextEdit(state)
+//      -> BaseTextEdit(state): event handlers
+//          -> CoreTextEdit(state): layouts and draws the text, selection and cursor
 // -> can swap out the CoreTextEdit with something else to change the rendering
 
-/// Internal widget that handles the display of the text, selection and cursor.
+/// Implements the core logic of the text edit widget.
 ///
-/// It doesn't handle any user input or interaction, nor does it handle scrolling on overflow.
+/// This widget is responsible for handling text input, cursor movement, selection, and rendering.
+/// The `TextEdit` widget above wraps this to add a scrolling viewport and is responsible for requesting
+/// relayouts and propagating updates to the text.
 pub struct CoreTextEdit {
-    data: WidgetData<Self>,
     state: State<TextEditingState>,
-    style: TextStyle,
+    style: Arc<TextStyle>,
     paragraph: Paragraph,
     single_line: bool,
+    editing_finished: Box<dyn FnMut(&mut Ctx, String)>,
+    text_changed: Box<dyn FnMut(&mut Ctx, String)>,
+    selection_changed: Box<dyn FnMut(&mut Ctx, Selection)>,
+}
+
+// Option 1: pass State<TextEditingState>
+// On input:
+// - update the state (this queues a call to CoreTextEdit::update)
+
+// Main issue:
+// how to rect to changes in the cursor position? and I mean the actual coordinates on the screen, not the current selection
+// this is necessary for the viewport to scroll to the cursor position.
+// Flutter does that via "Scrollables" I think;
+// -> basically, CoreTextEdit itself requests a scroll to a particular location
+
+pub struct ScrollState {
+    pub offset: Vec2,
+}
+
+impl ScrollState {
+    pub fn scroll_to(&mut self, offset: Vec2) {
+        // issue: scroll_to is called with `offset` in the caller's coordinate space,
+        // but we need to convert it to the viewport's coordinate space.
+        // Furthermore, the coordinates passed to `Widget::event` may not be the same as the coordinates
+        // of the owning `WidgetPod` (modifier widgets like `Padding` can transform events without introducing a WidgetPod).
+        //
+        // Possible solutions:
+        // `ReferenceFrame`: a combination of a `WidgetPtr` and a transform to the modified widget inside the reference frame.
+        // This can be obtained from the current `Ctx`.
+        // Alternatively, just store the transform from the widget to window space.
+        //
+        // - This *must* take a `Ctx` in order to identify which widget is calling, and thus
+        // the coordinate space to convert from.
+        // - We need to find a way to convert between coordinate spaces. This is tricky because
+        //   there's no generic transform hierarchy available.
+        // self.widget.transform_to();
+        self.offset = offset;
+    }
 }
 
 impl CoreTextEdit {
-    pub fn new(state: State<TextEditingState>, style: TextStyle) -> CoreTextEdit {
-        CoreTextEdit {
+    pub fn new(state: State<TextEditingState>, style: Arc<TextStyle>) -> WidgetPtr<CoreTextEdit> {
+        let w = WidgetPod::new(CoreTextEdit {
             state,
+            editing_finished: Box::new(|_, _| {}),
+            text_changed: Box::new(|_, _| {}),
+            selection_changed: Box::new(|_, _| {}),
             style,
             paragraph: TextSpan::default().build_paragraph(),
             single_line: true,
-        }
+        });
+        w
     }
 
-    pub fn multi_line(mut self) -> Self {
-        self.single_line = true;
-        self
+    /*pub fn set_text(&mut self, text: impl Into<String>) {
+        self.text = text.to_string();
+    }
+
+    pub fn set_selection(&mut self, selection: Selection) {
+        self.selection = selection;
+    }*/
+
+    /// Returns the text position for the given cursor coordinates.
+    fn text_position(&self, coordinate: Point) -> TextPosition {
+        let coord = coordinate.to_skia();
+        let text_position = self.paragraph.get_glyph_position_at_coordinate(coord); //hit_test_point(position.to_skia()).idx;
+        TextPosition {
+            position: text_position.position as usize,
+            affinity: text_position.affinity,
+        }
     }
 }
 
 impl Widget for CoreTextEdit {
-    fn mount(&mut self, cx: &mut Ctx) {
-        /*connect(self.state, cx, |this_, cx| {
-            // issue: `cx` is not enough to retrieve &mut self
-            // -> there is no `Weak<Self>`
-            //
-            cx.mark_needs_layout();
-        });*/
+    fn mount(&mut self, cx: &mut Ctx) {}
 
-        // mark this widget as dependent on the text editing state
-        //self.state.track(cx);
+    fn update(&mut self, cx: &mut Ctx) {}
 
-        //self.state.watch(&mut self.data, Self::text_state_changed);
+    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {
+        let mut state = self.state.get();
+        let mut editing_finished = false;
+        let mut text_changed = false;
+        let mut selection_changed = false;
 
-        self.watch(&self.state, Self::text_state_changed);
+        let Some(ref mut paragraph) = self.paragraph else {
+            // no layout yet
+            return;
+        };
+
+        match event {
+            Event::FocusGained => {
+                //trace!("text edit: focus gained");
+            }
+            Event::FocusLost => {
+                //trace!("text edit: focus lost");
+                //let pos = self.state.get().selection.end;
+                //if state.selection.start != state.selection.end {
+                //    selection_changed = true;
+                //}
+                //editing_finished = true;
+            }
+            Event::PointerOver(p) => {}
+            Event::PointerOut(p) => {}
+            Event::PointerDown(p) => {
+                if p.repeat_count == 2 {
+                    trace!("text edit: select all");
+                    // double-click selects all
+                    self.state.update(cx, TextEditingState::select_all);
+                } else {
+                    trace!("text edit: move cursor");
+                    let tp = self.text_position(p.position);
+                    self.state.update(cx, |state| {
+                        state.set_cursor(tp.position, false);
+                    });
+
+                    selection_changed = true;
+                }
+
+                // TODO
+                //ctx.request_focus();
+                //ctx.capture_pointer();
+                //ctx.set_handled();
+            }
+            Event::PointerMove(p) => {
+                // update selection
+                /*if ctx.is_capturing_pointer() {
+                    trace!("text edit: move cursor");
+                    let text_pos = self.text_position(p.position);
+                    selection_changed = true;
+                    /*self.notify_selection_changed(
+                        ctx,
+                        Selection {
+                            start: self.selection.start,
+                            end: text_pos.position,
+                        },
+                    );*/
+                }*/
+            }
+            Event::PointerUp(p) => {
+                // nothing to do (pointer grab automatically ends)
+                //ctx.set_handled();
+            }
+            Event::Keyboard(k) => match k.state {
+                KeyState::Down => match k.key {
+                    keyboard_types::Key::Backspace => {
+                        trace!("text edit: backspace");
+                        if state.selection.is_empty() {
+                            state.move_cursor(Movement::Left, true)
+                        }
+                        edit_text(&mut state.text, state.selection, "");
+                        // TODO
+                        /*let (new_text, new_selection) = edit_text(&self.formatted_text.plain_text, selection, "");
+                        self.notify_text_changed(ctx, new_text);
+                        self.notify_selection_changed(ctx, new_selection);
+                        ctx.request_relayout();
+                        ctx.set_handled();*/
+                    }
+                    keyboard_types::Key::Delete => {
+                        trace!("text edit: delete");
+                        if state.selection.is_empty() {
+                            state.move_cursor(Movement::Right, true)
+                        }
+                        state.delete_selected();
+                        selection_changed = true;
+                        text_changed = true;
+                    }
+                    keyboard_types::Key::ArrowLeft => {
+                        state.move_cursor(Movement::Left, k.modifiers.contains(Modifiers::SHIFT));
+                        selection_changed = true;
+                    }
+                    keyboard_types::Key::ArrowRight => {
+                        state.move_cursor(Movement::Right, k.modifiers.contains(Modifiers::SHIFT));
+                        selection_changed = true;
+                    }
+                    keyboard_types::Key::Character(ref c) => {
+                        // reject control characters (handle in KeyDown instead)
+                        edit_text(&mut state.text, state.selection, c);
+                        text_changed = true;
+                    }
+                    keyboard_types::Key::Enter => {
+                        editing_finished = true;
+                    }
+                    _ => {}
+                },
+                KeyState::Up => {}
+            },
+
+            //Event::Composition(_) => {}
+            _ => {}
+        }
+
+        drop(state);
+        if editing_finished {
+            // TODO: avoid expensive cloning here
+            let text = self.state.get_untracked().text().to_string();
+            (self.editing_finished)(cx, text);
+        }
+        if text_changed {
+            let text = self.state.get_untracked().text().to_string();
+            (self.text_changed)(cx, text);
+        }
+        if selection_changed {
+            let selection = self.state.get_untracked().selection();
+            (self.selection_changed)(cx, selection);
+        }
     }
 
-    fn update(&mut self, cx: &mut WidgetCtx<Self>) {
-        // the state has changed; we don't know if it's the text or the selection, but in any case
-        // we need to update the layout
-        cx.mark_needs_layout();
-    }
-
-    fn event(&mut self, cx: &mut WidgetCtx<Self>, event: &mut Event) {}
-
-    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
-        todo!()
-    }
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {}
 
     fn layout(&mut self, cx: &mut LayoutCtx, bc: &BoxConstraints) -> Geometry {
         // TODO: cache constraints and only relayout if they changed

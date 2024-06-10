@@ -3,16 +3,21 @@ use std::time::Duration;
 use kurbo::{Insets, Point, Size, Vec2};
 use winit::event::WindowEvent;
 
-use crate::{BoxConstraints, Ctx, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget};
+use crate::{
+    BoxConstraints, Ctx, Environment, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetPod, WidgetPtr,
+};
 
-pub struct Padding<T> {
+pub struct Padding {
     pub padding: Insets,
-    pub content: T,
+    pub content: WidgetPtr,
 }
 
-impl<T> Padding<T> {
-    pub fn new(padding: Insets, content: T) -> Self {
-        Padding { padding, content }
+impl Padding {
+    pub fn new(padding: Insets, content: WidgetPtr) -> WidgetPtr<Self> {
+        WidgetPod::new_cyclic(|weak| Padding {
+            padding,
+            content: content.with_parent(weak),
+        })
     }
 
     fn offset(&self) -> Vec2 {
@@ -20,13 +25,15 @@ impl<T> Padding<T> {
     }
 }
 
-impl<T: Widget> Widget for Padding<T> {
+impl Widget for Padding {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx)
     }
 
-    fn update(&mut self, cx: &mut Ctx) {
-        self.content.update(cx)
+    /*fn update(&mut self, cx: &mut Ctx) {
+        cx.with_offset(self.offset(), |cx| {
+            self.content.update(cx);
+        });
     }
 
     fn environment(&self) -> Environment {
@@ -37,7 +44,7 @@ impl<T: Widget> Widget for Padding<T> {
         event.with_offset(self.offset(), |event| {
             self.content.event(cx, event);
         });
-    }
+    }*/
 
     /*fn natural_width(&mut self, height: f64) -> f64 {
         self.content.natural_width((height - self.padding.y_value()).max(0.0))
@@ -51,12 +58,8 @@ impl<T: Widget> Widget for Padding<T> {
         self.content.natural_baseline(&params.deflate(self.padding)) + self.padding.y0
     }*/
 
-    fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
-        // FIXME: do we need to hit-test the blank space?
-        // It's unclear what we should do here since it's a wrapper widget
-        ctx.test_with_offset(self.offset(), position, |result, position| {
-            self.content.hit_test(result, position)
-        })
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
+        self.content.hit_test(result, position)
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, constraints: &BoxConstraints) -> Geometry {
@@ -67,6 +70,8 @@ impl<T: Widget> Widget for Padding<T> {
             height: child_geometry.size.height + self.padding.y_value(),
         };
 
+        self.content.set_offset(offset);
+
         Geometry {
             size,
             baseline: child_geometry.baseline.map(|baseline| baseline + offset.y),
@@ -75,11 +80,7 @@ impl<T: Widget> Widget for Padding<T> {
         }
     }
 
-    fn window_event(&mut self, _cx: &mut Ctx, _event: &WindowEvent, _time: Duration) {
-        self.content.window_event(_cx, _event, _time)
-    }
-
     fn paint(&mut self, ctx: &mut PaintCtx) {
-        ctx.with_offset(self.offset(), |ctx| self.content.paint(ctx));
+        self.content.paint(ctx);
     }
 }

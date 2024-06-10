@@ -7,8 +7,7 @@ use crate::{
     core::WeakWidgetPtr,
     drawing::ToSkia,
     text::{get_font_collection, TextSpan, TextStyle},
-    BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Widget, WidgetCtx, WidgetPod,
-    WidgetPtr,
+    BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Point, Widget, WidgetPod, WidgetPtr,
 };
 
 pub struct Text {
@@ -18,13 +17,13 @@ pub struct Text {
 }
 
 impl Text {
-    pub fn new(text: TextSpan) -> Text {
+    pub fn new(text: TextSpan) -> WidgetPtr<Text> {
         let paragraph = text.build_paragraph();
-        Text {
+        WidgetPod::new(Text {
             text,
             relayout: true,
             paragraph,
-        }
+        })
     }
 }
 

@@ -1,17 +1,17 @@
 use kurbo::{Point, Rect, Size, Vec2};
 
-use crate::{BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget};
+use crate::{BoxConstraints, Ctx, Event, Geometry, HitTestResult, LayoutCtx, PaintCtx, Widget, WidgetPtr};
 
-pub struct Viewport<W> {
+pub struct Viewport {
     size: Size,
     offset: Vec2,
     constrain_width: bool,
     constrain_height: bool,
-    content: W,
+    content: WidgetPtr,
 }
 
-impl<W> Viewport<W> {
-    pub fn new(content: W) -> Self {
+impl Viewport {
+    pub fn new(content: WidgetPtr) -> Self {
         Viewport {
             size: Size::ZERO,
             offset: Vec2::ZERO,
@@ -20,16 +20,6 @@ impl<W> Viewport<W> {
             content,
         }
     }
-
-    /*pub fn constrain_width(mut self) -> Self {
-        self.constrain_width = true;
-        self
-    }
-
-    pub fn constraint_height(mut self) -> Self {
-        self.constrain_height = true;
-        self
-    }*/
 
     pub fn set_x_offset(&mut self, x: f64) {
         self.offset.x = x;
@@ -44,10 +34,6 @@ impl<W> Viewport<W> {
         let viewport_rect = Rect::from_origin_size(self.offset.to_point(), self.size);
         // TODO maybe there's a better approach
         viewport_rect.union(rect) == viewport_rect
-    }
-
-    pub fn inner(&self) -> &W {
-        &self.content
     }
 
     /// Sets the X offset of the viewport such that the given point (in the coordinate space inside the viewport) is in view.
@@ -69,26 +55,14 @@ impl<Content: 'static> WeakWidget for Viewport<Content> {
     }
 }*/
 
-impl<W: Widget> Widget for Viewport<W> {
+impl Widget for Viewport {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx)
     }
 
-    fn update(&mut self, cx: &mut Ctx) {
-        self.content.update(cx)
-    }
-
-    fn event(&mut self, ctx: &mut Ctx, event: &mut Event) {
-        event.with_offset(self.offset, |event| {
-            self.content.event(ctx, event);
-        });
-    }
-
     fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
         if self.size.to_rect().contains(position) {
-            result.test_with_offset(self.offset, position, |result, position| {
-                self.content.hit_test(result, position)
-            })
+            self.content.hit_test(result, position)
         } else {
             false
         }
@@ -104,6 +78,7 @@ impl<W: Widget> Widget for Viewport<W> {
         }
 
         let child_layout = self.content.layout(ctx, &child_constraints);
+        self.content.set_offset(self.offset);
 
         // always take the maximum available space
         // if the constraints are unbounded in a direction, we use the child's size
@@ -115,9 +90,7 @@ impl<W: Widget> Widget for Viewport<W> {
     fn paint(&mut self, ctx: &mut PaintCtx) {
         let clip_rect = self.size.to_rect();
         ctx.with_clip_rect(clip_rect, |ctx| {
-            ctx.with_offset(self.offset, |ctx| {
-                self.content.paint(ctx);
-            });
+            self.content.paint(ctx);
         });
     }
 }

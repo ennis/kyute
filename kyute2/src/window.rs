@@ -235,7 +235,7 @@ impl UiHostWindowState {
                     // mark the geometry and the visuals dirty
                     self.change_flags |= ChangeFlags::GEOMETRY | ChangeFlags::PAINT;
                 }
-                self.update_layout(content.clone());
+                self.update_layout(cx, content.clone());
                 self.window.request_redraw();
             }
             WindowEvent::Moved(_) => { /*self.dismiss_popups()*/ }
@@ -281,7 +281,7 @@ impl UiHostWindowState {
                 self.handle_mouse_input(cx, content.clone(), *device_id, *button, *state, time);
             }
             WindowEvent::RedrawRequested => {
-                self.paint(time, &WindowPaintOptions::default(), content.clone());
+                self.paint(cx, time, &WindowPaintOptions::default(), content.clone());
             }
             WindowEvent::CloseRequested => {
                 self.close_requested.set(true);
@@ -309,7 +309,7 @@ impl UiHostWindowState {
         // Then if something requested a relayout, do it now.
         if cx.needs_layout() {
             info!("layout requested");
-            self.update_layout(content.clone());
+            self.update_layout(cx, content.clone());
             // also request a repaint, even though it may be pessimistic
             self.window.request_redraw();
         }
@@ -558,7 +558,7 @@ impl UiHostWindowState {
     fn dispatch_pointer_event_inner(&mut self, cx: &mut Ctx, path: &[HitTestEntry], mut event: Event) {
         for entry in path.iter() {
             event.set_transform(&entry.transform);
-            entry.widget.dyn_event(cx, &mut event);
+            entry.widget.event(cx, &mut event);
         }
 
         if event.capture_requested() {
@@ -567,7 +567,7 @@ impl UiHostWindowState {
         }
     }
 
-    fn update_layout(&self, mut content: WidgetPtr) {
+    fn update_layout(&self, cx: &mut Ctx, mut content: WidgetPtr) {
         let _span = span!("update_layout");
         //span.emit_text(&format!("Window ID: {:016X}", u64::from(self.window.id())));
         //span.emit_text(&format!("Window title: {:?}", self.window.title()));
@@ -575,8 +575,11 @@ impl UiHostWindowState {
         let scale_factor = self.scale_factor.get();
         let size = self.window.inner_size().to_logical(scale_factor);
 
-        let mut ctx = LayoutCtx::new(scale_factor);
-        content.layout(&mut ctx, &BoxConstraints::loose(Size::new(size.width, size.height)));
+        let mut layout_ctx = LayoutCtx::new(cx, scale_factor);
+        content.layout(
+            &mut layout_ctx,
+            &BoxConstraints::loose(Size::new(size.width, size.height)),
+        );
 
         /*let geometry = ctx.layout(&mut *self.root_element.borrow_mut(), &layout_params);
         trace!(
@@ -636,7 +639,7 @@ impl UiHostWindowState {
     /// * `options` - Options for painting the window.
     /// * `widget` - The root widget to paint into the window.
     ///
-    fn paint(&mut self, _time: Duration, options: &WindowPaintOptions, mut content: WidgetPtr) {
+    fn paint(&mut self, cx: &mut Ctx, _time: Duration, options: &WindowPaintOptions, mut content: WidgetPtr) {
         let _span = span!("paint");
         eprintln!("paint");
 
@@ -662,6 +665,7 @@ impl UiHostWindowState {
         // Now paint the UI tree.
         {
             let mut paint_ctx = PaintCtx {
+                cx,
                 scale_factor: self.scale_factor.get(),
                 window_transform: Default::default(),
                 surface: &surface,
@@ -713,11 +717,11 @@ pub struct UiHostWindowHandler {
 
 impl UiHostWindowHandler {
     /// Creates a new window and registers it with the event loop.
-    pub fn new(content: impl Widget, options: UiHostWindowOptions) -> UiHostWindowHandler {
+    pub fn new(content: WidgetPtr, options: UiHostWindowOptions) -> UiHostWindowHandler {
         //------------------------------------------------
         // build the window handler
         UiHostWindowHandler {
-            content: content.to_widget_ptr(),
+            content,
             options,
             window: RefCell::new(None),
             damage_regions: DamageRegions::default(),

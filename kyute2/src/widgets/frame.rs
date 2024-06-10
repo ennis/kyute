@@ -9,11 +9,11 @@ use crate::{
     environment::Environment,
     layout::place_into,
     Alignment, BoxConstraints, ChangeFlags, Ctx, Event, Geometry, HitTestResult, Insets, LayoutCtx, LengthOrPercentage,
-    PaintCtx, Point, Rect, Size, Widget,
+    PaintCtx, Point, Rect, Size, Widget, WidgetPod, WidgetPtr,
 };
 
 /// A container with a fixed width and height, into which a unique widget is placed.
-pub struct Frame<B, W> {
+pub struct Frame<B> {
     width: LengthOrPercentage,
     height: LengthOrPercentage,
     change_flags: Cell<ChangeFlags>,
@@ -33,12 +33,12 @@ pub struct Frame<B, W> {
     /// Computed bounds
     bounding_rect: Rect,
     paint_bounding_rect: Rect,
-    content: W,
+    content: WidgetPtr,
 }
 
-impl<W> Frame<RoundedRectBorder, W> {
-    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, content: W) -> Self {
-        Frame {
+impl Frame<RoundedRectBorder> {
+    pub fn new(width: LengthOrPercentage, height: LengthOrPercentage, content: WidgetPtr) -> WidgetPtr<Self> {
+        WidgetPod::new_cyclic(|weak| Frame {
             width,
             height,
             change_flags: Cell::new(ChangeFlags::all()),
@@ -53,8 +53,8 @@ impl<W> Frame<RoundedRectBorder, W> {
             bounding_rect: Default::default(),
             paint_bounding_rect: Default::default(),
             decoration: ShapeDecoration::new(),
-            content,
-        }
+            content: content.with_parent(weak),
+        })
     }
 }
 
@@ -81,27 +81,13 @@ impl<T, B> Frame<T, B> {
     }
 }*/
 
-impl<B: ShapeBorder + 'static, W: Widget> Widget for Frame<B, W> {
+impl<B: ShapeBorder + 'static> Widget for Frame<B> {
     fn mount(&mut self, cx: &mut Ctx) {
         self.content.mount(cx)
     }
 
-    fn update(&mut self, cx: &mut Ctx) {
-        self.content.update(cx)
-    }
-
-    fn environment(&self) -> Environment {
-        self.content.environment()
-    }
-
-    fn event(&mut self, cx: &mut Ctx, event: &mut Event) {
-        self.content.event(cx, event)
-    }
-
-    fn hit_test(&mut self, ctx: &mut HitTestResult, position: Point) -> bool {
-        ctx.test_with_offset(self.offset, position, |result, position| {
-            self.content.hit_test(result, position)
-        }) || self.bounding_rect.contains(position)
+    fn hit_test(&mut self, result: &mut HitTestResult, position: Point) -> bool {
+        self.content.hit_test(result, position) || self.bounding_rect.contains(position)
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, params: &BoxConstraints) -> Geometry {
@@ -149,6 +135,7 @@ impl<B: ShapeBorder + 'static, W: Widget> Widget for Frame<B, W> {
             self.offset = offset;
         }
 
+        self.content.set_offset(self.offset);
         self.size = size;
 
         Geometry {
@@ -167,9 +154,7 @@ impl<B: ShapeBorder + 'static, W: Widget> Widget for Frame<B, W> {
         ctx.with_canvas(|canvas| {
             self.decoration.paint(canvas, self.size.to_rect());
         });
-        ctx.with_offset(self.offset, |ctx| {
-            self.content.paint(ctx);
-        });
+        self.content.paint(ctx);
     }
 }
 
